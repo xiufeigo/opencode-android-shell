@@ -88,7 +88,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
-        if (settings.hasServerUrl && loadedUrl != settings.serverUrl) {
+        if (!settings.hasServerUrl) {
+            showError(getString(R.string.error_no_server))
+        } else if (loadedUrl != settings.serverUrl) {
             maybeLoadConfiguredUrl(force = true)
         }
     }
@@ -144,7 +146,6 @@ class MainActivity : AppCompatActivity() {
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true
             javaScriptCanOpenWindowsAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             mediaPlaybackRequiresUserGesture = false
