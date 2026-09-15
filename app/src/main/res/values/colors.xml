@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="accent">#FF7C5CFF</color>
+    <color name="ic_launcher_background">#FF111111</color>
+    <color name="error_panel">#CC1A1A1A</color>
+    <color name="settings_button_bg">#66000000</color>
+</resources>

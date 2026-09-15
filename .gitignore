@@ -1,0 +1,41 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local SDK path and IDE
+local.properties
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Kotlin
+.kotlin/
+
+# Android / Java
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+*.log
+
+# Keystores — never commit secrets
+*.jks
+*.keystore
+keystore.properties
+*.pepk
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.orig
+*~
+.navigation/
+output.json

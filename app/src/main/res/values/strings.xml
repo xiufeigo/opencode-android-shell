@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCode Shell</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_intro">Point this shell at an OpenCode web backend on your LAN. On the PC, run:\n\nopencode web --hostname 0.0.0.0 --port 4096</string>
+    <string name="server_url_hint">Server URL</string>
+    <string name="server_url_helper">Example: http://192.168.1.10:4096</string>
+    <string name="username_hint">Username (optional Basic Auth)</string>
+    <string name="password_hint">Password (optional)</string>
+    <string name="save">Save</string>
+    <string name="retry">Retry</string>
+    <string name="settings_saved">Saved</string>
+    <string name="error_no_server">Set a server URL in Settings to load OpenCode.</string>
+    <string name="error_load_failed">Could not load the server: %1$s</string>
+    <string name="error_auth_failed">HTTP Basic Auth failed. Check username and password.</string>
+</resources>
