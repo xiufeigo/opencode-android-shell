@@ -56,7 +56,8 @@
                     android:id="@+id/username"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:importantForAutofill="username"
+                    android:autofillHints="username"
+                    android:importantForAutofill="yes"
                     android:inputType="text"
                     android:minHeight="56dp" />
             </com.google.android.material.textfield.TextInputLayout>
@@ -72,7 +73,8 @@
                     android:id="@+id/password"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:importantForAutofill="password"
+                    android:autofillHints="password"
+                    android:importantForAutofill="yes"
                     android:inputType="textPassword"
                     android:minHeight="56dp" />
             </com.google.android.material.textfield.TextInputLayout>
