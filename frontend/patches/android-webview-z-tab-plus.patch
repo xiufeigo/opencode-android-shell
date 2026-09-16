@@ -1,0 +1,189 @@
+diff --git a/packages/app/src/utils/android-tab-plus.ts b/packages/app/src/utils/android-tab-plus.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/packages/app/src/utils/android-tab-plus.ts
+@@ -0,0 +1,67 @@
++import { createSignal } from "solid-js"
++
++export const ANDROID_TAB_PLUS_STORAGE_KEY = "opencode.android.tabPlusCreatesSession"
++
++export function isAndroidWebview() {
++  return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
++}
++
++function readStoredCreatesSession() {
++  try {
++    return globalThis.localStorage?.getItem(ANDROID_TAB_PLUS_STORAGE_KEY) === "true"
++  } catch {
++    return false
++  }
++}
++
++const [createsSession, setCreatesSession] = createSignal(false)
++let hydrated = false
++
++function hydrate() {
++  if (hydrated) return
++  hydrated = true
++  setCreatesSession(readStoredCreatesSession())
++}
++
++export function androidTabPlusCreatesSession() {
++  hydrate()
++  return createsSession()
++}
++
++export function setAndroidTabPlusCreatesSession(value: boolean) {
++  hydrate()
++  setCreatesSession(!!value)
++  try {
++    globalThis.localStorage?.setItem(ANDROID_TAB_PLUS_STORAGE_KEY, value ? "true" : "false")
++  } catch {
++    // Private mode / quota should not break the tab bar.
++  }
++}
++
++export type TabPlusCommand = {
++  options: { id: string }[]
++  show: () => void
++  trigger: (id: string, source?: "palette" | "keybind" | "slash") => void
++}
++
++/** Android default: tab-bar + opens Ctrl+P (file.open / command palette). Toggle restores Desktop new-session. */
++export function openTitlebarTabPlus(command: TabPlusCommand, openNewTab: () => void) {
++  if (!isAndroidWebview() || androidTabPlusCreatesSession()) {
++    openNewTab()
++    return
++  }
++  if (command.options.some((option) => option.id === "file.open")) {
++    command.trigger("file.open", "palette")
++    return
++  }
++  command.show()
++}
++
++if (typeof window !== "undefined") {
++  const api = {
++    key: ANDROID_TAB_PLUS_STORAGE_KEY,
++    get: androidTabPlusCreatesSession,
++    set: setAndroidTabPlusCreatesSession,
++  }
++  ;(window as Window & { __ocAndroidTabPlus?: typeof api }).__ocAndroidTabPlus = api
++}
+
+diff --git a/packages/app/src/components/titlebar.tsx b/packages/app/src/components/titlebar.tsx
+--- a/packages/app/src/components/titlebar.tsx
++++ b/packages/app/src/components/titlebar.tsx
+@@ -39,6 +39,11 @@
+ import "./titlebar.css"
+ import { newTabTooltipKeybind } from "./command-tooltip-keybind"
+ import { normalizeSessionInfo } from "@/utils/session"
++import {
++  androidTabPlusCreatesSession,
++  isAndroidWebview,
++  openTitlebarTabPlus,
++} from "@/utils/android-tab-plus"
+ 
+ const legacyTitlebarHeight = 40
+ const v2TitlebarHeight = 36
+@@ -311,6 +316,8 @@
+ 
+               tabs.newDraft({ server: fallback.server, directory: fallback.project.worktree }, "")
+             }
++            const openTabPlus = () => openTitlebarTabPlus(command, openNewTab)
++            const plusOpensPalette = () => isAndroidWebview() && !androidTabPlusCreatesSession()
+             const toggleHome = () => tabs.toggleHome({ home: layout.route().type === "home", current: currentTab() })
+ 
+             command.register("titlebar-home", () => [
+@@ -414,8 +421,11 @@
+                   placement="bottom"
+                   value={
+                     <>
+-                      {language.t("command.session.new")}
+-                      <KeybindV2 keys={newTabTooltipKeybind(command)} variant="neutral" />
++                      {plusOpensPalette() ? language.t("command.palette") : language.t("command.session.new")}
++                      <KeybindV2
++                        keys={plusOpensPalette() ? command.keybindParts("file.open") : newTabTooltipKeybind(command)}
++                        variant="neutral"
++                      />
+                     </>
+                   }
+                 >
+@@ -425,8 +435,9 @@
+                     size="large"
+                     class="shrink-0"
+                     icon={<IconV2 name="plus" />}
+-                    onClick={openNewTab}
+-                    aria-label={language.t("command.session.new")}
++                    data-action="titlebar-tab-plus"
++                    onClick={openTabPlus}
++                    aria-label={plusOpensPalette() ? language.t("command.palette") : language.t("command.session.new")}
+                   />
+                 </TooltipV2>
+                 <div class="flex-1" />
+
+diff --git a/packages/app/src/components/settings-v2/general.tsx b/packages/app/src/components/settings-v2/general.tsx
+--- a/packages/app/src/components/settings-v2/general.tsx
++++ b/packages/app/src/components/settings-v2/general.tsx
+@@ -13,6 +13,11 @@
+ import { SettingsListV2 } from "./parts/list"
+ import { SettingsRowV2 } from "./parts/row"
+ import { SettingsSectionV2 } from "./parts/section"
++import {
++  androidTabPlusCreatesSession,
++  isAndroidWebview,
++  setAndroidTabPlusCreatesSession,
++} from "@/utils/android-tab-plus"
+ import { LayoutRetirementNotice, LayoutTransitionToggle } from "./interface-transition"
+ import {
+   createAppearanceSettingsController,
+@@ -328,6 +333,20 @@
+       <SettingsListV2>
+         <LanguageSetting />
+ 
++        <Show when={isAndroidWebview()}>
++          <SettingsRowV2
++            title={language.t("settings.general.row.tabPlusCreatesSession.title")}
++            description={language.t("settings.general.row.tabPlusCreatesSession.description")}
++          >
++            <div data-action="settings-tab-plus-creates-session">
++              <Switch
++                checked={androidTabPlusCreatesSession()}
++                onChange={(checked) => setAndroidTabPlusCreatesSession(checked)}
++              />
++            </div>
++          </SettingsRowV2>
++        </Show>
++
+         <PermissionScopeSetting controller={permissionScope} />
+ 
+         <ShellSetting controller={shell} />
+
+diff --git a/packages/app/src/i18n/en.ts b/packages/app/src/i18n/en.ts
+--- a/packages/app/src/i18n/en.ts
++++ b/packages/app/src/i18n/en.ts
+@@ -947,6 +947,9 @@
+   "settings.general.row.mobileTitlebarBottom.title": "Bottom navigation",
+   "settings.general.row.mobileTitlebarBottom.description":
+     "Place the title bar and session tabs at the bottom of the screen on mobile",
++  "settings.general.row.tabPlusCreatesSession.title": "Plus button creates a new session",
++  "settings.general.row.tabPlusCreatesSession.description":
++    "When off, the tab bar + opens the command palette (Ctrl+P). Turn on to restore Desktop behavior: + creates a new session.",
+   "settings.general.row.showCustomAgents.title": "Show agent",
+   "settings.general.row.showCustomAgents.description":
+     "Switch between agents in the composer. When hidden, defaults to Build agent.",
+
+diff --git a/packages/app/src/i18n/zh.ts b/packages/app/src/i18n/zh.ts
+--- a/packages/app/src/i18n/zh.ts
++++ b/packages/app/src/i18n/zh.ts
+@@ -935,6 +935,9 @@
+   "settings.general.row.showStatus.description": "在标题栏中显示服务器状态按钮",
+   "settings.general.row.mobileTitlebarBottom.title": "底部导航",
+   "settings.general.row.mobileTitlebarBottom.description": "在移动设备上将标题栏和会话标签页置于屏幕底部",
++  "settings.general.row.tabPlusCreatesSession.title": "「+」新建会话",
++  "settings.general.row.tabPlusCreatesSession.description":
++    "关闭时，标签栏「+」打开命令面板（Ctrl+P）。打开后与官方桌面版一致：点「+」新建会话。",
+   "settings.general.row.showCustomAgents.title": "显示智能体",
+   "settings.general.row.showCustomAgents.description": "在输入框中切换智能体。隐藏时默认使用 Build 智能体。",
+   "settings.general.row.reasoningSummaries.title": "显示推理摘要",

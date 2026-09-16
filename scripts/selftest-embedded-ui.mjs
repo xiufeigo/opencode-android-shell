@@ -917,6 +917,16 @@ async function runConnectedSurface(ws, sessionId, input) {
 
   const generalTab = await evaluate(ws, sessionId, clickTab("/^(通用|General)$/"))
   await Bun.sleep(400)
+  await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const first = document.querySelector("details.settings-v2-section > summary");
+      ocTap(first);
+      return { opened: first ? first.parentElement.open : null };
+    })()`,
+  )
+  await Bun.sleep(300)
   const generalUi = await evaluate(
     ws,
     sessionId,
@@ -930,6 +940,7 @@ async function runConnectedSurface(ws, sessionId, input) {
         hasAppearance: /外观|Appearance|主题|Theme/.test(text),
         hasNotifications: /通知|Notification/.test(text),
         hasAdvanced: /高级|Advanced/.test(text),
+        hasTabPlus: !!document.querySelector('[data-action="settings-tab-plus-creates-session"]') || /「\+」新建会话|Plus button creates a new session/.test(text),
         sample: text.slice(0, 400),
       };
     })()`,
@@ -939,6 +950,13 @@ async function runConnectedSurface(ws, sessionId, input) {
       "settings.general_appearance_notifications",
       generalUi?.dialog && (generalUi.sections >= 2 || generalUi.hasAppearance) ? "PASS" : "FAIL",
       { generalTab, generalUi },
+    ),
+  )
+  checklist.push(
+    item(
+      "settings.tab_plus_toggle_present",
+      generalUi?.hasTabPlus ? "PASS" : "FAIL",
+      { hasTabPlus: generalUi?.hasTabPlus, sample: generalUi?.sample },
     ),
   )
 
@@ -976,13 +994,61 @@ async function runConnectedSurface(ws, sessionId, input) {
     ws,
     sessionId,
     `(() => {
-      const text = (document.querySelector('[role="dialog"]')?.innerText || document.body.innerText || "");
-      return { opened: /Esc|Escape|Ctrl|⌘|Command/.test(text) || /shortcut|快捷/.test(text.toLowerCase()), sample: text.slice(0, 300) };
+      const dialog = document.querySelector('[role="dialog"]');
+      const text = (dialog?.innerText || document.body.innerText || "");
+      const title = Array.from(dialog ? dialog.querySelectorAll("h2, .settings-v2-tab-title") : []).find((el) =>
+        /键盘快捷键|Keyboard shortcuts|Shortcuts/.test(el.textContent || ""),
+      );
+      const tr = title ? title.getBoundingClientRect() : null;
+      const titleStyle = title ? getComputedStyle(title) : null;
+      const reset = Array.from(dialog ? dialog.querySelectorAll("button, [data-component='button-v2']") : []).find((el) =>
+        /重置为默认值|Reset to defaults|Reset/.test(el.textContent || ""),
+      );
+      const rr = reset ? reset.getBoundingClientRect() : null;
+      const keycaps = dialog ? dialog.querySelectorAll('[data-component="keybind-v2"], [data-slot="keybind-v2-key"]').length : 0;
+      const rows = dialog ? dialog.querySelectorAll('[data-slot="settings-v2-shortcut-row"], [data-keybind-id]').length : 0;
+      const wrapped = !!(tr && tr.height > 28);
+      return {
+        opened: /Esc|Escape|Ctrl|⌘|Command/.test(text) || /shortcut|快捷/.test(text.toLowerCase()),
+        title: title ? (title.textContent || "").trim() : null,
+        titleWidth: tr ? Math.round(tr.width) : null,
+        titleHeight: tr ? Math.round(tr.height) : null,
+        titleNowrap: titleStyle ? titleStyle.whiteSpace : null,
+        titleFull: title ? /键盘快捷键|Keyboard shortcuts/.test(title.textContent || "") : false,
+        wrapped,
+        resetWidth: rr ? Math.round(rr.width) : null,
+        resetFullWidth: !!(rr && dialog && rr.width > dialog.getBoundingClientRect().width * 0.7),
+        keycaps,
+        rows,
+        sample: text.slice(0, 300),
+      };
     })()`,
   )
   checklist.push(
     item("settings.shortcuts_pane", shortcutsTab?.clicked && shortcutsUi?.opened ? "PASS" : "FAIL", { shortcutsTab, shortcutsUi }),
   )
+  checklist.push(
+    item(
+      "settings.shortcuts_title_one_line",
+      shortcutsUi?.titleFull && shortcutsUi?.wrapped === false && shortcutsUi?.resetFullWidth !== true ? "PASS" : "FAIL",
+      shortcutsUi,
+    ),
+  )
+  checklist.push(
+    item(
+      "settings.shortcuts_keycaps",
+      (shortcutsUi?.keycaps ?? 0) > 0 || (shortcutsUi?.rows ?? 0) > 0 ? "PASS" : "FAIL",
+      { keycaps: shortcutsUi?.keycaps, rows: shortcutsUi?.rows },
+    ),
+  )
+  try {
+    const shotKeys = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+    if (shotKeys?.data) {
+      const keysPath = "/opt/cursor/artifacts/selftest-settings-shortcuts.png"
+      fs.mkdirSync(path.dirname(keysPath), { recursive: true })
+      fs.writeFileSync(keysPath, Buffer.from(shotKeys.data, "base64"))
+    }
+  } catch {}
 
   const serversTab = await evaluate(ws, sessionId, clickTab("/服务器|Servers/"))
   await Bun.sleep(500)
@@ -1611,6 +1677,141 @@ async function runConnectedSurface(ws, sessionId, input) {
     await evaluate(ws, sessionId, HANDLE_BACK_JS)
     await Bun.sleep(300)
   }
+
+  const tabPlusDefault = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const visible = (el) => {
+        if (!el) return false;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const plus = document.querySelector('[data-action="titlebar-tab-plus"]') || Array.from(document.querySelectorAll("button")).find((el) => {
+        const icon = el.querySelector("svg");
+        const label = (el.getAttribute("aria-label") || "").trim();
+        return visible(el) && (label === "命令面板" || label === "Command palette" || label === "新建会话" || label === "New session");
+      });
+      const beforeTabs = document.querySelectorAll('[data-component="titlebar-tab"], [data-slot="titlebar-tab"]').length;
+      const api = window.__ocAndroidTabPlus;
+      const clicked = ocTap(plus);
+      return {
+        found: !!plus,
+        clicked,
+        action: plus ? plus.getAttribute("data-action") : null,
+        label: plus ? (plus.getAttribute("aria-label") || "").slice(0, 40) : null,
+        beforeTabs,
+        pref: api ? { key: api.key, value: api.get() } : null,
+      };
+    })()`,
+  )
+  await Bun.sleep(700)
+  const paletteDefault = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const visible = (el) => {
+        if (!el) return false;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [data-component="dialog-v2"]')).filter(visible);
+      const input = document.querySelector('input[placeholder], [data-slot="text-input-v2-input"]');
+      const ph = input ? (input.getAttribute("placeholder") || "") : "";
+      const text = dialogs.map((el) => el.innerText || "").join("\\n");
+      return {
+        dialog: dialogs.length > 0,
+        placeholder: ph,
+        isPalette: /搜索文件、命令和会话|Search files, commands, and sessions|搜索命令和会话/.test(ph + "\\n" + text),
+        sample: (ph + " " + text).slice(0, 200),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "titlebar.plus_opens_palette_default",
+      tabPlusDefault?.clicked && paletteDefault?.isPalette ? "PASS" : "FAIL",
+      { tabPlusDefault, paletteDefault },
+    ),
+  )
+  try {
+    const shotPlus = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+    if (shotPlus?.data) {
+      const plusPath = "/opt/cursor/artifacts/selftest-tab-plus-palette.png"
+      fs.mkdirSync(path.dirname(plusPath), { recursive: true })
+      fs.writeFileSync(plusPath, Buffer.from(shotPlus.data, "base64"))
+    }
+  } catch {}
+  if (paletteDefault?.dialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(300)
+  }
+  const tabPlusOfficial = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const api = window.__ocAndroidTabPlus;
+      if (api && typeof api.set === "function") api.set(true);
+      const plus = document.querySelector('[data-action="titlebar-tab-plus"]');
+      const before = document.querySelectorAll('[data-component="titlebar-tab"], [data-slot="titlebar-tab"], [role="tab"]').length;
+      const clicked = ocTap(plus);
+      return {
+        pref: api ? api.get() : null,
+        stored: localStorage.getItem("opencode.android.tabPlusCreatesSession"),
+        found: !!plus,
+        clicked,
+        before,
+        label: plus ? (plus.getAttribute("aria-label") || "").slice(0, 40) : null,
+      };
+    })()`,
+  )
+  await Bun.sleep(800)
+  const afterOfficialPlus = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const visible = (el) => {
+        if (!el) return false;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible);
+      const ph = document.querySelector('input[placeholder]')?.getAttribute("placeholder") || "";
+      const isPalette = /搜索文件、命令和会话|Search files, commands, and sessions/.test(ph);
+      const tabs = Array.from(document.querySelectorAll('[data-component="titlebar-tab"], [data-slot="titlebar-tab"], button, [role="tab"]'));
+      const newSession = tabs.some((el) => /新建会话|New session/.test((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")));
+      return {
+        dialog: dialogs.length > 0,
+        isPalette,
+        newSession,
+        tabText: tabs.map((el) => ((el.textContent || "") + "").trim().slice(0, 24)).filter(Boolean).slice(0, 8),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "titlebar.plus_creates_session_when_enabled",
+      tabPlusOfficial?.pref === true &&
+        tabPlusOfficial?.stored === "true" &&
+        afterOfficialPlus?.isPalette !== true &&
+        (afterOfficialPlus?.newSession === true || tabPlusOfficial?.clicked === true)
+        ? "PASS"
+        : "FAIL",
+      { tabPlusOfficial, afterOfficialPlus },
+    ),
+  )
+  await evaluate(
+    ws,
+    sessionId,
+    `(() => { if (window.__ocAndroidTabPlus) window.__ocAndroidTabPlus.set(false); return true; })()`,
+  )
+
   await cdp(
     ws,
     "Emulation.setDeviceMetricsOverride",
@@ -1751,18 +1952,21 @@ const SETTINGS_ACCORDION_JS = `(() => {
       title: (sum && sum.textContent || '').trim().slice(0, 40),
       open: el.open,
       sticky: sum ? getComputedStyle(sum).position : null,
+      hasIcon: !!(sum && (sum.querySelector("svg") || sum.querySelector("[data-component='icon']"))),
     };
   });
-  const tabTitle = tabHeader ? (tabHeader.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 40) : null;
+  const tabTitle = tabHeader ? (tabHeader.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 40) : null;
   return {
     panelFound: !!panel,
     tabHeaderDisplay: tabHeaderStyle ? tabHeaderStyle.display : null,
     tabHeaderPosition: tabHeaderStyle ? tabHeaderStyle.position : null,
-    tabHeaderHidden: !tabHeader || (tabHeaderStyle && tabHeaderStyle.display === 'none'),
+    tabHeaderHidden: !tabHeader || (tabHeaderStyle && tabHeaderStyle.display === "none"),
     tabTitle,
     sectionCount: sections.length,
     summaries,
     firstOpen: sections[0] ? sections[0].open : null,
+    defaultCollapsed: sections.length > 0 && sections.every((el) => el.open === false),
+    iconCount: summaries.filter((s) => s.hasIcon).length,
   };
 })()`
 
@@ -2151,8 +2355,9 @@ async function main() {
         const panel = panels[0];
         const details = panel && panel.querySelectorAll('details.settings-v2-section')[1];
         const sum = details && details.querySelector('summary');
-        if (sum) sum.click();
-        return { collapsed: details ? details.open === false : false, title: sum ? (sum.textContent || '').trim().slice(0, 40) : null };
+        const wasOpen = details ? details.open : null;
+        if (sum && details && details.open) sum.click();
+        return { collapsed: details ? details.open === false : false, title: sum ? (sum.textContent || '').trim().slice(0, 40) : null, wasOpen };
       })()`
       settingsAccordion.collapseProbe = await evaluate(ws, sessionId, collapseJs)
       await Bun.sleep(250)
@@ -2439,7 +2644,9 @@ async function main() {
       !!settingsAccordion?.panelFound &&
       (settingsAccordion.sectionCount ?? 0) >= 2 &&
       settingsAccordion.tabHeaderHidden === true &&
-      settingsAccordion.summaries?.every((s) => s.sticky === "sticky")
+      settingsAccordion.summaries?.every((s) => s.sticky === "sticky") &&
+      settingsAccordion.defaultCollapsed === true &&
+      (settingsAccordion.iconCount ?? 0) >= 2
     const collapseOk = settingsAccordion?.collapseProbe?.collapsed === true
     const scrollOk =
       !!settingsScroll?.scrolled &&

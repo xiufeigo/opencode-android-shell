@@ -1,0 +1,333 @@
+diff --git a/packages/app/src/components/settings-v2/parts/section.tsx b/packages/app/src/components/settings-v2/parts/section.tsx
+--- a/packages/app/src/components/settings-v2/parts/section.tsx
++++ b/packages/app/src/components/settings-v2/parts/section.tsx
+@@ -1,16 +1,34 @@
+-import type { Component, JSX } from "solid-js"
++import type { Component, ComponentProps, JSX } from "solid-js"
++import { createMediaQuery } from "@solid-primitives/media"
++import { Icon } from "@opencode-ai/ui/icon"
+ import "../settings-v2.css"
+ 
+ /** Collapsible settings block. Native <details> so several panels can stay open
+- *  (AccordionV2 is single-card chrome and single-open by default). */
++ *  (AccordionV2 is single-card chrome and single-open by default).
++ *  Portrait (Android): collapsed by default, summary styled like the settings nav. */
+ export const SettingsSectionV2: Component<{
+   title?: string | JSX.Element
++  icon?: ComponentProps<typeof Icon>["name"]
+   children: JSX.Element
+   defaultOpen?: boolean
+ }> = (props) => {
++  const stacked = createMediaQuery("(max-width: 839px)")
++  const initiallyOpen = () => (props.defaultOpen !== undefined ? props.defaultOpen : !stacked())
+   return (
+-    <details class="settings-v2-section" open={props.defaultOpen !== false} data-component="settings-v2-section">
+-      {props.title ? <summary class="settings-v2-section-title">{props.title}</summary> : null}
++    <details
++      class="settings-v2-section"
++      open={initiallyOpen() ? true : undefined}
++      data-component="settings-v2-section"
++      data-icon={props.icon || undefined}
++    >
++      {props.title ? (
++        <summary class="settings-v2-section-title">
++          <span class="settings-v2-section-title-main">
++            {props.icon ? <Icon name={props.icon} /> : null}
++            <span class="settings-v2-section-title-label">{props.title}</span>
++          </span>
++        </summary>
++      ) : null}
+       {props.children}
+     </details>
+   )
+
+diff --git a/packages/app/src/components/settings-v2/general.tsx b/packages/app/src/components/settings-v2/general.tsx
+--- a/packages/app/src/components/settings-v2/general.tsx
++++ b/packages/app/src/components/settings-v2/general.tsx
+@@ -128,7 +128,7 @@
+ const AppearanceSection: Component<{ controller: AppearanceSettingsController }> = (props) => {
+   const language = useLanguage()
+   return (
+-    <SettingsSectionV2 title={language.t("settings.general.section.appearance")}>
++    <SettingsSectionV2 icon="photo" title={language.t("settings.general.section.appearance")}>
+       <SettingsListV2>
+         <SettingsRowV2
+           title={language.t("settings.general.row.colorScheme.title")}
+@@ -213,7 +213,7 @@
+ const SoundsSection: Component<{ controller: SoundSettingsController }> = (props) => {
+   const language = useLanguage()
+   return (
+-    <SettingsSectionV2 title={language.t("settings.general.section.sounds")}>
++    <SettingsSectionV2 icon="status" title={language.t("settings.general.section.sounds")}>
+       <SettingsListV2>
+         <SoundSetting kind="agent" channel={props.controller.agent} />
+         <SoundSetting kind="permissions" channel={props.controller.permissions} />
+@@ -329,7 +329,7 @@
+   )
+ 
+   const GeneralSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.tab.general")}>
++    <SettingsSectionV2 icon="sliders" title={language.t("settings.tab.general")}>
+       <SettingsListV2>
+         <LanguageSetting />
+ 
+@@ -405,7 +405,7 @@
+   )
+ 
+   const AdvancedSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.general.section.advanced")}>
++    <SettingsSectionV2 icon="settings-gear" title={language.t("settings.general.section.advanced")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -460,7 +460,7 @@
+   )
+ 
+   const NotificationsSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.general.section.notifications")}>
++    <SettingsSectionV2 icon="speech-bubble" title={language.t("settings.general.section.notifications")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -503,7 +503,7 @@
+   )
+ 
+   const UpdatesSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.general.section.updates")}>
++    <SettingsSectionV2 icon="cloud-upload" title={language.t("settings.general.section.updates")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -533,7 +533,7 @@
+   // We can probably remove this, right?
+   const DisplaySection = () => (
+     <Show when={desktop()}>
+-      <SettingsSectionV2 title={language.t("settings.general.section.display")}>
++      <SettingsSectionV2 icon="window-cursor" title={language.t("settings.general.section.display")}>
+         <SettingsListV2>
+           <SettingsRowV2
+             title={language.t("settings.general.row.pinchZoom.title")}
+
+diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
+--- a/packages/app/src/components/settings-v2/settings-v2.css
++++ b/packages/app/src/components/settings-v2/settings-v2.css
+@@ -267,10 +267,8 @@
+   }
+ }
+ 
+-/* Portrait accordion / scroll-spy: official .settings-v2-tab-header is sticky, so
+-   「通用」 pins over every subsection. Unstick (hide title-only headers — nav
+-   already shows the category). Sticky the in-view .settings-v2-section-title
+-   instead. Sections are <details> so each block collapses independently. */
++/* Portrait accordion: hide the duplicate 「通用」 tab header; summaries match
++   the settings nav (icon + label, 28px trigger). Default collapsed. */
+ .settings-v2-section > summary.settings-v2-section-title {
+   list-style: none;
+ }
+@@ -279,6 +277,20 @@
+   display: none;
+ }
+ 
++.settings-v2-section-title-main {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  min-width: 0;
++}
++
++.settings-v2-section-title-label {
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
+ @media (max-width: 839px) {
+   .settings-v2-panel .settings-v2-tab-header {
+     position: static;
+@@ -291,6 +303,11 @@
+     display: none;
+   }
+ 
++  /* Version footer in the stacked nav made the accordion look like a third unlabeled list. */
++  .settings-v2[data-component="tabs-v2"][data-variant="settings"] .settings-v2-nav-footer {
++    display: none;
++  }
++
+   /* Nav (flex 0) + panel { height:100% of the 720px tabs } overflows
+      dialog-content and creates a blank scroller. Fill only the remaining
+      column (flex-grow + height:0), and keep overflow on this panel. */
+@@ -308,8 +325,8 @@
+   }
+ 
+   .settings-v2-tab-body {
+-    padding: 0 16px 8px;
+-    gap: 0;
++    padding: 8px 8px 12px;
++    gap: 4px;
+   }
+ 
+   .settings-v2-section {
+@@ -336,23 +353,36 @@
+     top: 0;
+     z-index: 6;
+     box-sizing: border-box;
+-    margin: 0 -16px;
+-    padding: 8px 16px;
+-    background: var(--v2-background-bg-base);
++    margin: 0;
++    height: 28px;
++    padding: 0 6px;
++    border-radius: 4px;
++    background: transparent;
+     cursor: pointer;
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
+-    gap: 8px;
++    gap: 6px;
++    font-size: 13px;
++    font-weight: 500;
++    line-height: 1;
++    color: var(--v2-text-text-muted);
++  }
++
++  .settings-v2-section > summary.settings-v2-section-title:hover,
++  .settings-v2-section[open] > summary.settings-v2-section-title {
++    background-color: var(--v2-background-bg-layer-03);
++    color: var(--v2-text-text-base);
+   }
+ 
+   .settings-v2-section > summary.settings-v2-section-title::after {
+     content: "";
+-    width: 7px;
+-    height: 7px;
++    width: 6px;
++    height: 6px;
+     flex-shrink: 0;
+-    border-inline-end: 1.5px solid var(--v2-icon-icon-muted);
+-    border-bottom: 1.5px solid var(--v2-icon-icon-muted);
++    opacity: 0.55;
++    border-inline-end: 1.5px solid currentColor;
++    border-bottom: 1.5px solid currentColor;
+     transform: rotate(45deg);
+     transition: transform 160ms ease;
+   }
+@@ -360,6 +390,48 @@
+   .settings-v2-section[open] > summary.settings-v2-section-title::after {
+     transform: rotate(-135deg);
+   }
++
++  /* Shortcuts: title must stay one line; header ghost button must not go width 100%. */
++  .settings-v2-tab-header.settings-v2-tab-header--stacked {
++    gap: 12px;
++    padding: 16px 16px 12px;
++  }
++
++  .settings-v2-tab-header--stacked > .settings-v2-tab-header-row {
++    flex-wrap: nowrap;
++    align-items: center;
++    gap: 8px;
++  }
++
++  .settings-v2-tab-title {
++    white-space: nowrap;
++    line-height: 1.35;
++    overflow: visible;
++    text-overflow: unset;
++    flex: 1 1 auto;
++    min-width: min-content;
++  }
++
++  .settings-v2-tab-header [data-component="button-v2"] {
++    width: auto;
++    max-width: none;
++    flex: 0 0 auto;
++  }
++
++  .settings-v2-shortcuts [data-slot="settings-v2-shortcut-row"] {
++    flex-direction: row;
++    flex-wrap: wrap;
++    align-items: center;
++    justify-content: space-between;
++    gap: 8px 12px;
++  }
++
++  .settings-v2-shortcuts [data-slot="settings-v2-shortcut-row"] > span {
++    white-space: normal;
++    overflow: visible;
++    min-width: 0;
++    flex: 1 1 auto;
++  }
+ }
+ 
+ .settings-v2-nav-footer {
+
+diff --git a/packages/app/src/components/settings-keybinds.tsx b/packages/app/src/components/settings-keybinds.tsx
+--- a/packages/app/src/components/settings-keybinds.tsx
++++ b/packages/app/src/components/settings-keybinds.tsx
+@@ -7,10 +7,11 @@
+ import { TextField } from "@opencode-ai/ui/text-field"
+ import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
+ import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
++import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
+ import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
+ import { showToast } from "@/utils/toast"
+ import fuzzysort from "fuzzysort"
+-import { DEFAULT_PALETTE_KEYBIND, formatKeybind, parseKeybind, useCommand } from "@/context/command"
++import { DEFAULT_PALETTE_KEYBIND, formatKeybind, formatKeybindParts, parseKeybind, useCommand } from "@/context/command"
+ import { useLanguage } from "@/context/language"
+ import { useSettings } from "@/context/settings"
+ import { SettingsList } from "./settings-list"
+@@ -391,6 +392,7 @@
+         filteredFor(query, list(), grouped(), (id) => formatKeybind(effective(id) ?? "", language.t)),
+       title,
+       keybind: (id: string) => formatKeybind(effective(id) ?? "", language.t),
++      keybindParts: (id: string) => formatKeybindParts(effective(id) ?? "", language.t),
+     },
+     capture: {
+       active: () => store.active,
+@@ -424,6 +426,7 @@
+       filtered={controller.catalog.filtered}
+       title={controller.catalog.title}
+       keybind={controller.catalog.keybind}
++      keybindParts={controller.catalog.keybindParts}
+       active={controller.capture.active}
+       onCapture={controller.capture.toggle}
+       hasOverrides={controller.settings.hasOverrides}
+@@ -437,6 +440,7 @@
+   filtered: (query: string) => Map<KeybindGroup, string[]>
+   title: (id: string) => string
+   keybind: (id: string) => string
++  keybindParts: (id: string) => string[]
+   active: () => string | null
+   onCapture: (id: string) => void
+   hasOverrides: () => boolean
+@@ -491,7 +495,10 @@
+                   <SettingsListV2>
+                     <For each={filtered().get(group) ?? []}>
+                       {(id) => (
+-                        <div class="flex items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none">
++                        <div
++                          data-slot="settings-v2-shortcut-row"
++                          class="flex items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none"
++                        >
+                           <span>{props.title(id)}</span>
+                           <button
+                             type="button"
+@@ -504,7 +511,14 @@
+                           >
+                             <Show
+                               when={props.active() === id}
+-                              fallback={props.keybind(id) || language.t("settings.shortcuts.unassigned")}
++                              fallback={
++                                <Show
++                                  when={props.keybindParts(id).length > 0}
++                                  fallback={language.t("settings.shortcuts.unassigned")}
++                                >
++                                  <KeybindV2 keys={props.keybindParts(id)} variant="neutral" />
++                                </Show>
++                              }
+                             >
+                               {language.t("settings.shortcuts.pressKeys")}
+                             </Show>

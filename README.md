@@ -50,10 +50,11 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 - Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
 - Safe area: `MainActivity` pads the **root** with `statusBars | navigationBars | displayCutout` (WebView view-padding is ignored on HyperOS). App chrome stays below the status bar. **1.3.15** paints those bars **transparent** and matches icon appearance to the WebView `data-color-scheme` (dark UI → light icons, light UI → dark icons). API 29+ contrast scrims are off so the nav gesture pill is not a white strip.
 - Session header **context ring** (top-right circle): official Desktop opens the session **Context** tab in the review panel. Below 768px that panel is hidden, so the Android shell opens a full-screen context overlay (`frontend/patches/android-webview-z-session-context.patch`).
+- Tab bar **+**: default opens the official command palette (same as Ctrl+P / `file.open`). Settings → 通用 → **「+」新建会话** restores Desktop behavior (new session). Preference is Android-only `localStorage`.
+- Portrait Settings: below 840px the dialog stacks to a single column; category title is not sticky. General subsections are collapsible `<details>` rows styled like the settings nav (icon + label, **collapsed by default**). Shortcuts title stays on one line; keybinds use keycaps (`frontend/patches/android-webview-portrait-settings.patch`, `frontend/patches/android-webview-settings-accordion.patch`, `frontend/patches/android-webview-z-settings-polish.patch`).
 - Keyboard / IME: edge-to-edge makes `adjustResize` a no-op, so the root also pads `max(navigationBars, ime)`. Focused fields `scrollIntoView` when the keyboard opens.
 - **Android Back** is forwarded into the page first (close Settings / dialogs / popovers, then in-app back). The Activity finishes only at true home with nothing to dismiss. Physical **ESC is not a shell shortcut** — it goes to the WebView (Vim / xterm / OpenCode keybinds) and never exits the app.
 - Routing: Android uses the same **MemoryRouter** pattern as OpenCode Desktop so `.../opencode-app/index.html` is not treated as a Solid route (that paints titlebar-only / white home).
-- Portrait Settings: below 840px the dialog stacks to a single column; category title is not sticky. Each General section is a collapsible `<details>` panel whose own title sticks while that block is in view (`frontend/patches/android-webview-portrait-settings.patch`, `frontend/patches/android-webview-settings-accordion.patch`).
 - The agent **does not** run inside the APK.
 
 ## Run the backend (PC)
@@ -103,7 +104,7 @@ Health paths match official OpenCode clients: `GET /api/health`, then `GET /glob
 
 Desktop’s Settings v2 list is management-only (no row click; `设为默认` is launch-default only). Switching the live SDK there happens from the session status popover / home sidebar. Android stays on Settings after add and has no home status popover, so this shell adds the tap-to-apply path.
 
-## Operation-logic review (1.3.15)
+## Operation-logic review (1.3.16)
 
 Compared to official OpenCode web against local `opencode serve` with a real workspace directory. Remote **file tree** and **PTY** are in scope (the same HTTP/SSE/WebSocket APIs the official `@opencode-ai/app` uses). Out of scope only: Desktop/Electron OS integrations the web UI never offers (Android-local document picker, device-host PTY).
 
@@ -117,6 +118,8 @@ Compared to official OpenCode web against local `opencode serve` with a real wor
 | MCP / permissions / search / command palette | **Fixed / tested.** HTTP `/mcp` `/api/mcp` `/permission` `/api/permission/request` `/find` `/api/fs/find`; E2E also dispatches the official web keybinds (`mod+k` palette, `mod+p` open file, `mod+;` MCP, `ctrl+\`` terminal, `mod+\\` file tree) and toggles Settings → Advanced → file tree / search. |
 | Dark UI with a solid **white** status bar | **Fixed (1.3.15).** Transparent system bars; root/window follow `#080808` / `#fafafa`; `WindowInsetsController` light/dark icons follow `data-color-scheme`. Safe-area padding unchanged. |
 | Session header context ring click does nothing | **Fixed (1.3.15).** Official control opens the session **Context** tab (`openSessionContext` → review panel + `tabs.open("context")`). Phone-width hides that panel (`min-width: 768px`); the shell shows the same `SessionContextTab` as a full-screen overlay. |
+| Tab bar **+** always created a new session | **Changed (1.3.16).** Default: **+** opens the Ctrl+P command palette (`file.open` / 「搜索文件、命令和会话」). Settings → 通用 → 「+」新建会话 restores official new-session. |
+| Portrait Settings accordion looked unlike the nav; shortcuts title wrapped | **Fixed (1.3.16).** Collapsed 通用/外观/系统通知/音效/高级 rows use the same icon+label trigger style as 桌面/服务器. Sections start collapsed. 「键盘快捷键」 stays one line; keycaps render. |
 | Desktop session status popover | **N/A.** Web UI on Android applies the server from Settings → Server. |
 | Android-device folder picker / device PTY | **Out of scope.** The web UI never offers those. |
 
@@ -196,6 +199,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **Added a server but it was not applied (1.3.12):** official Settings v2 has no row-select; `设为默认` is launch-default only. **1.3.13** / `versionCode` 18: tap the card or 设为默认 to make that server the active connection (**当前** + **默认**). Uninstall then reinstall if you are sideloading over an older debug APK.
 - **Remote files / remote PTY missing after apply:** **1.3.14** / `versionCode` 19. The gateway reverse-proxies every HTTP path and tunnels WebSocket Upgrade for `/pty/{id}/connect`. HTTPS WebView uses a native OkHttp WebSocket polyfill. E2E against `opencode serve` in a real workspace: **56 PASS / 0 FAIL / 1 N/A** (Desktop-only status popover). Checklist covers sessions, chat prompt, providers/models/config, remote file list/open/find/v2 fs, remote PTY WebSocket, MCP, permissions, VCS, command palette, and SSE. Debug APK sha256 `55657542db5d436bf6460d7015664ae8f1e4ac33e322d714316210834aa28f5d` — https://filebin.net/oc1314-1789555532/OpenCode-1.3.14-debug.zip (expires ~2026-09-23). Uninstall then reinstall if you are sideloading over an older debug APK.
 - **White status bar in dark OpenCode / context ring does not open Context:** **1.3.15** / `versionCode` 20. Transparent immersive bars follow the WebView color-scheme (keep existing inset padding). Tapping the session header context ring opens the official Context panel (phone-width overlay). Uninstall then reinstall if you are sideloading over an older debug APK.
+- **Tab + / Settings polish:** **1.3.16** / `versionCode` 21. Tab bar + opens the command palette by default (toggle in 通用 restores new-session). Portrait Settings subsection headers match the nav (icon + label, collapsed by default). Shortcuts title no longer wraps to 键盘快 / 捷键. Uninstall then reinstall if you are sideloading over an older debug APK.
 
 ## Security
 
