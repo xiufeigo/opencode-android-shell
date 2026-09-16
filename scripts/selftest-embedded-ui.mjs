@@ -65,6 +65,48 @@ function startServer() {
   })
 }
 
+function startCorsMock() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url || "/", "http://127.0.0.1")
+      const origin = req.headers.origin || ""
+      const allow = url.searchParams.get("allow") === "1"
+      const auth = url.searchParams.get("auth") === "1"
+      const corsHeaders = allow
+        ? {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Headers": "authorization,content-type",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            Vary: "Origin",
+          }
+        : {}
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, corsHeaders)
+        res.end()
+        return
+      }
+      if (url.pathname === "/api/health" || url.pathname === "/global/health") {
+        if (auth) {
+          res.writeHead(401, {
+            "content-type": "application/json",
+            "www-authenticate": 'Basic realm="Secure Area"',
+            ...corsHeaders,
+          })
+          res.end(JSON.stringify({ message: "Authentication required" }))
+          return
+        }
+        res.writeHead(200, { "content-type": "application/json", ...corsHeaders })
+        res.end(JSON.stringify({ healthy: true, version: "selftest" }))
+        return
+      }
+      res.writeHead(404, corsHeaders)
+      res.end("not found")
+    })
+    server.listen(0, "127.0.0.1", () => resolve(server))
+    server.on("error", reject)
+  })
+}
+
 async function waitFor(url, timeoutMs = 15_000) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
@@ -382,7 +424,9 @@ async function main() {
     throw new Error(`missing embedded assets at ${assets}`)
   }
   const server = await startServer()
+  const corsMock = await startCorsMock()
   const port = server.address().port
+  const corsPort = corsMock.address().port
   const pageUrl = `http://${HOST}:${port}${ANDROID_MOUNT}/index.html`
   const debugPort = 9222
   const chrome = spawn(
@@ -522,6 +566,48 @@ async function main() {
     )
     await Bun.sleep(400)
     const settingsLandscape = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
+    const imeCss = await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        const sheets = Array.from(document.styleSheets).flatMap((s) => {
+          try { return Array.from(s.cssRules || []).map((r) => r.cssText); } catch { return []; }
+        }).join('\\n');
+        const html = document.documentElement;
+        return {
+          androidWebview: html.hasAttribute('data-android-webview'),
+          interactiveWidget: (document.querySelector('meta[name="viewport"]')?.content || '').includes('interactive-widget=resizes-content'),
+          dialogMaxHeight: sheets.includes('100dvh') && sheets.includes('data-android-webview'),
+        };
+      })()`,
+    )
+    const corsProbe = await evaluate(
+      ws,
+      sessionId,
+      `(async () => {
+        const base = ${JSON.stringify(`http://${HOST}:${corsPort}`)};
+        async function probe(url) {
+          try {
+            const r = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
+            return { ok: r.ok, status: r.status, error: null, body: r.ok ? await r.json().catch(() => null) : null };
+          } catch (e) {
+            return { ok: false, status: 0, error: String(e && e.message || e), body: null };
+          }
+        }
+        const allow = await probe(base + '/api/health?allow=1');
+        const deny = await probe(base + '/api/health?allow=0');
+        const auth = await probe(base + '/api/health?allow=1&auth=1');
+        return {
+          origin: location.origin,
+          allowOk: allow.ok === true && allow.status === 200,
+          denyCors: deny.ok === false && !!deny.error,
+          auth401: auth.status === 401,
+          allow,
+          deny,
+          auth,
+        };
+      })()`,
+    )
     await cdp(
       ws,
       "Emulation.setDeviceMetricsOverride",
@@ -565,6 +651,16 @@ async function main() {
       !!homeEmptyWide &&
       (homeEmptyWide.maxExtra ?? 99) <= 8 &&
       homeEmptyWide.settingsInView === true
+    const imeOk =
+      !!imeCss &&
+      imeCss.androidWebview === true &&
+      imeCss.interactiveWidget === true &&
+      imeCss.dialogMaxHeight === true
+    const corsOk =
+      !!corsProbe &&
+      corsProbe.allowOk === true &&
+      corsProbe.denyCors === true &&
+      corsProbe.auth401 === true
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -582,7 +678,9 @@ async function main() {
       collapseOk &&
       scrollOk &&
       densityOk &&
-      landscapeOk
+      landscapeOk &&
+      imeOk &&
+      corsOk
     const report = {
       ok,
       pageUrl,
@@ -606,6 +704,10 @@ async function main() {
       scrollOk,
       densityOk,
       landscapeOk,
+      imeCss,
+      imeOk,
+      corsProbe,
+      corsOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       homeEmptyScreenshotPath: fs.existsSync(homeEmptyScreenshotPath) ? homeEmptyScreenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
@@ -638,16 +740,22 @@ async function main() {
                         ? "self-test failed: portrait Settings accordion gaps or blank scroll still excessive"
                         : !landscapeOk
                           ? "self-test failed: landscape Settings is no longer two-column"
-                          : "self-test failed: Settings control was not found or did not handle the tap",
+                          : !imeOk
+                            ? "self-test failed: IME dialog CSS / interactive-widget missing"
+                            : !corsOk
+                              ? "self-test failed: CORS success/failure simulation did not match"
+                              : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()
     chrome.kill("SIGKILL")
     server.close()
+    corsMock.close()
     process.exit(0)
   } finally {
     chrome.kill("SIGKILL")
     server.close()
+    corsMock.close()
   }
 }
 

@@ -16,6 +16,8 @@ class SafeAreaLayoutTest {
         assertTrue(src.contains("WindowInsetsCompat.Type.statusBars()"))
         assertTrue(src.contains("WindowInsetsCompat.Type.navigationBars()"))
         assertTrue(src.contains("WindowInsetsCompat.Type.displayCutout()"))
+        assertTrue(src.contains("WindowInsetsCompat.Type.ime()"))
+        assertTrue(src.contains("imeAwareBottomPadding"))
         assertTrue(src.contains("WindowInsetsCompat.CONSUMED"))
         assertTrue(src.contains("enableEdgeToEdge()"))
         assertTrue(src.contains("view.updatePadding"))

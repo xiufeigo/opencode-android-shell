@@ -4,11 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.HttpAuthHandler
+import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -30,6 +34,7 @@ import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
 import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
 import java.io.ByteArrayInputStream
+import kotlin.math.max
 
 class MainActivity : AppCompatActivity() {
 
@@ -96,13 +101,23 @@ class MainActivity : AppCompatActivity() {
         // Pad the root, not the WebView. WebView ignores view padding on many
         // OEM builds (including HyperOS), which previously drew titlebar under
         // the status bar.
+        //
+        // Edge-to-edge (setDecorFitsSystemWindows false) makes windowSoftInputMode
+        // adjustResize a no-op. Include IME insets so the FrameLayout shrinks and
+        // 「添加服务器」fields stay above the keyboard.
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.statusBars() or
                     WindowInsetsCompat.Type.navigationBars() or
                     WindowInsetsCompat.Type.displayCutout(),
             )
-            view.updatePadding(left = bars.left, top = bars.top, right = bars.right, bottom = bars.bottom)
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            view.updatePadding(
+                left = bars.left,
+                top = bars.top,
+                right = bars.right,
+                bottom = imeAwareBottomPadding(bars.bottom, ime.bottom),
+            )
             WindowInsetsCompat.CONSUMED
         }
         ViewCompat.requestApplyInsets(binding.root)
@@ -155,6 +170,9 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest,
             ): WebResourceResponse? {
+                // Only the zero-server offline stub is synthesized. Remote HTTPS
+                // (including the user's OpenCode backend) must hit the network so
+                // cookies, redirects, and TLS use the system/user trust store.
                 disconnectedStub(request.url)?.let { return it }
                 return assetLoader.shouldInterceptRequest(request.url)
             }
@@ -183,6 +201,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 CookieManager.getInstance().flush()
                 binding.webView.evaluateJavascript(TOUCH_FIX_JS, null)
+                binding.webView.evaluateJavascript(IME_SCROLL_JS, null)
                 binding.webView.requestFocus()
             }
 
@@ -192,6 +211,7 @@ class MainActivity : AppCompatActivity() {
                 host: String?,
                 realm: String?,
             ) {
+                Log.w(LOG_TAG, "HTTP Basic Auth challenge host=$host realm=$realm — enter credentials in Settings → Server")
                 handler?.cancel()
                 Toast.makeText(
                     this@MainActivity,
@@ -200,12 +220,45 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
 
+            override fun onReceivedHttpError(
+                view: WebView,
+                request: WebResourceRequest,
+                errorResponse: WebResourceResponse,
+            ) {
+                if (request.isForMainFrame) return
+                val path = request.url.path.orEmpty()
+                if (path.endsWith("/api/health") || path.endsWith("/global/health")) {
+                    Log.w(
+                        LOG_TAG,
+                        "health ${request.method} ${request.url} -> ${errorResponse.statusCode} ${errorResponse.reasonPhrase}",
+                    )
+                }
+            }
+
+            override fun onReceivedSslError(
+                view: WebView?,
+                handler: SslErrorHandler?,
+                error: SslError?,
+            ) {
+                Log.e(LOG_TAG, "TLS error url=${error?.url} primary=${error?.primaryError}")
+                handler?.cancel()
+            }
+
             override fun onReceivedError(
                 view: WebView,
                 request: WebResourceRequest,
                 error: WebResourceError,
             ) {
-                if (!request.isForMainFrame) return
+                if (!request.isForMainFrame) {
+                    val path = request.url.path.orEmpty()
+                    if (path.endsWith("/api/health") || path.endsWith("/global/health")) {
+                        Log.w(
+                            LOG_TAG,
+                            "subresource error ${request.url} code=${error.errorCode} ${error.description}",
+                        )
+                    }
+                    return
+                }
                 if (request.url.host == ASSET_HOST) {
                     showError(
                         getString(
@@ -218,6 +271,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                val msg = consoleMessage.message()
+                if (msg.contains("[OpenCode Android]") ||
+                    msg.contains("CORS") ||
+                    msg.contains("Failed to fetch")
+                ) {
+                    Log.w(
+                        LOG_TAG,
+                        "console ${consoleMessage.messageLevel()} ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()} $msg",
+                    )
+                }
+                return super.onConsoleMessage(consoleMessage)
+            }
+
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 binding.progress.progress = newProgress
                 binding.progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
@@ -287,7 +354,15 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val ASSET_HOST = "appassets.androidplatform.net"
+        const val ANDROID_WEBVIEW_ORIGIN = "https://$ASSET_HOST"
         const val EMBEDDED_INDEX_URL = "https://$ASSET_HOST/assets/opencode-app/index.html"
+        private const val LOG_TAG = "OpenCodeShell"
+
+        /** Offline SDK stub is only 127.0.0.1/localhost/::1 port 0 — never a real HTTPS backend. */
+        internal fun isOfflineDisconnectStub(host: String?, port: Int): Boolean {
+            if (host != "127.0.0.1" && host != "localhost" && host != "::1") return false
+            return port == 0
+        }
 
         private const val TOUCH_FIX_JS = """
             (function () {
@@ -307,10 +382,30 @@ class MainActivity : AppCompatActivity() {
             })();
         """
 
+        private const val IME_SCROLL_JS = """
+            (function () {
+              if (window.__ocImeScroll) return;
+              window.__ocImeScroll = true;
+              var scrollFocused = function () {
+                var el = document.activeElement;
+                if (!el || el === document.body || el === document.documentElement) return;
+                var tag = (el.tagName || '').toLowerCase();
+                var editable = tag === 'input' || tag === 'textarea' || el.isContentEditable === true;
+                if (!editable) return;
+                try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); }
+                catch (e) { try { el.scrollIntoView(true); } catch (e2) {} }
+              };
+              document.addEventListener('focusin', function () { setTimeout(scrollFocused, 60); }, true);
+              window.addEventListener('resize', scrollFocused);
+              if (window.visualViewport) visualViewport.addEventListener('resize', scrollFocused);
+            })();
+        """
+
+        internal fun imeAwareBottomPadding(systemBarsBottom: Int, imeBottom: Int): Int =
+            max(systemBarsBottom, imeBottom)
+
         internal fun disconnectedStub(uri: Uri): WebResourceResponse? {
-            val host = uri.host ?: return null
-            if (host != "127.0.0.1" && host != "localhost" && host != "::1") return null
-            if (uri.port != 0) return null
+            if (!isOfflineDisconnectStub(uri.host, uri.port)) return null
             val body = """{"healthy":false,"disconnected":true}""".toByteArray()
             return WebResourceResponse(
                 "application/json",
