@@ -68,6 +68,10 @@ class ConnectCorsTest {
         assertTrue("v1 new URL join needs dedicated origin or prefix restore", allJs.contains("proxyBaseUrl"))
         assertTrue("PTY websocket URL must go through the Android proxy", allJs.contains("/pty/") && allJs.contains("connect"))
         assertTrue("remote file APIs must be in the bundle", allJs.contains("/file") && allJs.contains("/find"))
+        assertTrue("v2 filesystem APIs must be in the bundle", allJs.contains("/api/fs/list") && allJs.contains("/api/fs/find"))
+        assertTrue("v2 PTY connect must be in the bundle", allJs.contains("/api/pty/") && allJs.contains("connect"))
+        assertTrue("event streams must be in the bundle", allJs.contains("/api/event") && allJs.contains("/global/event"))
+        assertTrue("MCP and permission APIs must be in the bundle", allJs.contains("/api/mcp") && allJs.contains("/permission"))
         val zh = assets.listFiles { _, name -> name.startsWith("zh-") && name.endsWith(".js") }
             ?.joinToString("\n") { it.readText() }
             ?: ""

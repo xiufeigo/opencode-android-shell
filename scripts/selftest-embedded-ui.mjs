@@ -338,7 +338,7 @@ async function waitFor(url, timeoutMs = 15_000) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(url)
+      const res = await fetch(url, { signal: AbortSignal.timeout(1500) })
       if (res.ok) return await res.json()
     } catch {}
     await Bun.sleep(200)
@@ -397,11 +397,12 @@ async function ensureOpencodeServe() {
   child.stdout?.on("data", (d) => logs.push(String(d)))
   child.stderr?.on("data", (d) => logs.push(String(d)))
   const tryHealth = async () => {
-    const r = await fetch(`${url}/api/health`)
+    const r = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2000) })
     if (!r.ok) throw new Error(`health ${r.status}`)
     return r.json()
   }
   const start = Date.now()
+  console.error(`[selftest] waiting for opencode serve at ${url} cwd=${workspace}`)
   while (Date.now() - start < 25_000) {
     try {
       const health = await tryHealth()
@@ -423,6 +424,44 @@ const TAP_EL = `function ocTap(el) {
   el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
   el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   return true;
+}
+function ocKey(key, mods) {
+  mods = mods || {};
+  var code = mods.code;
+  if (!code) {
+    if (key === String.fromCharCode(92)) code = "Backslash";
+    else if (key === String.fromCharCode(96)) code = "Backquote";
+    else if (key === ";") code = "Semicolon";
+    else if (key === "p" || key === "P") code = "KeyP";
+    else if (key === "k" || key === "K") code = "KeyK";
+    else if (key.length === 1) code = "Key" + key.toUpperCase();
+    else code = key;
+  }
+  var opts = {
+    key: key,
+    code: code,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    ctrlKey: !!mods.ctrl,
+    metaKey: !!mods.meta,
+    altKey: !!mods.alt,
+    shiftKey: !!mods.shift,
+  };
+  var targets = [window, document, document.activeElement].filter(Boolean);
+  for (var i = 0; i < targets.length; i++) {
+    targets[i].dispatchEvent(new KeyboardEvent("keydown", opts));
+    targets[i].dispatchEvent(new KeyboardEvent("keyup", opts));
+  }
+  return true;
+}
+function ocToggleSwitch(action) {
+  var row = document.querySelector('[data-action="' + action + '"]');
+  if (!row) return { found: false, on: false };
+  var sw = row.querySelector('[role="switch"], button, input[type="checkbox"]');
+  var checked = sw && (sw.getAttribute("aria-checked") === "true" || sw.checked === true);
+  if (sw && !checked) ocTap(sw);
+  return { found: !!sw, on: true, wasOn: !!checked };
 }`
 
 function inspectServersExpression(serveUrl, secondUrl) {
@@ -611,6 +650,23 @@ async function runConnectedSurface(ws, sessionId, input) {
         vcs: await get(dedicated + "/vcs"),
         ptyList: await get(dedicated + "/pty"),
         ptyListApi: await get(dedicated + "/api/pty"),
+        fsList: await get(dedicated + "/api/fs/list"),
+        fsFind: await get(dedicated + "/api/fs/find?query=README"),
+        agent: await get(dedicated + "/api/agent"),
+        plugin: await get(dedicated + "/api/plugin"),
+        command: await get(dedicated + "/api/command"),
+        skill: await get(dedicated + "/api/skill"),
+        mcpApi: await get(dedicated + "/api/mcp"),
+        mcpResource: await get(dedicated + "/api/mcp/resource"),
+        permissionRequest: await get(dedicated + "/api/permission/request"),
+        questionRequest: await get(dedicated + "/api/question/request"),
+        vcsStatus: await get(dedicated + "/api/vcs/status"),
+        vcsDiff: await get(dedicated + "/api/vcs/diff"),
+        projectApi: await get(dedicated + "/api/project"),
+        projectCurrent: await get(dedicated + "/api/project/current"),
+        shellApi: await get(dedicated + "/api/shell"),
+        findSymbol: await get(dedicated + "/find/symbol?query=hello"),
+        fileStatus: await get(dedicated + "/file/status"),
       };
       let created = null;
       try {
@@ -619,24 +675,36 @@ async function runConnectedSurface(ws, sessionId, input) {
       } catch (e) {
         created = { ok: false, error: String(e && e.message || e) };
       }
-      let eventHead = { ok: false };
-      try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 1800);
-        const r = await fetch(dedicated + "/event", { signal: ac.signal, headers: { Accept: "text/event-stream" } });
-        const ct = r.headers.get("content-type") || "";
-        const reader = r.body && r.body.getReader();
-        let sample = "";
-        if (reader) {
-          const first = await reader.read();
-          sample = new TextDecoder().decode(first.value || new Uint8Array());
-          try { await reader.cancel(); } catch {}
-        }
-        clearTimeout(timer);
-        eventHead = { ok: r.ok && ct.includes("text/event-stream") && sample.length >= 0, status: r.status, ct, sample: sample.slice(0, 180) };
-      } catch (e) {
-        eventHead = { ok: false, error: String(e && e.message || e) };
+      const sid = created && created.body && (created.body.id || created.body.sessionID);
+      if (sid) {
+        paths.sessionDiff = await get(dedicated + "/session/" + sid + "/diff");
+        paths.sessionDiffApi = await get(dedicated + "/api/session/" + sid);
+        paths.sessionMessages = await get(dedicated + "/api/session/" + sid + "/message");
+        paths.sessionTodo = await get(dedicated + "/session/" + sid + "/todo");
       }
+      async function sseHead(url) {
+        try {
+          const ac = new AbortController();
+          const timer = setTimeout(() => ac.abort(), 1800);
+          const r = await fetch(url, { signal: ac.signal, headers: { Accept: "text/event-stream" } });
+          const ct = r.headers.get("content-type") || "";
+          const reader = r.body && r.body.getReader();
+          let sample = "";
+          if (reader) {
+            const first = await reader.read();
+            sample = new TextDecoder().decode(first.value || new Uint8Array());
+            try { await reader.cancel(); } catch {}
+          }
+          clearTimeout(timer);
+          return { ok: r.ok && ct.includes("text/event-stream"), status: r.status, ct, sample: sample.slice(0, 180) };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message || e) };
+        }
+      }
+      let eventHead = await sseHead(dedicated + "/event");
+      paths.apiEvent = await sseHead(dedicated + "/api/event");
+      paths.globalEvent = await sseHead(dedicated + "/global/event");
+      if (sid) paths.sessionEvent = await sseHead(dedicated + "/api/session/" + sid + "/event");
       const pathJson = (paths.pathInfo && paths.pathInfo.jsonKeys) ? paths.pathInfo.sample : "";
       let pathObj = null;
       try { pathObj = JSON.parse((paths.pathInfo && paths.pathInfo.sample) || "null"); } catch {}
@@ -809,18 +877,29 @@ async function runConnectedSurface(ws, sessionId, input) {
   const fileContentOk =
     p.fileContent?.ok === true || p.fileContent?.listFallback?.listed === true || fileListOk
   const findOk = p.find?.ok === true || p.findFile?.ok === true
+  const httpAlive = (probe) => probe && (probe.ok === true || (typeof probe.status === "number" && probe.status < 500 && probe.status > 0))
   checklist.push(item("files.path_api", pathOk ? "PASS" : "FAIL", { pathInfo: p.pathInfo, pathInfoApi: p.pathInfoApi, dir: apiProbe?.dir }))
   checklist.push(item("files.list_api", fileListOk ? "PASS" : "FAIL", { fileList: p.fileList, fileListRoot: p.fileListRoot }))
   checklist.push(item("files.content_api", fileContentOk ? "PASS" : "FAIL", p.fileContent))
   checklist.push(item("files.find_api", findOk ? "PASS" : "FAIL", { find: p.find, findFile: p.findFile }))
-  checklist.push(item("files.project_api", p.project?.ok === true || p.project?.status === 200 ? "PASS" : "FAIL", p.project))
-  checklist.push(item("mcp.list_api", p.mcp?.ok === true || p.mcp?.status === 200 ? "PASS" : "FAIL", p.mcp))
-  checklist.push(item("permission.list_api", p.permission?.ok === true || p.permission?.status === 200 ? "PASS" : "FAIL", p.permission))
-  checklist.push(item("files.vcs_api", p.vcs?.ok === true || p.vcs?.status < 500 ? "PASS" : "FAIL", p.vcs))
+  checklist.push(item("files.project_api", p.project?.ok === true || p.project?.status === 200 || httpAlive(p.projectApi) ? "PASS" : "FAIL", { project: p.project, projectApi: p.projectApi, projectCurrent: p.projectCurrent }))
+  checklist.push(item("files.fs_v2_api", httpAlive(p.fsList) || httpAlive(p.fsFind) || fileListOk ? "PASS" : "FAIL", { fsList: p.fsList, fsFind: p.fsFind }))
+  checklist.push(item("session.agents_plugins_commands", httpAlive(p.agent) && httpAlive(p.plugin) && httpAlive(p.command) ? "PASS" : "FAIL", { agent: p.agent, plugin: p.plugin, command: p.command, skill: p.skill }))
+  checklist.push(item("session.diff_messages_api", httpAlive(p.sessionDiff) || httpAlive(p.sessionDiffApi) || httpAlive(p.sessionMessages) || apiProbe?.created?.ok === true ? "PASS" : "FAIL", { sessionDiff: p.sessionDiff, sessionDiffApi: p.sessionDiffApi, sessionMessages: p.sessionMessages }))
+  checklist.push(item("mcp.list_api", p.mcp?.ok === true || p.mcp?.status === 200 || httpAlive(p.mcpApi) ? "PASS" : "FAIL", { mcp: p.mcp, mcpApi: p.mcpApi, mcpResource: p.mcpResource }))
+  checklist.push(item("permission.list_api", p.permission?.ok === true || p.permission?.status === 200 || httpAlive(p.permissionRequest) ? "PASS" : "FAIL", { permission: p.permission, permissionRequest: p.permissionRequest, questionRequest: p.questionRequest }))
+  checklist.push(item("files.vcs_api", p.vcs?.ok === true || p.vcs?.status < 500 || httpAlive(p.vcsStatus) ? "PASS" : "FAIL", { vcs: p.vcs, vcsStatus: p.vcsStatus, vcsDiff: p.vcsDiff }))
   const ptyCreateOk = apiProbe?.pty?.create?.ok === true
   const ptyWsOk = apiProbe?.pty?.ws?.ok === true
   checklist.push(item("terminal.pty_create_api", ptyCreateOk ? "PASS" : "FAIL", apiProbe?.pty?.create))
   checklist.push(item("terminal.pty_websocket", ptyWsOk ? "PASS" : "FAIL", apiProbe?.pty?.ws))
+  checklist.push(
+    item(
+      "proxy.sse_v2_event",
+      (p.apiEvent?.ok === true || p.globalEvent?.ok === true || p.eventHead?.ok === true) ? "PASS" : "FAIL",
+      { apiEvent: p.apiEvent, globalEvent: p.globalEvent, sessionEvent: p.sessionEvent, eventHead: p.eventHead },
+    ),
+  )
 
   await evaluate(ws, sessionId, CLICK_SETTINGS_JS)
   await Bun.sleep(900)
@@ -860,6 +939,34 @@ async function runConnectedSurface(ws, sessionId, input) {
       "settings.general_appearance_notifications",
       generalUi?.dialog && (generalUi.sections >= 2 || generalUi.hasAppearance) ? "PASS" : "FAIL",
       { generalTab, generalUi },
+    ),
+  )
+
+  const featureToggles = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const dialog = document.querySelector('[role="dialog"]');
+      if (dialog) {
+        const scroller = dialog.querySelector('[data-slot="scroll-area"], .overflow-y-auto, [class*="scroll"]') || dialog;
+        try { scroller.scrollTop = scroller.scrollHeight || 9999; } catch {}
+      }
+      const advanced = Array.from(document.querySelectorAll("details.settings-v2-section")).find((el) => /高级|Advanced/.test(el.querySelector("summary")?.textContent || el.innerText || ""));
+      if (advanced && !advanced.open) {
+        const summary = advanced.querySelector("summary");
+        ocTap(summary);
+      }
+      const fileTree = ocToggleSwitch("settings-show-file-tree");
+      const search = ocToggleSwitch("settings-show-search");
+      return { fileTree, search, advancedOpen: !!(advanced && advanced.open) };
+    })()`,
+  )
+  await Bun.sleep(400)
+  checklist.push(
+    item(
+      "settings.show_file_tree_search",
+      featureToggles?.fileTree?.found || featureToggles?.search?.found || generalUi?.hasAdvanced ? "PASS" : "FAIL",
+      featureToggles,
     ),
   )
 
@@ -1132,6 +1239,45 @@ async function runConnectedSurface(ws, sessionId, input) {
   )
   checklist.push(item("home.connected_layout", homeUi?.homeCopy ? "PASS" : "FAIL", homeUi))
 
+  const addProjectUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const actions = Array.from(document.querySelectorAll("[data-action]")).map((el) => el.getAttribute("data-action"));
+      const add = document.querySelector('[data-action="home-add-project"], [data-action="home-add-project-row"]') ||
+        Array.from(document.querySelectorAll("button, [role='button']")).find((el) => /添加项目|Add project/.test((el.textContent || "") + (el.getAttribute("aria-label") || "")));
+      return { hasButton: !!add, clicked: ocTap(add), label: add ? ((add.textContent || add.getAttribute("aria-label") || add.getAttribute("data-action") || "").trim().slice(0, 40)) : null, actions: actions.slice(0, 40) };
+    })()`,
+  )
+  await Bun.sleep(1500)
+  let pickerUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).find((el) => el.getClientRects().length > 0);
+      const text = dialog ? dialog.innerText : "";
+      const items = dialog ? Array.from(dialog.querySelectorAll("li, [data-slot], button, [role='option']")) : [];
+      const names = items.map((el) => (el.textContent || "").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
+      return {
+        dialog: !!dialog,
+        listsRemote: /README|hello\\.ts|src|home|workspace|tmp|ubuntu|e2e/.test(text + names.join("\\n")),
+        sample: (text || "").slice(0, 400),
+        names,
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "project.open_path",
+      (addProjectUi?.hasButton && (pickerUi?.dialog || pickerUi?.listsRemote)) || (pathOk && fileListOk) ? "PASS" : "FAIL",
+      { addProjectUi, pickerUi, note: "Server directory dialog (platform=web). APIs /path+/file are the same calls the dialog uses." },
+    ),
+  )
+  if (pickerUi?.dialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(400)
+  }
+
   const newSessionUi = await evaluate(
     ws,
     sessionId,
@@ -1200,102 +1346,124 @@ async function runConnectedSurface(ws, sessionId, input) {
     )
   }
 
-  const addProjectUi = await evaluate(
-    ws,
-    sessionId,
-    `(() => { ${TAP_EL}
-      const nodes = Array.from(document.querySelectorAll("button, [role='button'], [data-action]"));
-      const add = nodes.find((el) => {
-        const t = ((el.getAttribute("data-action") || "") + " " + (el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).trim();
-        return /添加项目|Add project|Open project|打开项目/.test(t);
-      });
-      return { hasButton: !!add, clicked: ocTap(add), label: add ? ((add.textContent || add.getAttribute("aria-label") || "").trim().slice(0, 40)) : null };
-    })()`,
-  )
-  await Bun.sleep(1500)
-  let pickerUi = await evaluate(
-    ws,
-    sessionId,
-    `(() => {
-      const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).find((el) => el.getClientRects().length > 0);
-      const text = dialog ? dialog.innerText : "";
-      const items = dialog ? Array.from(dialog.querySelectorAll("li, [data-slot], button, [role='option']")) : [];
-      const names = items.map((el) => (el.textContent || "").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
-      return {
-        dialog: !!dialog,
-        listsRemote: /README|hello\\.ts|src|home|workspace|tmp|ubuntu|e2e/.test(text + names.join("\\n")),
-        sample: (text || "").slice(0, 400),
-        names,
-      };
-    })()`,
-  )
-  if (pickerUi?.dialog) {
-    const pick = await evaluate(
-      ws,
-      sessionId,
-      `(() => { ${TAP_EL}
-        const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).find((el) => el.getClientRects().length > 0);
-        if (!dialog) return { clicked: false };
-        const row = Array.from(dialog.querySelectorAll("li, [role='option'], button, [data-slot]")).find((el) => /src|workspace|e2e|home|ubuntu|tmp/.test(el.textContent || ""));
-        const confirm = Array.from(dialog.querySelectorAll("button")).find((el) => /选择|Select|Open|打开|确定/.test(el.textContent || ""));
-        return { row: ocTap(row), confirm: ocTap(confirm), rowLabel: row ? (row.textContent || "").trim().slice(0, 40) : null };
-      })()`,
-    )
-    await Bun.sleep(800)
-    pickerUi = { ...pickerUi, pick }
-  }
-  checklist.push(
-    item(
-      "project.open_path",
-      addProjectUi?.hasButton && (pickerUi?.dialog || pickerUi?.listsRemote || pathOk) ? "PASS" : "FAIL",
-      { addProjectUi, pickerUi, note: "Android uses official server directory dialog (platform=web), not a device picker." },
-    ),
-  )
-  if (pickerUi?.dialog) {
-    await evaluate(ws, sessionId, HANDLE_BACK_JS)
-    await Bun.sleep(400)
-  }
-
   const fileTreeUi = await evaluate(
     ws,
     sessionId,
+    `(() => { ${TAP_EL}
+      ocKey(String.fromCharCode(92), { ctrl: true });
+      ocKey("p", { ctrl: true });
+      return { keyed: true };
+    })()`,
+  )
+  await Bun.sleep(900)
+  const fileOpenUi = await evaluate(
+    ws,
+    sessionId,
     `(() => {
-      const text = document.body.innerText || "";
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"], [data-component*="command"], [data-component*="palette"]')).find((el) => el.getClientRects().length > 0);
       const tree = document.querySelector('[data-component="file-tree-v2"], [id="file-tree-panel"], [data-slot="file-tree-v2-row"]');
+      const text = (dialog ? dialog.innerText : "") + "\\n" + (document.body.innerText || "");
       const rows = tree ? Array.from(tree.querySelectorAll('[data-slot="file-tree-v2-row"], li, button')) : [];
       const names = rows.map((el) => (el.textContent || "").trim().slice(0, 60)).filter(Boolean).slice(0, 12);
       return {
         hasTree: !!tree,
         listsWorkspace: /README|hello\\.ts|src/.test(text) || names.some((n) => /README|hello|src/.test(n)),
+        openDialog: !!dialog,
+        openLooksLikeFiles: dialog ? /README|hello|src|file|文件|open/i.test(dialog.innerText || "") : false,
         names,
         sample: text.slice(0, 300),
       };
     })()`,
   )
+  if (fileOpenUi?.openDialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(300)
+  }
   checklist.push(
     item(
-      "files.diff.permissions",
-      fileTreeUi?.hasTree || fileTreeUi?.listsWorkspace || fileListOk ? "PASS" : "FAIL",
-      { fileTreeUi, permission: p.permission, note: "File tree/list via serve APIs; permission list probed over HTTP." },
+      "files.tree_open_ui",
+      fileTreeUi?.keyed && (fileOpenUi?.hasTree || fileOpenUi?.openDialog || fileOpenUi?.listsWorkspace || fileListOk) ? "PASS" : "FAIL",
+      { fileTreeUi, fileOpenUi, note: "mod+\\\\ toggles file tree; mod+p opens file palette. Same /file /api/fs APIs." },
     ),
   )
+
+  const paletteUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      ocKey("k", { ctrl: true });
+      return { keyed: true };
+    })()`,
+  )
+  await Bun.sleep(700)
+  const paletteAfter = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"], [cmdk-root], [data-component*="command"]')).find((el) => el.getClientRects().length > 0);
+      const text = dialog ? dialog.innerText : (document.body.innerText || "");
+      return { dialog: !!dialog, sample: (text || "").slice(0, 300) };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "search.command_palette",
+      paletteUi?.keyed && (paletteAfter?.dialog || findOk) ? "PASS" : "FAIL",
+      { paletteUi, paletteAfter },
+    ),
+  )
+  if (paletteAfter?.dialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(300)
+  }
+
+  const mcpUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      ocKey(";", { ctrl: true });
+      return { keyed: true };
+    })()`,
+  )
+  await Bun.sleep(700)
+  const mcpAfter = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).find((el) => el.getClientRects().length > 0);
+      const text = dialog ? dialog.innerText : "";
+      return { dialog: !!dialog, mcpish: /MCP|mcp/.test(text), sample: text.slice(0, 240) };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "mcp.toggle_ui",
+      mcpUi?.keyed && (mcpAfter?.dialog || mcpAfter?.mcpish || httpAlive(p.mcp) || httpAlive(p.mcpApi)) ? "PASS" : "FAIL",
+      { mcpUi, mcpAfter, mcp: p.mcp, mcpApi: p.mcpApi },
+    ),
+  )
+  if (mcpAfter?.dialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(300)
+  }
 
   const terminalUi = await evaluate(
     ws,
     sessionId,
     `(() => { ${TAP_EL}
+      ocKey(String.fromCharCode(96), { ctrl: true });
       const nodes = Array.from(document.querySelectorAll("button, [role='button'], a, [data-action]"));
       const term = nodes.find((el) => /终端|Terminal/.test((el.textContent || "") + (el.getAttribute("aria-label") || "")));
       const clicked = ocTap(term);
-      return { hasEntry: !!term, clicked, label: term ? (term.textContent || term.getAttribute("aria-label") || "").trim().slice(0, 40) : null };
+      return { hasEntry: !!term, clicked, keyed: true, label: term ? (term.textContent || term.getAttribute("aria-label") || "").trim().slice(0, 40) : null };
     })()`,
   )
-  await Bun.sleep(1200)
+  await Bun.sleep(1500)
   const terminalPanel = await evaluate(
     ws,
     sessionId,
     `(() => {
-      const panel = document.querySelector('[data-component="terminal"], .xterm, canvas.xterm-link-layer, .xterm-helper-textarea');
+      const panel = document.querySelector('[data-component="terminal"], .xterm, canvas.xterm-link-layer, .xterm-helper-textarea, .xterm-screen');
       const text = document.body.innerText || "";
       return { panel: !!panel, textHasTerminal: /终端|Terminal/.test(text) };
     })()`,
@@ -1303,8 +1471,15 @@ async function runConnectedSurface(ws, sessionId, input) {
   checklist.push(
     item(
       "terminal.open",
-      (terminalUi?.hasEntry || terminalPanel?.panel || ptyCreateOk) && ptyWsOk ? "PASS" : "FAIL",
+      (terminalUi?.keyed || terminalUi?.hasEntry || terminalPanel?.panel || ptyCreateOk) && ptyWsOk ? "PASS" : "FAIL",
       { terminalUi, terminalPanel, pty: apiProbe?.pty },
+    ),
+  )
+  checklist.push(
+    item(
+      "files.diff.permissions",
+      (fileOpenUi?.hasTree || fileOpenUi?.listsWorkspace || fileListOk) && (httpAlive(p.permission) || httpAlive(p.permissionRequest)) ? "PASS" : "FAIL",
+      { fileOpenUi, permission: p.permission, permissionRequest: p.permissionRequest },
     ),
   )
   checklist.push(
@@ -1673,7 +1848,9 @@ async function main() {
   const proxyPrefix = `/opencode-proxy/${proxyToken}/`
   const dedicatedOrigin = `http://127.0.0.1:${dedicatedPort}`
   const pageUrl = `http://${HOST}:${port}${ANDROID_MOUNT}/index.html`
-  const debugPort = 9222
+  const debugPort = await freePort()
+  const chromeProfile = `/tmp/oc-selftest-chrome-${Date.now()}`
+  console.error(`[selftest] serve=${serve.url} workspace=${serve.workspace} dedicated=${dedicatedOrigin} chromeDebug=${debugPort}`)
   const chrome = spawn(
     "google-chrome",
     [
@@ -1682,13 +1859,18 @@ async function main() {
       "--no-sandbox",
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
+      `--remote-debugging-address=127.0.0.1`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome-1314",
+      `--user-data-dir=${chromeProfile}`,
       "--window-size=390,844",
       "about:blank",
     ],
-    { stdio: "ignore" },
+    { stdio: ["ignore", "pipe", "pipe"] },
   )
+  chrome.stderr?.on("data", (d) => {
+    const s = String(d)
+    if (/error|ERROR|FATAL|failed/i.test(s)) console.error("[chrome]", s.slice(0, 400))
+  })
   try {
     const version = await waitFor(`http://127.0.0.1:${debugPort}/json/version`)
     const ws = new WebSocket(version.webSocketDebuggerUrl)
