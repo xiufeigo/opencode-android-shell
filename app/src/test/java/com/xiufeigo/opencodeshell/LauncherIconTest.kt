@@ -62,10 +62,12 @@ class LauncherIconTest {
         var dark = 0
         var white = 0
         var gray = 0
+        var opaque = 0
         for (y in 0 until image.height) {
             for (x in 0 until image.width) {
                 val p = image.argb(x, y)
                 if (((p ushr 24) and 0xFF) < 16) continue
+                opaque++
                 when {
                     isDark(p) -> dark++
                     isWhite(p) -> white++
@@ -73,11 +75,15 @@ class LauncherIconTest {
                 }
             }
         }
-        val total = image.width * image.height
-        assertTrue("too few dark pixels: $dark / $total", dark > total / 8)
+        val total = opaque
+        assertTrue("too few dark pixels: $dark / $total (mask must be the dark field)", dark > total / 2)
         assertTrue("missing white window chrome: $white", white > 100)
         assertTrue("missing gray inner pane: $gray", gray > 50)
-        assertTrue("icon is a white square ($white white of $total)", white < (total * 2) / 3)
+        assertTrue("white chrome fills the plate ($white white of $total) — window zoomed too far", white < total / 3)
+        val cx = image.width / 2
+        val cy = image.height * 9 / 16
+        val center = image.argb(cx, cy)
+        assertTrue("center should be the gray/dark hole, not white chrome: 0x${Integer.toHexString(center)}", isGray(center) || isDark(center))
     }
 
     private fun assertFullBleedDark(image: PngImage) {
@@ -90,6 +96,14 @@ class LauncherIconTest {
             val mid = image.argb(x, image.height / 2)
             assertTrue("side edge 0x${Integer.toHexString(mid)} at x=$x should be dark", isDark(mid))
         }
+        // 18/108 dp is the adaptive mask edge. Must stay dark so the squircle
+        // is a dark plate, not zoomed white chrome.
+        val maskInset = image.width * 18 / 108
+        val maskEdge = image.argb(maskInset, image.height / 2)
+        assertTrue(
+            "adaptive mask edge 0x${Integer.toHexString(maskEdge)} at x=$maskInset is not dark (window zoomed too far)",
+            isDark(maskEdge),
+        )
     }
 
     private fun isDark(p: Int): Boolean {
