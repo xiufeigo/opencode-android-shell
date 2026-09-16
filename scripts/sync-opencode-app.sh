@@ -55,7 +55,7 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
-    if [[ "$base" == *touchable* ]] && grep -q HomeNoServerEmpty "$SRC/packages/app/src/pages/home/home-projects-view.tsx"; then
+    if [[ "$base" == *portrait-settings* ]] && grep -q "max-width: 839px" "$SRC/packages/app/src/components/settings-v2/settings-v2.css"; then
       echo "Already applied $base"
       continue
     fi

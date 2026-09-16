@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Rasterize the official OpenCode favicon-v3 mark into Android mipmap PNGs.
 
-Full-bleed dark canvas (#131010) with the window glyph occupying ~70% of the
-viewport so HyperOS/MIUI masks look like neighboring apps — not a white plate
-with a tiny mark.
+HyperOS content-crops a uniform dark field off adaptive foregrounds and then
+sits the remaining window on a white plate. Both adaptive layers are therefore
+the same opaque full-bleed mark (PNG background, not a color-only shape), and
+the dark field is slightly dithered so the crop bbox stays the full canvas.
 """
 from __future__ import annotations
 
@@ -21,9 +22,9 @@ OUTER = (128, 96, 384, 416)
 HOLE = (192, 160, 320, 352)
 GRAY_PANE = (192, 224, 320, 352)
 
-# >1 zooms the official mark so the window is ~70% of the canvas. Dark field
-# still reaches the edges (full-bleed).
-SCALE = 1.12
+# Window ~80% of the canvas so the 66% adaptive safe-zone is filled with the
+# mark after OEM masks; dark still reaches the bitmap edges.
+SCALE = 1.58
 CX = CY = 256.0
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,16 +37,23 @@ def in_rect(x: float, y: float, rect: tuple[int, int, int, int]) -> bool:
     return x0 <= x < x1 and y0 <= y < y1
 
 
-def sample_512(x: float, y: float) -> tuple[int, int, int, int]:
+def dither_dark(px: int, py: int) -> tuple[int, int, int, int]:
+    # ±2 RGB, still reads as #131010. Breaks HyperOS "empty plate" detection.
+    n = (px * 3 + py * 7) & 3
+    v = 0x13 + n
+    return (v, max(0x10, v - 3), max(0x10, v - 3), 0xFF)
+
+
+def sample_512(x: float, y: float, px: int, py: int) -> tuple[int, int, int, int]:
     sx = CX + (x - CX) / SCALE
     sy = CY + (y - CY) / SCALE
     if not (0 <= sx < 512 and 0 <= sy < 512):
-        return BG
+        return dither_dark(px, py)
     if in_rect(sx, sy, GRAY_PANE):
         return GRAY
     if in_rect(sx, sy, OUTER) and not in_rect(sx, sy, HOLE):
         return WHITE
-    return BG
+    return dither_dark(px, py)
 
 
 def render(size: int, round_mask: bool = False) -> list[tuple[int, int, int, int]]:
@@ -57,7 +65,7 @@ def render(size: int, round_mask: bool = False) -> list[tuple[int, int, int, int
         y = (py + 0.5) * scale
         for px in range(size):
             x = (px + 0.5) * scale
-            pixel = sample_512(x, y)
+            pixel = sample_512(x, y, px, py)
             if round_mask:
                 dx = px - r
                 dy = py - r
@@ -113,6 +121,13 @@ def main() -> None:
         pixels = render(size, round_mask=False)
         write_png(OUT / f"mipmap-{density}" / "ic_launcher_foreground.png", size, pixels)
 
+    # Adaptive background must be a bitmap. HyperOS ignores color-only shapes.
+    bg = OUT / "drawable-nodpi"
+    write_png(bg / "ic_launcher_background.png", 432, render(432, round_mask=False))
+    xml_bg = OUT / "drawable" / "ic_launcher_background.xml"
+    if xml_bg.exists():
+        xml_bg.unlink()
+
     preview = render(192, round_mask=False)
     write_png(PREVIEW_DIR / "launcher-xxxhdpi.png", 192, preview)
     write_png(PREVIEW_DIR / "launcher-foreground-xxxhdpi.png", 432, render(432, round_mask=False))
@@ -124,9 +139,8 @@ def main() -> None:
     master = render(512)
     cx, cy = 256, 288
     assert master[cy * 512 + cx][:3] == GRAY[:3], master[cy * 512 + cx]
-    # Full-bleed: corners and outer edge stay the dark field.
-    assert master[8 * 512 + 8][:3] == BG[:3]
-    assert master[8 * 512 + 256][:3] == BG[:3]
+    corner = master[8 * 512 + 8]
+    assert corner[0] < 40 and corner[1] < 40 and corner[2] < 40, corner
     print("Wrote full-bleed launcher PNGs under", OUT)
 
 

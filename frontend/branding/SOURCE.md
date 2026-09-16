@@ -2,7 +2,7 @@
 
 Launcher icon is the official OpenCode “window” glyph on a **full-bleed** dark `#131010` field.
 
-HyperOS/MIUI often ignores a color-only adaptive background and content-crops a padded glyph onto a white plate. The bitmaps therefore fill the entire canvas (dark to the edges) with the window at ~70% of the viewport.
+HyperOS/MIUI ignores a color-only adaptive background and content-crops a padded glyph onto a white plate. Both adaptive layers are therefore the **same opaque PNG** of the mark (window ~80% of the canvas, dithered dark to the edges).
 
 ## Source
 
@@ -17,10 +17,11 @@ Copies: `frontend/branding/favicon-v3.svg`, preview `frontend/branding/launcher-
 
 `scripts/generate-launcher-icons.py`:
 
-- `mipmap-*/ic_launcher.png` — opaque full-bleed (legacy + adaptive foreground)
+- `mipmap-*/ic_launcher.png` — opaque full-bleed (legacy launcher if OEM skips adaptive)
 - `mipmap-*/ic_launcher_round.png` — same mark, circular alpha
 - `mipmap-*/ic_launcher_foreground.png` — 108–432px, same full-bleed art
-- Adaptive XML uses a solid dark background drawable plus **`@mipmap/ic_launcher_foreground`** (never `@mipmap/ic_launcher`, which is the XML itself on API 26+ and becomes the Android robot)
+- `drawable-nodpi/ic_launcher_background.png` — same art (not a `<shape>` color)
+- Adaptive XML: background `@drawable/ic_launcher_background`, foreground `@mipmap/ic_launcher_foreground` (never `@mipmap/ic_launcher`)
 
 Regenerate: `python3 scripts/generate-launcher-icons.py`
 

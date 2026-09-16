@@ -22,4 +22,15 @@ class BootPathTest {
         assertTrue("entry must bind MemoryRouter history on the asset host\n$window", window.contains("{history:"))
         assertTrue(window.contains("appassets.androidplatform.net"))
     }
+
+    @Test
+    fun vendoredCssStacksSettingsBelow840px() {
+        val html = File("src/main/assets/opencode-app/index.html").readText()
+        val cssName =
+            Regex("""href="\./assets/(index-[^"]+\.css)"""").find(html)?.groupValues?.get(1)
+                ?: error("missing entry stylesheet in index.html")
+        val css = File("src/main/assets/opencode-app/assets/$cssName").readText()
+        assertTrue("portrait Settings breakpoint missing", css.contains("839px"))
+        assertTrue(css.contains("flex-direction:column") || css.contains("flex-direction: column"))
+    }
 }

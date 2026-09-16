@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Never point foreground at @mipmap/ic_launcher: on API 26+ that is THIS
-         XML and the launcher falls back to the Android robot. -->
+    <!-- Both layers are the same opaque full-bleed PNG. A color-only
+         background is ignored by HyperOS, which then content-crops the
+         glyph onto a white plate. Never reference @mipmap/ic_launcher. -->
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>

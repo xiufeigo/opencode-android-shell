@@ -25,6 +25,11 @@ class LauncherIconTest {
                 assertTrue("missing $png", png.isFile && png.length() > 100)
             }
         }
+        val bg = File("src/main/res/drawable-nodpi/ic_launcher_background.png")
+        assertTrue("adaptive background must be a bitmap, not a color shape", bg.isFile && bg.length() > 100)
+        val image = readPng(bg)
+        assertFullBleedDark(image)
+        assertMark(image)
     }
 
     @Test
@@ -69,10 +74,10 @@ class LauncherIconTest {
             }
         }
         val total = image.width * image.height
-        assertTrue("too few dark pixels: $dark / $total", dark > total / 4)
+        assertTrue("too few dark pixels: $dark / $total", dark > total / 8)
         assertTrue("missing white window chrome: $white", white > 100)
         assertTrue("missing gray inner pane: $gray", gray > 50)
-        assertTrue("icon is a white square ($white white of $total)", white < total / 2)
+        assertTrue("icon is a white square ($white white of $total)", white < (total * 2) / 3)
     }
 
     private fun assertFullBleedDark(image: PngImage) {
@@ -82,9 +87,9 @@ class LauncherIconTest {
                 val p = image.argb(x, y)
                 assertTrue("corner/edge 0x${Integer.toHexString(p)} at $x,$y should be dark full-bleed", isDark(p))
             }
+            val mid = image.argb(x, image.height / 2)
+            assertTrue("side edge 0x${Integer.toHexString(mid)} at x=$x should be dark", isDark(mid))
         }
-        val top = image.argb(image.width / 2, inset)
-        assertTrue("top edge should be dark, got 0x${Integer.toHexString(top)}", isDark(top))
     }
 
     private fun isDark(p: Int): Boolean {

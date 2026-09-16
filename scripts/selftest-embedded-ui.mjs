@@ -21,6 +21,8 @@ const ANDROID_MOUNT = "/assets/opencode-app"
 const reportPath = process.env.SELFTEST_REPORT || path.join(root, "selftest-embedded-ui.json")
 const screenshotPath =
   process.env.SELFTEST_SCREENSHOT || "/opt/cursor/artifacts/selftest-home-android-path.png"
+const portraitScreenshotPath =
+  process.env.SELFTEST_PORTRAIT_SCREENSHOT || "/opt/cursor/artifacts/selftest-settings-portrait.png"
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8"
@@ -169,6 +171,37 @@ const TAP_JS = `(() => {
   };
 })()`
 
+const SETTINGS_LAYOUT_JS = `(() => {
+  const tabs = document.querySelector('[data-component="tabs-v2"][data-variant="settings"]');
+  const list = document.querySelector('[data-slot="tabs-v2-list"]');
+  const contents = Array.from(document.querySelectorAll('[data-slot="tabs-v2-content"]'));
+  const content = contents.find((el) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && r.width > 0 && r.height > 0;
+  }) || contents[0];
+  const select = document.querySelector('[data-component="select-v2-root"]');
+  if (!tabs || !list) return { found: false, viewport: { w: innerWidth, h: innerHeight } };
+  const tr = tabs.getBoundingClientRect();
+  const lr = list.getBoundingClientRect();
+  const cr = content ? content.getBoundingClientRect() : { width: 0, height: 0, top: 0, left: 0 };
+  const dir = getComputedStyle(tabs).flexDirection;
+  const stacked = dir === 'column' || lr.width >= tr.width * 0.85 || cr.top >= lr.bottom - 4;
+  const selectWidth = select ? select.getBoundingClientRect().width : 0;
+  return {
+    found: true,
+    viewport: { w: innerWidth, h: innerHeight },
+    flexDirection: dir,
+    tabs: { w: Math.round(tr.width), h: Math.round(tr.height) },
+    list: { w: Math.round(lr.width), h: Math.round(lr.height), top: Math.round(lr.top) },
+    content: { w: Math.round(cr.width), h: Math.round(cr.height), top: Math.round(cr.top), left: Math.round(cr.left) },
+    stacked,
+    selectWidth: Math.round(selectWidth),
+    contentReadable: cr.width >= 280,
+    hasGeneral: /通用|General/.test(document.body.innerText || ''),
+  };
+})()`
+
 async function main() {
   if (!fs.existsSync(path.join(assets, "index.html"))) {
     throw new Error(`missing embedded assets at ${assets}`)
@@ -187,7 +220,7 @@ async function main() {
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
       "--user-data-dir=/tmp/oc-selftest-chrome",
-      "--window-size=1280,800",
+      "--window-size=800,1280",
       "about:blank",
     ],
     { stdio: "ignore" },
@@ -206,7 +239,7 @@ async function main() {
     await cdp(
       ws,
       "Emulation.setDeviceMetricsOverride",
-      { width: 1280, height: 800, deviceScaleFactor: 2, mobile: true },
+      { width: 800, height: 1280, deviceScaleFactor: 2, mobile: true },
       sessionId,
     )
     await cdp(ws, "Emulation.setTouchEmulationEnabled", { enabled: true }, sessionId)
@@ -233,16 +266,23 @@ async function main() {
     await cdp(ws, "Page.navigate", { url: pageUrl }, sessionId)
     await Bun.sleep(8_000)
     const probe = await evaluate(ws, sessionId, TAP_JS)
+    await Bun.sleep(800)
+    const settingsLayout = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
     try {
       const shot = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
       if (shot?.data) {
         fs.mkdirSync(path.dirname(screenshotPath), { recursive: true })
         fs.writeFileSync(screenshotPath, Buffer.from(shot.data, "base64"))
+        fs.writeFileSync(portraitScreenshotPath, Buffer.from(shot.data, "base64"))
       }
     } catch {}
     const scopeCrash =
       exceptions.some((e) => /reading 'scope'/.test(e)) || !!probe?.hasScopeError
     const whiteOnly = !probe?.homeCopy || probe?.titlebarOnly || (probe?.visibleButtonCount ?? 0) < 3
+    const settingsPortraitOk =
+      !!settingsLayout?.found &&
+      settingsLayout.stacked === true &&
+      (settingsLayout.contentReadable === true || settingsLayout.content?.w >= 280)
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -253,17 +293,21 @@ async function main() {
       !whiteOnly &&
       (probe.dialogAfterClick || probe.settingsClicked) &&
       !scopeCrash &&
-      probe.viewportFitCover === true
+      probe.viewportFitCover === true &&
+      settingsPortraitOk
     const report = {
       ok,
       pageUrl,
       probe,
+      settingsLayout,
       clicked: probe?.clicked ?? [],
       responded: !!(probe?.settingsClicked && (probe?.dialogAfterClick || probe.settingsFound)),
       exceptions,
       scopeCrash,
       whiteOnly,
+      settingsPortraitOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
+      portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
@@ -273,7 +317,9 @@ async function main() {
           ? "self-test failed: LayoutProvider TypeError reading scope"
           : whiteOnly
             ? "self-test failed: titlebar-only / white home (asset-path router mismatch)"
-            : "self-test failed: Settings control was not found or did not handle the tap",
+            : !settingsPortraitOk
+              ? "self-test failed: Settings is still a squished two-column layout in portrait"
+              : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

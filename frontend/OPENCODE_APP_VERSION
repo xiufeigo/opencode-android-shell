@@ -4,4 +4,4 @@ commit=014614d35b397775e5d397a490fc72368c894ec2
 source=https://github.com/anomalyco/opencode
 built_with=OPENCODE_CHANNEL=prod vite build --base ./ --sourcemap false
 android_patch=frontend/patches/*.patch
-android_patch_purpose=Desktop-equivalent MemoryRouter so the WebView asset file path is not a Solid route. Null-safe LayoutProvider scope. Offline SDK stub never fetches :0. Coarse-pointer tooltips disabled. Full-bleed launcher via ic_launcher_foreground. Servers via Settings → Server.
+android_patch_purpose=Desktop MemoryRouter. Portrait Settings stacks below 840px. Null-safe Layout scope. Offline SDK stub. Coarse-pointer tooltips off. Full-bleed PNG adaptive icon (both layers). Servers via Settings → Server.

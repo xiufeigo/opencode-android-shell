@@ -38,6 +38,7 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 - Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
 - Safe area: `MainActivity` pads the **root** with `statusBars | navigationBars | displayCutout` (WebView view-padding is ignored on HyperOS). App chrome stays below the status bar.
 - Routing: Android uses the same **MemoryRouter** pattern as OpenCode Desktop so `.../opencode-app/index.html` is not treated as a Solid route (that paints titlebar-only / white home).
+- Portrait Settings: below 840px CSS width the Settings dialog stacks to a single column (`frontend/patches/android-webview-portrait-settings.patch`).
 - The agent **does not** run inside the APK.
 
 ## Run the backend (PC)
@@ -139,8 +140,9 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - Allow **LAN / local network** if a privacy toggle appears.
 - Install unknown sources to sideload the debug APK.
 - Autostart is not required; the agent stays on the PC.
-- **Icon still white / Android robot after upgrade:** uninstall the app, then install the new APK. HyperOS caches the previous adaptive icon until the package is removed. `versionCode` 7+ ships full-bleed dark `#131010` PNGs; adaptive XML uses `ic_launcher_foreground` (never self-references `ic_launcher`, which becomes the Android robot on API 26+).
-- **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.2+.
+- **Icon still white / Android robot after upgrade:** uninstall the app, then install the new APK. HyperOS caches the previous adaptive icon until the package is removed. `versionCode` 8+ ships full-bleed PNGs for **both** adaptive layers (not a color-only background).
+- **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.3+.
+- **Settings squished in portrait:** `versionCode` 8+ stacks the Settings dialog to a single column below 840px CSS width.
 
 ## Security
 
