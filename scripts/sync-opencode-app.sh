@@ -55,6 +55,10 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
+    if [[ "$base" == *touchable* ]] && grep -q HomeNoServerEmpty "$SRC/packages/app/src/pages/home/home-projects-view.tsx"; then
+      echo "Already applied $base"
+      continue
+    fi
     echo "Failed to apply $patch against $REF" >&2
     exit 1
   done
@@ -67,7 +71,7 @@ cd "$SRC"
 bun install --filter @opencode-ai/app
 (
   cd packages/app
-  bunx vite build --base ./ --sourcemap false
+  OPENCODE_CHANNEL=prod bunx vite build --base ./ --sourcemap false
 )
 
 rm -rf "$DEST"
@@ -82,9 +86,9 @@ name=@opencode-ai/app
 tag=$REF
 commit=$COMMIT
 source=https://github.com/anomalyco/opencode
-built_with=vite build --base ./ --sourcemap false
+built_with=OPENCODE_CHANNEL=prod vite build --base ./ --sourcemap false
 android_patch=frontend/patches/*.patch
-android_patch_purpose=Do not treat the WebView asset origin as a builtin HTTP server. Provide a disconnected SDK stub so Layout/ServerSDK can init with zero configured servers (fixes cold-start TypeError reading .scope). Servers are added via Settings → Server.
+android_patch_purpose=Do not treat the WebView asset origin as a builtin HTTP server. Provide an offline SDK stub (no fetch to 127.0.0.1:0) so Layout/ServerSDK can init with zero configured servers. Disable touch-eating tooltips on coarse pointers. Hide DEV channel chrome. Empty home opens Settings. Servers are added via Settings → Server.
 EOF
 
 echo "Vendored $REF ($COMMIT) into $DEST"

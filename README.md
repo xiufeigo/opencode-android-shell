@@ -8,6 +8,9 @@ Min SDK: 26 (Android 8.0)
 
 Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VERSION) (currently **v1.18.31**).  
 Launcher icon: official OpenCode mark — see [`frontend/branding/SOURCE.md`](frontend/branding/SOURCE.md).
+If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinstall** (the launcher caches icons by package).
+
+## Architecture
 
 ## Architecture
 
@@ -31,7 +34,8 @@ Launcher icon: official OpenCode mark — see [`frontend/branding/SOURCE.md`](fr
 - Launch goes **directly** into the official home (sidebar: 项目 / 添加项目 / 设置 / 帮助). There is no native “Connect server” screen.
 - With zero servers, the official empty state is shown. Add a backend via **设置 → 服务器** (same list + 「添加服务器」 dialog as Desktop).
 - The WebView asset origin is **not** treated as an HTTP server (see `frontend/patches/android-webview-no-origin-server.patch`).
-- With zero servers, server-scoped providers use a disconnected stub (`http://127.0.0.1:0`, not shown in Settings) so Layout/ServerSDK can init (`frontend/patches/android-webview-disconnected-sdk.patch`).
+- With zero servers, server-scoped providers use an **offline SDK stub** (never fetches `http://127.0.0.1:0`) so Layout/ServerSDK can init (`frontend/patches/android-webview-disconnected-sdk.patch`).
+- Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
 - The agent **does not** run inside the APK.
 
 ## Run the backend (PC)
@@ -133,6 +137,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - Allow **LAN / local network** if a privacy toggle appears.
 - Install unknown sources to sideload the debug APK.
 - Autostart is not required; the agent stays on the PC.
+- **Icon still white after upgrade:** uninstall the app, then install the new APK. HyperOS keeps the previous adaptive icon until the package is removed. `versionCode` 5+ ships density PNGs with the official mark inset for the circular mask.
 
 ## Security
 

@@ -3,6 +3,10 @@
 
 The SVG (packages/app/public/favicon-v3.svg) is only axis-aligned rectangles, so
 this writes lossless PNGs with the stdlib — no SVG→PNG converter required.
+
+Adaptive-icon safe zone is the center ~66% of the 108dp foreground. The official
+512 viewport window is tall enough that OEM circular/squircle masks crop to a
+white tile. Artwork is scaled toward the center so the dark field stays visible.
 """
 from __future__ import annotations
 
@@ -10,17 +14,23 @@ import struct
 import zlib
 from pathlib import Path
 
-BG = (0x13, 0x10, 0x10)
-WHITE = (0xFF, 0xFF, 0xFF)
-GRAY = (0x5A, 0x58, 0x58)
+BG = (0x13, 0x10, 0x10, 0xFF)
+WHITE = (0xFF, 0xFF, 0xFF, 0xFF)
+GRAY = (0x5A, 0x58, 0x58, 0xFF)
+TRANSPARENT = (0x00, 0x00, 0x00, 0x00)
 
 # Coordinates in the 512×512 official SVG viewport.
 OUTER = (128, 96, 384, 416)  # white window chrome
 HOLE = (192, 160, 320, 352)  # inner cutout
 GRAY_PANE = (192, 224, 320, 352)
 
+# Keep the glyph inside the adaptive safe zone with dark padding around it.
+SCALE = 0.62
+CX = CY = 256.0
+
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "app" / "src" / "main" / "res"
+PREVIEW_DIR = ROOT / "frontend" / "branding"
 
 
 def in_rect(x: float, y: float, rect: tuple[int, int, int, int]) -> bool:
@@ -28,33 +38,45 @@ def in_rect(x: float, y: float, rect: tuple[int, int, int, int]) -> bool:
     return x0 <= x < x1 and y0 <= y < y1
 
 
-def sample_512(x: float, y: float) -> tuple[int, int, int]:
-    if in_rect(x, y, GRAY_PANE):
+def sample_512(x: float, y: float) -> tuple[int, int, int, int]:
+    sx = CX + (x - CX) / SCALE
+    sy = CY + (y - CY) / SCALE
+    if not (0 <= sx < 512 and 0 <= sy < 512):
+        return BG
+    if in_rect(sx, sy, GRAY_PANE):
         return GRAY
-    if in_rect(x, y, OUTER) and not in_rect(x, y, HOLE):
+    if in_rect(sx, sy, OUTER) and not in_rect(sx, sy, HOLE):
         return WHITE
     return BG
 
 
-def render(size: int) -> list[tuple[int, int, int]]:
-    pixels: list[tuple[int, int, int]] = []
+def render(size: int, round_mask: bool = False) -> list[tuple[int, int, int, int]]:
+    pixels: list[tuple[int, int, int, int]] = []
     scale = 512.0 / size
+    r = (size - 1) / 2.0
+    r2 = r * r
     for py in range(size):
         y = (py + 0.5) * scale
         for px in range(size):
             x = (px + 0.5) * scale
-            pixels.append(sample_512(x, y))
+            pixel = sample_512(x, y)
+            if round_mask:
+                dx = px - r
+                dy = py - r
+                if dx * dx + dy * dy > r2:
+                    pixel = TRANSPARENT
+            pixels.append(pixel)
     return pixels
 
 
-def write_png(path: Path, size: int, pixels: list[tuple[int, int, int]]) -> None:
+def write_png(path: Path, size: int, pixels: list[tuple[int, int, int, int]]) -> None:
     raw = bytearray()
     i = 0
     for _y in range(size):
         raw.append(0)
         for _x in range(size):
-            r, g, b = pixels[i]
-            raw.extend((r, g, b))
+            r, g, b, a = pixels[i]
+            raw.extend((r, g, b, a))
             i += 1
     compressed = zlib.compress(bytes(raw), 9)
 
@@ -62,7 +84,7 @@ def write_png(path: Path, size: int, pixels: list[tuple[int, int, int]]) -> None
         crc = zlib.crc32(tag + data) & 0xFFFFFFFF
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
 
-    ihdr = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
+    ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", compressed) + chunk(b"IEND", b""))
 
@@ -84,20 +106,31 @@ def main() -> None:
     }
 
     for density, size in launcher.items():
-        pixels = render(size)
-        write_png(OUT / f"mipmap-{density}" / "ic_launcher.png", size, pixels)
-        write_png(OUT / f"mipmap-{density}" / "ic_launcher_round.png", size, pixels)
+        square = render(size, round_mask=False)
+        round_px = render(size, round_mask=True)
+        write_png(OUT / f"mipmap-{density}" / "ic_launcher.png", size, square)
+        write_png(OUT / f"mipmap-{density}" / "ic_launcher_round.png", size, round_px)
 
     for density, size in foreground.items():
-        pixels = render(size)
+        pixels = render(size, round_mask=False)
         write_png(OUT / f"mipmap-{density}" / "ic_launcher_foreground.png", size, pixels)
 
-    # Spot-check the official geometry on a 512 master.
+    preview = render(192, round_mask=False)
+    write_png(PREVIEW_DIR / "launcher-xxxhdpi.png", 192, preview)
+    write_png(PREVIEW_DIR / "launcher-foreground-xxxhdpi.png", 432, render(432, round_mask=False))
+    artifacts = Path("/opt/cursor/artifacts")
+    if artifacts.is_dir():
+        write_png(artifacts / "opencode-launcher-xxxhdpi.png", 192, preview)
+        write_png(artifacts / "opencode-launcher-foreground-xxxhdpi.png", 432, render(432, round_mask=False))
+
     master = render(512)
-    cx, cy = 256, 288  # gray pane
-    assert master[cy * 512 + cx] == GRAY, master[cy * 512 + cx]
-    assert master[120 * 512 + 256] == WHITE  # top chrome
-    assert master[10 * 512 + 10] == BG
+    # Center of the scaled glyph must be the gray pane, not a white fill.
+    cx, cy = 256, 288
+    assert master[cy * 512 + cx][:3] == GRAY[:3], master[cy * 512 + cx]
+    # Adaptive safe-zone edge (≈16.7% inset) must stay the dark field.
+    edge = int(512 * 0.17)
+    assert master[edge * 512 + 256][:3] == BG[:3], master[edge * 512 + 256]
+    assert master[10 * 512 + 10][:3] == BG[:3]
     print("Wrote launcher + adaptive-foreground PNGs under", OUT)
 
 

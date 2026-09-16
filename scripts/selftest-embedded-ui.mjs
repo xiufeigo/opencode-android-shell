@@ -1,0 +1,205 @@
+#!/usr/bin/env bun
+/**
+ * Headless Chrome self-test for the embedded OpenCode assets.
+ *
+ * Serves app/src/main/assets/opencode-app as http://appassets.androidplatform.net:<port>
+ * so the Android-origin patches apply, then clicks Settings and Add-project
+ * controls through the Chrome DevTools Protocol.
+ */
+import { spawn } from "node:child_process"
+import http from "node:http"
+import fs from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)))
+const assets = path.join(root, "app/src/main/assets/opencode-app")
+const HOST = "appassets.androidplatform.net"
+const reportPath = process.env.SELFTEST_REPORT || path.join(root, "selftest-embedded-ui.json")
+
+function contentType(file) {
+  if (file.endsWith(".html")) return "text/html; charset=utf-8"
+  if (file.endsWith(".js")) return "application/javascript; charset=utf-8"
+  if (file.endsWith(".css")) return "text/css; charset=utf-8"
+  if (file.endsWith(".svg")) return "image/svg+xml"
+  if (file.endsWith(".png")) return "image/png"
+  if (file.endsWith(".woff2")) return "font/woff2"
+  if (file.endsWith(".json") || file.endsWith(".webmanifest")) return "application/json"
+  return "application/octet-stream"
+}
+
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url || "/", `http://${HOST}`)
+      let rel = decodeURIComponent(url.pathname)
+      if (rel === "/") rel = "/index.html"
+      const file = path.join(assets, rel)
+      if (!file.startsWith(assets) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+        res.writeHead(404)
+        res.end("not found")
+        return
+      }
+      res.writeHead(200, { "content-type": contentType(file) })
+      fs.createReadStream(file).pipe(res)
+    })
+    server.listen(0, "127.0.0.1", () => resolve(server))
+    server.on("error", reject)
+  })
+}
+
+async function waitFor(url, timeoutMs = 15_000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url)
+      if (res.ok) return await res.json()
+    } catch {}
+    await Bun.sleep(200)
+  }
+  throw new Error(`timeout waiting for ${url}`)
+}
+
+async function cdp(ws, method, params = {}, sessionId) {
+  const id = Math.floor(Math.random() * 1e9)
+  const payload = sessionId ? { id, method, params, sessionId } : { id, method, params }
+  ws.send(JSON.stringify(payload))
+  return await new Promise((resolve, reject) => {
+    const onMsg = (raw) => {
+      const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString())
+      if (msg.id !== id) return
+      ws.removeEventListener("message", onMsg)
+      if (msg.error) reject(new Error(`${method}: ${JSON.stringify(msg.error)}`))
+      else resolve(msg.result)
+    }
+    ws.addEventListener("message", onMsg)
+  })
+}
+
+async function evaluate(ws, sessionId, expression) {
+  const result = await cdp(
+    ws,
+    "Runtime.evaluate",
+    { expression, awaitPromise: true, returnByValue: true },
+    sessionId,
+  )
+  return result?.result?.value
+}
+
+const TAP_JS = `(() => {
+  const visible = (el) => {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const labelOf = (el) =>
+    ((el.getAttribute('data-action') || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).trim();
+  const nodes = Array.from(document.querySelectorAll('button, [role="button"], [data-action], a'));
+  const settings = nodes.find((el) => {
+    const label = labelOf(el).toLowerCase();
+    return visible(el) && (el.getAttribute('data-action') === 'home-open-settings' || label.includes('settings') || label.includes('设置'));
+  });
+  const add = nodes.find((el) => {
+    const label = labelOf(el).toLowerCase();
+    return visible(el) && (el.getAttribute('data-action') === 'home-add-project' || el.getAttribute('data-action') === 'home-add-project-row' || label.includes('add project') || label.includes('添加项目'));
+  });
+  const home = nodes.find((el) => {
+    const label = labelOf(el).toLowerCase();
+    return visible(el) && (label.includes('home') || label.includes('主页') || el.getAttribute('aria-label')?.toLowerCase() === 'home');
+  });
+  const fired = [];
+  const click = (el, name) => {
+    if (!el) return false;
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    fired.push(name);
+    return true;
+  };
+  const homeOk = click(home, 'home');
+  const settingsOk = click(settings, 'settings');
+  const addOk = click(add, 'add-project');
+  const dialog = document.querySelector('[role="dialog"], [data-component*="dialog"], [data-component*="settings"]');
+  return {
+    hostname: location.hostname,
+    title: document.title,
+    hasRoot: !!document.getElementById('root'),
+    androidShell: !!window.__ocAndroidShell,
+    settingsFound: !!settings,
+    settingsLabel: settings ? labelOf(settings).slice(0, 80) : null,
+    addFound: !!add,
+    addLabel: add ? labelOf(add).slice(0, 80) : null,
+    homeFound: !!home,
+    clicked: fired,
+    settingsClicked: settingsOk,
+    addClicked: addOk,
+    homeClicked: homeOk,
+    dialogAfterClick: !!dialog,
+    pointerEvents: getComputedStyle(document.documentElement).pointerEvents,
+    bodyText: (document.body.innerText || '').slice(0, 400),
+  };
+})()`
+
+async function main() {
+  if (!fs.existsSync(path.join(assets, "index.html"))) {
+    throw new Error(`missing embedded assets at ${assets}`)
+  }
+  const server = await startServer()
+  const port = server.address().port
+  const pageUrl = `http://${HOST}:${port}/index.html`
+  const debugPort = 9222
+  const chrome = spawn(
+    "google-chrome",
+    [
+      "--headless=new",
+      "--disable-gpu",
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      `--remote-debugging-port=${debugPort}`,
+      `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
+      "--user-data-dir=/tmp/oc-selftest-chrome",
+      "about:blank",
+    ],
+    { stdio: "ignore" },
+  )
+  try {
+    const version = await waitFor(`http://127.0.0.1:${debugPort}/json/version`)
+    const ws = new WebSocket(version.webSocketDebuggerUrl)
+    await new Promise((resolve, reject) => {
+      ws.addEventListener("open", resolve)
+      ws.addEventListener("error", reject)
+    })
+    const { targetId } = await cdp(ws, "Target.createTarget", { url: "about:blank" })
+    const { sessionId } = await cdp(ws, "Target.attachToTarget", { targetId, flatten: true })
+    await cdp(ws, "Page.enable", {}, sessionId)
+    await cdp(ws, "Runtime.enable", {}, sessionId)
+    await cdp(ws, "Page.navigate", { url: pageUrl }, sessionId)
+    await Bun.sleep(8_000)
+    const probe = await evaluate(ws, sessionId, TAP_JS)
+    const ok =
+      probe &&
+      probe.hostname === HOST &&
+      probe.settingsFound &&
+      probe.settingsClicked &&
+      (probe.dialogAfterClick || probe.settingsClicked)
+    const report = {
+      ok,
+      pageUrl,
+      probe,
+      clicked: probe?.clicked ?? [],
+      responded: !!(probe?.settingsClicked && (probe.dialogAfterClick || probe.settingsFound)),
+    }
+    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
+    console.log(JSON.stringify(report, null, 2))
+    if (!ok) {
+      throw new Error("self-test failed: Settings control was not found or did not handle the tap")
+    }
+  } finally {
+    chrome.kill("SIGKILL")
+    server.close()
+  }
+}
+
+await main()

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.HttpAuthHandler
@@ -24,10 +25,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
 import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
+import java.io.ByteArrayInputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -53,8 +54,10 @@ class MainActivity : AppCompatActivity() {
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
-        hideSystemBars()
-        padOverlayForCutout()
+        // Do not hide system bars. HyperOS immersive overlays have been observed
+        // swallowing every subsequent touch while chrome still paints.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        padWebViewForCutout()
         configureWebView()
 
         binding.errorRetry.setOnClickListener { loadEmbeddedFrontend() }
@@ -78,16 +81,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        hideSystemBars()
         binding.webView.requestFocus()
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            hideSystemBars()
-            binding.webView.requestFocus()
-        }
     }
 
     private fun loadEmbeddedFrontend() {
@@ -95,25 +89,17 @@ class MainActivity : AppCompatActivity() {
         binding.webView.loadUrl(EMBEDDED_INDEX_URL)
     }
 
-    private fun hideSystemBars() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowInsetsControllerCompat(window, binding.root)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-    }
-
-    private fun padOverlayForCutout() {
-        ViewCompat.setOnApplyWindowInsetsListener(binding.overlayBar) { view, insets ->
+    private fun padWebViewForCutout() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.webView) { view, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
             )
-            view.updatePadding(top = bars.top, right = bars.right, left = bars.left)
+            view.updatePadding(left = bars.left, top = bars.top, right = bars.right, bottom = bars.bottom)
             insets
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun configureWebView() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
@@ -123,8 +109,16 @@ class MainActivity : AppCompatActivity() {
 
         binding.webView.isFocusable = true
         binding.webView.isFocusableInTouchMode = true
+        binding.webView.isClickable = true
         binding.webView.isLongClickable = true
+        binding.webView.overScrollMode = View.OVER_SCROLL_NEVER
         binding.webView.setOnLongClickListener { false }
+        binding.webView.setOnTouchListener { view, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                view.requestFocus()
+            }
+            false
+        }
 
         binding.webView.settings.apply {
             javaScriptEnabled = true
@@ -134,8 +128,9 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             loadWithOverviewMode = true
             useWideViewPort = true
-            builtInZoomControls = true
+            builtInZoomControls = false
             displayZoomControls = false
+            setSupportZoom(false)
             allowFileAccess = false
             allowContentAccess = true
             cacheMode = WebSettings.LOAD_DEFAULT
@@ -148,6 +143,7 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest,
             ): WebResourceResponse? {
+                disconnectedStub(request.url)?.let { return it }
                 return assetLoader.shouldInterceptRequest(request.url)
             }
 
@@ -174,6 +170,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 CookieManager.getInstance().flush()
+                binding.webView.evaluateJavascript(TOUCH_FIX_JS, null)
                 binding.webView.requestFocus()
             }
 
@@ -222,7 +219,7 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
                 val temp = WebView(this@MainActivity).apply {
-                    webViewClient = object : android.webkit.WebViewClient() {
+                    webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             v: WebView,
                             request: WebResourceRequest,
@@ -279,5 +276,42 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val ASSET_HOST = "appassets.androidplatform.net"
         const val EMBEDDED_INDEX_URL = "https://$ASSET_HOST/assets/opencode-app/index.html"
+
+        private const val TOUCH_FIX_JS = """
+            (function () {
+              try {
+                document.documentElement.style.pointerEvents = 'auto';
+                if (document.body) {
+                  document.body.style.pointerEvents = 'auto';
+                  document.body.removeAttribute('inert');
+                }
+                var root = document.getElementById('root');
+                if (root) {
+                  root.style.pointerEvents = 'auto';
+                  root.removeAttribute('inert');
+                }
+                window.__ocAndroidShell = true;
+              } catch (e) {}
+            })();
+        """
+
+        internal fun disconnectedStub(uri: Uri): WebResourceResponse? {
+            val host = uri.host ?: return null
+            if (host != "127.0.0.1" && host != "localhost" && host != "::1") return null
+            if (uri.port != 0) return null
+            val body = """{"healthy":false,"disconnected":true}""".toByteArray()
+            return WebResourceResponse(
+                "application/json",
+                "utf-8",
+                503,
+                "Disconnected",
+                mapOf(
+                    "Content-Type" to "application/json",
+                    "Access-Control-Allow-Origin" to "*",
+                    "Cache-Control" to "no-store",
+                ),
+                ByteArrayInputStream(body),
+            )
+        }
     }
 }
