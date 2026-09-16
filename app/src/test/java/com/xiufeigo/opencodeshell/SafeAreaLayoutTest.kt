@@ -56,9 +56,11 @@ class SafeAreaLayoutTest {
     @Test
     fun immersiveThemeDoesNotHideSystemBars() {
         val themes = File("src/main/res/values/themes.xml").readText()
-        assertTrue(themes.contains("windowLightStatusBar"))
+        assertTrue(themes.contains("@android:color/transparent"))
         assertTrue(themes.contains("@color/window_background"))
         assertFalse(themes.contains("android:windowFullscreen\">true"))
         assertFalse(themes.contains("windowTranslucentStatus\">true"))
+        val night = File("src/main/res/values-night/themes.xml").readText()
+        assertTrue(night.contains("android:windowLightStatusBar\">false"))
     }
 }

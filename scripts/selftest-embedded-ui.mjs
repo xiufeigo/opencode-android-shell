@@ -1482,6 +1482,121 @@ async function runConnectedSurface(ws, sessionId, input) {
       { fileOpenUi, permission: p.permission, permissionRequest: p.permissionRequest },
     ),
   )
+
+  for (let i = 0; i < 6; i++) {
+    const state = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    if (state?.overlay !== true) break
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(250)
+  }
+  await cdp(
+    ws,
+    "Emulation.setDeviceMetricsOverride",
+    { width: 390, height: 844, deviceScaleFactor: 2.75, mobile: true },
+    sessionId,
+  )
+  await Bun.sleep(400)
+  const openedSession = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const visible = (el) => {
+        if (!el) return false;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      let ring = document.querySelector('[data-action="session-open-context"]');
+      if (ring && visible(ring)) return { alreadyInSession: true, ring: true };
+      const home = Array.from(document.querySelectorAll("button, [role='button']")).find((el) => {
+        const t = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).trim().toLowerCase();
+        return visible(el) && (t === "home" || t === "主页" || t.indexOf("home") === 0);
+      });
+      ocTap(home);
+      const row = document.querySelector('[data-component="home-session-row"]');
+      const tappedRow = ocTap(row);
+      return { alreadyInSession: false, home: !!home, row: !!row, tappedRow };
+    })()`,
+  )
+  await Bun.sleep(1800)
+  const ringTap = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const visible = (el) => {
+        if (!el) return false;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const ring = Array.from(document.querySelectorAll('[data-action="session-open-context"], button, [role="button"]')).find((el) => {
+        if (!visible(el)) return false;
+        if (el.getAttribute("data-action") === "session-open-context") return true;
+        const label = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).trim();
+        return /查看上下文用量|View context usage|context usage/i.test(label);
+      });
+      const rect = ring ? ring.getBoundingClientRect() : null;
+      return {
+        found: !!ring,
+        clicked: ocTap(ring),
+        action: ring ? ring.getAttribute("data-action") : null,
+        label: ring ? ((ring.getAttribute("aria-label") || ring.textContent || "").trim().slice(0, 40)) : null,
+        rect,
+      };
+    })()`,
+  )
+  await Bun.sleep(900)
+  const contextPanel = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const visible = (el) => {
+        if (!el) return false;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const overlay = document.querySelector('[data-component="android-session-context"]');
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [data-slot="session-context-panel"]')).filter(visible);
+      const text = (overlay && visible(overlay) ? overlay.innerText : "") + "\\n" + dialogs.map((el) => el.innerText || "").join("\\n") + "\\n" + (document.body.innerText || "");
+      const tab = Array.from(document.querySelectorAll('[role="tab"]')).find((el) => /Context|上下文/.test(el.textContent || "") && visible(el));
+      return {
+        overlay: !!(overlay && visible(overlay)),
+        dialog: dialogs.length > 0,
+        tab: !!tab,
+        copy: /Context Limit|Total Tokens|Usage|上下文|令牌|用量/.test(text),
+        sample: text.slice(0, 400),
+      };
+    })()`,
+  )
+  try {
+    const shotCtx = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+    if (shotCtx?.data) {
+      const ctxPath = "/opt/cursor/artifacts/selftest-session-context-ring.png"
+      fs.mkdirSync(path.dirname(ctxPath), { recursive: true })
+      fs.writeFileSync(ctxPath, Buffer.from(shotCtx.data, "base64"))
+    }
+  } catch {}
+  checklist.push(
+    item(
+      "session.context_ring_opens_panel",
+      ringTap?.clicked && (contextPanel?.overlay || contextPanel?.dialog || contextPanel?.tab || contextPanel?.copy) ? "PASS" : "FAIL",
+      { openedSession, ringTap, contextPanel, note: "Official Desktop opens the session Context tab/panel from the header ring. Phone-width Android shows a full-screen context overlay." },
+    ),
+  )
+  if (contextPanel?.overlay || contextPanel?.dialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(300)
+  }
+  await cdp(
+    ws,
+    "Emulation.setDeviceMetricsOverride",
+    { width: 800, height: 1280, deviceScaleFactor: 2, mobile: true },
+    sessionId,
+  )
   checklist.push(
     item(
       "home.status_popover_switch",
@@ -1894,7 +2009,8 @@ async function main() {
               var n = String(real || "").replace(/\\/+$/, "");
               if (n === ${JSON.stringify(serve.url)}) return ${JSON.stringify(dedicatedOrigin)};
               return ${JSON.stringify(proxyOrigin)} + ${JSON.stringify(proxyPrefix)} + encodeURIComponent(n);
-            }
+            },
+            setColorScheme: function (scheme) { window.__ocLastColorScheme = scheme; }
           };
           window.__ocAndroidProxy = { origin: ${JSON.stringify(proxyOrigin)}, prefix: ${JSON.stringify(proxyPrefix)} };
           window.__ocAndroidShell = true;
@@ -1947,6 +2063,52 @@ async function main() {
     )
     await Bun.sleep(400)
     const homeEmptyWide = await evaluate(ws, sessionId, HOME_EMPTY_JS)
+    const THEME_JS = `(() => {
+      const html = document.documentElement;
+      const scheme = (html.dataset && html.dataset.colorScheme) || html.getAttribute('data-color-scheme') || '';
+      const meta = document.querySelector('meta[name="theme-color"]');
+      const themeColor = meta ? meta.getAttribute('content') : null;
+      const bg = getComputedStyle(html).backgroundColor || getComputedStyle(document.body).backgroundColor;
+      return {
+        scheme: String(scheme).toLowerCase(),
+        themeColor,
+        bg,
+        last: window.__ocLastColorScheme || null,
+        androidWebview: html.hasAttribute('data-android-webview'),
+      };
+    })()`
+    await cdp(
+      ws,
+      "Emulation.setEmulatedMedia",
+      {
+        features: [
+          { name: "pointer", value: "coarse" },
+          { name: "hover", value: "none" },
+          { name: "prefers-color-scheme", value: "dark" },
+        ],
+      },
+      sessionId,
+    )
+    await Bun.sleep(500)
+    const themeDark = await evaluate(ws, sessionId, THEME_JS)
+    await cdp(
+      ws,
+      "Emulation.setEmulatedMedia",
+      {
+        features: [
+          { name: "pointer", value: "coarse" },
+          { name: "hover", value: "none" },
+          { name: "prefers-color-scheme", value: "light" },
+        ],
+      },
+      sessionId,
+    )
+    await Bun.sleep(500)
+    const themeLight = await evaluate(ws, sessionId, THEME_JS)
+    const themeOk =
+      themeDark?.androidWebview === true &&
+      (themeDark?.scheme === "dark" || themeDark?.themeColor === "#080808" || /0,\s*0,\s*0|8,\s*8,\s*8/.test(themeDark?.bg || "")) &&
+      (themeLight?.scheme === "light" || themeLight?.themeColor === "#fafafa" || /250,\s*250,\s*250|255,\s*255,\s*255/.test(themeLight?.bg || ""))
     const probe = await evaluate(ws, sessionId, TAP_JS)
     await Bun.sleep(800)
     const settingsLayout = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
@@ -2346,6 +2508,7 @@ async function main() {
       { id: "shell.android_back_in_app", result: backOk ? "PASS" : "FAIL" },
       { id: "shell.esc_passthrough", result: escPassThroughOk ? "PASS" : "FAIL", detail: escPassThrough },
       { id: "home.empty_layout_no_bogus_scroll", result: homeEmptyOk ? "PASS" : "FAIL" },
+      { id: "shell.system_bars_follow_color_scheme", result: themeOk ? "PASS" : "FAIL", detail: { themeDark, themeLight } },
       { id: "regression.ime_dialog_css", result: imeOk ? "PASS" : "FAIL", detail: imeCss },
       { id: "regression.portrait_settings_accordion", result: accordionOk && settingsPortraitOk ? "PASS" : "FAIL" },
       { id: "regression.proxy_sse_chunked", result: proxyProbe?.sse?.ok === true && (proxyProbe?.sse?.restDelayMs ?? 0) >= 80 ? "PASS" : "FAIL", detail: proxyProbe?.sse },
@@ -2363,6 +2526,7 @@ async function main() {
       !scopeCrash &&
       probe.viewportFitCover === true &&
       homeEmptyOk &&
+      themeOk &&
       settingsPortraitOk &&
       accordionOk &&
       collapseOk &&
@@ -2394,6 +2558,9 @@ async function main() {
       scopeCrash,
       whiteOnly,
       homeEmptyOk,
+      themeDark,
+      themeLight,
+      themeOk,
       settingsPortraitOk,
       accordionOk,
       collapseOk,
@@ -2450,7 +2617,9 @@ async function main() {
             ? "self-test failed: titlebar-only / white home (asset-path router mismatch)"
             : !homeEmptyOk
               ? "self-test failed: empty home still overflows / Settings not in view"
-              : !settingsPortraitOk
+              : !themeOk
+                ? "self-test failed: color-scheme did not follow light/dark (status/nav bars must match)"
+                : !settingsPortraitOk
                 ? "self-test failed: Settings is still a squished two-column layout in portrait"
                 : !accordionOk
                   ? "self-test failed: Settings category title still sticky-locked or sections are not accordions"

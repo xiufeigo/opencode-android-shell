@@ -5,6 +5,7 @@ import android.webkit.JavascriptInterface
 class OpenCodeAndroidBridge(
     private val gateway: LocalGateway,
     private val webSockets: NativeWebSocketHub,
+    private val onColorScheme: (dark: Boolean) -> Unit = {},
 ) {
     @JavascriptInterface
     fun proxyOrigin(): String = gateway.publicOrigin()
@@ -34,5 +35,12 @@ class OpenCodeAndroidBridge(
     @JavascriptInterface
     fun wsClose(id: String, code: Int, reason: String) {
         webSockets.close(id, code, reason)
+    }
+
+    /** Official UI color-scheme: `"dark"` or `"light"`. */
+    @JavascriptInterface
+    fun setColorScheme(scheme: String?) {
+        val dark = SystemUiAppearance.darkFromWebScheme(scheme) ?: return
+        onColorScheme(dark)
     }
 }

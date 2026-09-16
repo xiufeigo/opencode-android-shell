@@ -2,9 +2,13 @@ package com.xiufeigo.opencodeshell
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
@@ -47,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webSockets: NativeWebSocketHub
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var backInFlight = false
+    private var webColorSchemeApplied = false
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -158,9 +163,42 @@ class MainActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
         ViewCompat.requestApplyInsets(binding.root)
-        val bars = WindowInsetsControllerCompat(window, binding.root)
-        bars.isAppearanceLightStatusBars = true
-        bars.isAppearanceLightNavigationBars = true
+        applySystemUi(systemNightMode())
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Until the WebView reports its own color-scheme, follow system night.
+        if (!webColorSchemeApplied) {
+            applySystemUi(systemNightMode())
+        }
+    }
+
+    private fun systemNightMode(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+
+    @Suppress("DEPRECATION")
+    private fun applySystemUi(dark: Boolean) {
+        val bg = SystemUiAppearance.backgroundColor(dark)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.navigationBarDividerColor = Color.TRANSPARENT
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+        window.setBackgroundDrawable(ColorDrawable(bg))
+        binding.root.setBackgroundColor(bg)
+        if (::binding.isInitialized) {
+            binding.webView.setBackgroundColor(bg)
+        }
+        val controller = WindowInsetsControllerCompat(window, binding.root)
+        val lightBars = SystemUiAppearance.appearanceLightBars(dark)
+        controller.isAppearanceLightStatusBars = lightBars
+        controller.isAppearanceLightNavigationBars = lightBars
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
@@ -172,13 +210,17 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
         webSockets = NativeWebSocketHub(binding.webView)
-        binding.webView.addJavascriptInterface(OpenCodeAndroidBridge(gateway, webSockets), "OpenCodeAndroid")
+        binding.webView.addJavascriptInterface(
+            OpenCodeAndroidBridge(gateway, webSockets) { dark ->
+                webColorSchemeApplied = true
+                runOnUiThread { applySystemUi(dark) }
+            },
+            "OpenCodeAndroid",
+        )
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(
-                binding.webView,
-                NativeWebSocketJs.INSTALL,
-                setOf(ANDROID_WEBVIEW_ORIGIN, "http://$ASSET_HOST"),
-            )
+            val origins = setOf(ANDROID_WEBVIEW_ORIGIN, "http://$ASSET_HOST")
+            WebViewCompat.addDocumentStartJavaScript(binding.webView, NativeWebSocketJs.INSTALL, origins)
+            WebViewCompat.addDocumentStartJavaScript(binding.webView, SystemBarsJs.INSTALL, origins)
         }
 
         binding.webView.isFocusable = true
@@ -248,6 +290,7 @@ class MainActivity : AppCompatActivity() {
                 view?.evaluateJavascript(TOUCH_FIX_JS, null)
                 view?.evaluateJavascript(NativeWebSocketJs.INSTALL, null)
                 view?.evaluateJavascript(AndroidBackJs.INSTALL, null)
+                view?.evaluateJavascript(SystemBarsJs.INSTALL, null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -256,6 +299,7 @@ class MainActivity : AppCompatActivity() {
                 binding.webView.evaluateJavascript(NativeWebSocketJs.INSTALL, null)
                 binding.webView.evaluateJavascript(AndroidBackJs.INSTALL, null)
                 binding.webView.evaluateJavascript(IME_SCROLL_JS, null)
+                binding.webView.evaluateJavascript(SystemBarsJs.INSTALL, null)
                 binding.webView.requestFocus()
             }
 

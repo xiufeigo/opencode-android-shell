@@ -11,8 +11,8 @@ android {
         applicationId = "com.xiufeigo.opencodeshell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "1.3.14"
+        versionCode = 20
+        versionName = "1.3.15"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

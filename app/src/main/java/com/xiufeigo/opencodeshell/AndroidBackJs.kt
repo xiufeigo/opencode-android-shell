@@ -28,6 +28,7 @@ object AndroidBackJs {
                   var sels = [
                     '[data-component="dialog-overlay"]',
                     '[data-component="dialog-v2"]',
+                    '[data-component="android-session-context"]',
                     '[data-slot="dialog-content"]',
                     '[role="dialog"]',
                     '[data-component="popover-content"]',

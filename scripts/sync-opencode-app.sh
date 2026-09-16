@@ -82,6 +82,10 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
+    if [[ "$base" == *z-session-context* ]] && grep -q 'session-open-context' "$SRC/packages/app/src/components/session-context-usage.tsx" 2>/dev/null; then
+      echo "Already applied $base"
+      continue
+    fi
     if git -C "$SRC" apply --check "$patch" >/dev/null 2>&1; then
       git -C "$SRC" apply "$patch"
       echo "Applied $patch"
@@ -116,7 +120,7 @@ commit=$COMMIT
 source=https://github.com/anomalyco/opencode
 built_with=OPENCODE_CHANNEL=prod vite build --base ./ --sourcemap false
 android_patch=frontend/patches/*.patch
-android_patch_purpose=Desktop MemoryRouter. Portrait Settings accordion. Empty home no overflow. Offline SDK stub. IME dialog scroll. Native loopback reverse proxy (CORS not required). Dedicated origin-only proxy ports so v1 SDK absolute /api /global /event paths keep the proxy. Settings → Server row tap / 设为默认 applies the active connection. Servers via Settings → Server.
+android_patch_purpose=Desktop MemoryRouter. Portrait Settings accordion. Empty home no overflow. Offline SDK stub. IME dialog scroll. Native loopback reverse proxy (CORS not required). Dedicated origin-only proxy ports so v1 SDK absolute /api /global /event paths keep the proxy. Settings → Server row tap / 设为默认 applies the active connection. Session header context ring opens the context panel on phone-width viewports. Servers via Settings → Server.
 EOF
 
 echo "Vendored $REF ($COMMIT) into $DEST"
