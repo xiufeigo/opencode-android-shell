@@ -95,20 +95,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * ESC is for the Solid UI (close Settings/dialogs), never for leaving the process.
-     * The WebView receives the key via [super.dispatchKeyEvent]; we then consume it so
-     * no OEM mapping can turn it into Back / leaving the app.
+     * Keyboard events, including ESC, default to the focused WebView so OpenCode
+     * (and xterm/Vim) receive them. The shell does **not** register an app-wide ESC
+     * shortcut, does not map ESC to Back, and never finish()es on ESCAPE.
+     * Closing Settings is Android Back ([handleAndroidBack]), not ESC.
      */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val handled = super.dispatchKeyEvent(event)
-        if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) return true
-        return handled
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_ESCAPE) return true
-        return super.onKeyDown(keyCode, event)
-    }
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        super.dispatchKeyEvent(event)
 
     private fun handleAndroidBack(callback: OnBackPressedCallback) {
         if (backInFlight) return
@@ -428,7 +421,7 @@ class MainActivity : AppCompatActivity() {
                   root.removeAttribute('inert');
                 }
                 window.__ocAndroidShell = true;
-                window.__ocAndroidEscapeNeverExits = true;
+                window.__ocAndroidEscapePassThrough = true;
                 try {
                   if (window.OpenCodeAndroid) {
                     window.__ocAndroidProxy = {

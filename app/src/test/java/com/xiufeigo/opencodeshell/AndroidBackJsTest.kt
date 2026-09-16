@@ -29,16 +29,24 @@ class AndroidBackJsTest {
     @Test
     fun escapeNeverFinishesTheActivity() {
         assertFalse(AndroidBackJs.shouldFinishOnEscape())
+        assertFalse(AndroidBackJs.shellConsumesEscape())
         val src = File("src/main/java/com/xiufeigo/opencodeshell/MainActivity.kt").readText()
-        assertTrue(src.contains("KEYCODE_ESCAPE"))
         assertTrue(src.contains("dispatchKeyEvent"))
+        assertTrue(src.contains("return super.dispatchKeyEvent(event)"))
         assertTrue(src.contains("AndroidBackJs.INVOKE"))
         assertFalse(src.contains("finish()"))
+        assertFalse(
+            "shell must not consume ESC before the WebView / terminal",
+            src.contains("KEYCODE_ESCAPE) return true") ||
+                src.contains("keyCode == KeyEvent.KEYCODE_ESCAPE) return true"),
+        )
+        assertFalse(src.contains("override fun onKeyDown"))
         assertTrue(src.contains("evaluateJavascript(AndroidBackJs.INVOKE"))
         val js = AndroidBackJs.INSTALL
         assertTrue(js.contains("Escape"))
         assertTrue(js.contains("dialog-overlay") || js.contains("role=\"dialog\""))
         assertTrue(js.contains("__ocAndroidHandleBack"))
+        assertTrue(src.contains("__ocAndroidEscapePassThrough") || src.contains("xterm") || src.contains("Vim"))
     }
 
     @Test
@@ -48,6 +56,8 @@ class AndroidBackJsTest {
                 ?: error("README.md not found")
         val text = readme.readText()
         assertTrue(text.contains("Escape") || text.contains("ESC"))
+        assertTrue(text.contains("Vim") || text.contains("terminal") || text.contains("xterm"))
+        assertTrue(text.contains("pass") || text.contains("透传") || text.contains("does not hijack") || text.contains("not a shell shortcut"))
         assertTrue(text.contains("never") || text.contains("does not exit") || text.contains("不会退出"))
         assertTrue(text.contains("Settings") || text.contains("设置"))
     }

@@ -616,7 +616,7 @@ async function main() {
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome-1310",
+      "--user-data-dir=/tmp/oc-selftest-chrome-1311",
       "--window-size=390,844",
       "about:blank",
     ],
@@ -945,6 +945,39 @@ async function main() {
     await Bun.sleep(280)
     const afterEsc = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
     const rootBack = await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    const escPassThrough = await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        var visible = function (el) {
+          if (!el) return false;
+          var s = getComputedStyle(el);
+          if (s.display === 'none' || s.visibility === 'hidden') return false;
+          var r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        };
+        var overlay = function () {
+          return Array.from(document.querySelectorAll('[role="dialog"], [data-component="dialog-v2"]')).some(visible);
+        };
+        var ta = document.createElement('textarea');
+        ta.id = 'oc-selftest-vim';
+        ta.setAttribute('data-terminal', '1');
+        document.body.appendChild(ta);
+        ta.focus();
+        var before = { host: location.hostname, path: location.pathname, overlay: overlay(), active: document.activeElement === ta };
+        ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+        var after = { host: location.hostname, path: location.pathname, overlay: overlay(), active: document.activeElement === ta };
+        ta.remove();
+        return {
+          before: before,
+          after: after,
+          stayed: after.host === before.host && after.path === before.path,
+          didNotOpenOverlay: after.overlay === false,
+          note: 'ESC pass-through: focused terminal/editor keeps Esc; shell has no app-wide ESC shortcut. Android Back (not Esc) closes Settings.',
+        };
+      })()`,
+    )
     try {
       const shotBack = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
       if (shotBack?.data) {
@@ -1032,6 +1065,10 @@ async function main() {
       afterEsc?.overlay !== true &&
       afterEsc?.hostname === HOST &&
       afterEsc?.homeCopy === true
+    const escPassThroughOk =
+      escPassThrough?.stayed === true &&
+      escPassThrough?.didNotOpenOverlay === true &&
+      escPassThrough?.before?.host === HOST
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -1054,7 +1091,8 @@ async function main() {
       proxyOk &&
       addServerOk &&
       backOk &&
-      escOk
+      escOk &&
+      escPassThroughOk
     const report = {
       ok,
       pageUrl,
@@ -1098,6 +1136,8 @@ async function main() {
       rootBack,
       backOk,
       escOk,
+      escPassThrough,
+      escPassThroughOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       homeEmptyScreenshotPath: fs.existsSync(homeEmptyScreenshotPath) ? homeEmptyScreenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
@@ -1142,8 +1182,10 @@ async function main() {
                                 : !backOk
                                   ? "self-test failed: Back from Settings did not stay in-app / did not close overlay"
                                   : !escOk
-                                    ? "self-test failed: ESC did not close Settings (or navigated away)"
-                                    : "self-test failed: Settings control was not found or did not handle the tap",
+                                    ? "self-test failed: OpenCode UI did not close Settings on Esc (page-owned, not a shell shortcut)"
+                                    : !escPassThroughOk
+                                      ? "self-test failed: Esc on a focused terminal-like field navigated away (shell must pass Esc through)"
+                                      : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

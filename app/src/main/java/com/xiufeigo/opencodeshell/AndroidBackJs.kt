@@ -1,9 +1,12 @@
 package com.xiufeigo.opencodeshell
 
 /**
- * Forwards Android Back into the embedded OpenCode UI the same way Desktop uses Escape:
- * close one dialog/popover/menu, or pop in-app navigation. The Activity finishes only at
- * true root (home, nothing to dismiss). ESC never finishes the Activity.
+ * Forwards **Android Back** into the embedded OpenCode UI (close one dialog/popover,
+ * or pop in-app navigation). The Activity finishes only at true root.
+ *
+ * Physical **ESC is not a shell shortcut**. It must reach the WebView so xterm/Vim
+ * and OpenCode’s own keybinds can handle it. Closing Settings on Android is Back,
+ * not ESC.
  */
 object AndroidBackJs {
     const val OVERLAY = "overlay"
@@ -116,4 +119,7 @@ object AndroidBackJs {
     }
 
     fun shouldFinishOnEscape(): Boolean = false
+
+    /** Shell must not consume ESC app-wide (Vim / terminal need it). */
+    fun shellConsumesEscape(): Boolean = false
 }
