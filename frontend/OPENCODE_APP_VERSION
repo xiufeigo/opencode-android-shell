@@ -4,4 +4,4 @@ commit=014614d35b397775e5d397a490fc72368c894ec2
 source=https://github.com/anomalyco/opencode
 built_with=OPENCODE_CHANNEL=prod vite build --base ./ --sourcemap false
 android_patch=frontend/patches/*.patch
-android_patch_purpose=Do not treat the WebView asset origin as a builtin HTTP server. Provide an offline SDK stub (no fetch to 127.0.0.1:0) so Layout/ServerSDK can init with zero configured servers. Disable touch-eating tooltips on coarse pointers. Hide DEV channel chrome. Empty home opens Settings. Servers are added via Settings → Server.
+android_patch_purpose=Null-safe LayoutProvider scope (no TypeError on zero servers). Offline SDK stub never fetches :0. Coarse-pointer tooltips disabled. Full-bleed launcher. Servers via Settings → Server.

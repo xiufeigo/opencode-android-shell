@@ -150,6 +150,8 @@ const TAP_JS = `(() => {
     dialogAfterClick: !!dialog,
     pointerEvents: getComputedStyle(document.documentElement).pointerEvents,
     bodyText: (document.body.innerText || '').slice(0, 400),
+    hasScopeError: /Cannot read properties of undefined/.test(document.body.innerText || '') || /reading 'scope'/.test(document.body.innerText || ''),
+    viewportFitCover: /viewport-fit\\s*=\\s*cover/.test(document.querySelector('meta[name="viewport"]')?.content || ''),
   };
 })()`
 
@@ -187,26 +189,50 @@ async function main() {
     const { sessionId } = await cdp(ws, "Target.attachToTarget", { targetId, flatten: true })
     await cdp(ws, "Page.enable", {}, sessionId)
     await cdp(ws, "Runtime.enable", {}, sessionId)
+    const exceptions = []
+    ws.addEventListener("message", (ev) => {
+      const data = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data)
+      let msg
+      try {
+        msg = JSON.parse(data)
+      } catch {
+        return
+      }
+      if (msg.method === "Runtime.exceptionThrown" && msg.sessionId === sessionId) {
+        const desc = msg.params?.exceptionDetails?.exception?.description || msg.params?.exceptionDetails?.text || ""
+        exceptions.push(desc)
+      }
+    })
     await cdp(ws, "Page.navigate", { url: pageUrl }, sessionId)
     await Bun.sleep(8_000)
     const probe = await evaluate(ws, sessionId, TAP_JS)
+    const scopeCrash =
+      exceptions.some((e) => /reading 'scope'/.test(e)) || !!probe?.hasScopeError
     const ok =
       probe &&
       probe.hostname === HOST &&
       probe.settingsFound &&
       probe.settingsClicked &&
-      (probe.dialogAfterClick || probe.settingsClicked)
+      (probe.dialogAfterClick || probe.settingsClicked) &&
+      !scopeCrash &&
+      probe.viewportFitCover === true
     const report = {
       ok,
       pageUrl,
       probe,
       clicked: probe?.clicked ?? [],
       responded: !!(probe?.settingsClicked && (probe.dialogAfterClick || probe.settingsFound)),
+      exceptions,
+      scopeCrash,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
     if (!ok) {
-      throw new Error("self-test failed: Settings control was not found or did not handle the tap")
+      throw new Error(
+        scopeCrash
+          ? "self-test failed: LayoutProvider TypeError reading scope"
+          : "self-test failed: Settings control was not found or did not handle the tap",
+      )
     }
     ws.close()
     chrome.kill("SIGKILL")

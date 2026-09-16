@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Rasterize the official OpenCode favicon-v3 mark into Android mipmap PNGs.
 
-The SVG (packages/app/public/favicon-v3.svg) is only axis-aligned rectangles, so
-this writes lossless PNGs with the stdlib — no SVG→PNG converter required.
-
-Adaptive-icon safe zone is the center ~66% of the 108dp foreground. The official
-512 viewport window is tall enough that OEM circular/squircle masks crop to a
-white tile. Artwork is scaled toward the center so the dark field stays visible.
+Full-bleed dark canvas (#131010) with the window glyph occupying ~70% of the
+viewport so HyperOS/MIUI masks look like neighboring apps — not a white plate
+with a tiny mark.
 """
 from __future__ import annotations
 
@@ -20,12 +17,13 @@ GRAY = (0x5A, 0x58, 0x58, 0xFF)
 TRANSPARENT = (0x00, 0x00, 0x00, 0x00)
 
 # Coordinates in the 512×512 official SVG viewport.
-OUTER = (128, 96, 384, 416)  # white window chrome
-HOLE = (192, 160, 320, 352)  # inner cutout
+OUTER = (128, 96, 384, 416)
+HOLE = (192, 160, 320, 352)
 GRAY_PANE = (192, 224, 320, 352)
 
-# Keep the glyph inside the adaptive safe zone with dark padding around it.
-SCALE = 0.62
+# >1 zooms the official mark so the window is ~70% of the canvas. Dark field
+# still reaches the edges (full-bleed).
+SCALE = 1.12
 CX = CY = 256.0
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,14 +122,12 @@ def main() -> None:
         write_png(artifacts / "opencode-launcher-foreground-xxxhdpi.png", 432, render(432, round_mask=False))
 
     master = render(512)
-    # Center of the scaled glyph must be the gray pane, not a white fill.
     cx, cy = 256, 288
     assert master[cy * 512 + cx][:3] == GRAY[:3], master[cy * 512 + cx]
-    # Adaptive safe-zone edge (≈16.7% inset) must stay the dark field.
-    edge = int(512 * 0.17)
-    assert master[edge * 512 + 256][:3] == BG[:3], master[edge * 512 + 256]
-    assert master[10 * 512 + 10][:3] == BG[:3]
-    print("Wrote launcher + adaptive-foreground PNGs under", OUT)
+    # Full-bleed: corners and outer edge stay the dark field.
+    assert master[8 * 512 + 8][:3] == BG[:3]
+    assert master[8 * 512 + 256][:3] == BG[:3]
+    print("Wrote full-bleed launcher PNGs under", OUT)
 
 
 if __name__ == "__main__":

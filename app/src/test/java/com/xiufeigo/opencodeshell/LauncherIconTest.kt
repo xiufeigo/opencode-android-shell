@@ -14,6 +14,7 @@ class LauncherIconTest {
         assertEquals(192, image.width)
         assertEquals(192, image.height)
         assertMark(image)
+        assertFullBleedDark(image)
     }
 
     @Test
@@ -22,9 +23,7 @@ class LauncherIconTest {
         assertEquals(432, image.width)
         assertEquals(432, image.height)
         assertMark(image)
-        val edge = (image.width * 17) / 100
-        val pixel = image.argb(image.width / 2, edge)
-        assertTrue("safe-zone edge should be dark, got 0x${Integer.toHexString(pixel)}", isDark(pixel))
+        assertFullBleedDark(image)
     }
 
     @Test
@@ -55,6 +54,18 @@ class LauncherIconTest {
         assertTrue("missing white window chrome: $white", white > 100)
         assertTrue("missing gray inner pane: $gray", gray > 50)
         assertTrue("icon is a white square ($white white of $total)", white < total / 2)
+    }
+
+    private fun assertFullBleedDark(image: PngImage) {
+        val inset = image.width / 20
+        for (x in listOf(inset, image.width - 1 - inset)) {
+            for (y in listOf(inset, image.height - 1 - inset)) {
+                val p = image.argb(x, y)
+                assertTrue("corner/edge 0x${Integer.toHexString(p)} at $x,$y should be dark full-bleed", isDark(p))
+            }
+        }
+        val top = image.argb(image.width / 2, inset)
+        assertTrue("top edge should be dark, got 0x${Integer.toHexString(top)}", isDark(top))
     }
 
     private fun isDark(p: Int): Boolean {

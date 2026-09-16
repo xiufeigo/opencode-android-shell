@@ -25,6 +25,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
 import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
@@ -90,13 +91,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun padWebViewForCutout() {
-        ViewCompat.setOnApplyWindowInsetsListener(binding.webView) { view, insets ->
+        // Pad the root, not the WebView. WebView ignores view padding on many
+        // OEM builds (including HyperOS), which previously drew titlebar under
+        // the status bar.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+                WindowInsetsCompat.Type.statusBars() or
+                    WindowInsetsCompat.Type.navigationBars() or
+                    WindowInsetsCompat.Type.displayCutout(),
             )
             view.updatePadding(left = bars.left, top = bars.top, right = bars.right, bottom = bars.bottom)
-            insets
+            WindowInsetsCompat.CONSUMED
         }
+        ViewCompat.requestApplyInsets(binding.root)
+        val bars = WindowInsetsControllerCompat(window, binding.root)
+        bars.isAppearanceLightStatusBars = true
+        bars.isAppearanceLightNavigationBars = true
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")

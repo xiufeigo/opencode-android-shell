@@ -1,16 +1,53 @@
 diff --git a/packages/app/src/context/layout.tsx b/packages/app/src/context/layout.tsx
-index 6235f35..32c6bc7 100644
+index 6235f35..e6a80ff 100644
 --- a/packages/app/src/context/layout.tsx
 +++ b/packages/app/src/context/layout.tsx
-@@ -267,7 +267,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+@@ -24,6 +24,16 @@ import { closeSessionTab, openSessionTab, previewSessionTab, type SessionTabs }
+ 
+ export { createSessionKeyReader, ensureSessionKey, pruneSessionKeys }
+ 
++/** Layout persist must not throw when ServerSDK is still empty (zero configured servers). */
++function readSdkScope(serverSdk: { (): { scope?: ServerScope } | undefined } | { scope?: ServerScope } | undefined) {
++  try {
++    const sdk = typeof serverSdk === "function" ? serverSdk() : serverSdk
++    return sdk?.scope ?? ServerScope.local
++  } catch {
++    return ServerScope.local
++  }
++}
++
+ export type { ProjectAvatarVariant }
+ 
+ const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
+@@ -267,7 +277,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
        }
      }
  
 -    const target = Persist.serverGlobal(serverSdk().scope, "layout", ["layout.v6"])
-+    const target = Persist.serverGlobal(serverSdk()?.scope ?? ServerScope.local, "layout", ["layout.v6"])
++    const target = Persist.serverGlobal(readSdkScope(serverSdk), "layout", ["layout.v6"])
      const [store, setStore, _, ready] = persisted(
        { ...target, migrate },
        createStore({
+@@ -572,8 +582,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+ 
+         const projectID = project.id
+         void (async () => {
+-          const sdk = serverSdk()
+-          if ((await sdk.protocol) !== "v1") return
++          const sdk = typeof serverSdk === "function" ? serverSdk() : serverSdk
++          if (!sdk || (await sdk.protocol) !== "v1") return
+           return sdk.client.project
+             .update({ projectID, directory: worktree, icon: { color } })
+             .then((response) => response.data)
+@@ -623,7 +633,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+       handoff: {
+         tabs: createMemo(() => store.handoff?.tabs),
+         setTabs(dir: string, id: string) {
+-          setStore("handoff", "tabs", { scope: serverSdk().scope, dir, id, at: Date.now() })
++          setStore("handoff", "tabs", { scope: readSdkScope(serverSdk), dir, id, at: Date.now() })
+         },
+         clearTabs() {
+           if (!store.handoff?.tabs) return
 diff --git a/packages/app/src/context/notification.tsx b/packages/app/src/context/notification.tsx
 index 799c471..2da522d 100644
 --- a/packages/app/src/context/notification.tsx
@@ -88,7 +125,7 @@ index d6d8019..2da778d 100644
      }
      const activeDirectory = createMemo(() => {
 diff --git a/packages/app/src/context/server-sdk.tsx b/packages/app/src/context/server-sdk.tsx
-index 7dd2a6e..77b832b 100644
+index 7dd2a6e..670a00d 100644
 --- a/packages/app/src/context/server-sdk.tsx
 +++ b/packages/app/src/context/server-sdk.tsx
 @@ -5,9 +5,14 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
@@ -186,7 +223,7 @@ index 7dd2a6e..77b832b 100644
          ...opts,
        })
      },
-@@ -389,12 +401,10 @@ export const { use: useServerSDK, provider: ServerSDKProvider } = createSimpleCo
+@@ -389,13 +401,15 @@ export const { use: useServerSDK, provider: ServerSDKProvider } = createSimpleCo
    // /new-session draft retargeting its server) without re-instantiating the subtree.
    init: (props: { server?: Accessor<ServerConnection.Any | undefined> }) => {
      const global = useGlobal()
@@ -196,10 +233,16 @@ index 7dd2a6e..77b832b 100644
      return createMemo<ServerSDK>(() => {
 -      const conn = props.server?.() ?? server.current
 -      if (!conn) throw new Error(language.t("error.serverSDK.noServerAvailable"))
-+      const conn = props.server?.() ?? server.current ?? DISCONNECTED_HTTP_SERVER
-       return global.ensureServerCtx(conn).sdk
+-      return global.ensureServerCtx(conn).sdk
++      try {
++        const conn = props.server?.() ?? server.current ?? DISCONNECTED_HTTP_SERVER
++        return global.ensureServerCtx(conn).sdk
++      } catch {
++        return global.ensureServerCtx(DISCONNECTED_HTTP_SERVER).sdk
++      }
      })
    },
+ })
 diff --git a/packages/app/src/context/server-sync.tsx b/packages/app/src/context/server-sync.tsx
 index 13a0b74..16cc234 100644
 --- a/packages/app/src/context/server-sync.tsx
