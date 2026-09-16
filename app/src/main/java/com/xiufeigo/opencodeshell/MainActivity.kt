@@ -12,9 +12,9 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -25,20 +25,24 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsStore
+    private lateinit var assetLoader: WebViewAssetLoader
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var httpAuthAttempts = 0
-    private var loadedUrl: String? = null
 
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
-    ) {
-        maybeLoadConfiguredUrl(force = true)
+    ) { result ->
+        if (result.resultCode == RESULT_OK && settings.hasServerUrl) {
+            loadEmbeddedFrontend(applyBootstrap = true)
+        }
     }
 
     private val fileChooserLauncher = registerForActivityResult(
@@ -56,12 +60,16 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+
         hideSystemBars()
         padOverlayForCutout()
         configureWebView()
 
         binding.settingsButton.setOnClickListener { openSettings() }
-        binding.errorRetry.setOnClickListener { binding.webView.reload() }
+        binding.errorRetry.setOnClickListener { loadEmbeddedFrontend(applyBootstrap = settings.hasServerUrl) }
         binding.errorSettings.setOnClickListener { openSettings() }
 
         onBackPressedDispatcher.addCallback(
@@ -80,41 +88,45 @@ class MainActivity : AppCompatActivity() {
 
         if (!settings.hasServerUrl) {
             openSettings()
-        } else {
-            maybeLoadConfiguredUrl(force = true)
         }
+        loadEmbeddedFrontend(applyBootstrap = false)
     }
 
     override fun onResume() {
         super.onResume()
         hideSystemBars()
-        if (!settings.hasServerUrl) {
-            showError(getString(R.string.error_no_server))
-        } else if (loadedUrl != settings.serverUrl) {
-            maybeLoadConfiguredUrl(force = true)
-        }
+        binding.webView.requestFocus()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemBars()
+        if (hasFocus) {
+            hideSystemBars()
+            binding.webView.requestFocus()
+        }
     }
 
     private fun openSettings() {
         settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
     }
 
-    private fun maybeLoadConfiguredUrl(force: Boolean) {
-        val parsed = ServerUrl.parse(settings.serverUrl).getOrNull()
-        if (parsed == null) {
-            showError(getString(R.string.error_no_server))
-            return
-        }
-        if (!force && parsed.value == loadedUrl) return
-        loadedUrl = parsed.value
+    private fun loadEmbeddedFrontend(applyBootstrap: Boolean) {
         httpAuthAttempts = 0
         hideError()
-        binding.webView.loadUrl(parsed.value, settings.extraHeaders())
+        val url = if (applyBootstrap && settings.hasServerUrl) {
+            val builder = Uri.parse(EMBEDDED_BOOTSTRAP_URL).buildUpon()
+                .appendQueryParameter("server", settings.serverUrl)
+            if (settings.username.isNotBlank()) {
+                builder.appendQueryParameter("username", settings.username)
+            }
+            if (settings.password.isNotBlank()) {
+                builder.appendQueryParameter("password", settings.password)
+            }
+            builder.build().toString()
+        } else {
+            EMBEDDED_INDEX_URL
+        }
+        binding.webView.loadUrl(url)
     }
 
     private fun hideSystemBars() {
@@ -135,7 +147,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun configureWebView() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
@@ -143,11 +155,16 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
+        binding.webView.isFocusable = true
+        binding.webView.isFocusableInTouchMode = true
+        binding.webView.isLongClickable = true
+        binding.webView.setOnLongClickListener { false }
+
         binding.webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             javaScriptCanOpenWindowsAutomatically = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             mediaPlaybackRequiresUserGesture = false
             loadWithOverviewMode = true
             useWideViewPort = true
@@ -156,19 +173,32 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = false
             allowContentAccess = true
             cacheMode = WebSettings.LOAD_DEFAULT
+            setSupportMultipleWindows(true)
+            setNeedInitialFocus(true)
         }
 
-        binding.webView.webViewClient = object : WebViewClient() {
+        binding.webView.webViewClient = object : WebViewClientCompat() {
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest,
+            ): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request.url)
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
             ): Boolean {
-                val scheme = request.url.scheme?.lowercase()
-                return if (scheme == "http" || scheme == "https") {
-                    false
-                } else {
-                    true
+                val uri = request.url
+                if (uri.host == ASSET_HOST) return false
+                val scheme = uri.scheme?.lowercase()
+                if (scheme == "blob" || scheme == "data" || scheme == "about") return false
+                if (scheme != "http" && scheme != "https") return true
+                if (request.isForMainFrame) {
+                    openExternal(uri)
+                    return true
                 }
+                return false
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -179,6 +209,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 httpAuthAttempts = 0
                 CookieManager.getInstance().flush()
+                binding.webView.requestFocus()
             }
 
             override fun onReceivedHttpAuthRequest(
@@ -198,7 +229,6 @@ class MainActivity : AppCompatActivity() {
                         R.string.error_auth_failed,
                         Toast.LENGTH_LONG,
                     ).show()
-                    openSettings()
                 }
             }
 
@@ -208,12 +238,14 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError,
             ) {
                 if (!request.isForMainFrame) return
-                showError(
-                    getString(
-                        R.string.error_load_failed,
-                        error.description ?: error.errorCode.toString(),
-                    ),
-                )
+                if (request.url.host == ASSET_HOST) {
+                    showError(
+                        getString(
+                            R.string.error_load_failed,
+                            error.description ?: error.errorCode.toString(),
+                        ),
+                    )
+                }
             }
         }
 
@@ -221,6 +253,29 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 binding.progress.progress = newProgress
                 binding.progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
+            }
+
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: android.os.Message?,
+            ): Boolean {
+                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                val temp = WebView(this@MainActivity).apply {
+                    webViewClient = object : android.webkit.WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            v: WebView,
+                            request: WebResourceRequest,
+                        ): Boolean {
+                            openExternal(request.url)
+                            return true
+                        }
+                    }
+                }
+                transport.webView = temp
+                resultMsg.sendToTarget()
+                return true
             }
 
             override fun onShowFileChooser(
@@ -245,6 +300,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openExternal(uri: Uri) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+        } catch (_: Exception) {
+            Toast.makeText(this, uri.toString(), Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun showError(message: String) {
         binding.errorPanel.visibility = View.VISIBLE
         binding.errorMessage.text = message
@@ -252,5 +315,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideError() {
         binding.errorPanel.visibility = View.GONE
+    }
+
+    companion object {
+        const val ASSET_HOST = "appassets.androidplatform.net"
+        const val EMBEDDED_ORIGIN = "https://$ASSET_HOST"
+        const val EMBEDDED_INDEX_URL = "https://$ASSET_HOST/assets/opencode-app/index.html"
+        const val EMBEDDED_BOOTSTRAP_URL = "https://$ASSET_HOST/assets/opencode-app/bootstrap.html"
     }
 }

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OpenCode Shell</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search)
+        var url = params.get("server")
+        if (url) {
+          var username = params.get("username") || ""
+          var password = params.get("password") || ""
+          localStorage.setItem("opencode.settings.dat:defaultServerUrl", url)
+          var storeKey = "opencode.global.dat:server"
+          var store = null
+          try {
+            store = JSON.parse(localStorage.getItem(storeKey) || "null")
+          } catch (e) {
+            store = null
+          }
+          if (!store || typeof store !== "object") {
+            store = { list: [], projects: {}, lastProject: {}, recentlyClosed: {} }
+          }
+          if (!Array.isArray(store.list)) store.list = []
+          if (!store.projects) store.projects = {}
+          if (!store.lastProject) store.lastProject = {}
+          if (!store.recentlyClosed) store.recentlyClosed = {}
+          var conn = { type: "http", http: { url: url } }
+          if (username) conn.http.username = username
+          if (password) conn.http.password = password
+          var idx = store.list.findIndex(function (item) {
+            var itemUrl =
+              typeof item === "string" ? item : item && item.http && item.http.url ? item.http.url : item && item.url
+            return itemUrl === url
+          })
+          if (idx >= 0) store.list[idx] = conn
+          else store.list.push(conn)
+          localStorage.setItem(storeKey, JSON.stringify(store))
+        }
+        location.replace("./index.html")
+      })()
+    </script>
+  </body>
+</html>

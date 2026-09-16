@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OpenCode Shell</string>
-    <string name="settings_title">Settings</string>
-    <string name="settings_intro">Point this shell at an OpenCode web backend on your LAN. On the PC, run:\n\nopencode web --hostname 0.0.0.0 --port 4096</string>
+    <string name="settings_title">Connect server</string>
+    <string name="settings_intro">First-run helper: seed the official OpenCode Server list. After this, add/list/default servers inside the app (Settings → Server).\n\nOn the PC, allow this app origin:\n\nopencode serve --hostname 0.0.0.0 --port 4096 --cors https://appassets.androidplatform.net</string>
     <string name="server_url_hint">Server URL</string>
     <string name="server_url_helper">Example: http://192.168.1.10:4096</string>
     <string name="username_hint">Username (optional Basic Auth)</string>

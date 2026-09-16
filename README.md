@@ -1,103 +1,144 @@
-# OpenCode Shell
+# OpenCode Shell (Route B)
 
-Thin fullscreen Android WebView that loads a remote [OpenCode](https://opencode.ai) **web backend**. The backend already serves the UI same-origin — this app does **not** vendor or rebuild the SolidJS frontend.
-
-Route A: point the APK at `http(s)://host:port` where you run:
-
-```bash
-opencode web --hostname 0.0.0.0 --port 4096
-```
+Android wrapper that **embeds** the official OpenCode V2 frontend (`@opencode-ai/app`, SolidJS + Vite) and talks to a user-configured LAN backend. This is not a thin remote `opencode web` tab: the UI ships inside the APK (same family of UI as OpenCode Desktop).
 
 Package id: `com.xiufeigo.opencodeshell`  
 Min SDK: 26 (Android 8.0)
+
+Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VERSION) (currently **v1.18.31**).
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│  Android WebView                            │
+│  origin: https://appassets.androidplatform.net │
+│  assets: official packages/app dist         │
+│  Server list / default / Basic Auth:        │
+│    official Settings → Server UI            │
+└───────────────────┬─────────────────────────┘
+                    │ fetch / CORS
+                    ▼
+┌─────────────────────────────────────────────┐
+│  PC: opencode serve (or opencode web)       │
+│  http://192.168.x.x:4096                    │
+│  --cors https://appassets.androidplatform.net │
+└─────────────────────────────────────────────┘
+```
+
+- Production `packages/app` uses `location.origin` as the fallback backend. Inside this app that origin is **not** the agent, so a small first-run helper writes the official keys:
+  - `opencode.settings.dat:defaultServerUrl`
+  - `opencode.global.dat:server` (list + username/password)
+- After that, **add / list / default server** is the official in-app Server UI (Desktop-like). The gear overlay re-runs the bootstrap helper if the backend URL changed.
+- The agent **does not** run inside the APK.
+
+## Run the backend (PC)
+
+Prefer headless API + CORS (UI is already in the APK):
+
+```bash
+opencode serve --hostname 0.0.0.0 --port 4096 --cors https://appassets.androidplatform.net
+```
+
+`opencode web` also works if you pass the same `--hostname` / `--cors`. Binding `127.0.0.1` is not reachable from the tablet.
+
+Optional Basic Auth:
+
+```bash
+OPENCODE_SERVER_USERNAME=opencode OPENCODE_SERVER_PASSWORD=secret \
+  opencode serve --hostname 0.0.0.0 --port 4096 --cors https://appassets.androidplatform.net
+```
+
+Persist CORS in `opencode.json` if you prefer:
+
+```json
+{
+  "server": {
+    "port": 4096,
+    "hostname": "0.0.0.0",
+    "cors": ["https://appassets.androidplatform.net"]
+  }
+}
+```
+
+Phone/tablet and PC must share Wi-Fi. Allow TCP **4096** on the PC firewall.
+
+**CORS is required.** The embedded UI is a different origin from `http://192.168.x.x:4096`. Without `--cors https://appassets.androidplatform.net`, the WebView will not be allowed to call the API.
+
+## Point the app at the backend
+
+1. Install OpenCode Shell and open it.
+2. First launch asks for **Server URL** (example `http://192.168.1.10:4096`) and optional Basic Auth. Save.
+3. The official UI loads from APK assets and connects to that backend.
+4. Later, use **OpenCode Settings → Server** to add more servers, set the default, and edit username/password (same fields as Desktop).
+5. The small gear is only the native bootstrap helper (re-seed default server). It is not a second full settings app.
 
 ## Build a debug APK
 
 ### Android Studio
 
-1. Install [Android Studio](https://developer.android.com/studio) (Koala / Ladybug or newer) with Android SDK 35 and JDK 17+.
-2. **File → Open** this repository root (the folder that contains `settings.gradle.kts`).
-3. Wait for Gradle sync.
-4. **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
-5. Install from the IDE (**Run**) or grab the APK at:
+1. JDK 17+ and Android SDK 35.
+2. **File → Open** this repo root (`settings.gradle.kts`).
+3. **Build → Build APK(s)**.
+4. Output: `app/build/outputs/apk/debug/app-debug.apk`
 
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-### Gradle (CLI)
-
-Need JDK 17+ and an Android SDK. Create `local.properties` in the repo root (Android Studio does this automatically):
+### Gradle CLI
 
 ```properties
+# local.properties
 sdk.dir=/path/to/Android/sdk
 ```
 
-Then:
-
 ```bash
-chmod +x gradlew   # once, on macOS / Linux
+chmod +x gradlew
 ./gradlew assembleDebug
 ```
 
-APK output:
+Windows: `gradlew.bat assembleDebug`.
 
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
+## Bump the OpenCode frontend
 
-Install on a device (USB debugging on):
+Needs [bun](https://bun.sh) and git.
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+chmod +x scripts/sync-opencode-app.sh
+OPENCODE_REF=v1.18.31 ./scripts/sync-opencode-app.sh
 ```
 
-Windows: use `gradlew.bat assembleDebug`.
+That clones `anomalyco/opencode` at the tag, runs `vite build --base ./ --sourcemap false` in `packages/app`, copies `dist/` into `app/src/main/assets/opencode-app/`, restores `frontend/bootstrap.html`, and updates `frontend/OPENCODE_APP_VERSION`.
 
-## Run OpenCode web on a PC
+Then `./gradlew assembleDebug`. Commit the vendored assets with the pin file.
 
-On the machine that should host the agent / UI:
+Do not hand-edit files under `app/src/main/assets/opencode-app/` except `bootstrap.html` (kept in `frontend/bootstrap.html`).
 
-```bash
-opencode web --hostname 0.0.0.0 --port 4096
-```
+## Keyboard, mouse, right-click (Xiaomi Pad)
 
-`--hostname 0.0.0.0` is required so a phone on the LAN can connect (binding to `127.0.0.1` only works on that PC).
+The page is Chromium WebView, not OpenCode Desktop / Electron.
 
-Optional HTTP Basic Auth is typically added by a reverse proxy in front of that port. If you use it, enter the same username and password in the app Settings.
+| Input | What to expect |
+| --- | --- |
+| USB / Bluetooth keyboard | Character keys and many Ctrl/Cmd shortcuts reach the Solid app when the WebView has focus. |
+| Ctrl+C / Ctrl+V | Usually work. Some OEM shortcuts are swallowed by HyperOS. |
+| Function keys, Alt+Tab | Often captured by the system, not the page. |
+| Mouse left click / scroll | Works. |
+| Mouse right-click | OpenCode’s own `contextmenu` handlers can fire on recent Android System WebView. There is **no** desktop browser chrome menu (Inspect, Open in new tab, etc.). Long-press is still the touch equivalent. |
+| Hover tooltips | Depend on the pointer stack; not as complete as Desktop. |
 
-Find the PC’s LAN IP:
+Keep the WebView focused (tap the UI once after attaching a keyboard).
 
-- macOS / Linux: `ip addr` or `ifconfig` (look for `192.168.x.x` / `10.x.x.x`)
-- Windows: `ipconfig`
+## HyperOS / Xiaomi notes
 
-Phone and PC must be on the **same Wi-Fi / LAN**. Allow TCP **4096** through the PC firewall if the app cannot connect.
-
-## Point the app at the backend
-
-1. Install and open **OpenCode Shell**.
-2. First launch opens **Settings**.
-3. Set **Server URL**, for example `http://192.168.1.10:4096`.
-4. Optionally set username / password for HTTP Basic Auth (stored in EncryptedSharedPreferences).
-5. **Save**. The WebView loads that URL fullscreen (no browser chrome).
-6. Re-open Settings anytime via the small gear overlay in the top-right.
-
-Hardware back walks WebView history and exits the app only at the root page.
-
-## HyperOS / Xiaomi notes (optional)
-
-HyperOS (and some other OEM skins) can pause apps or block LAN access in the background. If the WebView drops the session or cannot reach the PC:
-
-- **Settings → Apps → OpenCode Shell → Battery** → set to **Unrestricted** / no restrictions (optional, only if you see kills).
+- **Settings → Apps → OpenCode Shell → Battery** → Unrestricted if the session dies in the background.
 - Allow **LAN / local network** if a privacy toggle appears.
-- Autostart is **not** required for this shell; it does not run an agent inside the APK.
+- Install unknown sources to sideload the debug APK.
+- Autostart is not required; the agent stays on the PC.
 
 ## Security
 
-- Credentials never belong in git. `local.properties`, keystores, and `*.jks` are gitignored.
-- Cleartext HTTP is allowed on purpose so LAN `http://192.168.x.x:4096` works (see `app/src/main/res/xml/network_security_config.xml`).
-- Prefer staying on a trusted network. HTTPS + Basic Auth (or a tunnel) is stronger if the backend is exposed beyond LAN.
+- First-run credentials sit in EncryptedSharedPreferences and are copied into the official WebView `localStorage` server list (same place Desktop’s web entry uses).
+- Cleartext HTTP is enabled for LAN (`network_security_config.xml`) and mixed content is allowed because the UI origin is HTTPS while the API is often `http://192.168.x.x`.
+- Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS + Basic Auth.
 
 ## License
 
-MIT
+MIT. Vendored OpenCode frontend remains under OpenCode’s own license (MIT in `@opencode-ai/app`).
