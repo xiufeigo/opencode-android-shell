@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Keyboard events, including ESC, default to the focused WebView so OpenCode
      * (and xterm/Vim) receive them. The shell does **not** register an app-wide ESC
-     * shortcut, does not map ESC to Back, and never finish()es on ESCAPE.
+     * shortcut, does not map ESC to Back, and never leaves the process on ESCAPE.
      * Closing Settings is Android Back ([handleAndroidBack]), not ESC.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
