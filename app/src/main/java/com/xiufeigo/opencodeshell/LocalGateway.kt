@@ -18,6 +18,8 @@ import java.net.Socket
 import java.net.URI
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -30,6 +32,12 @@ import javax.net.ssl.SSLSocketFactory
  * `http://127.0.0.1:<port>/opencode-proxy/<token>/<encoded-backend>/...`
  * so the remote OpenCode server never has to allow the WebView CORS origin.
  * OkHttp performs the real HTTPS (Basic Auth, redirects, SSE streams).
+ *
+ * Official v1 `OpenCode.make` joins with `new URL('/api/...', baseUrl)`, which
+ * drops any path prefix. [originFor] therefore also binds a **dedicated**
+ * loopback port per backend so `baseUrl` can be origin-only
+ * (`http://127.0.0.1:<dedicated>`). Absolute `/api`, `/global`, `/event`, and
+ * `/pty` paths then stay on the proxy.
  */
 class LocalGateway(
     private val httpClient: OkHttpClient = defaultClient(),
@@ -42,10 +50,49 @@ class LocalGateway(
     private var executor: ExecutorService? = null
     var port: Int = -1
         private set
+    private val dedicatedLock = Any()
+    private val backendPorts = ConcurrentHashMap<String, Int>()
+    private val portBackends = ConcurrentHashMap<Int, String>()
+    private val extraSockets = CopyOnWriteArrayList<ServerSocket>()
 
     fun publicOrigin(): String = "http://127.0.0.1:$port"
 
     fun publicPrefix(): String = ProxyPath.publicPrefix(token)
+
+    fun isBoundPort(candidate: Int): Boolean =
+        candidate == port || portBackends.containsKey(candidate)
+
+    /**
+     * Origin-only loopback URL bound to [backendUrl]. Safe as SDK `baseUrl` for
+     * WHATWG `new URL('/api/provider', base)` used by the v1 OpenCode client.
+     */
+    fun originFor(backendUrl: String): String {
+        if (!running.get()) start()
+        val backend = backendUrl.trim().trimEnd('/')
+        backendPorts[backend]?.let { return "http://127.0.0.1:$it" }
+        synchronized(dedicatedLock) {
+            backendPorts[backend]?.let { return "http://127.0.0.1:$it" }
+            val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+            extraSockets.add(socket)
+            val dedicatedPort = socket.localPort
+            backendPorts[backend] = dedicatedPort
+            portBackends[dedicatedPort] = backend
+            val pool = executor
+            val accept = Runnable {
+                while (running.get()) {
+                    try {
+                        val client = socket.accept()
+                        pool?.execute { handleClient(client, backend) }
+                    } catch (ioe: IOException) {
+                        if (running.get()) Log.w(TAG, "dedicated accept failed: ${ioe.message}")
+                    }
+                }
+            }
+            if (pool != null) pool.execute(accept) else Thread(accept, "oc-gateway-dedicated").apply { isDaemon = true }.start()
+            Log.i(TAG, "dedicated origin http://127.0.0.1:$dedicatedPort -> $backend")
+            return "http://127.0.0.1:$dedicatedPort"
+        }
+    }
 
     fun start() {
         if (running.get()) return
@@ -61,7 +108,7 @@ class LocalGateway(
             while (running.get()) {
                 try {
                     val client = socket.accept()
-                    pool.execute { handleClient(client) }
+                    pool.execute { handleClient(client, boundBackend = null) }
                 } catch (ioe: IOException) {
                     if (running.get()) Log.w(TAG, "accept failed: ${ioe.message}")
                 }
@@ -77,11 +124,20 @@ class LocalGateway(
         } catch (_: Exception) {
         }
         serverSocket = null
+        for (extra in extraSockets) {
+            try {
+                extra.close()
+            } catch (_: Exception) {
+            }
+        }
+        extraSockets.clear()
+        backendPorts.clear()
+        portBackends.clear()
         executor?.shutdownNow()
         executor = null
     }
 
-    private fun handleClient(socket: Socket) {
+    private fun handleClient(socket: Socket, boundBackend: String?) {
         socket.soTimeout = 0
         socket.tcpNoDelay = true
         try {
@@ -90,7 +146,8 @@ class LocalGateway(
                 val output = sock.getOutputStream()
                 val parsed = readHttpRequest(input) ?: return
                 val origin = parsed.headers.entries.firstOrNull { it.key.equals("origin", true) }?.value
-                if (parsed.method == "OPTIONS" && ProxyPath.isProxyPath(parsed.path)) {
+                val proxyPath = ProxyPath.isProxyPath(parsed.path)
+                if (parsed.method == "OPTIONS" && (boundBackend != null || proxyPath)) {
                     writeStatus(
                         output,
                         204,
@@ -99,7 +156,12 @@ class LocalGateway(
                     )
                     return
                 }
-                val target = ProxyPath.parse(parsed.path, parsed.query, token)
+                val target = if (boundBackend != null) {
+                    val upstreamPath = parsed.path.ifEmpty { "/" }
+                    ProxyPath.Target(backendBase = boundBackend, upstreamPath = upstreamPath, query = parsed.query)
+                } else {
+                    ProxyPath.parse(parsed.path, parsed.query, token)
+                }
                 if (target == null) {
                     val body = """{"error":"unknown proxy path"}"""
                     writeStatus(

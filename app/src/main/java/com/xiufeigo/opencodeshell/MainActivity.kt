@@ -392,8 +392,11 @@ class MainActivity : AppCompatActivity() {
         binding.errorPanel.visibility = View.GONE
     }
 
-    private fun isLocalGateway(uri: Uri): Boolean =
-        isLocalGateway(uri, gateway.port)
+    private fun isLocalGateway(uri: Uri): Boolean {
+        val host = uri.host ?: return false
+        if (host != "127.0.0.1" && host != "localhost") return false
+        return gateway.isBoundPort(uri.port)
+    }
 
     companion object {
         const val ASSET_HOST = "appassets.androidplatform.net"

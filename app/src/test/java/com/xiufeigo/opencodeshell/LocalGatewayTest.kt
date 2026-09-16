@@ -130,6 +130,80 @@ class LocalGatewayTest {
     }
 
     @Test
+    fun dedicatedOriginKeepsAbsoluteApiPathsWithoutProxyPrefix() {
+        MockWebServer().use { upstream ->
+            upstream.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"all":{"openai":{"id":"openai","name":"OpenAI","models":{}}},"connected":["openai"],"default":{}}"""),
+            )
+            upstream.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"models":[{"id":"gpt-4o","providerID":"openai"}]}"""),
+            )
+            upstream.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"theme":"system"}"""),
+            )
+            upstream.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "text/event-stream")
+                    .setBody("data: {\"type\":\"server.connected\"}\n\n"),
+            )
+            LocalGateway(httpClient = OkHttpClient()).use { gateway ->
+                gateway.start()
+                val originHeader = "https://appassets.androidplatform.net"
+                val backend = upstream.url("/").toString().trimEnd('/')
+                val origin = gateway.originFor(backend)
+                assertTrue(origin.startsWith("http://127.0.0.1:"))
+                assertFalse(origin.contains("opencode-proxy"))
+                assertTrue(gateway.isBoundPort(java.net.URI(origin).port))
+
+                // WHATWG `new URL('/api/provider', origin)` — the v1 client join.
+                val providerUrl = java.net.URI(origin + "/").resolve("/api/provider").toString()
+                val providers = OkHttpClient().newCall(
+                    Request.Builder()
+                        .url(providerUrl)
+                        .header("Origin", originHeader)
+                        .header("Authorization", "Basic dXNlcjpwYXNz")
+                        .build(),
+                ).execute()
+                assertEquals(200, providers.code)
+                assertTrue(providers.body!!.string().contains("openai"))
+                val recordedProviders = upstream.takeRequest()
+                assertEquals("/api/provider", recordedProviders.path)
+                assertEquals("Basic dXNlcjpwYXNz", recordedProviders.getHeader("Authorization"))
+                assertEquals(null, recordedProviders.getHeader("Origin"))
+
+                val models = OkHttpClient().newCall(
+                    Request.Builder().url("$origin/api/model").header("Origin", originHeader).build(),
+                ).execute()
+                assertEquals(200, models.code)
+                assertEquals("/api/model", upstream.takeRequest().path)
+
+                val config = OkHttpClient().newCall(
+                    Request.Builder().url("$origin/global/config").header("Origin", originHeader).build(),
+                ).execute()
+                assertEquals(200, config.code)
+                assertEquals("/global/config", upstream.takeRequest().path)
+
+                val events = OkHttpClient().newCall(
+                    Request.Builder().url("$origin/event").header("Origin", originHeader).build(),
+                ).execute()
+                assertEquals(200, events.code)
+                assertTrue(events.body!!.string().contains("server.connected"))
+                assertEquals("/event", upstream.takeRequest().path)
+            }
+        }
+    }
+
+    @Test
     fun corsAllowList() {
         assertEquals(
             "https://appassets.androidplatform.net",

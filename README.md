@@ -21,12 +21,15 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 │  Servers: Settings → Server (stores the REAL backend URL)│
 └────────────────────────┬─────────────────────────────────┘
                          │ fetch / SSE / WebSocket
-                         │ http://127.0.0.1:<port>/opencode-proxy/<token>/<encoded-real-url>/...
+                         │ dedicated: http://127.0.0.1:<per-backend-port>/api|/global|/event|/pty/...
+                         │ mux fallback: /opencode-proxy/<token>/<encoded-real-url>/...
                          ▼
 ┌──────────────────────────────────────────────────────────┐
 │  In-app LocalGateway (loopback, OkHttp)                  │
-│  strips Origin; forwards method/path/query/body/auth     │
-│  streams SSE without buffering the whole body            │
+│  origin-only port per backend (v1 `new URL('/api', base)`│
+│  keeps the proxy) + path-encoded mux; strips Origin;     │
+│  forwards method/path/query/body/auth; streams SSE       │
+│  without buffering the whole body                        │
 └────────────────────────┬─────────────────────────────────┘
                          │ HTTPS (Basic Auth, redirects)
                          ▼
@@ -164,11 +167,12 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **「添加服务器」fields hidden behind the keyboard:** `versionCode` 13 / **1.3.8** pads IME insets and scrolls the focused input into view.
 - **「无法连接到服务器」while browser/Desktop work:** `versionCode` 14 / **1.3.9** reverse-proxies API/SSE in-app. The backend no longer needs CORS for `https://appassets.androidplatform.net`. Uninstall then reinstall if you are sideloading over an older debug APK.
 - **Back from Settings exits to the launcher:** `versionCode` 15 / **1.3.10** forwards Android Back into the page (closes Settings). `versionCode` 16 / **1.3.11** does **not** consume ESC in the shell — Vim/terminal Esc pass through; only Back closes overlays / may exit at root.
+- **Providers / Models empty after selecting a server (1.3.9–1.3.11):** official v1 `OpenCode.make` joins with `new URL('/api/...', baseUrl)`, which dropped `/opencode-proxy/<token>/<enc>`. Health still worked because it falls back to the v2 SDK (string concat) and `/global/health`. **1.3.12** binds a dedicated loopback origin per backend so `/api/provider`, `/api/model`, `/api/session`, `/global/*`, `/event`, and `/pty` stay on the proxy; fetch also restores a lost mux prefix. Protocol probes go through the proxy (not the real URL, so CORS is still unused).
 
 ## Security
 
 - Server URLs and Basic Auth live in the official WebView `localStorage` server list (same place Desktop’s web entry uses). The stored URL is the real backend; only runtime fetches use `127.0.0.1/opencode-proxy/...`.
-- The loopback gateway binds `127.0.0.1` only and requires a per-process path token.
+- The loopback gateway binds `127.0.0.1` only. The mux URL still requires a per-process path token; each selected backend also gets a dedicated ephemeral port (still loopback-only) so SDK absolute paths cannot skip the proxy.
 - Cleartext HTTP is enabled for LAN (`network_security_config.xml`) and mixed content is allowed because the UI origin is HTTPS while the proxy and many LAN APIs are `http://127.0.0.1` / `http://192.168.x.x`.
 - HTTPS backends use the **system** certificate store plus **user**-installed CAs (Settings → Security → Encryption & credentials). Custom private CAs work after the user installs the cert; the WebView does not bypass TLS errors. OkHttp uses the same system/user trust store.
 - Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS + Basic Auth.

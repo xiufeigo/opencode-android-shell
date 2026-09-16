@@ -42,6 +42,9 @@ class ConnectCorsTest {
         assertTrue(src.contains("isLocalGateway"))
         assertTrue(src.contains("OpenCodeAndroid"))
         val gateway = File("src/main/java/com/xiufeigo/opencodeshell/LocalGateway.kt").readText()
+        val bridge = File("src/main/java/com/xiufeigo/opencodeshell/OpenCodeAndroidBridge.kt").readText()
+        assertTrue("JS must be able to bind a dedicated origin per backend", bridge.contains("proxyBaseUrl"))
+        assertTrue(gateway.contains("originFor"))
         assertTrue(gateway.contains("OkHttpClient"))
         assertTrue(gateway.contains("copyStreaming"))
         assertTrue(src.contains("MIXED_CONTENT_ALWAYS_ALLOW"))
@@ -62,6 +65,7 @@ class ConnectCorsTest {
         assertTrue("health check must fall back to /global/health", allJs.contains("/global/health"))
         assertTrue(allJs.contains("opencode-proxy") || allJs.contains("androidProxyBaseUrl") || allJs.contains("proxyPrefix"))
         assertTrue("SDK must rewrite onto the native proxy", allJs.contains("androidProxyBaseUrl") || allJs.contains("opencode-proxy"))
+        assertTrue("v1 new URL join needs dedicated origin or prefix restore", allJs.contains("proxyBaseUrl"))
         val zh = assets.listFiles { _, name -> name.startsWith("zh-") && name.endsWith(".js") }
             ?.joinToString("\n") { it.readText() }
             ?: ""

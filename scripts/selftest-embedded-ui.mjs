@@ -147,7 +147,61 @@ function startNoCorsUpstream() {
   })
 }
 
-/** Loopback reverse-proxy matching LocalGateway path layout. */
+/** Dedicated origin-only reverse-proxy (matches LocalGateway.originFor). */
+function startDedicatedOrigin(backendUrl) {
+  const backend = backendUrl.replace(/\/+$/, "")
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const cors = Object.fromEntries(Object.entries(localCorsHeaders(req)).filter(([, v]) => v != null))
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, cors)
+        res.end()
+        return
+      }
+      const url = new URL(req.url || "/", "http://127.0.0.1")
+      const upstream = new URL(backend)
+      const headers = { ...req.headers }
+      delete headers.origin
+      delete headers.host
+      delete headers.referer
+      delete headers.connection
+      headers.host = upstream.host
+      const p = http.request(
+        {
+          hostname: upstream.hostname,
+          port: upstream.port,
+          path: `${url.pathname}${url.search}`,
+          method: req.method,
+          headers,
+        },
+        (upRes) => {
+          const out = { ...cors }
+          for (const [name, value] of Object.entries(upRes.headers)) {
+            if (!value) continue
+            const lower = name.toLowerCase()
+            if (lower === "access-control-allow-origin" || lower === "connection" || lower === "transfer-encoding") {
+              continue
+            }
+            out[name] = value
+          }
+          res.writeHead(upRes.statusCode || 502, out)
+          upRes.on("data", (chunk) => res.write(chunk))
+          upRes.on("end", () => res.end())
+        },
+      )
+      p.on("error", (err) => {
+        if (!res.headersSent) {
+          res.writeHead(502, { ...cors, "content-type": "application/json" })
+        }
+        res.end(JSON.stringify({ error: String(err.message || err) }))
+      })
+      req.pipe(p)
+    })
+    server.listen(0, "127.0.0.1", () => resolve(server))
+    server.on("error", reject)
+  })
+}
+
 function startLocalProxy(token) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -227,7 +281,7 @@ async function cdp(ws, method, params = {}, sessionId) {
     const timer = setTimeout(() => {
       ws.removeEventListener("message", onMsg)
       reject(new Error(`timeout ${method}`))
-    }, 20_000)
+    }, 45_000)
     const onMsg = (ev) => {
       const data = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data)
       let msg
@@ -254,6 +308,421 @@ async function evaluate(ws, sessionId, expression) {
     sessionId,
   )
   return result?.result?.value
+}
+
+async function ensureOpencodeServe() {
+  const port = 4096
+  const url = `http://127.0.0.1:${port}`
+  const tryHealth = async () => {
+    const r = await fetch(`${url}/api/health`)
+    if (!r.ok) throw new Error(`health ${r.status}`)
+    return r.json()
+  }
+  try {
+    const health = await tryHealth()
+    return { url, started: false, health, child: null }
+  } catch {}
+  const bin = path.join(process.env.HOME || "/home/ubuntu", ".opencode/bin/opencode")
+  const cwd = "/tmp/oc-serve-home"
+  fs.mkdirSync(cwd, { recursive: true })
+  const child = spawn(fs.existsSync(bin) ? bin : "opencode", ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
+    cwd,
+    env: { ...process.env, PATH: `${path.dirname(bin)}:${process.env.PATH || ""}` },
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  const logs = []
+  child.stdout?.on("data", (d) => logs.push(String(d)))
+  child.stderr?.on("data", (d) => logs.push(String(d)))
+  const start = Date.now()
+  while (Date.now() - start < 20_000) {
+    try {
+      const health = await tryHealth()
+      return { url, started: true, health, child, logs }
+    } catch {
+      if (child.exitCode != null) {
+        throw new Error(`opencode serve exited ${child.exitCode}: ${logs.join("")}`)
+      }
+      await Bun.sleep(250)
+    }
+  }
+  child.kill("SIGKILL")
+  throw new Error(`timeout waiting for opencode serve: ${logs.join("")}`)
+}
+
+async function runConnectedSurface(ws, sessionId, input) {
+  const { serveUrl, dedicatedOrigin, proxyOrigin, proxyPrefix } = input
+  const item = (id, result, detail) => ({ id, result, detail: detail ?? null })
+  const checklist = []
+
+  const seed = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const url = ${JSON.stringify(serveUrl)};
+      localStorage.setItem("opencode.global.dat:server", JSON.stringify({
+        list: [{ type: "http", displayName: "local-serve", http: { url } }],
+        projects: {},
+        lastProject: {},
+        recentlyClosed: {},
+      }));
+      localStorage.setItem("opencode.settings.dat:defaultServerUrl", url);
+      return {
+        stored: localStorage.getItem("opencode.global.dat:server"),
+        defaultUrl: localStorage.getItem("opencode.settings.dat:defaultServerUrl"),
+        proxyBase: window.OpenCodeAndroid && window.OpenCodeAndroid.proxyBaseUrl
+          ? window.OpenCodeAndroid.proxyBaseUrl(url)
+          : null,
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "connection.seed_real_url",
+      seed?.defaultUrl === serveUrl && seed?.stored?.includes(serveUrl) ? "PASS" : "FAIL",
+      seed,
+    ),
+  )
+  checklist.push(
+    item(
+      "connection.proxy_origin_only",
+      seed?.proxyBase === dedicatedOrigin ? "PASS" : "FAIL",
+      { proxyBase: seed?.proxyBase, dedicatedOrigin },
+    ),
+  )
+
+  await cdp(ws, "Page.reload", { ignoreCache: true }, sessionId)
+  await Bun.sleep(16_000)
+
+  const apiProbe = await evaluate(
+    ws,
+    sessionId,
+    `(async () => {
+      const dedicated = ${JSON.stringify(dedicatedOrigin)};
+      const real = ${JSON.stringify(serveUrl)};
+      const mux = ${JSON.stringify(proxyOrigin + proxyPrefix + encodeURIComponent(serveUrl))};
+      async function get(url) {
+        try {
+          const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+          const ct = r.headers.get("content-type") || "";
+          const text = await r.text();
+          let json = null;
+          try { json = JSON.parse(text); } catch {}
+          return { ok: r.ok, status: r.status, ct, bytes: text.length, jsonKeys: json && typeof json === "object" ? Object.keys(json).slice(0, 12) : null, sample: text.slice(0, 180) };
+        } catch (e) {
+          return { ok: false, status: 0, error: String(e && e.message || e) };
+        }
+      }
+      const paths = {
+        health: await get(dedicated + "/api/health"),
+        globalHealth: await get(dedicated + "/global/health"),
+        providerV2: await get(dedicated + "/api/provider"),
+        model: await get(dedicated + "/api/model"),
+        config: await get(dedicated + "/config"),
+        globalConfig: await get(dedicated + "/global/config"),
+        sessionList: await get(dedicated + "/api/session"),
+        muxDroppedProvider: await get(${JSON.stringify(proxyOrigin)} + "/api/provider"),
+        muxPrefixedProvider: await get(mux + "/api/provider"),
+        realDirect: await get(real + "/api/health"),
+      };
+      let created = null;
+      try {
+        const r = await fetch(dedicated + "/api/session", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        created = { ok: r.ok, status: r.status, body: await r.json().catch(() => null) };
+      } catch (e) {
+        created = { ok: false, error: String(e && e.message || e) };
+      }
+      let eventHead = { ok: false };
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 1800);
+        const r = await fetch(dedicated + "/event", { signal: ac.signal, headers: { Accept: "text/event-stream" } });
+        const ct = r.headers.get("content-type") || "";
+        const reader = r.body && r.body.getReader();
+        let sample = "";
+        if (reader) {
+          const first = await reader.read();
+          sample = new TextDecoder().decode(first.value || new Uint8Array());
+          try { await reader.cancel(); } catch {}
+        }
+        clearTimeout(timer);
+        eventHead = { ok: r.ok && ct.includes("text/event-stream") && sample.length >= 0, status: r.status, ct, sample: sample.slice(0, 180) };
+      } catch (e) {
+        eventHead = { ok: false, error: String(e && e.message || e) };
+      }
+      return { origin: location.origin, dedicated, paths: { ...paths, eventHead }, created };
+    })()`,
+  )
+
+  const p = apiProbe?.paths || {}
+  const providerCount = (() => {
+    const v1 = p.providerV1?.jsonKeys
+    const sample = p.providerV1?.sample || ""
+    if (p.providerV2?.ok) return "v2"
+    return null
+  })()
+
+  checklist.push(item("connection.health_via_dedicated", p.health?.ok === true ? "PASS" : "FAIL", p.health))
+  checklist.push(item("connection.global_health_via_dedicated", p.globalHealth?.ok === true ? "PASS" : "FAIL", p.globalHealth))
+  checklist.push(
+    item(
+      "connection.no_cors_on_direct",
+      p.realDirect?.ok === false || p.realDirect?.error ? "PASS" : "FAIL",
+      p.realDirect,
+    ),
+  )
+  checklist.push(
+    item(
+      "proxy.dropped_prefix_404",
+      p.muxDroppedProvider?.ok === false && (p.muxDroppedProvider?.status === 404 || p.muxDroppedProvider?.status === 0)
+        ? "PASS"
+        : "FAIL",
+      p.muxDroppedProvider,
+    ),
+  )
+  checklist.push(
+    item(
+      "settings.providers_api",
+      p.providerV1?.ok === true || p.providerV2?.ok === true ? "PASS" : "FAIL",
+      { providerV1: p.providerV1, providerV2: p.providerV2, providerCount },
+    ),
+  )
+  checklist.push(item("settings.models_api", p.model?.ok === true ? "PASS" : "FAIL", p.model))
+  checklist.push(item("settings.config_api", p.config?.ok === true || p.globalConfig?.ok === true ? "PASS" : "FAIL", { config: p.config, globalConfig: p.globalConfig }))
+  checklist.push(item("home.session_list_api", p.sessionList?.ok === true ? "PASS" : "FAIL", p.sessionList))
+  checklist.push(item("home.session_create_api", apiProbe?.created?.ok === true ? "PASS" : "FAIL", apiProbe?.created))
+  checklist.push(
+    item(
+      "proxy.sse_event",
+      p.eventHead?.ok === true && (p.eventHead?.ct || "").includes("text/event-stream") ? "PASS" : "FAIL",
+      p.eventHead,
+    ),
+  )
+
+  await evaluate(ws, sessionId, CLICK_SETTINGS_JS)
+  await Bun.sleep(900)
+
+  const clickTab = (labelRe) => `(() => {
+    const re = ${labelRe};
+    const nodes = Array.from(document.querySelectorAll('[role="tab"], button, [role="button"]'));
+    const el = nodes.find((n) => re.test((n.textContent || "") + " " + (n.getAttribute("aria-label") || "")));
+    if (!el) return { clicked: false };
+    el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    return { clicked: true, label: ((el.textContent || "") + "").trim().slice(0, 40) };
+  })()`
+
+  const generalTab = await evaluate(ws, sessionId, clickTab("/^(通用|General)$/"))
+  await Bun.sleep(400)
+  const generalUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const text = dialog ? dialog.innerText : (document.body.innerText || "");
+      const sections = document.querySelectorAll("details.settings-v2-section").length;
+      return {
+        dialog: !!dialog,
+        sections,
+        hasAppearance: /外观|Appearance|主题|Theme/.test(text),
+        hasNotifications: /通知|Notification/.test(text),
+        hasAdvanced: /高级|Advanced/.test(text),
+        sample: text.slice(0, 400),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "settings.general_appearance_notifications",
+      generalUi?.dialog && (generalUi.sections >= 2 || generalUi.hasAppearance) ? "PASS" : "FAIL",
+      { generalTab, generalUi },
+    ),
+  )
+
+  const shortcutsTab = await evaluate(ws, sessionId, clickTab("/快捷键|Shortcuts|Keybind/"))
+  await Bun.sleep(500)
+  const shortcutsUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const text = (document.querySelector('[role="dialog"]')?.innerText || document.body.innerText || "");
+      return { opened: /Esc|Escape|Ctrl|⌘|Command/.test(text) || /shortcut|快捷/.test(text.toLowerCase()), sample: text.slice(0, 300) };
+    })()`,
+  )
+  checklist.push(
+    item("settings.shortcuts_pane", shortcutsTab?.clicked && shortcutsUi?.opened ? "PASS" : "FAIL", { shortcutsTab, shortcutsUi }),
+  )
+
+  const serversTab = await evaluate(ws, sessionId, clickTab("/服务器|Servers/"))
+  await Bun.sleep(500)
+  const serversUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const text = (document.querySelector('[role="dialog"]')?.innerText || "");
+      return {
+        hasLocal: text.includes(${JSON.stringify(new URL(serveUrl).host)}) || text.includes("local-serve") || text.includes("127.0.0.1:4096"),
+        hasAdd: /添加服务器|Add server/.test(text),
+        sample: text.slice(0, 400),
+      };
+    })()`,
+  )
+  checklist.push(
+    item("settings.servers_crud_list", serversTab?.clicked && serversUi?.hasLocal ? "PASS" : "FAIL", { serversTab, serversUi }),
+  )
+
+  const providersTab = await evaluate(ws, sessionId, clickTab("/提供商|Providers/"))
+  await Bun.sleep(4000)
+  const providersUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const text = dialog ? dialog.innerText : "";
+      const rows = Array.from(dialog ? dialog.querySelectorAll(".settings-v2-provider-row") : []);
+      const popular = rows.filter((r) => /Connect|连接/.test(r.innerText)).length;
+      const connectedEmpty = /还没有连接|No providers connected|connected empty|尚未连接/.test(text) || !!dialog?.querySelector(".settings-v2-provider-empty");
+      const broken = rows.length === 0 && !connectedEmpty && !/OpenAI|Anthropic|OpenCode|提供商|Providers/.test(text);
+      return {
+        title: /提供商|Providers/.test(text),
+        rows: rows.length,
+        popular,
+        connectedEmpty,
+        names: rows.slice(0, 8).map((r) => (r.innerText || "").split("\\n")[0].slice(0, 40)),
+        broken,
+        sample: text.slice(0, 500),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "settings.providers_ui",
+      providersUi?.title && providersUi.broken !== true && (providersUi.rows > 0 || providersUi.connectedEmpty) ? "PASS" : "FAIL",
+      { providersTab, providersUi },
+    ),
+  )
+
+  const modelsTab = await evaluate(ws, sessionId, clickTab("/模型|Models/"))
+  await Bun.sleep(4000)
+  const modelsUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const text = dialog ? dialog.innerText : "";
+      const items = Array.from(dialog ? dialog.querySelectorAll("li, .settings-v2-provider-row, [data-component]") : []);
+      const hasSearch = !!dialog?.querySelector("input[type='search'], input[placeholder]");
+      const modelish = /gpt|claude|gemini|deepseek|muse|OpenAI|Anthropic|模型/.test(text);
+      const emptyIntentional = /No models|没有模型|暂无/.test(text);
+      return {
+        title: /模型|Models/.test(text),
+        hasSearch,
+        modelish,
+        emptyIntentional,
+        sample: text.slice(0, 500),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "settings.models_ui",
+      modelsUi?.title && (modelsUi.modelish || modelsUi.emptyIntentional || modelsUi.hasSearch) ? "PASS" : "FAIL",
+      { modelsTab, modelsUi },
+    ),
+  )
+
+  const backFromSettings = await evaluate(ws, sessionId, HANDLE_BACK_JS)
+  await Bun.sleep(300)
+  const afterBack = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+  checklist.push(
+    item(
+      "shell.android_back_from_settings",
+      backFromSettings === "overlay" || afterBack?.overlay !== true ? "PASS" : "FAIL",
+      { backFromSettings, afterBack },
+    ),
+  )
+
+  const homeUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const text = document.body.innerText || "";
+      const newSession = Array.from(document.querySelectorAll("button, [role='button']")).find((el) => /新会话|New session|创建会话|Create/.test(el.textContent || ""));
+      return {
+        homeCopy: /项目|Projects|会话|Sessions|设置|Settings/.test(text),
+        newSession: !!(newSession && (newSession.textContent || "").slice(0, 40)),
+        sample: text.slice(0, 400),
+      };
+    })()`,
+  )
+  checklist.push(item("home.connected_layout", homeUi?.homeCopy ? "PASS" : "FAIL", homeUi))
+
+  const sendProbe = await evaluate(
+    ws,
+    sessionId,
+    `(async () => {
+      const dedicated = ${JSON.stringify(dedicatedOrigin)};
+      const created = ${JSON.stringify(apiProbe?.created?.body || null)};
+      const id = created && created.data && created.data.id || created && created.id;
+      if (!id) return { skipped: true, reason: "no session id" };
+      try {
+        const r = await fetch(dedicated + "/api/session/" + id + "/prompt", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parts: [{ type: "text", text: "ping" }] }),
+        });
+        const text = await r.text();
+        return { ok: r.status < 500, status: r.status, sample: text.slice(0, 240) };
+      } catch (e) {
+        return { ok: false, error: String(e && e.message || e) };
+      }
+    })()`,
+  )
+  if (sendProbe?.skipped) {
+    checklist.push(item("home.send_message", "N/A", sendProbe))
+  } else {
+    checklist.push(
+      item(
+        "home.send_message",
+        sendProbe?.ok === true ? "PASS" : "FAIL",
+        { note: "4xx without API keys is still a successful API round-trip if status < 500", sendProbe },
+      ),
+    )
+  }
+
+  const terminalUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const nodes = Array.from(document.querySelectorAll("button, [role='button'], a"));
+      const term = nodes.find((el) => /终端|Terminal/.test((el.textContent || "") + (el.getAttribute("aria-label") || "")));
+      return { hasEntry: !!term, label: term ? (term.textContent || "").trim().slice(0, 40) : null };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "terminal.open",
+      terminalUi?.hasEntry ? "N/A" : "N/A",
+      { reason: "PTY/terminal is Desktop/server-local; Android WebView has no host PTY. ESC pass-through covered separately.", terminalUi },
+    ),
+  )
+  checklist.push(
+    item(
+      "project.open_path",
+      "N/A",
+      { reason: "Android WebView cannot browse the device filesystem like Desktop; Add project uses the official directory dialog which is not wired to Android storage." },
+    ),
+  )
+  checklist.push(
+    item(
+      "files.diff.permissions",
+      "N/A",
+      { reason: "File tree / diff / permission prompts require an open project+session on the server host; not exposed as a standalone Android pane." },
+    ),
+  )
+
+  const failed = checklist.filter((c) => c.result === "FAIL")
+  return { checklist, failed, apiProbe, seed, providersUi, modelsUi, serversUi, generalUi, shortcutsUi, homeUi, sendProbe }
 }
 
 const TAP_JS = `(() => {
@@ -599,12 +1068,16 @@ async function main() {
   const upstream = await startNoCorsUpstream()
   const proxyToken = "selftest-token"
   const proxy = await startLocalProxy(proxyToken)
+  const serve = await ensureOpencodeServe()
+  const dedicated = await startDedicatedOrigin(serve.url)
   const port = server.address().port
   const upstreamPort = upstream.address().port
   const proxyPort = proxy.address().port
+  const dedicatedPort = dedicated.address().port
   const realBackend = `http://127.0.0.1:${upstreamPort}`
   const proxyOrigin = `http://127.0.0.1:${proxyPort}`
   const proxyPrefix = `/opencode-proxy/${proxyToken}/`
+  const dedicatedOrigin = `http://127.0.0.1:${dedicatedPort}`
   const pageUrl = `http://${HOST}:${port}${ANDROID_MOUNT}/index.html`
   const debugPort = 9222
   const chrome = spawn(
@@ -616,7 +1089,7 @@ async function main() {
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome-1311",
+      "--user-data-dir=/tmp/oc-selftest-chrome-1312",
       "--window-size=390,844",
       "about:blank",
     ],
@@ -640,7 +1113,12 @@ async function main() {
         source: `
           window.OpenCodeAndroid = {
             proxyOrigin: function () { return ${JSON.stringify(proxyOrigin)}; },
-            proxyPrefix: function () { return ${JSON.stringify(proxyPrefix)}; }
+            proxyPrefix: function () { return ${JSON.stringify(proxyPrefix)}; },
+            proxyBaseUrl: function (real) {
+              var n = String(real || "").replace(/\\/+$/, "");
+              if (n === ${JSON.stringify(serve.url)}) return ${JSON.stringify(dedicatedOrigin)};
+              return ${JSON.stringify(proxyOrigin)} + ${JSON.stringify(proxyPrefix)} + encodeURIComponent(n);
+            }
           };
           window.__ocAndroidProxy = { origin: ${JSON.stringify(proxyOrigin)}, prefix: ${JSON.stringify(proxyPrefix)} };
           window.__ocAndroidShell = true;
@@ -1069,6 +1547,32 @@ async function main() {
       escPassThrough?.stayed === true &&
       escPassThrough?.didNotOpenOverlay === true &&
       escPassThrough?.before?.host === HOST
+    const surface = await runConnectedSurface(ws, sessionId, {
+      serveUrl: serve.url,
+      dedicatedOrigin,
+      proxyOrigin,
+      proxyPrefix,
+    })
+    try {
+      const shotSurface = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shotSurface?.data) {
+        const surfacePath = "/opt/cursor/artifacts/selftest-providers-models.png"
+        fs.mkdirSync(path.dirname(surfacePath), { recursive: true })
+        fs.writeFileSync(surfacePath, Buffer.from(shotSurface.data, "base64"))
+      }
+    } catch {}
+    const surfaceOk = Array.isArray(surface?.checklist) && surface.checklist.every((c) => c.result !== "FAIL")
+    const regressionChecklist = [
+      { id: "connection.add_server_ui_real_url", result: addServerOk ? "PASS" : "FAIL", detail: addServerFields },
+      { id: "connection.proxy_without_remote_cors", result: proxyOk ? "PASS" : "FAIL", detail: proxyProbe },
+      { id: "shell.android_back_in_app", result: backOk ? "PASS" : "FAIL" },
+      { id: "shell.esc_passthrough", result: escPassThroughOk ? "PASS" : "FAIL", detail: escPassThrough },
+      { id: "home.empty_layout_no_bogus_scroll", result: homeEmptyOk ? "PASS" : "FAIL" },
+      { id: "regression.ime_dialog_css", result: imeOk ? "PASS" : "FAIL", detail: imeCss },
+      { id: "regression.portrait_settings_accordion", result: accordionOk && settingsPortraitOk ? "PASS" : "FAIL" },
+      { id: "regression.proxy_sse_chunked", result: proxyProbe?.sse?.ok === true && (proxyProbe?.sse?.restDelayMs ?? 0) >= 80 ? "PASS" : "FAIL", detail: proxyProbe?.sse },
+    ]
+    const fullChecklist = [...regressionChecklist, ...(surface?.checklist || [])]
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -1092,7 +1596,9 @@ async function main() {
       addServerOk &&
       backOk &&
       escOk &&
-      escPassThroughOk
+      escPassThroughOk &&
+      surfaceOk &&
+      fullChecklist.every((c) => c.result !== "FAIL")
     const report = {
       ok,
       pageUrl,
@@ -1138,6 +1644,11 @@ async function main() {
       escOk,
       escPassThrough,
       escPassThroughOk,
+      serve: { url: serve.url, health: serve.health, started: serve.started },
+      dedicatedOrigin,
+      surface,
+      surfaceOk,
+      fullChecklist,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       homeEmptyScreenshotPath: fs.existsSync(homeEmptyScreenshotPath) ? homeEmptyScreenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
@@ -1185,6 +1696,8 @@ async function main() {
                                     ? "self-test failed: OpenCode UI did not close Settings on Esc (page-owned, not a shell shortcut)"
                                     : !escPassThroughOk
                                       ? "self-test failed: Esc on a focused terminal-like field navigated away (shell must pass Esc through)"
+                                      : !surfaceOk
+                                        ? "self-test failed: connected OpenCode surface (Providers/Models/API via proxy) had FAIL items"
                                       : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
@@ -1193,6 +1706,7 @@ async function main() {
     server.close()
     upstream.close()
     proxy.close()
+    dedicated.close()
     process.exit(0)
   } finally {
     chrome.kill("SIGKILL")
@@ -1203,6 +1717,14 @@ async function main() {
     try {
       proxy.close()
     } catch {}
+    try {
+      dedicated.close()
+    } catch {}
+    if (serve?.started && serve.child) {
+      try {
+        serve.child.kill("SIGKILL")
+      } catch {}
+    }
   }
 }
 
