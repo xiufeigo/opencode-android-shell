@@ -65,9 +65,20 @@ async function cdp(ws, method, params = {}, sessionId) {
   const payload = sessionId ? { id, method, params, sessionId } : { id, method, params }
   ws.send(JSON.stringify(payload))
   return await new Promise((resolve, reject) => {
-    const onMsg = (raw) => {
-      const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString())
+    const timer = setTimeout(() => {
+      ws.removeEventListener("message", onMsg)
+      reject(new Error(`timeout ${method}`))
+    }, 20_000)
+    const onMsg = (ev) => {
+      const data = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data)
+      let msg
+      try {
+        msg = JSON.parse(data)
+      } catch {
+        return
+      }
       if (msg.id !== id) return
+      clearTimeout(timer)
       ws.removeEventListener("message", onMsg)
       if (msg.error) reject(new Error(`${method}: ${JSON.stringify(msg.error)}`))
       else resolve(msg.result)
@@ -160,6 +171,7 @@ async function main() {
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
       "--user-data-dir=/tmp/oc-selftest-chrome",
+      "--window-size=1280,800",
       "about:blank",
     ],
     { stdio: "ignore" },
@@ -196,6 +208,10 @@ async function main() {
     if (!ok) {
       throw new Error("self-test failed: Settings control was not found or did not handle the tap")
     }
+    ws.close()
+    chrome.kill("SIGKILL")
+    server.close()
+    process.exit(0)
   } finally {
     chrome.kill("SIGKILL")
     server.close()
