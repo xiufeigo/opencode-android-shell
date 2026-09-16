@@ -104,7 +104,7 @@ Health paths match official OpenCode clients: `GET /api/health`, then `GET /glob
 
 Desktop’s Settings v2 list is management-only (no row click; `设为默认` is launch-default only). Switching the live SDK there happens from the session status popover / home sidebar. Android stays on Settings after add and has no home status popover, so this shell adds the tap-to-apply path.
 
-## Operation-logic review (1.3.16)
+## Operation-logic review (1.3.17)
 
 Compared to official OpenCode web against local `opencode serve` with a real workspace directory. Remote **file tree** and **PTY** are in scope (the same HTTP/SSE/WebSocket APIs the official `@opencode-ai/app` uses). Out of scope only: Desktop/Electron OS integrations the web UI never offers (Android-local document picker, device-host PTY).
 
@@ -117,9 +117,11 @@ Compared to official OpenCode web against local `opencode serve` with a real wor
 | Remote PTY / terminal WebSocket | **Fixed.** HTTP `POST /pty` plus WebSocket Upgrade `/pty/{id}/connect` (and `/api/pty/...`). HTTPS WebView origin uses a native OkHttp WebSocket polyfill so mixed-content `ws://127.0.0.1` cannot silently no-op. |
 | MCP / permissions / search / command palette | **Fixed / tested.** HTTP `/mcp` `/api/mcp` `/permission` `/api/permission/request` `/find` `/api/fs/find`; E2E also dispatches the official web keybinds (`mod+k` palette, `mod+p` open file, `mod+;` MCP, `ctrl+\`` terminal, `mod+\\` file tree) and toggles Settings → Advanced → file tree / search. |
 | Dark UI with a solid **white** status bar | **Fixed (1.3.15).** Transparent system bars; root/window follow `#080808` / `#fafafa`; `WindowInsetsController` light/dark icons follow `data-color-scheme`. Safe-area padding unchanged. |
-| Session header context ring click does nothing | **Fixed (1.3.15).** Official control opens the session **Context** tab (`openSessionContext` → review panel + `tabs.open("context")`). Phone-width hides that panel (`min-width: 768px`); the shell shows the same `SessionContextTab` as a full-screen overlay. |
+| Session header context ring click does nothing | **Fixed (1.3.15 / 1.3.17).** Official control opens **Context**. Phone-width uses the 会话/更改/上下文 strip (web right-rail tabs) instead of a disconnected overlay. |
 | Tab bar **+** always created a new session | **Changed (1.3.16).** Default: **+** opens the Ctrl+P command palette (`file.open` / 「搜索文件、命令和会话」). Settings → 通用 → 「+」新建会话 restores official new-session. |
 | Portrait Settings accordion looked unlike the nav; shortcuts title wrapped | **Fixed (1.3.16).** Collapsed 通用/外观/系统通知/音效/高级 rows use the same icon+label trigger style as 桌面/服务器. Sections start collapsed. 「键盘快捷键」 stays one line; keycaps render. |
+| After IME, terminal left a black gap above the nav bar | **Fixed (1.3.17).** IME padding applies only while the keyboard is visible; hide animation / window-focus re-applies insets. `#root` fills the WebView (`100%`, not stuck `dvh`). |
+| Terminal sat under chat instead of the 更改/上下文 column | **Fixed (1.3.17).** Portrait keeps official 会话/更改 and adds 上下文 in that strip; the PTY dock is a sibling in the same column and yields `flex-1` so it sits on the safe area. |
 | Desktop session status popover | **N/A.** Web UI on Android applies the server from Settings → Server. |
 | Android-device folder picker / device PTY | **Out of scope.** The web UI never offers those. |
 
@@ -200,6 +202,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **Remote files / remote PTY missing after apply:** **1.3.14** / `versionCode` 19. The gateway reverse-proxies every HTTP path and tunnels WebSocket Upgrade for `/pty/{id}/connect`. HTTPS WebView uses a native OkHttp WebSocket polyfill. E2E against `opencode serve` in a real workspace: **56 PASS / 0 FAIL / 1 N/A** (Desktop-only status popover). Checklist covers sessions, chat prompt, providers/models/config, remote file list/open/find/v2 fs, remote PTY WebSocket, MCP, permissions, VCS, command palette, and SSE. Debug APK sha256 `55657542db5d436bf6460d7015664ae8f1e4ac33e322d714316210834aa28f5d` — https://filebin.net/oc1314-1789555532/OpenCode-1.3.14-debug.zip (expires ~2026-09-23). Uninstall then reinstall if you are sideloading over an older debug APK.
 - **White status bar in dark OpenCode / context ring does not open Context:** **1.3.15** / `versionCode` 20. Transparent immersive bars follow the WebView color-scheme (keep existing inset padding). Tapping the session header context ring opens the official Context panel (phone-width overlay). Uninstall then reinstall if you are sideloading over an older debug APK.
 - **Tab + / Settings polish:** **1.3.16** / `versionCode` 21. Tab bar + opens the command palette by default (toggle in 通用 restores new-session). Portrait Settings subsection headers match the nav (icon + label, collapsed by default). Shortcuts title no longer wraps to 键盘快 / 捷键. E2E **63 PASS / 0 FAIL / 1 N/A** (Desktop-only status popover). Debug APK sha256 `d4d86528f082fb2c5692885f33a36ac8ced6c37ddfc7fbec7ae6501410dbd0fb` — https://filebin.net/oc1316-1789559877/OpenCode-1.3.16-debug.zip (expires ~2026-09-23). Uninstall then reinstall if you are sideloading over an older debug APK.
+- **IME leaves a black gap under the terminal / 上下文 not in the 更改 column:** **1.3.17** / `versionCode` 22. Keyboard hide clears IME padding (`ime` only while visible) and `#root` fills the WebView again. Portrait session uses 会话/更改/上下文 like the web right-rail; the terminal docks in that column flush to the safe area. Overlay-install over 1.3.16 is OK (`versionCode` 22). Uninstall only if the launcher icon is stuck from an older adaptive-icon build.
 
 ## Security
 

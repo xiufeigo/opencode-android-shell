@@ -28,7 +28,7 @@ class SessionContextRingTest {
                 ?: error("missing entry script in index.html")
         val js = File("src/main/assets/opencode-app/assets/$jsName").readText()
         assertTrue("header ring must expose data-action", js.contains("session-open-context"))
-        assertTrue("phone overlay must mount Session context panel", js.contains("android-session-context"))
+        assertTrue("phone context panel must mount SessionContextTab", js.contains("android-session-context"))
         val cssName =
             Regex("""href="\./assets/(index-[^"]+\.css)"""").find(html)?.groupValues?.get(1)
                 ?: error("missing entry stylesheet in index.html")

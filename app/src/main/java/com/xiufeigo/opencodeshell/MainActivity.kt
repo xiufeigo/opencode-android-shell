@@ -33,6 +33,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
@@ -147,23 +148,65 @@ class MainActivity : AppCompatActivity() {
         // Edge-to-edge (setDecorFitsSystemWindows false) makes windowSoftInputMode
         // adjustResize a no-op. Include IME insets so the FrameLayout shrinks and
         // 「添加服务器」fields stay above the keyboard.
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.statusBars() or
-                    WindowInsetsCompat.Type.navigationBars() or
-                    WindowInsetsCompat.Type.displayCutout(),
-            )
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            view.updatePadding(
-                left = bars.left,
-                top = bars.top,
-                right = bars.right,
-                bottom = imeAwareBottomPadding(bars.bottom, ime.bottom),
-            )
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            applyImeAwarePadding(insets)
             WindowInsetsCompat.CONSUMED
         }
+        ViewCompat.setWindowInsetsAnimationCallback(
+            binding.root,
+            object : WindowInsetsAnimationCompat.Callback(
+                WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE,
+            ) {
+                override fun onProgress(
+                    insets: WindowInsetsCompat,
+                    runningAnimations: MutableList<WindowInsetsAnimationCompat>,
+                ): WindowInsetsCompat {
+                    applyImeAwarePadding(insets)
+                    return insets
+                }
+
+                override fun onEnd(animation: WindowInsetsAnimationCompat) {
+                    ViewCompat.requestApplyInsets(binding.root)
+                    if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
+                    val visible = ViewCompat.getRootWindowInsets(binding.root)
+                        ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                    if (!visible) notifyWebViewImeHidden()
+                }
+            },
+        )
         ViewCompat.requestApplyInsets(binding.root)
         applySystemUi(systemNightMode())
+    }
+
+    private fun applyImeAwarePadding(insets: WindowInsetsCompat) {
+        val bars = insets.getInsets(
+            WindowInsetsCompat.Type.statusBars() or
+                WindowInsetsCompat.Type.navigationBars() or
+                WindowInsetsCompat.Type.displayCutout(),
+        )
+        val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+        val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+        binding.root.updatePadding(
+            left = bars.left,
+            top = bars.top,
+            right = bars.right,
+            bottom = imeAwareBottomPadding(bars.bottom, ime.bottom, imeVisible),
+        )
+    }
+
+    private fun notifyWebViewImeHidden() {
+        if (!::binding.isInitialized) return
+        binding.webView.evaluateJavascript(IME_RESTORE_JS, null)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            ViewCompat.requestApplyInsets(binding.root)
+            val visible = ViewCompat.getRootWindowInsets(binding.root)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            if (!visible) notifyWebViewImeHidden()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -299,6 +342,7 @@ class MainActivity : AppCompatActivity() {
                 binding.webView.evaluateJavascript(NativeWebSocketJs.INSTALL, null)
                 binding.webView.evaluateJavascript(AndroidBackJs.INSTALL, null)
                 binding.webView.evaluateJavascript(IME_SCROLL_JS, null)
+                binding.webView.evaluateJavascript(IME_RESTORE_JS, null)
                 binding.webView.evaluateJavascript(SystemBarsJs.INSTALL, null)
                 binding.webView.requestFocus()
             }
@@ -499,7 +543,15 @@ class MainActivity : AppCompatActivity() {
             (function () {
               if (window.__ocImeScroll) return;
               window.__ocImeScroll = true;
+              var fillRoot = function () {
+                var root = document.getElementById('root');
+                if (!root) return;
+                root.style.height = '100%';
+                root.style.minHeight = '100%';
+                root.style.maxHeight = '100%';
+              };
               var scrollFocused = function () {
+                fillRoot();
                 var el = document.activeElement;
                 if (!el || el === document.body || el === document.documentElement) return;
                 var tag = (el.tagName || '').toLowerCase();
@@ -511,11 +563,33 @@ class MainActivity : AppCompatActivity() {
               document.addEventListener('focusin', function () { setTimeout(scrollFocused, 60); }, true);
               window.addEventListener('resize', scrollFocused);
               if (window.visualViewport) visualViewport.addEventListener('resize', scrollFocused);
+              fillRoot();
             })();
         """
 
-        internal fun imeAwareBottomPadding(systemBarsBottom: Int, imeBottom: Int): Int =
-            max(systemBarsBottom, imeBottom)
+        private const val IME_RESTORE_JS = """
+            (function () {
+              var root = document.getElementById('root');
+              if (root) {
+                root.style.height = '100%';
+                root.style.minHeight = '100%';
+                root.style.maxHeight = '100%';
+              }
+              try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+              try {
+                if (window.visualViewport) visualViewport.dispatchEvent(new Event('resize'));
+              } catch (e2) {}
+            })();
+        """
+
+        internal fun imeAwareBottomPadding(
+            systemBarsBottom: Int,
+            imeBottom: Int,
+            imeVisible: Boolean = imeBottom > systemBarsBottom,
+        ): Int {
+            if (!imeVisible) return systemBarsBottom
+            return max(systemBarsBottom, imeBottom)
+        }
 
         internal fun isLocalGateway(uri: Uri, gatewayPort: Int): Boolean {
             val host = uri.host ?: return false

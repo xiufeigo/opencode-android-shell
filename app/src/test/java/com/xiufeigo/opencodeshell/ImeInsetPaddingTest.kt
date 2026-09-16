@@ -12,6 +12,8 @@ class ImeInsetPaddingTest {
         assertEquals(48, MainActivity.imeAwareBottomPadding(48, 24))
         assertEquals(400, MainActivity.imeAwareBottomPadding(48, 400))
         assertEquals(0, MainActivity.imeAwareBottomPadding(0, 0))
+        assertEquals(48, MainActivity.imeAwareBottomPadding(48, 400, false))
+        assertEquals(400, MainActivity.imeAwareBottomPadding(48, 400, true))
     }
 
     @Test
@@ -19,7 +21,10 @@ class ImeInsetPaddingTest {
         val src = File("src/main/java/com/xiufeigo/opencodeshell/MainActivity.kt").readText()
         assertTrue(src.contains("WindowInsetsCompat.Type.ime()"))
         assertTrue(src.contains("imeAwareBottomPadding"))
+        assertTrue(src.contains("isVisible(WindowInsetsCompat.Type.ime())"))
         assertTrue(src.contains("IME_SCROLL_JS"))
+        assertTrue(src.contains("IME_RESTORE_JS"))
+        assertTrue(src.contains("WindowInsetsAnimationCompat"))
         val manifest = File("src/main/AndroidManifest.xml").readText()
         assertTrue(manifest.contains("android:windowSoftInputMode=\"adjustResize\""))
         val html = File("src/main/assets/opencode-app/index.html").readText()

@@ -1554,6 +1554,75 @@ async function runConnectedSurface(ws, sessionId, input) {
       { terminalUi, terminalPanel, pty: apiProbe?.pty },
     ),
   )
+  await cdp(
+    ws,
+    "Emulation.setDeviceMetricsOverride",
+    { width: 390, height: 844, deviceScaleFactor: 2.75, mobile: true },
+    sessionId,
+  )
+  await Bun.sleep(400)
+  const imeDock = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const root = document.getElementById("root");
+      const dock = document.querySelector("[data-slot='session-terminal-dock'], #terminal-panel");
+      const row = document.querySelector("[data-slot='session-panel-row']");
+      const vh = document.documentElement.clientHeight || window.innerHeight;
+      const before = dock ? dock.getBoundingClientRect() : null;
+      if (root) root.style.height = Math.round(vh * 0.55) + "px";
+      const stuck = root ? root.getBoundingClientRect().height : null;
+      if (root) {
+        root.style.height = "100%";
+        root.style.minHeight = "100%";
+        root.style.maxHeight = "100%";
+      }
+      window.dispatchEvent(new Event("resize"));
+      if (window.visualViewport) visualViewport.dispatchEvent(new Event("resize"));
+      const afterRoot = root ? Math.round(root.getBoundingClientRect().height) : null;
+      const afterDock = dock ? dock.getBoundingClientRect() : null;
+      const gap = afterDock ? Math.round(vh - afterDock.bottom) : null;
+      const tabs = {
+        session: !!document.querySelector("[data-action='session-mobile-tab-session']"),
+        changes: !!document.querySelector("[data-action='session-mobile-tab-changes']"),
+        context: !!document.querySelector("[data-action='session-mobile-tab-context']"),
+      };
+      return {
+        vh,
+        stuck,
+        afterRoot,
+        rootFills: afterRoot !== null && Math.abs(afterRoot - vh) <= 8,
+        dockHeight: afterDock ? Math.round(afterDock.height) : null,
+        gap,
+        flush: gap !== null && gap >= -2 && gap <= 48,
+        tabs,
+        row: !!row,
+        beforeBottom: before ? Math.round(before.bottom) : null,
+      };
+    })()`,
+  )
+  try {
+    const shotDock = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+    if (shotDock?.data) {
+      const dockPath = "/opt/cursor/artifacts/selftest-terminal-ime-restore.png"
+      fs.mkdirSync(path.dirname(dockPath), { recursive: true })
+      fs.writeFileSync(dockPath, Buffer.from(shotDock.data, "base64"))
+    }
+  } catch {}
+  checklist.push(
+    item(
+      "terminal.ime_restore_no_bottom_gap",
+      imeDock?.rootFills && (imeDock?.flush || !imeDock?.dockHeight) ? "PASS" : "FAIL",
+      imeDock,
+    ),
+  )
+  checklist.push(
+    item(
+      "session.mobile_context_tab_with_changes",
+      imeDock?.tabs?.session && imeDock?.tabs?.changes && imeDock?.tabs?.context ? "PASS" : "FAIL",
+      imeDock?.tabs,
+    ),
+  )
   checklist.push(
     item(
       "files.diff.permissions",
@@ -1683,7 +1752,7 @@ async function runConnectedSurface(ws, sessionId, input) {
     item(
       "session.context_ring_opens_panel",
       ringTap?.clicked && (contextPanel?.overlay || contextPanel?.dialog || contextPanel?.tab || contextPanel?.copy) ? "PASS" : "FAIL",
-      { openedSession, ringTap, contextPanel, note: "Official Desktop opens the session Context tab/panel from the header ring. Phone-width Android shows a full-screen context overlay." },
+      { openedSession, ringTap, contextPanel, note: "Official Desktop opens the session Context tab/panel from the header ring. Phone-width Android shows 上下文 in the 会话/更改/上下文 strip with the terminal docked in the same column." },
     ),
   )
   if (contextPanel?.overlay || contextPanel?.dialog) {
