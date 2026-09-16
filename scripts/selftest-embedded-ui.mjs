@@ -26,6 +26,9 @@ const portraitScreenshotPath =
 const portraitScrolledScreenshotPath =
   process.env.SELFTEST_PORTRAIT_SCROLLED_SCREENSHOT ||
   "/opt/cursor/artifacts/selftest-settings-portrait-scrolled.png"
+const portraitCollapsedScreenshotPath =
+  process.env.SELFTEST_PORTRAIT_COLLAPSED_SCREENSHOT ||
+  "/opt/cursor/artifacts/selftest-settings-portrait-collapsed.png"
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8"
@@ -141,6 +144,14 @@ const TAP_JS = `(() => {
     fired.push(name);
     return true;
   };
+  const emptyCopy = Array.from(document.querySelectorAll('div, p, span')).find((el) => {
+    const t = (el.textContent || '').trim();
+    return visible(el) && t.length > 0 && t.length < 80 && /创建一个会话|Create a session|Nothing here yet/.test(t);
+  });
+  const homeEmptyGapPx =
+    emptyCopy && settings
+      ? Math.round(settings.getBoundingClientRect().top - emptyCopy.getBoundingClientRect().bottom)
+      : null;
   const homeOk = click(home, 'home');
   const settingsOk = click(settings, 'settings');
   const addOk = click(add, 'add-project');
@@ -171,6 +182,7 @@ const TAP_JS = `(() => {
     hasScopeError: /Cannot read properties of undefined/.test(bodyText) || /reading 'scope'/.test(bodyText),
     viewportFitCover: /viewport-fit\\s*=\\s*cover/.test(document.querySelector('meta[name="viewport"]')?.content || ''),
     titlebarOnly: visibleButtons.length > 0 && visibleButtons.length <= 2 && !homeCopy,
+    homeEmptyGapPx,
   };
 })()`
 
@@ -261,6 +273,56 @@ const SETTINGS_SCROLL_JS = `(() => {
     tabHeaderHidden: !tabHeader || (tabHeaderStyle && tabHeaderStyle.display === 'none'),
     stickyTitles: sticky.map((el) => (el.textContent || '').trim().slice(0, 40)),
     lockedGeneral: sticky.some((el) => /^(通用|General)$/.test((el.textContent || '').trim())) && sticky.length === 1 && /^(通用|General)$/.test((sticky[0].textContent || '').trim()) && panel.scrollTop > 80,
+  };
+})()`
+
+const SETTINGS_DENSITY_JS = `(() => {
+  const box = (el) => {
+    if (!el) return null;
+    return { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, extra: Math.max(0, el.scrollHeight - el.clientHeight) };
+  };
+  const panels = Array.from(document.querySelectorAll('.settings-v2-panel')).filter((el) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && r.width > 0 && r.height > 0;
+  });
+  const panel = panels[0];
+  if (!panel) return { found: false };
+  const sections = Array.from(panel.querySelectorAll('details.settings-v2-section'));
+  for (const el of sections) el.open = false;
+  panel.scrollTop = 0;
+  const dialogContent = document.querySelector('[data-component="dialog-v2"][data-variant="settings"] [data-slot="dialog-content"]');
+  const dialogContainer = document.querySelector('[data-component="dialog-v2"][data-variant="settings"] [data-slot="dialog-container"]');
+  const sums = sections.map((el) => el.querySelector('summary.settings-v2-section-title')).filter(Boolean);
+  const gaps = [];
+  const titleGaps = [];
+  for (let i = 0; i < sums.length - 1; i++) {
+    const a = sums[i].getBoundingClientRect();
+    const b = sums[i + 1].getBoundingClientRect();
+    gaps.push(Math.round(b.top - a.bottom));
+    titleGaps.push(Math.round(b.top - a.top));
+  }
+  const last = sums[sums.length - 1];
+  const lastBottom = last ? last.getBoundingClientRect().bottom : 0;
+  const panelBottom = panel.getBoundingClientRect().bottom;
+  return {
+    found: true,
+    allCollapsed: sections.length > 0 && sections.every((el) => el.open === false),
+    sectionCount: sections.length,
+    titles: sums.map((el) => (el.textContent || '').trim().slice(0, 40)),
+    headerHeights: sums.map((el) => Math.round(el.getBoundingClientRect().height)),
+    boxGapsPx: gaps,
+    maxBoxGapPx: gaps.length ? Math.max.apply(null, gaps) : null,
+    minBoxGapPx: gaps.length ? Math.min.apply(null, gaps) : null,
+    titlePitchPx: titleGaps,
+    panel: box(panel),
+    dialogContent: box(dialogContent),
+    dialogContainer: dialogContainer ? { h: Math.round(dialogContainer.getBoundingClientRect().height) } : null,
+    blankBelowLastHeaderPx: Math.round(panelBottom - lastBottom),
+    tabBodyGap: (() => {
+      const body = panel.querySelector('.settings-v2-tab-body');
+      return body ? getComputedStyle(body).gap : null;
+    })(),
   };
 })()`
 
@@ -377,6 +439,29 @@ async function main() {
         fs.writeFileSync(portraitScrolledScreenshotPath, Buffer.from(shot2.data, "base64"))
       }
     } catch {}
+    const settingsDensity = await evaluate(ws, sessionId, SETTINGS_DENSITY_JS)
+    await Bun.sleep(250)
+    try {
+      const shot3 = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shot3?.data) {
+        fs.mkdirSync(path.dirname(portraitCollapsedScreenshotPath), { recursive: true })
+        fs.writeFileSync(portraitCollapsedScreenshotPath, Buffer.from(shot3.data, "base64"))
+      }
+    } catch {}
+    await cdp(
+      ws,
+      "Emulation.setDeviceMetricsOverride",
+      { width: 1280, height: 800, deviceScaleFactor: 2, mobile: true },
+      sessionId,
+    )
+    await Bun.sleep(400)
+    const settingsLandscape = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
+    await cdp(
+      ws,
+      "Emulation.setDeviceMetricsOverride",
+      { width: 800, height: 1280, deviceScaleFactor: 2, mobile: true },
+      sessionId,
+    )
     const scopeCrash =
       exceptions.some((e) => /reading 'scope'/.test(e)) || !!probe?.hasScopeError
     const whiteOnly = !probe?.homeCopy || probe?.titlebarOnly || (probe?.visibleButtonCount ?? 0) < 3
@@ -394,6 +479,16 @@ async function main() {
       !!settingsScroll?.scrolled &&
       settingsScroll.tabHeaderHidden === true &&
       settingsScroll.lockedGeneral !== true
+    const densityOk =
+      !!settingsDensity?.found &&
+      settingsDensity.allCollapsed === true &&
+      (settingsDensity.maxBoxGapPx ?? 99) <= 16 &&
+      (settingsDensity.panel?.extra ?? 99) <= 32 &&
+      (settingsDensity.dialogContent?.extra ?? 99) <= 32
+    const landscapeOk =
+      !!settingsLandscape?.found &&
+      settingsLandscape.stacked !== true &&
+      settingsLandscape.flexDirection === "row"
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -408,7 +503,9 @@ async function main() {
       settingsPortraitOk &&
       accordionOk &&
       collapseOk &&
-      scrollOk
+      scrollOk &&
+      densityOk &&
+      landscapeOk
     const report = {
       ok,
       pageUrl,
@@ -416,6 +513,8 @@ async function main() {
       settingsLayout,
       settingsAccordion,
       settingsScroll,
+      settingsDensity,
+      settingsLandscape,
       clicked: probe?.clicked ?? [],
       responded: !!(probe?.settingsClicked && (probe?.dialogAfterClick || probe.settingsFound)),
       exceptions,
@@ -425,10 +524,15 @@ async function main() {
       accordionOk,
       collapseOk,
       scrollOk,
+      densityOk,
+      landscapeOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
       portraitScrolledScreenshotPath: fs.existsSync(portraitScrolledScreenshotPath)
         ? portraitScrolledScreenshotPath
+        : null,
+      portraitCollapsedScreenshotPath: fs.existsSync(portraitCollapsedScreenshotPath)
+        ? portraitCollapsedScreenshotPath
         : null,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
@@ -447,7 +551,11 @@ async function main() {
                   ? "self-test failed: Settings section did not collapse"
                   : !scrollOk
                     ? "self-test failed: 「通用」 still locked after scroll"
-                    : "self-test failed: Settings control was not found or did not handle the tap",
+                    : !densityOk
+                      ? "self-test failed: portrait Settings accordion gaps or blank scroll still excessive"
+                      : !landscapeOk
+                        ? "self-test failed: landscape Settings is no longer two-column"
+                        : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

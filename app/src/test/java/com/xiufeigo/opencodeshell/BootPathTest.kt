@@ -34,6 +34,8 @@ class BootPathTest {
         assertTrue(css.contains("flex-direction:column") || css.contains("flex-direction: column"))
         assertTrue("portrait must unstick the category tab header", css.contains(".settings-v2-panel .settings-v2-tab-header"))
         assertTrue("portrait section titles must be sticky", css.contains("summary.settings-v2-section-title"))
+        assertTrue("collapsed accordion content must be display-none", css.contains(".settings-v2-section:not([open])"))
+        assertTrue("portrait panel must not force height 100% under the nav", css.contains("height:0") || css.contains("height: 0"))
         val assets = File("src/main/assets/opencode-app/assets")
         val accordionJs =
             assets.listFiles { _, name -> name.startsWith("index-") && name.endsWith(".js") }

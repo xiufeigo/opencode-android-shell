@@ -144,6 +144,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.3+.
 - **Settings squished in portrait:** `versionCode` 8+ stacks the Settings dialog to a single column below 840px CSS width.
 - **Settings「通用」stuck while scrolling:** `versionCode` 9+ hides the sticky category title; each section is a collapsible panel whose own title sticks.
+- **Settings accordion stretched / blank scroll in portrait:** `versionCode` 10+ tightens collapsed section gaps and stops the panel from being `height: 100%` of the full dialog under the stacked nav.
 
 ## Security
 
