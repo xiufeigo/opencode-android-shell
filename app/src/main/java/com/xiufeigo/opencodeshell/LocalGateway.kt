@@ -36,8 +36,10 @@ import javax.net.ssl.SSLSocketFactory
  * Official v1 `OpenCode.make` joins with `new URL('/api/...', baseUrl)`, which
  * drops any path prefix. [originFor] therefore also binds a **dedicated**
  * loopback port per backend so `baseUrl` can be origin-only
- * (`http://127.0.0.1:<dedicated>`). Absolute `/api`, `/global`, `/event`, and
- * `/pty` paths then stay on the proxy.
+ * (`http://127.0.0.1:<dedicated>`). Absolute `/api`, `/global`, `/event`,
+ * `/file`, `/find`, `/path`, `/pty`, `/mcp`, `/permission`, `/session`, `/vcs`
+ * (and every other serve path the official app fetch/XHR/SSE/WebSocket uses)
+ * then stay on the proxy. There is no path allowlist.
  */
 class LocalGateway(
     private val httpClient: OkHttpClient = defaultClient(),
@@ -54,6 +56,7 @@ class LocalGateway(
     private val backendPorts = ConcurrentHashMap<String, Int>()
     private val portBackends = ConcurrentHashMap<Int, String>()
     private val extraSockets = CopyOnWriteArrayList<ServerSocket>()
+    private val activeClients = CopyOnWriteArrayList<Socket>()
 
     fun publicOrigin(): String = "http://127.0.0.1:$port"
 
@@ -131,6 +134,13 @@ class LocalGateway(
             }
         }
         extraSockets.clear()
+        for (client in activeClients) {
+            try {
+                client.close()
+            } catch (_: Exception) {
+            }
+        }
+        activeClients.clear()
         backendPorts.clear()
         portBackends.clear()
         executor?.shutdownNow()
@@ -140,6 +150,7 @@ class LocalGateway(
     private fun handleClient(socket: Socket, boundBackend: String?) {
         socket.soTimeout = 0
         socket.tcpNoDelay = true
+        activeClients.add(socket)
         try {
             socket.use { sock ->
                 val input = BufferedInputStream(sock.getInputStream())
@@ -184,6 +195,12 @@ class LocalGateway(
             }
         } catch (e: Exception) {
             Log.w(TAG, "client error: ${e.message}")
+        } finally {
+            activeClients.remove(socket)
+            try {
+                socket.close()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -355,6 +372,8 @@ class LocalGateway(
 
     companion object {
         private const val TAG = "OpenCodeShell"
+        private const val DEFAULT_ALLOW_HEADERS =
+            "Authorization, Content-Type, Accept, Last-Event-ID, x-opencode-directory, x-opencode-workspace, x-opencode-ticket"
 
         internal fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
@@ -388,7 +407,7 @@ class LocalGateway(
                 .firstOrNull { it.key.equals("Access-Control-Request-Headers", true) }
                 ?.value
             val allowHeaders = requested?.takeIf { it.isNotBlank() }
-                ?: "Authorization, Content-Type, Accept, Last-Event-ID"
+                ?: DEFAULT_ALLOW_HEADERS
             val headers = LinkedHashMap<String, String>()
             headers["Access-Control-Allow-Origin"] = allow
             if (allow != "*") {
@@ -397,6 +416,7 @@ class LocalGateway(
             headers["Access-Control-Allow-Headers"] = allowHeaders
             headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"
             headers["Access-Control-Allow-Private-Network"] = "true"
+            headers["Access-Control-Expose-Headers"] = "Last-Event-ID, Content-Type"
             headers["Access-Control-Max-Age"] = "86400"
             headers["Vary"] = "Origin"
             return headers

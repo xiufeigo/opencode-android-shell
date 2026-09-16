@@ -66,6 +66,8 @@ class ConnectCorsTest {
         assertTrue(allJs.contains("opencode-proxy") || allJs.contains("androidProxyBaseUrl") || allJs.contains("proxyPrefix"))
         assertTrue("SDK must rewrite onto the native proxy", allJs.contains("androidProxyBaseUrl") || allJs.contains("opencode-proxy"))
         assertTrue("v1 new URL join needs dedicated origin or prefix restore", allJs.contains("proxyBaseUrl"))
+        assertTrue("PTY websocket URL must go through the Android proxy", allJs.contains("/pty/") && allJs.contains("connect"))
+        assertTrue("remote file APIs must be in the bundle", allJs.contains("/file") && allJs.contains("/find"))
         val zh = assets.listFiles { _, name -> name.startsWith("zh-") && name.endsWith(".js") }
             ?.joinToString("\n") { it.readText() }
             ?: ""

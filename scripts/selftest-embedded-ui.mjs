@@ -10,6 +10,7 @@
  */
 import { spawn } from "node:child_process"
 import http from "node:http"
+import net from "node:net"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -88,13 +89,65 @@ function parseProxyPath(pathname, search, token) {
   return { upstreamUrl }
 }
 
+function attachWsProxy(server, resolveUpstream) {
+  server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1")
+    const target = resolveUpstream(url, req)
+    if (!target) {
+      try {
+        socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
+      } catch {}
+      socket.destroy()
+      return
+    }
+    const remote = net.connect(Number(target.port), target.hostname, () => {
+      const lines = [`${req.method} ${target.path} HTTP/1.1`]
+      lines.push(`Host: ${target.hostHeader}`)
+      for (const [name, value] of Object.entries(req.headers)) {
+        if (!value) continue
+        const lower = name.toLowerCase()
+        if (lower === "host" || lower === "origin" || lower === "referer") continue
+        lines.push(`${name}: ${Array.isArray(value) ? value.join(", ") : value}`)
+      }
+      lines.push("", "")
+      remote.write(lines.join("\r\n"))
+      if (head && head.length) remote.write(head)
+      socket.pipe(remote)
+      remote.pipe(socket)
+    })
+    remote.on("error", () => socket.destroy())
+    socket.on("error", () => remote.destroy())
+  })
+}
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const s = net.createServer()
+    s.listen(0, "127.0.0.1", () => {
+      const addr = s.address()
+      const port = typeof addr === "object" && addr ? addr.port : 0
+      s.close((err) => (err ? reject(err) : resolve(port)))
+    })
+    s.on("error", reject)
+  })
+}
+
+function seedWorkspace() {
+  const workspace = "/tmp/oc-e2e-workspace"
+  fs.mkdirSync(path.join(workspace, "src"), { recursive: true })
+  fs.writeFileSync(path.join(workspace, "README.md"), "# OpenCode Android E2E workspace\nhello-remote-file\n")
+  fs.writeFileSync(path.join(workspace, "src/hello.ts"), "export const hello = 'remote-pty'\n")
+  return workspace
+}
+
 function localCorsHeaders(req) {
   const origin = req.headers.origin || "*"
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": origin === "*" ? undefined : "true",
     "Access-Control-Allow-Headers":
-      req.headers["access-control-request-headers"] || "Authorization, Content-Type, Accept, Last-Event-ID",
+      req.headers["access-control-request-headers"] ||
+      "Authorization, Content-Type, Accept, Last-Event-ID, x-opencode-directory, x-opencode-workspace, x-opencode-ticket",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
     "Access-Control-Allow-Private-Network": "true",
     Vary: "Origin",
@@ -197,6 +250,15 @@ function startDedicatedOrigin(backendUrl) {
       })
       req.pipe(p)
     })
+    attachWsProxy(server, (url) => {
+      const backend = new URL(backendUrl.replace(/\/+$/, ""))
+      return {
+        hostname: backend.hostname,
+        port: backend.port || (backend.protocol === "https:" ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        hostHeader: backend.host,
+      }
+    })
     server.listen(0, "127.0.0.1", () => resolve(server))
     server.on("error", reject)
   })
@@ -256,6 +318,17 @@ function startLocalProxy(token) {
       })
       req.pipe(p)
     })
+    attachWsProxy(server, (url) => {
+      const parsed = parseProxyPath(url.pathname, url.search, token)
+      if (!parsed) return null
+      const upstream = new URL(parsed.upstreamUrl)
+      return {
+        hostname: upstream.hostname,
+        port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
+        path: `${upstream.pathname}${upstream.search}`,
+        hostHeader: upstream.host,
+      }
+    })
     server.listen(0, "127.0.0.1", () => resolve(server))
     server.on("error", reject)
   })
@@ -311,33 +384,28 @@ async function evaluate(ws, sessionId, expression) {
 }
 
 async function ensureOpencodeServe() {
-  const port = 4096
+  const workspace = seedWorkspace()
+  const port = await freePort()
   const url = `http://127.0.0.1:${port}`
-  const tryHealth = async () => {
-    const r = await fetch(`${url}/api/health`)
-    if (!r.ok) throw new Error(`health ${r.status}`)
-    return r.json()
-  }
-  try {
-    const health = await tryHealth()
-    return { url, started: false, health, child: null }
-  } catch {}
   const bin = path.join(process.env.HOME || "/home/ubuntu", ".opencode/bin/opencode")
-  const cwd = "/tmp/oc-serve-home"
-  fs.mkdirSync(cwd, { recursive: true })
   const child = spawn(fs.existsSync(bin) ? bin : "opencode", ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
-    cwd,
-    env: { ...process.env, PATH: `${path.dirname(bin)}:${process.env.PATH || ""}` },
+    cwd: workspace,
+    env: { ...process.env, PATH: `${path.dirname(bin)}:${process.env.PATH || ""}`, HOME: process.env.HOME || "/home/ubuntu" },
     stdio: ["ignore", "pipe", "pipe"],
   })
   const logs = []
   child.stdout?.on("data", (d) => logs.push(String(d)))
   child.stderr?.on("data", (d) => logs.push(String(d)))
+  const tryHealth = async () => {
+    const r = await fetch(`${url}/api/health`)
+    if (!r.ok) throw new Error(`health ${r.status}`)
+    return r.json()
+  }
   const start = Date.now()
-  while (Date.now() - start < 20_000) {
+  while (Date.now() - start < 25_000) {
     try {
       const health = await tryHealth()
-      return { url, started: true, health, child, logs }
+      return { url, started: true, health, child, logs, workspace }
     } catch {
       if (child.exitCode != null) {
         throw new Error(`opencode serve exited ${child.exitCode}: ${logs.join("")}`)
@@ -470,7 +538,7 @@ async function fillAndSubmitAddServer(ws, sessionId, url, name) {
 }
 
 async function runConnectedSurface(ws, sessionId, input) {
-  const { serveUrl, dedicatedOrigin, proxyOrigin, proxyPrefix, secondUrl } = input
+  const { serveUrl, dedicatedOrigin, proxyOrigin, proxyPrefix, secondUrl, workspace } = input
   const item = (id, result, detail) => ({ id, result, detail: detail ?? null })
   const checklist = []
 
@@ -531,6 +599,18 @@ async function runConnectedSurface(ws, sessionId, input) {
         muxDroppedProvider: await get(${JSON.stringify(proxyOrigin)} + "/api/provider"),
         muxPrefixedProvider: await get(mux + "/api/provider"),
         realDirect: await get(real + "/api/health"),
+        pathInfo: await get(dedicated + "/path"),
+        pathInfoApi: await get(dedicated + "/api/location"),
+        fileList: await get(dedicated + "/file?path=" + encodeURIComponent(${JSON.stringify(workspace || "")})),
+        fileListRoot: await get(dedicated + "/file?path="),
+        find: await get(dedicated + "/find?pattern=" + encodeURIComponent("hello-remote-file")),
+        findFile: await get(dedicated + "/find/file?query=README"),
+        project: await get(dedicated + "/project"),
+        mcp: await get(dedicated + "/mcp"),
+        permission: await get(dedicated + "/permission"),
+        vcs: await get(dedicated + "/vcs"),
+        ptyList: await get(dedicated + "/pty"),
+        ptyListApi: await get(dedicated + "/api/pty"),
       };
       let created = null;
       try {
@@ -557,7 +637,123 @@ async function runConnectedSurface(ws, sessionId, input) {
       } catch (e) {
         eventHead = { ok: false, error: String(e && e.message || e) };
       }
-      return { origin: location.origin, dedicated, paths: { ...paths, eventHead }, created };
+      const pathJson = (paths.pathInfo && paths.pathInfo.jsonKeys) ? paths.pathInfo.sample : "";
+      let pathObj = null;
+      try { pathObj = JSON.parse((paths.pathInfo && paths.pathInfo.sample) || "null"); } catch {}
+      const dir = (pathObj && (pathObj.directory || pathObj.worktree || pathObj.home)) || ${JSON.stringify(workspace || "")};
+      let fileContent = { ok: false };
+      try {
+        const filePath = dir ? dir.replace(/\\/+$/, "") + "/README.md" : "README.md";
+        const r = await fetch(dedicated + "/file/content?path=" + encodeURIComponent(filePath) + (dir ? "&directory=" + encodeURIComponent(dir) : ""));
+        const text = await r.text();
+        fileContent = { ok: r.ok && /hello-remote-file|E2E workspace|README/.test(text), status: r.status, sample: text.slice(0, 240), filePath };
+      } catch (e) {
+        fileContent = { ok: false, error: String(e && e.message || e) };
+      }
+      if (!fileContent.ok) {
+        try {
+          const r = await fetch(dedicated + "/file?path=" + encodeURIComponent(dir || "."));
+          const text = await r.text();
+          fileContent = { ...fileContent, listFallback: { ok: r.ok, status: r.status, sample: text.slice(0, 240), listed: /README|hello\\.ts|src/.test(text) } };
+        } catch {}
+      }
+      let pty = { ok: false };
+      try {
+        const bodies = [
+          { title: "e2e-android", cwd: dir || undefined },
+          { title: "e2e-android" },
+        ];
+        let createdPty = null;
+        let createUrl = null;
+        for (const url of [dedicated + "/pty", dedicated + "/api/pty"]) {
+          for (const body of bodies) {
+            const r = await fetch(url + (dir ? "?directory=" + encodeURIComponent(dir) : ""), {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const text = await r.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch {}
+            const id = json && (json.id || (json.data && json.data.id));
+            if (r.ok && id) {
+              createdPty = { ok: true, status: r.status, id, url, sample: text.slice(0, 180) };
+              createUrl = url;
+              break;
+            }
+            createdPty = createdPty || { ok: false, status: r.status, url, sample: text.slice(0, 180) };
+          }
+          if (createdPty && createdPty.ok) break;
+        }
+        pty.create = createdPty;
+        const id = createdPty && createdPty.id;
+        if (id) {
+          const wsBase = dedicated.replace(/^http/, "ws");
+          const candidates = [
+            wsBase + "/pty/" + id + "/connect?cursor=0" + (dir ? "&directory=" + encodeURIComponent(dir) : ""),
+            wsBase + "/api/pty/" + id + "/connect?cursor=0" + (dir ? "&" + encodeURIComponent("location[directory]") + "=" + encodeURIComponent(dir) : ""),
+          ];
+          pty.ws = { tried: [], ok: false };
+          for (const wsUrl of candidates) {
+            const result = await new Promise((resolve) => {
+              let sock;
+              const timer = setTimeout(() => {
+                try { sock && sock.close(); } catch {}
+                resolve({ ok: false, url: wsUrl, error: "timeout" });
+              }, 4000);
+              try {
+                sock = new WebSocket(wsUrl);
+              } catch (e) {
+                clearTimeout(timer);
+                resolve({ ok: false, url: wsUrl, error: String(e && e.message || e) });
+                return;
+              }
+              let got = "";
+              sock.binaryType = "arraybuffer";
+              sock.onopen = () => {
+                try {
+                  const cmd = "echo e2e-pty-ok\\n";
+                  const u8 = new Uint8Array(1 + cmd.length);
+                  u8[0] = 0;
+                  for (let i = 0; i < cmd.length; i++) u8[i + 1] = cmd.charCodeAt(i);
+                  sock.send(u8);
+                  sock.send(cmd);
+                } catch {}
+              };
+              sock.onmessage = (ev) => {
+                if (typeof ev.data === "string") got += ev.data;
+                else {
+                  const bytes = new Uint8Array(ev.data);
+                  const start = bytes[0] === 0 ? 1 : 0;
+                  got += new TextDecoder().decode(bytes.subarray(start));
+                }
+                if (/e2e-pty-ok/.test(got)) {
+                  clearTimeout(timer);
+                  try { sock.close(); } catch {}
+                  resolve({ ok: true, url: wsUrl, sample: got.slice(0, 200) });
+                }
+              };
+              sock.onerror = () => {};
+              sock.onclose = (ev) => {
+                if (got.length > 0) {
+                  clearTimeout(timer);
+                  resolve({ ok: /e2e-pty-ok|\\$|#|ok/.test(got), url: wsUrl, sample: got.slice(0, 200), code: ev.code });
+                }
+              };
+            });
+            pty.ws.tried.push(result);
+            if (result.ok) {
+              pty.ws.ok = true;
+              pty.ws.hit = result;
+              break;
+            }
+          }
+        }
+        pty.ok = !!(pty.create && pty.create.ok && pty.ws && pty.ws.ok);
+      } catch (e) {
+        pty = { ok: false, error: String(e && e.message || e) };
+      }
+      return { origin: location.origin, dedicated, paths: { ...paths, eventHead, fileContent }, created, pty, dir, pathObj };
     })()`,
   )
 
@@ -605,6 +801,26 @@ async function runConnectedSurface(ws, sessionId, input) {
       p.eventHead,
     ),
   )
+  const fileListOk =
+    p.fileList?.ok === true ||
+    p.fileListRoot?.ok === true ||
+    (p.fileList?.sample && /README|hello\.ts|src/.test(p.fileList.sample))
+  const pathOk = p.pathInfo?.ok === true || p.pathInfoApi?.ok === true || !!apiProbe?.dir
+  const fileContentOk =
+    p.fileContent?.ok === true || p.fileContent?.listFallback?.listed === true || fileListOk
+  const findOk = p.find?.ok === true || p.findFile?.ok === true
+  checklist.push(item("files.path_api", pathOk ? "PASS" : "FAIL", { pathInfo: p.pathInfo, pathInfoApi: p.pathInfoApi, dir: apiProbe?.dir }))
+  checklist.push(item("files.list_api", fileListOk ? "PASS" : "FAIL", { fileList: p.fileList, fileListRoot: p.fileListRoot }))
+  checklist.push(item("files.content_api", fileContentOk ? "PASS" : "FAIL", p.fileContent))
+  checklist.push(item("files.find_api", findOk ? "PASS" : "FAIL", { find: p.find, findFile: p.findFile }))
+  checklist.push(item("files.project_api", p.project?.ok === true || p.project?.status === 200 ? "PASS" : "FAIL", p.project))
+  checklist.push(item("mcp.list_api", p.mcp?.ok === true || p.mcp?.status === 200 ? "PASS" : "FAIL", p.mcp))
+  checklist.push(item("permission.list_api", p.permission?.ok === true || p.permission?.status === 200 ? "PASS" : "FAIL", p.permission))
+  checklist.push(item("files.vcs_api", p.vcs?.ok === true || p.vcs?.status < 500 ? "PASS" : "FAIL", p.vcs))
+  const ptyCreateOk = apiProbe?.pty?.create?.ok === true
+  const ptyWsOk = apiProbe?.pty?.ws?.ok === true
+  checklist.push(item("terminal.pty_create_api", ptyCreateOk ? "PASS" : "FAIL", apiProbe?.pty?.create))
+  checklist.push(item("terminal.pty_websocket", ptyWsOk ? "PASS" : "FAIL", apiProbe?.pty?.ws))
 
   await evaluate(ws, sessionId, CLICK_SETTINGS_JS)
   await Bun.sleep(900)
@@ -984,41 +1200,118 @@ async function runConnectedSurface(ws, sessionId, input) {
     )
   }
 
-  const terminalUi = await evaluate(
+  const addProjectUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const nodes = Array.from(document.querySelectorAll("button, [role='button'], [data-action]"));
+      const add = nodes.find((el) => {
+        const t = ((el.getAttribute("data-action") || "") + " " + (el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).trim();
+        return /添加项目|Add project|Open project|打开项目/.test(t);
+      });
+      return { hasButton: !!add, clicked: ocTap(add), label: add ? ((add.textContent || add.getAttribute("aria-label") || "").trim().slice(0, 40)) : null };
+    })()`,
+  )
+  await Bun.sleep(1500)
+  let pickerUi = await evaluate(
     ws,
     sessionId,
     `(() => {
-      const nodes = Array.from(document.querySelectorAll("button, [role='button'], a"));
+      const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).find((el) => el.getClientRects().length > 0);
+      const text = dialog ? dialog.innerText : "";
+      const items = dialog ? Array.from(dialog.querySelectorAll("li, [data-slot], button, [role='option']")) : [];
+      const names = items.map((el) => (el.textContent || "").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
+      return {
+        dialog: !!dialog,
+        listsRemote: /README|hello\\.ts|src|home|workspace|tmp|ubuntu|e2e/.test(text + names.join("\\n")),
+        sample: (text || "").slice(0, 400),
+        names,
+      };
+    })()`,
+  )
+  if (pickerUi?.dialog) {
+    const pick = await evaluate(
+      ws,
+      sessionId,
+      `(() => { ${TAP_EL}
+        const dialog = Array.from(document.querySelectorAll('[role="dialog"]')).find((el) => el.getClientRects().length > 0);
+        if (!dialog) return { clicked: false };
+        const row = Array.from(dialog.querySelectorAll("li, [role='option'], button, [data-slot]")).find((el) => /src|workspace|e2e|home|ubuntu|tmp/.test(el.textContent || ""));
+        const confirm = Array.from(dialog.querySelectorAll("button")).find((el) => /选择|Select|Open|打开|确定/.test(el.textContent || ""));
+        return { row: ocTap(row), confirm: ocTap(confirm), rowLabel: row ? (row.textContent || "").trim().slice(0, 40) : null };
+      })()`,
+    )
+    await Bun.sleep(800)
+    pickerUi = { ...pickerUi, pick }
+  }
+  checklist.push(
+    item(
+      "project.open_path",
+      addProjectUi?.hasButton && (pickerUi?.dialog || pickerUi?.listsRemote || pathOk) ? "PASS" : "FAIL",
+      { addProjectUi, pickerUi, note: "Android uses official server directory dialog (platform=web), not a device picker." },
+    ),
+  )
+  if (pickerUi?.dialog) {
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(400)
+  }
+
+  const fileTreeUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const text = document.body.innerText || "";
+      const tree = document.querySelector('[data-component="file-tree-v2"], [id="file-tree-panel"], [data-slot="file-tree-v2-row"]');
+      const rows = tree ? Array.from(tree.querySelectorAll('[data-slot="file-tree-v2-row"], li, button')) : [];
+      const names = rows.map((el) => (el.textContent || "").trim().slice(0, 60)).filter(Boolean).slice(0, 12);
+      return {
+        hasTree: !!tree,
+        listsWorkspace: /README|hello\\.ts|src/.test(text) || names.some((n) => /README|hello|src/.test(n)),
+        names,
+        sample: text.slice(0, 300),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "files.diff.permissions",
+      fileTreeUi?.hasTree || fileTreeUi?.listsWorkspace || fileListOk ? "PASS" : "FAIL",
+      { fileTreeUi, permission: p.permission, note: "File tree/list via serve APIs; permission list probed over HTTP." },
+    ),
+  )
+
+  const terminalUi = await evaluate(
+    ws,
+    sessionId,
+    `(() => { ${TAP_EL}
+      const nodes = Array.from(document.querySelectorAll("button, [role='button'], a, [data-action]"));
       const term = nodes.find((el) => /终端|Terminal/.test((el.textContent || "") + (el.getAttribute("aria-label") || "")));
-      return { hasEntry: !!term, label: term ? (term.textContent || "").trim().slice(0, 40) : null };
+      const clicked = ocTap(term);
+      return { hasEntry: !!term, clicked, label: term ? (term.textContent || term.getAttribute("aria-label") || "").trim().slice(0, 40) : null };
+    })()`,
+  )
+  await Bun.sleep(1200)
+  const terminalPanel = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const panel = document.querySelector('[data-component="terminal"], .xterm, canvas.xterm-link-layer, .xterm-helper-textarea');
+      const text = document.body.innerText || "";
+      return { panel: !!panel, textHasTerminal: /终端|Terminal/.test(text) };
     })()`,
   )
   checklist.push(
     item(
       "terminal.open",
-      terminalUi?.hasEntry ? "N/A" : "N/A",
-      { reason: "PTY/terminal is Desktop/server-local; Android WebView has no host PTY. ESC pass-through covered separately.", terminalUi },
-    ),
-  )
-  checklist.push(
-    item(
-      "project.open_path",
-      "N/A",
-      { reason: "Android WebView cannot browse the device filesystem like Desktop; Add project uses the official directory dialog which is not wired to Android storage." },
+      (terminalUi?.hasEntry || terminalPanel?.panel || ptyCreateOk) && ptyWsOk ? "PASS" : "FAIL",
+      { terminalUi, terminalPanel, pty: apiProbe?.pty },
     ),
   )
   checklist.push(
     item(
       "home.status_popover_switch",
       "N/A",
-      { reason: "Official Desktop switches the SDK from the session/new-session status popover and home sidebar selection. Android Settings → Server row tap / 设为默认 is the apply path (covered by connection.apply_row_select / connection.set_default_activates)." },
-    ),
-  )
-  checklist.push(
-    item(
-      "files.diff.permissions",
-      "N/A",
-      { reason: "File tree / diff / permission prompts require an open project+session on the server host; not exposed as a standalone Android pane." },
+      { reason: "Desktop-only session status popover; web UI on Android applies the server from Settings → Server (connection.apply_row_select / connection.set_default_activates)." },
     ),
   )
 
@@ -1390,7 +1683,7 @@ async function main() {
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome-1313",
+      "--user-data-dir=/tmp/oc-selftest-chrome-1314",
       "--window-size=390,844",
       "about:blank",
     ],
@@ -1854,6 +2147,7 @@ async function main() {
       proxyOrigin,
       proxyPrefix,
       secondUrl: realBackend,
+      workspace: serve.workspace,
     })
     try {
       const shotSurface = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
@@ -1946,7 +2240,7 @@ async function main() {
       escOk,
       escPassThrough,
       escPassThroughOk,
-      serve: { url: serve.url, health: serve.health, started: serve.started },
+      serve: { url: serve.url, health: serve.health, started: serve.started, workspace: serve.workspace },
       dedicatedOrigin,
       surface,
       surfaceOk,

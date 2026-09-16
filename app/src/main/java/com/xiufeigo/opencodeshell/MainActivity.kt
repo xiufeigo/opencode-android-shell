@@ -33,6 +33,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
 import java.io.ByteArrayInputStream
 import kotlin.math.max
@@ -42,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var assetLoader: WebViewAssetLoader
     private lateinit var gateway: LocalGateway
+    private lateinit var webSockets: NativeWebSocketHub
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var backInFlight = false
 
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (::webSockets.isInitialized) webSockets.closeAll()
         gateway.close()
         super.onDestroy()
     }
@@ -167,7 +171,15 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
-        binding.webView.addJavascriptInterface(OpenCodeAndroidBridge(gateway), "OpenCodeAndroid")
+        webSockets = NativeWebSocketHub(binding.webView)
+        binding.webView.addJavascriptInterface(OpenCodeAndroidBridge(gateway, webSockets), "OpenCodeAndroid")
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(
+                binding.webView,
+                NativeWebSocketJs.INSTALL,
+                setOf(ANDROID_WEBVIEW_ORIGIN, "http://$ASSET_HOST"),
+            )
+        }
 
         binding.webView.isFocusable = true
         binding.webView.isFocusableInTouchMode = true
@@ -234,12 +246,14 @@ class MainActivity : AppCompatActivity() {
                 binding.progress.visibility = View.VISIBLE
                 hideError()
                 view?.evaluateJavascript(TOUCH_FIX_JS, null)
+                view?.evaluateJavascript(NativeWebSocketJs.INSTALL, null)
                 view?.evaluateJavascript(AndroidBackJs.INSTALL, null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 CookieManager.getInstance().flush()
                 binding.webView.evaluateJavascript(TOUCH_FIX_JS, null)
+                binding.webView.evaluateJavascript(NativeWebSocketJs.INSTALL, null)
                 binding.webView.evaluateJavascript(AndroidBackJs.INSTALL, null)
                 binding.webView.evaluateJavascript(IME_SCROLL_JS, null)
                 binding.webView.requestFocus()

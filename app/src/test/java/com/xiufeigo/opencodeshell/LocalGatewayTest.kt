@@ -211,5 +211,144 @@ class LocalGatewayTest {
         )
         assertEquals("http://127.0.0.1:9", LocalGateway.allowedWebOrigin("http://127.0.0.1:9"))
         assertEquals(null, LocalGateway.allowedWebOrigin("https://evil.example"))
+        val headers = LocalGateway.corsHeaders("https://appassets.androidplatform.net")
+        assertTrue(headers["Access-Control-Allow-Headers"]!!.contains("x-opencode-directory"))
+        assertTrue(headers["Access-Control-Allow-Headers"]!!.contains("x-opencode-ticket"))
+        assertTrue(headers["Access-Control-Expose-Headers"]!!.contains("Last-Event-ID"))
+    }
+
+    @Test
+    fun dedicatedOriginForwardsEveryOfficialServePath() {
+        val paths = listOf(
+            "/path",
+            "/file?path=/workspace",
+            "/file/content?path=/workspace/README.md",
+            "/file/status",
+            "/find?pattern=hello",
+            "/find/file?query=README",
+            "/project",
+            "/pty",
+            "/mcp",
+            "/permission",
+            "/vcs",
+            "/vcs/diff",
+            "/session/ses_1/diff",
+            "/global/event",
+            "/api/pty",
+            "/api/fs/list",
+            "/api/event",
+        )
+        MockWebServer().use { upstream ->
+            repeat(paths.size) {
+                upstream.enqueue(
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody("""{"ok":true}"""),
+                )
+            }
+            LocalGateway(httpClient = OkHttpClient()).use { gateway ->
+                gateway.start()
+                val originHeader = "https://appassets.androidplatform.net"
+                val backend = upstream.url("/").toString().trimEnd('/')
+                val origin = gateway.originFor(backend)
+                val client = OkHttpClient()
+                for (path in paths) {
+                    val response = client.newCall(
+                        Request.Builder()
+                            .url("$origin$path")
+                            .header("Origin", originHeader)
+                            .header("x-opencode-directory", "%2Fworkspace")
+                            .build(),
+                    ).execute()
+                    assertEquals("GET $path", 200, response.code)
+                    val recorded = upstream.takeRequest()
+                    val recordedPath = recorded.path ?: ""
+                    assertTrue("upstream $recordedPath should keep $path", recordedPath.startsWith(path.substringBefore("?")))
+                    assertEquals("%2Fworkspace", recorded.getHeader("x-opencode-directory"))
+                    assertEquals(null, recorded.getHeader("Origin"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun websocketUpgradeTunnelsOnDedicatedOriginAndMux() {
+        val upstream = MockWebServer()
+        try {
+            val listener = object : okhttp3.WebSocketListener() {
+                override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                    webSocket.send("pty-ready")
+                }
+
+                override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
+                    webSocket.send("echo:$text")
+                }
+            }
+            upstream.enqueue(MockResponse().withWebSocketUpgrade(listener))
+            upstream.enqueue(MockResponse().withWebSocketUpgrade(listener))
+            LocalGateway(httpClient = OkHttpClient()).use { gateway ->
+                gateway.start()
+                val backend = upstream.url("/").toString().trimEnd('/')
+                val origin = gateway.originFor(backend)
+                val dedicatedWs = origin.replace("http://", "ws://") + "/pty/pty_test/connect?directory=/workspace&cursor=0"
+                assertWsEcho(dedicatedWs, "hello-dedicated")
+                val mux = "${gateway.publicOrigin()}${gateway.publicPrefix()}${ProxyPath.encodeBackend(backend)}"
+                    .replace("http://", "ws://") + "/api/pty/pty_test/connect?location[directory]=/workspace&cursor=0"
+                assertWsEcho(mux, "hello-mux")
+            }
+        } finally {
+            try {
+                upstream.shutdown()
+            } catch (_: Exception) {
+            }
+            try {
+                upstream.close()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun assertWsEcho(url: String, payload: String) {
+        val opened = java.util.concurrent.CountDownLatch(1)
+        val echoed = java.util.concurrent.CountDownLatch(1)
+        val closed = java.util.concurrent.CountDownLatch(1)
+        val seen = java.util.concurrent.atomic.AtomicReference<String>()
+        val client = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build()
+        val ws = client.newWebSocket(
+            Request.Builder()
+                .url(url.replace("ws://", "http://").replace("wss://", "https://"))
+                .header("Origin", "https://appassets.androidplatform.net")
+                .build(),
+            object : okhttp3.WebSocketListener() {
+                override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                    opened.countDown()
+                    webSocket.send(payload)
+                }
+
+                override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
+                    if (text == "echo:$payload") {
+                        seen.set(text)
+                        echoed.countDown()
+                    }
+                }
+
+                override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) {
+                    closed.countDown()
+                }
+
+                override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
+                    closed.countDown()
+                }
+            },
+        )
+        assertTrue("websocket open $url", opened.await(4, TimeUnit.SECONDS))
+        assertTrue("websocket echo $url", echoed.await(4, TimeUnit.SECONDS))
+        assertEquals("echo:$payload", seen.get())
+        ws.close(1000, "done")
+        closed.await(2, TimeUnit.SECONDS)
+        ws.cancel()
+        client.dispatcher.executorService.shutdown()
+        client.connectionPool.evictAll()
     }
 }
