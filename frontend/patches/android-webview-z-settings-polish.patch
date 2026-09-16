@@ -213,7 +213,7 @@ diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/
      transform: rotate(45deg);
      transition: transform 160ms ease;
    }
-@@ -360,6 +390,48 @@
+@@ -360,6 +390,49 @@
    .settings-v2-section[open] > summary.settings-v2-section-title::after {
      transform: rotate(-135deg);
    }
@@ -239,7 +239,8 @@ diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/
 +    min-width: min-content;
 +  }
 +
-+  .settings-v2-tab-header [data-component="button-v2"] {
++  .settings-v2-tab-header [data-component="button-v2"],
++  [data-component="dialog-v2"][data-variant="settings"] .settings-v2-tab-header [data-component="button-v2"] {
 +    width: auto;
 +    max-width: none;
 +    flex: 0 0 auto;

@@ -988,6 +988,13 @@ async function runConnectedSurface(ws, sessionId, input) {
     ),
   )
 
+  await cdp(
+    ws,
+    "Emulation.setDeviceMetricsOverride",
+    { width: 390, height: 844, deviceScaleFactor: 2.75, mobile: true },
+    sessionId,
+  )
+  await Bun.sleep(300)
   const shortcutsTab = await evaluate(ws, sessionId, clickTab("/快捷键|Shortcuts|Keybind/"))
   await Bun.sleep(500)
   const shortcutsUi = await evaluate(
