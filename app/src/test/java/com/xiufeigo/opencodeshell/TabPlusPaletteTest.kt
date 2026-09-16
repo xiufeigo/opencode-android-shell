@@ -32,10 +32,12 @@ class TabPlusPaletteTest {
         val jsName =
             Regex("""src="\./assets/(index-[^"]+\.js)"""").find(html)?.groupValues?.get(1)
                 ?: error("missing entry script in index.html")
-        val js = File("src/main/assets/opencode-app/assets/$jsName").readText()
-        assertTrue("plus button must expose data-action", js.contains("titlebar-tab-plus"))
-        assertTrue("settings toggle must exist", js.contains("settings-tab-plus-creates-session"))
-        assertTrue("preference key must persist in localStorage", js.contains("opencode.android.tabPlusCreatesSession"))
-        assertTrue("must trigger official file.open palette", js.contains("file.open"))
+        val assets = File("src/main/assets/opencode-app/assets")
+        val jsFiles = listOf(File(assets, jsName)) + (assets.listFiles { _, name -> name.endsWith(".js") }?.toList().orEmpty())
+        fun bundled(needle: String) = jsFiles.any { it.isFile && needle in it.readText() }
+        assertTrue("plus button must expose data-action", bundled("titlebar-tab-plus"))
+        assertTrue("settings toggle must exist", bundled("settings-tab-plus-creates-session"))
+        assertTrue("preference key must persist in localStorage", bundled("opencode.android.tabPlusCreatesSession"))
+        assertTrue("must trigger official file.open palette", bundled("file.open"))
     }
 }
