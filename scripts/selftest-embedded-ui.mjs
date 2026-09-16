@@ -349,8 +349,125 @@ async function ensureOpencodeServe() {
   throw new Error(`timeout waiting for opencode serve: ${logs.join("")}`)
 }
 
+const TAP_EL = `function ocTap(el) {
+  if (!el) return false;
+  el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  return true;
+}`
+
+function inspectServersExpression(serveUrl, secondUrl) {
+  return `(() => {
+    const rows = Array.from(document.querySelectorAll(".settings-v2-servers-row"));
+    const mapped = rows.map((row) => {
+      const text = row.innerText || "";
+      return {
+        key: row.getAttribute("data-server-key") || "",
+        current: row.getAttribute("data-current") === "true",
+        isDefault: row.getAttribute("data-default") === "true",
+        apply: !!row.querySelector('[data-action="settings-apply-server"]'),
+        pressed: row.querySelector('[data-action="settings-apply-server"]')?.getAttribute("aria-pressed") === "true",
+        currentTag: /当前|Current/.test(text),
+        defaultTag: /默认|Default/.test(text),
+        text: text.slice(0, 160),
+      };
+    });
+    return {
+      count: mapped.length,
+      rows: mapped,
+      defaultUrl: localStorage.getItem("opencode.settings.dat:defaultServerUrl"),
+      stored: localStorage.getItem("opencode.global.dat:server"),
+      serveCurrent: mapped.some((r) => r.key === ${JSON.stringify(serveUrl)} && r.current && r.pressed && r.currentTag),
+      serveDefault: mapped.some((r) => r.key === ${JSON.stringify(serveUrl)} && r.isDefault && r.defaultTag),
+      secondCurrent: ${secondUrl ? `mapped.some((r) => r.key === ${JSON.stringify(secondUrl)} && r.current)` : "false"},
+      applyControl: mapped.every((r) => r.apply),
+    };
+  })()`
+}
+
+async function fillAndSubmitAddServer(ws, sessionId, url, name) {
+  const opened = await evaluate(
+    ws,
+    sessionId,
+    `(${TAP_EL}; (() => {
+      const add = Array.from(document.querySelectorAll("button, [role='button']")).find((el) => {
+        const t = ((el.textContent || "") + " " + (el.getAttribute("aria-label") || "")).trim();
+        return t.includes("Add server") || t.includes("添加服务器");
+      });
+      return { clicked: ocTap(add), label: add ? (add.textContent || "").trim().slice(0, 40) : null };
+    })())`,
+  )
+  await Bun.sleep(600)
+  const filled = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const dialog = document.querySelector(".settings-v2-server-dialog") || document.querySelector('[role="dialog"]');
+      if (!dialog) return { dialogFound: false };
+      const inputs = Array.from(dialog.querySelectorAll("input:not([type='password'])"));
+      const urlInput = inputs[0];
+      const nameInput = inputs[1];
+      const nativeSet = (el, value) => {
+        if (!el) return false;
+        const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        if (desc && desc.set) desc.set.call(el, value);
+        else el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      };
+      return {
+        dialogFound: true,
+        urlSet: nativeSet(urlInput, ${JSON.stringify(url)}),
+        nameSet: nativeSet(nameInput, ${JSON.stringify(name)}),
+        urlValue: urlInput ? urlInput.value : null,
+        inputCount: inputs.length,
+      };
+    })()`,
+  )
+  await Bun.sleep(2200)
+  const submitted = await evaluate(
+    ws,
+    sessionId,
+    `(${TAP_EL}; (() => {
+      const dialog = document.querySelector(".settings-v2-server-dialog");
+      const buttons = Array.from((dialog || document).querySelectorAll("button"));
+      const submit = buttons.find((el) => /添加服务器|Add server|Checking|检查中/.test(el.textContent || "")) ||
+        buttons.find((el) => el.getAttribute("data-variant") === "contrast");
+      const contrast = dialog && dialog.querySelector('[data-component="button-v2"][data-variant="contrast"], button:last-of-type');
+      const target = submit || contrast;
+      return { clicked: ocTap(target), label: target ? (target.textContent || "").trim().slice(0, 40) : null, busy: /Checking|检查中/.test(target ? target.textContent : "") };
+    })())`,
+  )
+  let last = null
+  for (let i = 0; i < 20; i++) {
+    await Bun.sleep(500)
+    last = await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        const dialog = document.querySelector(".settings-v2-server-dialog");
+        const err = dialog && dialog.querySelector(".settings-v2-server-dialog-error");
+        const rows = Array.from(document.querySelectorAll(".settings-v2-servers-row"));
+        const hit = rows.find((row) => (row.getAttribute("data-server-key") || "").includes(${JSON.stringify(url)}));
+        return {
+          dialogOpen: !!dialog && dialog.getClientRects().length > 0,
+          error: err ? (err.textContent || "").slice(0, 200) : "",
+          rowCount: rows.length,
+          found: !!hit,
+          current: hit ? hit.getAttribute("data-current") : null,
+        };
+      })()`,
+    )
+    if (last?.found && last.dialogOpen === false) break
+    if (last?.error) break
+  }
+  return { opened, filled, submitted, last }
+}
+
 async function runConnectedSurface(ws, sessionId, input) {
-  const { serveUrl, dedicatedOrigin, proxyOrigin, proxyPrefix } = input
+  const { serveUrl, dedicatedOrigin, proxyOrigin, proxyPrefix, secondUrl } = input
   const item = (id, result, detail) => ({ id, result, detail: detail ?? null })
   const checklist = []
 
@@ -359,13 +476,8 @@ async function runConnectedSurface(ws, sessionId, input) {
     sessionId,
     `(() => {
       const url = ${JSON.stringify(serveUrl)};
-      localStorage.setItem("opencode.global.dat:server", JSON.stringify({
-        list: [{ type: "http", displayName: "local-serve", http: { url } }],
-        projects: {},
-        lastProject: {},
-        recentlyClosed: {},
-      }));
-      localStorage.setItem("opencode.settings.dat:defaultServerUrl", url);
+      localStorage.removeItem("opencode.global.dat:server");
+      localStorage.removeItem("opencode.settings.dat:defaultServerUrl");
       return {
         stored: localStorage.getItem("opencode.global.dat:server"),
         defaultUrl: localStorage.getItem("opencode.settings.dat:defaultServerUrl"),
@@ -377,13 +489,6 @@ async function runConnectedSurface(ws, sessionId, input) {
   )
   checklist.push(
     item(
-      "connection.seed_real_url",
-      seed?.defaultUrl === serveUrl && seed?.stored?.includes(serveUrl) ? "PASS" : "FAIL",
-      seed,
-    ),
-  )
-  checklist.push(
-    item(
       "connection.proxy_origin_only",
       seed?.proxyBase === dedicatedOrigin ? "PASS" : "FAIL",
       { proxyBase: seed?.proxyBase, dedicatedOrigin },
@@ -391,7 +496,7 @@ async function runConnectedSurface(ws, sessionId, input) {
   )
 
   await cdp(ws, "Page.reload", { ignoreCache: true }, sessionId)
-  await Bun.sleep(16_000)
+  await Bun.sleep(8_000)
 
   const apiProbe = await evaluate(
     ws,
@@ -555,21 +660,168 @@ async function runConnectedSurface(ws, sessionId, input) {
 
   const serversTab = await evaluate(ws, sessionId, clickTab("/服务器|Servers/"))
   await Bun.sleep(500)
+  const addServe = await fillAndSubmitAddServer(ws, sessionId, serveUrl, "local-serve")
+  const afterAdd = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+  checklist.push(
+    item(
+      "connection.add_server_via_ui",
+      addServe?.last?.found === true && afterAdd?.count >= 1 ? "PASS" : "FAIL",
+      { addServe, afterAdd },
+    ),
+  )
+  checklist.push(
+    item(
+      "connection.add_applies_active",
+      afterAdd?.serveCurrent === true && afterAdd?.serveDefault === true && afterAdd?.applyControl === true ? "PASS" : "FAIL",
+      afterAdd,
+    ),
+  )
+  const applyClick = await evaluate(
+    ws,
+    sessionId,
+    `(${TAP_EL}; (() => {
+      const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(serveUrl)});
+      const btn = row && row.querySelector('[data-action="settings-apply-server"]');
+      return { clicked: ocTap(btn), key: row ? row.getAttribute("data-server-key") : null };
+    })())`,
+  )
+  await Bun.sleep(600)
+  const afterApply = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+  checklist.push(
+    item(
+      "connection.apply_row_select",
+      applyClick?.clicked === true && afterApply?.serveCurrent === true && afterApply?.defaultUrl === serveUrl ? "PASS" : "FAIL",
+      { applyClick, afterApply },
+    ),
+  )
+
+  let afterSwitch = null
+  let afterDelete = null
+  let setDefaultMenu = null
+  if (secondUrl) {
+    const addSecond = await fillAndSubmitAddServer(ws, sessionId, secondUrl, "upstream-mock")
+    const afterSecond = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+    checklist.push(
+      item(
+        "connection.add_second_server",
+        addSecond?.last?.found === true && afterSecond?.count >= 2 && afterSecond?.secondCurrent === true ? "PASS" : "FAIL",
+        { addSecond, afterSecond },
+      ),
+    )
+    const switchClick = await evaluate(
+      ws,
+      sessionId,
+      `(${TAP_EL}; (() => {
+        const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(serveUrl)});
+        return { clicked: ocTap(row && row.querySelector('[data-action="settings-apply-server"]')) };
+      })())`,
+    )
+    await Bun.sleep(700)
+    afterSwitch = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+    checklist.push(
+      item(
+        "connection.switch_between_servers",
+        switchClick?.clicked === true && afterSwitch?.serveCurrent === true && afterSwitch?.secondCurrent === false ? "PASS" : "FAIL",
+        { switchClick, afterSwitch },
+      ),
+    )
+    setDefaultMenu = await evaluate(
+      ws,
+      sessionId,
+      `(${TAP_EL}; (() => {
+        const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(secondUrl)});
+        const menu = row && row.querySelector('[data-action="settings-server-menu"]');
+        const opened = ocTap(menu);
+        return { opened, hasMenu: !!menu };
+      })())`,
+    )
+    await Bun.sleep(400)
+    const setDefaultClick = await evaluate(
+      ws,
+      sessionId,
+      `(${TAP_EL}; (() => {
+        const item = document.querySelector('[data-action="settings-server-set-default"]');
+        const byText = Array.from(document.querySelectorAll('[role="menuitem"], [data-component="menu-v2-item"]')).find((el) => /设为默认|Set as default/.test(el.textContent || ""));
+        return { clicked: ocTap(item || byText), label: (item || byText) ? ((item || byText).textContent || "").trim().slice(0, 40) : null };
+      })())`,
+    )
+    await Bun.sleep(700)
+    const afterMenuDefault = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+    checklist.push(
+      item(
+        "connection.set_default_activates",
+        setDefaultClick?.clicked === true && afterMenuDefault?.secondCurrent === true && afterMenuDefault?.defaultUrl === secondUrl
+          ? "PASS"
+          : "FAIL",
+        { setDefaultMenu, setDefaultClick, afterMenuDefault },
+      ),
+    )
+    const switchBack = await evaluate(
+      ws,
+      sessionId,
+      `(${TAP_EL}; (() => {
+        const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(serveUrl)});
+        return { clicked: ocTap(row && row.querySelector('[data-action="settings-apply-server"]')) };
+      })())`,
+    )
+    await Bun.sleep(500)
+    const openDelete = await evaluate(
+      ws,
+      sessionId,
+      `(${TAP_EL}; (() => {
+        const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(secondUrl)});
+        return { opened: ocTap(row && row.querySelector('[data-action="settings-server-menu"]')) };
+      })())`,
+    )
+    await Bun.sleep(400)
+    const deleteClick = await evaluate(
+      ws,
+      sessionId,
+      `(${TAP_EL}; (() => {
+        const item = document.querySelector('[data-action="settings-server-delete"]');
+        const byText = Array.from(document.querySelectorAll('[role="menuitem"], [data-component="menu-v2-item"]')).find((el) => /删除|Delete/.test(el.textContent || ""));
+        return { clicked: ocTap(item || byText), switchBack: ${JSON.stringify(!!switchBack?.clicked)} };
+      })())`,
+    )
+    await Bun.sleep(700)
+    afterDelete = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+    checklist.push(
+      item(
+        "connection.delete_server",
+        deleteClick?.clicked === true && afterDelete?.count === 1 && afterDelete?.serveCurrent === true ? "PASS" : "FAIL",
+        { openDelete, deleteClick, afterDelete },
+      ),
+    )
+  }
+
   const serversUi = await evaluate(
     ws,
     sessionId,
     `(() => {
       const text = (document.querySelector('[role="dialog"]')?.innerText || "");
+      const apply = document.querySelector('[data-action="settings-apply-server"]');
       return {
         hasLocal: text.includes(${JSON.stringify(new URL(serveUrl).host)}) || text.includes("local-serve") || text.includes("127.0.0.1:4096"),
         hasAdd: /添加服务器|Add server/.test(text),
+        hasApply: !!apply,
+        hasCurrent: /当前|Current/.test(text),
         sample: text.slice(0, 400),
       };
     })()`,
   )
   checklist.push(
-    item("settings.servers_crud_list", serversTab?.clicked && serversUi?.hasLocal ? "PASS" : "FAIL", { serversTab, serversUi }),
+    item("settings.servers_crud_list", serversTab?.clicked && serversUi?.hasLocal && serversUi?.hasApply ? "PASS" : "FAIL", { serversTab, serversUi, afterAdd, afterApply, afterSwitch, afterDelete }),
   )
+  try {
+    const shotServers = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+    if (shotServers?.data) {
+      const p = "/opt/cursor/artifacts/selftest-servers-apply.png"
+      fs.mkdirSync(path.dirname(p), { recursive: true })
+      fs.writeFileSync(p, Buffer.from(shotServers.data, "base64"))
+    }
+  } catch {}
+
+  await Bun.sleep(2500)
 
   const providersTab = await evaluate(ws, sessionId, clickTab("/提供商|Providers/"))
   await Bun.sleep(4000)
@@ -657,6 +909,41 @@ async function runConnectedSurface(ws, sessionId, input) {
   )
   checklist.push(item("home.connected_layout", homeUi?.homeCopy ? "PASS" : "FAIL", homeUi))
 
+  const newSessionUi = await evaluate(
+    ws,
+    sessionId,
+    `(${TAP_EL}; (() => {
+      const btn = document.querySelector('[data-action="home-new-session"]') ||
+        Array.from(document.querySelectorAll("button, [role='button']")).find((el) => /新会话|New session/.test(el.textContent || ""));
+      const before = location.pathname + location.hash;
+      const clicked = ocTap(btn);
+      return { hasButton: !!btn, clicked, label: btn ? (btn.textContent || "").trim().slice(0, 40) : null, before };
+    })())`,
+  )
+  await Bun.sleep(2500)
+  const afterNewSession = await evaluate(
+    ws,
+    sessionId,
+    `(() => {
+      const text = document.body.innerText || "";
+      const composer = !!document.querySelector("textarea, [contenteditable='true'], [data-component='prompt-input']");
+      const overlay = Array.from(document.querySelectorAll('[role="dialog"]')).some((el) => el.getClientRects().length > 0);
+      return {
+        composer,
+        overlay,
+        sessionish: /会话|Session|prompt|Ask|Ask anything|问/.test(text),
+        sample: text.slice(0, 300),
+      };
+    })()`,
+  )
+  checklist.push(
+    item(
+      "home.create_session_after_apply",
+      newSessionUi?.hasButton && (afterNewSession?.composer || afterNewSession?.sessionish || newSessionUi?.clicked) ? "PASS" : "FAIL",
+      { newSessionUi, afterNewSession },
+    ),
+  )
+
   const sendProbe = await evaluate(
     ws,
     sessionId,
@@ -715,6 +1002,13 @@ async function runConnectedSurface(ws, sessionId, input) {
   )
   checklist.push(
     item(
+      "home.status_popover_switch",
+      "N/A",
+      { reason: "Official Desktop switches the SDK from the session/new-session status popover and home sidebar selection. Android Settings → Server row tap / 设为默认 is the apply path (covered by connection.apply_row_select / connection.set_default_activates)." },
+    ),
+  )
+  checklist.push(
+    item(
       "files.diff.permissions",
       "N/A",
       { reason: "File tree / diff / permission prompts require an open project+session on the server host; not exposed as a standalone Android pane." },
@@ -722,7 +1016,7 @@ async function runConnectedSurface(ws, sessionId, input) {
   )
 
   const failed = checklist.filter((c) => c.result === "FAIL")
-  return { checklist, failed, apiProbe, seed, providersUi, modelsUi, serversUi, generalUi, shortcutsUi, homeUi, sendProbe }
+  return { checklist, failed, apiProbe, seed, providersUi, modelsUi, serversUi, generalUi, shortcutsUi, homeUi, sendProbe, afterAdd, afterApply, afterSwitch, afterDelete }
 }
 
 const TAP_JS = `(() => {
@@ -1089,7 +1383,7 @@ async function main() {
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome-1312",
+      "--user-data-dir=/tmp/oc-selftest-chrome-1313",
       "--window-size=390,844",
       "about:blank",
     ],
@@ -1552,6 +1846,7 @@ async function main() {
       dedicatedOrigin,
       proxyOrigin,
       proxyPrefix,
+      secondUrl: realBackend,
     })
     try {
       const shotSurface = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)

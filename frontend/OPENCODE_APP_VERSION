@@ -4,4 +4,4 @@ commit=014614d35b397775e5d397a490fc72368c894ec2
 source=https://github.com/anomalyco/opencode
 built_with=OPENCODE_CHANNEL=prod vite build --base ./ --sourcemap false
 android_patch=frontend/patches/*.patch
-android_patch_purpose=Desktop MemoryRouter. Portrait Settings accordion. Empty home no overflow. Offline SDK stub. IME dialog scroll. Native loopback reverse proxy (CORS not required). Dedicated origin-only proxy ports so v1 SDK absolute /api /global /event paths keep the proxy. Servers via Settings → Server.
+android_patch_purpose=Desktop MemoryRouter. Portrait Settings accordion. Empty home no overflow. Offline SDK stub. IME dialog scroll. Native loopback reverse proxy (CORS not required). Dedicated origin-only proxy ports so v1 SDK absolute /api /global /event paths keep the proxy. Settings → Server row tap / 设为默认 applies the active connection. Servers via Settings → Server.
