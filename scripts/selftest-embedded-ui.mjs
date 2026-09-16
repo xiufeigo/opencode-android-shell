@@ -65,42 +65,142 @@ function startServer() {
   })
 }
 
-function startCorsMock() {
+function parseProxyPath(pathname, search, token) {
+  const prefix = "/opencode-proxy/"
+  if (!pathname.startsWith(prefix)) return null
+  const rest = pathname.slice(prefix.length)
+  const slash = rest.indexOf("/")
+  if (slash <= 0) return null
+  if (rest.slice(0, slash) !== token) return null
+  const after = rest.slice(slash + 1)
+  const next = after.indexOf("/")
+  const encoded = next < 0 ? after : after.slice(0, next)
+  const upstreamPath = next < 0 ? "/" : after.slice(next) || "/"
+  let backend
+  try {
+    backend = decodeURIComponent(encoded).replace(/\/+$/, "")
+  } catch {
+    return null
+  }
+  if (!/^https?:\/\//i.test(backend)) return null
+  const query = search.startsWith("?") ? search.slice(1) : search
+  const upstreamUrl = query ? `${backend}${upstreamPath}?${query}` : `${backend}${upstreamPath}`
+  return { upstreamUrl }
+}
+
+function localCorsHeaders(req) {
+  const origin = req.headers.origin || "*"
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": origin === "*" ? undefined : "true",
+    "Access-Control-Allow-Headers":
+      req.headers["access-control-request-headers"] || "Authorization, Content-Type, Accept, Last-Event-ID",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
+    "Access-Control-Allow-Private-Network": "true",
+    Vary: "Origin",
+  }
+}
+
+/** Upstream OpenCode mock: NEVER sends Access-Control-Allow-Origin. */
+function startNoCorsUpstream() {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url || "/", "http://127.0.0.1")
-      const origin = req.headers.origin || ""
-      const allow = url.searchParams.get("allow") === "1"
-      const auth = url.searchParams.get("auth") === "1"
-      const corsHeaders = allow
-        ? {
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Headers": "authorization,content-type",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            Vary: "Origin",
-          }
-        : {}
       if (req.method === "OPTIONS") {
-        res.writeHead(204, corsHeaders)
+        res.writeHead(204)
         res.end()
         return
       }
+      if (url.pathname === "/event") {
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" })
+        res.write("data: one\n\n")
+        setTimeout(() => {
+          res.write("data: two\n\n")
+          res.end()
+        }, 280)
+        return
+      }
       if (url.pathname === "/api/health" || url.pathname === "/global/health") {
-        if (auth) {
+        if (url.searchParams.get("auth") === "1") {
           res.writeHead(401, {
             "content-type": "application/json",
             "www-authenticate": 'Basic realm="Secure Area"',
-            ...corsHeaders,
           })
           res.end(JSON.stringify({ message: "Authentication required" }))
           return
         }
-        res.writeHead(200, { "content-type": "application/json", ...corsHeaders })
-        res.end(JSON.stringify({ healthy: true, version: "selftest" }))
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(
+          JSON.stringify({
+            healthy: true,
+            version: "selftest",
+            origin: req.headers.origin || null,
+          }),
+        )
         return
       }
-      res.writeHead(404, corsHeaders)
+      res.writeHead(404)
       res.end("not found")
+    })
+    server.listen(0, "127.0.0.1", () => resolve(server))
+    server.on("error", reject)
+  })
+}
+
+/** Loopback reverse-proxy matching LocalGateway path layout. */
+function startLocalProxy(token) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const cors = Object.fromEntries(Object.entries(localCorsHeaders(req)).filter(([, v]) => v != null))
+      const url = new URL(req.url || "/", "http://127.0.0.1")
+      if (req.method === "OPTIONS" && url.pathname.startsWith("/opencode-proxy/")) {
+        res.writeHead(204, cors)
+        res.end()
+        return
+      }
+      const parsed = parseProxyPath(url.pathname, url.search, token)
+      if (!parsed) {
+        res.writeHead(404, { ...cors, "content-type": "application/json" })
+        res.end(JSON.stringify({ error: "unknown proxy path" }))
+        return
+      }
+      const upstream = new URL(parsed.upstreamUrl)
+      const headers = { ...req.headers }
+      delete headers.origin
+      delete headers.host
+      delete headers.referer
+      delete headers.connection
+      headers.host = upstream.host
+      const p = http.request(
+        {
+          hostname: upstream.hostname,
+          port: upstream.port,
+          path: `${upstream.pathname}${upstream.search}`,
+          method: req.method,
+          headers,
+        },
+        (upRes) => {
+          const out = { ...cors }
+          for (const [name, value] of Object.entries(upRes.headers)) {
+            if (!value) continue
+            const lower = name.toLowerCase()
+            if (lower === "access-control-allow-origin" || lower === "connection" || lower === "transfer-encoding") {
+              continue
+            }
+            out[name] = value
+          }
+          res.writeHead(upRes.statusCode || 502, out)
+          upRes.on("data", (chunk) => res.write(chunk))
+          upRes.on("end", () => res.end())
+        },
+      )
+      p.on("error", (err) => {
+        if (!res.headersSent) {
+          res.writeHead(502, { ...cors, "content-type": "application/json" })
+        }
+        res.end(JSON.stringify({ error: String(err.message || err) }))
+      })
+      req.pipe(p)
     })
     server.listen(0, "127.0.0.1", () => resolve(server))
     server.on("error", reject)
@@ -424,9 +524,15 @@ async function main() {
     throw new Error(`missing embedded assets at ${assets}`)
   }
   const server = await startServer()
-  const corsMock = await startCorsMock()
+  const upstream = await startNoCorsUpstream()
+  const proxyToken = "selftest-token"
+  const proxy = await startLocalProxy(proxyToken)
   const port = server.address().port
-  const corsPort = corsMock.address().port
+  const upstreamPort = upstream.address().port
+  const proxyPort = proxy.address().port
+  const realBackend = `http://127.0.0.1:${upstreamPort}`
+  const proxyOrigin = `http://127.0.0.1:${proxyPort}`
+  const proxyPrefix = `/opencode-proxy/${proxyToken}/`
   const pageUrl = `http://${HOST}:${port}${ANDROID_MOUNT}/index.html`
   const debugPort = 9222
   const chrome = spawn(
@@ -438,7 +544,7 @@ async function main() {
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome",
+      "--user-data-dir=/tmp/oc-selftest-chrome-139",
       "--window-size=390,844",
       "about:blank",
     ],
@@ -455,6 +561,21 @@ async function main() {
     const { sessionId } = await cdp(ws, "Target.attachToTarget", { targetId, flatten: true })
     await cdp(ws, "Page.enable", {}, sessionId)
     await cdp(ws, "Runtime.enable", {}, sessionId)
+    await cdp(
+      ws,
+      "Page.addScriptToEvaluateOnNewDocument",
+      {
+        source: `
+          window.OpenCodeAndroid = {
+            proxyOrigin: function () { return ${JSON.stringify(proxyOrigin)}; },
+            proxyPrefix: function () { return ${JSON.stringify(proxyPrefix)}; }
+          };
+          window.__ocAndroidProxy = { origin: ${JSON.stringify(proxyOrigin)}, prefix: ${JSON.stringify(proxyPrefix)} };
+          window.__ocAndroidShell = true;
+        `,
+      },
+      sessionId,
+    )
     await cdp(
       ws,
       "Emulation.setDeviceMetricsOverride",
@@ -581,33 +702,142 @@ async function main() {
         };
       })()`,
     )
-    const corsProbe = await evaluate(
+    const proxyProbe = await evaluate(
       ws,
       sessionId,
       `(async () => {
-        const base = ${JSON.stringify(`http://${HOST}:${corsPort}`)};
+        const real = ${JSON.stringify(realBackend)};
+        const prefix = ${JSON.stringify(proxyOrigin + proxyPrefix + encodeURIComponent(realBackend))};
         async function probe(url) {
           try {
             const r = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } });
-            return { ok: r.ok, status: r.status, error: null, body: r.ok ? await r.json().catch(() => null) : null };
+            const acao = r.headers.get('access-control-allow-origin');
+            return {
+              ok: r.ok,
+              status: r.status,
+              error: null,
+              body: r.ok ? await r.json().catch(() => null) : null,
+              acao,
+            };
           } catch (e) {
-            return { ok: false, status: 0, error: String(e && e.message || e), body: null };
+            return { ok: false, status: 0, error: String(e && e.message || e), body: null, acao: null };
           }
         }
-        const allow = await probe(base + '/api/health?allow=1');
-        const deny = await probe(base + '/api/health?allow=0');
-        const auth = await probe(base + '/api/health?allow=1&auth=1');
+        const direct = await probe(real + '/api/health');
+        const health = await probe(prefix + '/api/health');
+        let sse = { ok: false, combined: '', firstChunk: '', restDelayMs: 0, error: null };
+        try {
+          const r = await fetch(prefix + '/event');
+          const reader = r.body.getReader();
+          const dec = new TextDecoder();
+          const first = await reader.read();
+          const firstChunk = dec.decode(first.value || new Uint8Array());
+          const t1 = performance.now();
+          let rest = '';
+          while (true) {
+            const next = await reader.read();
+            if (next.done) break;
+            rest += dec.decode(next.value || new Uint8Array());
+          }
+          const restDelayMs = performance.now() - t1;
+          sse = {
+            ok: r.ok && firstChunk.includes('data: one') && (firstChunk + rest).includes('data: two'),
+            combined: firstChunk + rest,
+            firstChunk,
+            restDelayMs,
+            error: null,
+          };
+        } catch (e) {
+          sse.error = String(e && e.message || e);
+        }
         return {
           origin: location.origin,
-          allowOk: allow.ok === true && allow.status === 200,
-          denyCors: deny.ok === false && !!deny.error,
-          auth401: auth.status === 401,
-          allow,
-          deny,
-          auth,
+          hostname: location.hostname,
+          proxyBase: prefix,
+          directBlocked: direct.ok === false && !!direct.error,
+          direct,
+          healthOk: health.ok === true && health.status === 200 && health.body && health.body.healthy === true,
+          healthNoRemoteOrigin: !health.body || health.body.origin == null,
+          health,
+          sse,
         };
       })()`,
     )
+    const addServerUi = await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        const click = (el) => {
+          if (!el) return false;
+          el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return true;
+        };
+        const labelOf = (el) => ((el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).trim();
+        const nodes = Array.from(document.querySelectorAll('button, [role="tab"], [role="button"], a'));
+        const serversTab = nodes.find((el) => /^(Servers|服务器)$/.test(labelOf(el).trim()) || /^Servers$|^服务器$/.test((el.textContent || '').trim()));
+        click(serversTab);
+        return { serversTab: !!serversTab, serversLabel: serversTab ? labelOf(serversTab).slice(0, 40) : null };
+      })()`,
+    )
+    await Bun.sleep(500)
+    const addServerForm = await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        const click = (el) => {
+          if (!el) return false;
+          el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return true;
+        };
+        const add = Array.from(document.querySelectorAll('button, [role="button"]')).find((el) => {
+          const t = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).trim();
+          return t.includes('Add server') || t.includes('添加服务器');
+        });
+        click(add);
+        return { addClicked: !!add, addLabel: add ? (add.textContent || '').trim().slice(0, 40) : null };
+      })()`,
+    )
+    await Bun.sleep(500)
+    const addServerFields = await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        const dialog = document.querySelector('.settings-v2-server-dialog') || document.querySelector('[role="dialog"]');
+        const input = dialog && dialog.querySelector('input:not([type="password"])');
+        const hint = document.querySelector('.settings-v2-server-dialog-hint');
+        const real = 'https://backend.opencode.xiufeigo.xyz';
+        if (input) {
+          const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          if (desc && desc.set) desc.set.call(input, real);
+          else input.value = real;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        const hintText = hint ? (hint.textContent || '') : '';
+        return {
+          dialogFound: !!dialog,
+          inputFound: !!input,
+          placeholder: input ? input.placeholder : null,
+          value: input ? input.value : null,
+          realUrlKept: input ? input.value === real : false,
+          hint: hintText.slice(0, 240),
+          hintMentionsProxy: /反向代理|prox/i.test(hintText),
+          hintDoesNotRequireCors: hintText.length === 0 || !/MUST allow|必须允许/.test(hintText),
+        };
+      })()`,
+    )
+    try {
+      const shotAdd = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shotAdd?.data) {
+        const addPath = "/opt/cursor/artifacts/selftest-add-server.png"
+        fs.mkdirSync(path.dirname(addPath), { recursive: true })
+        fs.writeFileSync(addPath, Buffer.from(shotAdd.data, "base64"))
+      }
+    } catch {}
     await cdp(
       ws,
       "Emulation.setDeviceMetricsOverride",
@@ -656,11 +886,21 @@ async function main() {
       imeCss.androidWebview === true &&
       imeCss.interactiveWidget === true &&
       imeCss.dialogMaxHeight === true
-    const corsOk =
-      !!corsProbe &&
-      corsProbe.allowOk === true &&
-      corsProbe.denyCors === true &&
-      corsProbe.auth401 === true
+    const proxyOk =
+      !!proxyProbe &&
+      proxyProbe.hostname === HOST &&
+      proxyProbe.directBlocked === true &&
+      proxyProbe.healthOk === true &&
+      proxyProbe.healthNoRemoteOrigin === true &&
+      proxyProbe.sse?.ok === true &&
+      (proxyProbe.sse?.restDelayMs ?? 0) >= 80
+    const addServerOk =
+      !!addServerFields &&
+      addServerFields.inputFound === true &&
+      addServerFields.realUrlKept === true &&
+      addServerFields.placeholder === "http://localhost:4096" &&
+      addServerFields.hintDoesNotRequireCors === true &&
+      addServerFields.hintMentionsProxy === true
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -680,7 +920,8 @@ async function main() {
       densityOk &&
       landscapeOk &&
       imeOk &&
-      corsOk
+      proxyOk &&
+      addServerOk
     const report = {
       ok,
       pageUrl,
@@ -706,8 +947,12 @@ async function main() {
       landscapeOk,
       imeCss,
       imeOk,
-      corsProbe,
-      corsOk,
+      proxyProbe,
+      proxyOk,
+      addServerUi,
+      addServerForm,
+      addServerFields,
+      addServerOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       homeEmptyScreenshotPath: fs.existsSync(homeEmptyScreenshotPath) ? homeEmptyScreenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
@@ -716,6 +961,9 @@ async function main() {
         : null,
       portraitCollapsedScreenshotPath: fs.existsSync(portraitCollapsedScreenshotPath)
         ? portraitCollapsedScreenshotPath
+        : null,
+      addServerScreenshotPath: fs.existsSync("/opt/cursor/artifacts/selftest-add-server.png")
+        ? "/opt/cursor/artifacts/selftest-add-server.png"
         : null,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
@@ -742,20 +990,28 @@ async function main() {
                           ? "self-test failed: landscape Settings is no longer two-column"
                           : !imeOk
                             ? "self-test failed: IME dialog CSS / interactive-widget missing"
-                            : !corsOk
-                              ? "self-test failed: CORS success/failure simulation did not match"
-                              : "self-test failed: Settings control was not found or did not handle the tap",
+                            : !proxyOk
+                              ? "self-test failed: native proxy health/SSE from appassets origin still depends on remote CORS"
+                              : !addServerOk
+                                ? "self-test failed: Add Server UI does not keep the real backend URL / proxy hint"
+                                : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()
     chrome.kill("SIGKILL")
     server.close()
-    corsMock.close()
+    upstream.close()
+    proxy.close()
     process.exit(0)
   } finally {
     chrome.kill("SIGKILL")
     server.close()
-    corsMock.close()
+    try {
+      upstream.close()
+    } catch {}
+    try {
+      proxy.close()
+    } catch {}
   }
 }
 

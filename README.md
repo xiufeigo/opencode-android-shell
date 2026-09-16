@@ -12,27 +12,34 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 
 ## Architecture
 
-## Architecture
-
 ```
-┌─────────────────────────────────────────────┐
-│  Android WebView                            │
-│  origin: https://appassets.androidplatform.net │
-│  assets: official packages/app dist         │
-│  Cold start: official home UI               │
-│  Servers: Settings → Server (in-app)        │
-└───────────────────┬─────────────────────────┘
-                    │ fetch / CORS
-                    ▼
-┌─────────────────────────────────────────────┐
-│  PC: opencode serve (or opencode web)       │
-│  http://192.168.x.x:4096                    │
-│  --cors https://appassets.androidplatform.net │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Android WebView                                         │
+│  origin: https://appassets.androidplatform.net           │
+│  static assets: WebViewAssetLoader → @opencode-ai/app    │
+│  Cold start: official home UI                            │
+│  Servers: Settings → Server (stores the REAL backend URL)│
+└────────────────────────┬─────────────────────────────────┘
+                         │ fetch / SSE / WebSocket
+                         │ http://127.0.0.1:<port>/opencode-proxy/<token>/<encoded-real-url>/...
+                         ▼
+┌──────────────────────────────────────────────────────────┐
+│  In-app LocalGateway (loopback, OkHttp)                  │
+│  strips Origin; forwards method/path/query/body/auth     │
+│  streams SSE without buffering the whole body            │
+└────────────────────────┬─────────────────────────────────┘
+                         │ HTTPS (Basic Auth, redirects)
+                         ▼
+┌──────────────────────────────────────────────────────────┐
+│  Your OpenCode server                                    │
+│  e.g. https://backend.opencode.xiufeigo.xyz              │
+│  CORS for the WebView origin is NOT required             │
+└──────────────────────────────────────────────────────────┘
 ```
 
 - Launch goes **directly** into the official home (sidebar: 项目 / 添加项目 / 设置 / 帮助). There is no native “Connect server” screen.
-- With zero servers, the official empty state is shown. Add a backend via **设置 → 服务器** (same list + 「添加服务器」 dialog as Desktop).
+- With zero servers, the official empty state is shown. Add a backend via **设置 → 服务器** (same list + 「添加服务器」 dialog as Desktop). Enter the **real** backend URL (and optional Basic Auth). The shell keeps that URL in the official server list and rewrites only the SDK `baseUrl` onto the loopback reverse-proxy.
+- **Proxy mode is the default.** The remote server does **not** need `--cors https://appassets.androidplatform.net`. OkHttp performs the real HTTPS; the WebView never relies on `Access-Control-Allow-Origin` from the backend.
 - The WebView asset origin is **not** treated as an HTTP server (see `frontend/patches/android-webview-no-origin-server.patch`).
 - With zero servers, server-scoped providers use an **offline SDK stub** (never fetches `http://127.0.0.1:0`) so Layout/ServerSDK can init (`frontend/patches/android-webview-disconnected-sdk.patch`).
 - Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
@@ -44,86 +51,36 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 
 ## Run the backend (PC)
 
-The embedded UI origin is **always** `https://appassets.androidplatform.net`. That is **not** same-origin with your API (unlike opening the server URL in Chrome, and unlike Desktop which allowlists `oc://renderer`). **If you skip CORS, the app shows 「无法连接到服务器」 even when the same URL works in a browser.**
-
-### Required: allow the Android WebView origin
+The embedded UI origin stays `https://appassets.androidplatform.net`. API calls from the page go to the in-app reverse-proxy on `127.0.0.1`, so **you do not need to allow that origin on the server**.
 
 ```bash
-opencode serve --hostname 0.0.0.0 --port 4096 --cors https://appassets.androidplatform.net
+opencode serve --hostname 0.0.0.0 --port 4096
 ```
 
-`opencode web` also works if you pass the same `--hostname` / `--cors`. Binding `127.0.0.1` is not reachable from the tablet.
-
-Persist CORS in `opencode.json` if you prefer:
-
-```json
-{
-  "server": {
-    "port": 4096,
-    "hostname": "0.0.0.0",
-    "cors": ["https://appassets.androidplatform.net"]
-  }
-}
-```
+`opencode web` also works with `--hostname 0.0.0.0`. Binding `127.0.0.1` is not reachable from the tablet.
 
 Optional Basic Auth (enter the same username/password in **Settings → Server** — the Android shell does not pop a system login dialog):
 
 ```bash
 OPENCODE_SERVER_USERNAME=opencode OPENCODE_SERVER_PASSWORD=secret \
-  opencode serve --hostname 0.0.0.0 --port 4096 --cors https://appassets.androidplatform.net
+  opencode serve --hostname 0.0.0.0 --port 4096
 ```
 
-Phone/tablet and PC must share Wi-Fi. Allow TCP **4096** on the PC firewall.
+Phone/tablet and PC must share Wi-Fi (or the server must be a public HTTPS URL). Allow TCP **4096** on the PC firewall for LAN.
+
+If you already pass `--cors https://appassets.androidplatform.net`, it is unused by this app (the gateway does not forward `Origin`). CORS remains optional for browser tabs that open the UI from a different origin.
 
 ### Reverse proxy (nginx / Caddy)
 
-If TLS is terminated in front of `opencode serve` (e.g. `https://backend.example.com` → `127.0.0.1:4096`), the proxy must **not** strip CORS. Either let OpenCode set headers (`--cors https://appassets.androidplatform.net`) and pass them through, or set them yourself. Preflight `OPTIONS` must succeed.
-
-OpenCode's CORS middleware **omits** `Access-Control-Allow-Origin` when the origin is not allowlisted (you still get `204` on OPTIONS). Chrome/WebView then blocks `/api/health` as a TypeError and the UI only says 「无法连接到服务器」.
-
-nginx example (do this **or** pass `--cors` and `proxy_pass` without overriding ACAO — do not do both with conflicting values):
+TLS in front of `opencode serve` (e.g. `https://backend.example.com` → `127.0.0.1:4096`) does **not** need `Access-Control-Allow-Origin` for Android. Forward `Authorization`, HTTP/1.1, and WebSockets; for SSE avoid buffering the event stream:
 
 ```nginx
-map $http_origin $oc_cors {
-    default "";
-    "https://appassets.androidplatform.net" $http_origin;
-}
-
-server {
-    listen 443 ssl;
-    server_name backend.example.com;
-
-    location / {
-        if ($request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin $oc_cors always;
-            add_header Access-Control-Allow-Credentials true always;
-            add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept" always;
-            add_header Access-Control-Allow-Methods "GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS" always;
-            add_header Access-Control-Max-Age 86400 always;
-            add_header Vary Origin always;
-            return 204;
-        }
-        proxy_pass http://127.0.0.1:4096;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Authorization $http_authorization;
-        proxy_pass_header Access-Control-Allow-Origin;
-        add_header Access-Control-Allow-Origin $oc_cors always;
-        add_header Access-Control-Allow-Credentials true always;
-        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept" always;
-        add_header Vary Origin always;
-    }
-}
-```
-
-Check from a PC (must echo the Android origin — missing ACAO means the app cannot connect):
-
-```bash
-curl -i -X OPTIONS https://backend.example.com/api/health \
-  -H 'Origin: https://appassets.androidplatform.net' \
-  -H 'Access-Control-Request-Method: GET' \
-  -H 'Access-Control-Request-Headers: authorization,content-type'
-# Expect: Access-Control-Allow-Origin: https://appassets.androidplatform.net
+proxy_http_version 1.1;
+proxy_set_header Authorization $http_authorization;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+proxy_buffering off;
+proxy_read_timeout 24h;
 ```
 
 Health paths match official OpenCode clients: `GET /api/health`, then `GET /global/health`.
@@ -132,8 +89,8 @@ Health paths match official OpenCode clients: `GET /api/health`, then `GET /glob
 
 1. Install **OpenCode** and open it. You should see the official home immediately.
 2. Open **设置 → 服务器** (Settings → Server).
-3. Tap **添加服务器** and enter a URL such as `http://192.168.1.10:4096` or `https://backend.opencode.example`. Optional Basic Auth is on that same form.
-4. The add-server dialog on Android always shows a CORS origin hint. If connect fails, the error distinguishes CORS vs authentication vs generic network when possible. `adb logcat -s OpenCodeShell` prints fetch/CORS/TLS/health details.
+3. Tap **添加服务器** and enter a **real** URL such as `http://192.168.1.10:4096` or `https://backend.opencode.xiufeigo.xyz`. Optional Basic Auth is on that same form. Do not paste the loopback `opencode-proxy` URL.
+4. The add-server dialog notes that the shell reverse-proxies natively. If connect fails, the error distinguishes authentication vs generic network when possible. `adb logcat -s OpenCodeShell` prints gateway/TLS/health details.
 5. The server list, default server, and health indicator match OpenCode Desktop.
 
 ## Build a debug APK
@@ -202,13 +159,14 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **Settings accordion stretched / blank scroll in portrait:** `versionCode` 10+ tightens collapsed section gaps and stops the panel from being `height: 100%` of the full dialog under the stacked nav.
 - **Empty home still scrolls:** `versionCode` 11+ drops the stacked `min-h: 100cqh` on the sessions column (that plus 项目 and 设置/帮助 overflowed the card) and zeros CSS safe-area padding because the Activity already insets the WebView.
 - **「添加服务器」fields hidden behind the keyboard:** `versionCode` 13 / **1.3.8** pads IME insets and scrolls the focused input into view.
-- **「无法连接到服务器」while browser/Desktop work:** `versionCode` 13 / **1.3.8** — the server **must** allow origin `https://appassets.androidplatform.net` (see CORS above). Uninstall then reinstall if you are sideloading over an older debug APK.
+- **「无法连接到服务器」while browser/Desktop work:** `versionCode` 14 / **1.3.9** reverse-proxies API/SSE in-app. The backend no longer needs CORS for `https://appassets.androidplatform.net`. Uninstall then reinstall if you are sideloading over an older debug APK.
 
 ## Security
 
-- Server URLs and Basic Auth live in the official WebView `localStorage` server list (same place Desktop’s web entry uses).
-- Cleartext HTTP is enabled for LAN (`network_security_config.xml`) and mixed content is allowed because the UI origin is HTTPS while the API is often `http://192.168.x.x`.
-- HTTPS backends use the **system** certificate store plus **user**-installed CAs (Settings → Security → Encryption & credentials). Custom private CAs work after the user installs the cert; the WebView does not bypass TLS errors.
+- Server URLs and Basic Auth live in the official WebView `localStorage` server list (same place Desktop’s web entry uses). The stored URL is the real backend; only runtime fetches use `127.0.0.1/opencode-proxy/...`.
+- The loopback gateway binds `127.0.0.1` only and requires a per-process path token.
+- Cleartext HTTP is enabled for LAN (`network_security_config.xml`) and mixed content is allowed because the UI origin is HTTPS while the proxy and many LAN APIs are `http://127.0.0.1` / `http://192.168.x.x`.
+- HTTPS backends use the **system** certificate store plus **user**-installed CAs (Settings → Security → Encryption & credentials). Custom private CAs work after the user installs the cert; the WebView does not bypass TLS errors. OkHttp uses the same system/user trust store.
 - Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS + Basic Auth.
 
 ## License

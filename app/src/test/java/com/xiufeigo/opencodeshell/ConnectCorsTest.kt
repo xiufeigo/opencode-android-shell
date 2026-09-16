@@ -35,20 +35,21 @@ class ConnectCorsTest {
     }
 
     @Test
-    fun interceptDoesNotSwallowRemoteHttps() {
+    fun interceptLetsLoopbackGatewayThrough() {
         val src = File("src/main/java/com/xiufeigo/opencodeshell/MainActivity.kt").readText()
         assertTrue(src.contains("disconnectedStub(request.url)"))
         assertTrue(src.contains("assetLoader.shouldInterceptRequest(request.url)"))
-        assertFalse(
-            "do not native-proxy all HTTPS (that would drop POST bodies / break SSE)",
-            src.contains("HttpURLConnection") || src.contains("OkHttp"),
-        )
+        assertTrue(src.contains("isLocalGateway"))
+        assertTrue(src.contains("OpenCodeAndroid"))
+        val gateway = File("src/main/java/com/xiufeigo/opencodeshell/LocalGateway.kt").readText()
+        assertTrue(gateway.contains("OkHttpClient"))
+        assertTrue(gateway.contains("copyStreaming"))
         assertTrue(src.contains("MIXED_CONTENT_ALWAYS_ALLOW"))
         assertTrue(src.contains("setAcceptThirdPartyCookies"))
     }
 
     @Test
-    fun vendoredBundleMentionsCorsOriginAndHealthPaths() {
+    fun vendoredBundleUsesNativeProxyNotRemoteCors() {
         val html = File("src/main/assets/opencode-app/index.html").readText()
         val jsName =
             Regex("""src="\./assets/(index-[^"]+\.js)"""").find(html)?.groupValues?.get(1)
@@ -59,25 +60,26 @@ class ConnectCorsTest {
         val allJs = assets.listFiles { _, name -> name.endsWith(".js") }!!.joinToString("\n") { it.readText() }
         assertTrue("health check must use official /api/health", allJs.contains("/api/health"))
         assertTrue("health check must fall back to /global/health", allJs.contains("/global/health"))
-        assertTrue(allJs.contains("explainConnectFailure") || allJs.contains("errorCors"))
-        assertTrue(allJs.contains("dialog.server.add.corsHint") || allJs.contains("opencode serve --cors"))
+        assertTrue(allJs.contains("opencode-proxy") || allJs.contains("androidProxyBaseUrl") || allJs.contains("proxyPrefix"))
+        assertTrue("SDK must rewrite onto the native proxy", allJs.contains("androidProxyBaseUrl") || allJs.contains("opencode-proxy"))
         val zh = assets.listFiles { _, name -> name.startsWith("zh-") && name.endsWith(".js") }
             ?.joinToString("\n") { it.readText() }
             ?: ""
         assertTrue(
-            "Chinese add-server CORS hint must mention the Android origin",
-            zh.contains("https://appassets.androidplatform.net"),
+            "Chinese add-server copy must mention native proxy, not required CORS",
+            zh.contains("反向代理") || zh.contains("无需") || zh.contains("代理"),
         )
     }
 
     @Test
-    fun readmeDocumentsAndroidCorsRequirement() {
+    fun readmeDocumentsNativeProxyDefault() {
     val readme =
         listOf(File("../README.md"), File("README.md"), File("../../README.md")).firstOrNull { it.isFile }
             ?: error("README.md not found")
     val text = readme.readText()
-    assertTrue(text.contains("--cors https://appassets.androidplatform.net"))
-    assertTrue(text.contains("Access-Control-Allow-Origin"))
-    assertTrue(text.contains("opencode.json"))
+    assertTrue(text.contains("opencode-proxy") || text.contains("reverse-prox"))
+    assertTrue(text.contains("127.0.0.1"))
+    assertTrue(text.contains("NOT required") || text.contains("does not need"))
+    assertFalse(text.contains("If you skip CORS, the app shows"))
     }
 }

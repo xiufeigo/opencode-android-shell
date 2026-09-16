@@ -70,6 +70,10 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
+    if [[ "$base" == *z-native-proxy* ]] && grep -q androidProxyBaseUrl "$SRC/packages/app/src/utils/server.ts"; then
+      echo "Already applied $base"
+      continue
+    fi
     if git -C "$SRC" apply --check "$patch" >/dev/null 2>&1; then
       git -C "$SRC" apply "$patch"
       echo "Applied $patch"
@@ -104,7 +108,7 @@ commit=$COMMIT
 source=https://github.com/anomalyco/opencode
 built_with=OPENCODE_CHANNEL=prod vite build --base ./ --sourcemap false
 android_patch=frontend/patches/*.patch
-android_patch_purpose=Desktop MemoryRouter. Portrait Settings accordion. Empty home no overflow. Offline SDK stub. IME dialog scroll. CORS origin hint for https://appassets.androidplatform.net. Servers via Settings → Server.
+android_patch_purpose=Desktop MemoryRouter. Portrait Settings accordion. Empty home no overflow. Offline SDK stub. IME dialog scroll. Native loopback reverse proxy (CORS not required). Servers via Settings → Server.
 EOF
 
 echo "Vendored $REF ($COMMIT) into $DEST"

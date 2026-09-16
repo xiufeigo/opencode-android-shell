@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var assetLoader: WebViewAssetLoader
+    private lateinit var gateway: LocalGateway
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileChooserLauncher = registerForActivityResult(
@@ -59,6 +60,9 @@ class MainActivity : AppCompatActivity() {
         assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
+
+        gateway = LocalGateway()
+        gateway.start()
 
         // Do not hide system bars. HyperOS immersive overlays have been observed
         // swallowing every subsequent touch while chrome still paints.
@@ -83,6 +87,11 @@ class MainActivity : AppCompatActivity() {
         )
 
         loadEmbeddedFrontend()
+    }
+
+    override fun onDestroy() {
+        gateway.close()
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -134,6 +143,8 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(binding.webView, true)
 
+        binding.webView.addJavascriptInterface(OpenCodeAndroidBridge(gateway), "OpenCodeAndroid")
+
         binding.webView.isFocusable = true
         binding.webView.isFocusableInTouchMode = true
         binding.webView.isClickable = true
@@ -174,6 +185,7 @@ class MainActivity : AppCompatActivity() {
                 // (including the user's OpenCode backend) must hit the network so
                 // cookies, redirects, and TLS use the system/user trust store.
                 disconnectedStub(request.url)?.let { return it }
+                if (isLocalGateway(request.url)) return null
                 return assetLoader.shouldInterceptRequest(request.url)
             }
 
@@ -183,6 +195,7 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val uri = request.url
                 if (uri.host == ASSET_HOST) return false
+                if (isLocalGateway(uri)) return false
                 val scheme = uri.scheme?.lowercase()
                 if (scheme == "blob" || scheme == "data" || scheme == "about") return false
                 if (scheme != "http" && scheme != "https") return true
@@ -196,6 +209,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 binding.progress.visibility = View.VISIBLE
                 hideError()
+                view?.evaluateJavascript(TOUCH_FIX_JS, null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -352,6 +366,9 @@ class MainActivity : AppCompatActivity() {
         binding.errorPanel.visibility = View.GONE
     }
 
+    private fun isLocalGateway(uri: Uri): Boolean =
+        isLocalGateway(uri, gateway.port)
+
     companion object {
         const val ASSET_HOST = "appassets.androidplatform.net"
         const val ANDROID_WEBVIEW_ORIGIN = "https://$ASSET_HOST"
@@ -378,6 +395,14 @@ class MainActivity : AppCompatActivity() {
                   root.removeAttribute('inert');
                 }
                 window.__ocAndroidShell = true;
+                try {
+                  if (window.OpenCodeAndroid) {
+                    window.__ocAndroidProxy = {
+                      origin: window.OpenCodeAndroid.proxyOrigin(),
+                      prefix: window.OpenCodeAndroid.proxyPrefix()
+                    };
+                  }
+                } catch (e2) {}
               } catch (e) {}
             })();
         """
@@ -403,6 +428,12 @@ class MainActivity : AppCompatActivity() {
 
         internal fun imeAwareBottomPadding(systemBarsBottom: Int, imeBottom: Int): Int =
             max(systemBarsBottom, imeBottom)
+
+        internal fun isLocalGateway(uri: Uri, gatewayPort: Int): Boolean {
+            val host = uri.host ?: return false
+            if (host != "127.0.0.1" && host != "localhost") return false
+            return uri.port == gatewayPort
+        }
 
         internal fun disconnectedStub(uri: Uri): WebResourceResponse? {
             if (!isOfflineDisconnectStub(uri.host, uri.port)) return null
