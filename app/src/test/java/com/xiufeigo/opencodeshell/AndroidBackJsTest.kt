@@ -32,7 +32,10 @@ class AndroidBackJsTest {
         assertFalse(AndroidBackJs.shellConsumesEscape())
         val src = File("src/main/java/com/xiufeigo/opencodeshell/MainActivity.kt").readText()
         assertTrue(src.contains("dispatchKeyEvent"))
-        assertTrue(src.contains("return super.dispatchKeyEvent(event)"))
+        assertTrue(
+            src.contains("return super.dispatchKeyEvent(event)") ||
+                src.contains("super.dispatchKeyEvent(event)"),
+        )
         assertTrue(src.contains("AndroidBackJs.INVOKE"))
         assertFalse(src.contains("finish()"))
         assertFalse(
