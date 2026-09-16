@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * ESC is for the Solid UI (close Settings/dialogs), never for leaving the process.
      * The WebView receives the key via [super.dispatchKeyEvent]; we then consume it so
-     * no OEM mapping can turn it into Back / finish().
+     * no OEM mapping can turn it into Back / leaving the app.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val handled = super.dispatchKeyEvent(event)
