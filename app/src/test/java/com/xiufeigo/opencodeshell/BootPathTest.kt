@@ -21,6 +21,13 @@ class BootPathTest {
         val window = js.substring(idx, (idx + 900).coerceAtMost(js.length))
         assertTrue("entry must bind MemoryRouter history on the asset host\n$window", window.contains("{history:"))
         assertTrue(window.contains("appassets.androidplatform.net"))
+        assertTrue("Android origin must mark html[data-android-webview]", js.contains("androidWebview"))
+        val assets = File("src/main/assets/opencode-app/assets")
+        val homeJs =
+            assets.listFiles { _, name -> name.endsWith(".js") }
+                ?.any { it.readText().contains("home-sessions-body") }
+                ?: false
+        assertTrue("empty home must tag sessions body for Android min-height override", homeJs)
     }
 
     @Test
@@ -36,6 +43,8 @@ class BootPathTest {
         assertTrue("portrait section titles must be sticky", css.contains("summary.settings-v2-section-title"))
         assertTrue("collapsed accordion content must be display-none", css.contains(".settings-v2-section:not([open])"))
         assertTrue("portrait panel must not force height 100% under the nav", css.contains("height:0") || css.contains("height: 0"))
+        assertTrue("empty stacked home must drop 100cqh min-height", css.contains("home-sessions-body"))
+        assertTrue("Android shell must zero CSS safe-area (Activity already pads)", css.contains("data-android-webview"))
         val assets = File("src/main/assets/opencode-app/assets")
         val accordionJs =
             assets.listFiles { _, name -> name.startsWith("index-") && name.endsWith(".js") }

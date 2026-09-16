@@ -41,6 +41,14 @@ class SafeAreaLayoutTest {
             "viewport-fit=cover is required for CSS env(safe-area-inset-*)",
             html.contains("viewport-fit=cover"),
         )
+        val cssName =
+            Regex("""href="\./assets/(index-[^"]+\.css)"""").find(html)?.groupValues?.get(1)
+                ?: error("missing entry stylesheet in index.html")
+        val css = File("src/main/assets/opencode-app/assets/$cssName").readText()
+        assertTrue(
+            "Android WebView must not double-count Activity insets as CSS safe-area padding",
+            css.contains("data-android-webview") && css.contains("app-shell"),
+        )
     }
 
     @Test

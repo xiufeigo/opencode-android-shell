@@ -29,6 +29,9 @@ const portraitScrolledScreenshotPath =
 const portraitCollapsedScreenshotPath =
   process.env.SELFTEST_PORTRAIT_COLLAPSED_SCREENSHOT ||
   "/opt/cursor/artifacts/selftest-settings-portrait-collapsed.png"
+const homeEmptyScreenshotPath =
+  process.env.SELFTEST_HOME_EMPTY_SCREENSHOT ||
+  "/opt/cursor/artifacts/selftest-home-empty-portrait.png"
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8"
@@ -326,6 +329,53 @@ const SETTINGS_DENSITY_JS = `(() => {
   };
 })()`
 
+const HOME_EMPTY_JS = `(() => {
+  const visible = (el) => {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.top < innerHeight && r.bottom > 0 && r.left < innerWidth && r.right > 0;
+  };
+  const box = (el) => el ? {
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+    extra: Math.max(0, el.scrollHeight - el.clientHeight),
+  } : null;
+  const viewports = Array.from(document.querySelectorAll('.scroll-view__viewport, [data-scrollable]')).filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 40 && r.height > 40;
+  });
+  const homeVp = viewports.slice().sort((a, b) => b.clientHeight - a.clientHeight)[0] || null;
+  const settings = Array.from(document.querySelectorAll('[data-action="home-open-settings"]'));
+  const help = Array.from(document.querySelectorAll('button, [role="button"], [data-action]')).filter((el) => {
+    const t = ((el.getAttribute('data-action') || '') + ' ' + (el.textContent || '')).trim();
+    return /home-open-help|sidebar.help|^Help$|帮助/.test(t);
+  });
+  const body = document.querySelector('[data-slot="home-sessions-body"]');
+  const shell = document.querySelector('[data-slot="app-shell"]');
+  const shellPad = shell ? getComputedStyle(shell) : null;
+  return {
+    viewport: { w: innerWidth, h: innerHeight },
+    androidWebview: document.documentElement.dataset.androidWebview === '',
+    sessionsBodyMinHeight: body ? getComputedStyle(body).minHeight : null,
+    homeViewport: box(homeVp),
+    doc: box(document.documentElement),
+    settingsCount: settings.length,
+    settingsVisibleCount: settings.filter(visible).length,
+    settingsInView: settings.some(visible),
+    helpInView: help.some(visible),
+    helpCount: help.length,
+    shellPaddingTop: shellPad ? shellPad.paddingTop : null,
+    shellPaddingBottom: shellPad ? shellPad.paddingBottom : null,
+    maxExtra: Math.max(
+      document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      homeVp ? homeVp.scrollHeight - homeVp.clientHeight : 0,
+      0,
+    ),
+  };
+})()`
+
 
 async function main() {
   if (!fs.existsSync(path.join(assets, "index.html"))) {
@@ -345,7 +395,7 @@ async function main() {
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
       "--user-data-dir=/tmp/oc-selftest-chrome",
-      "--window-size=800,1280",
+      "--window-size=390,844",
       "about:blank",
     ],
     { stdio: "ignore" },
@@ -364,7 +414,7 @@ async function main() {
     await cdp(
       ws,
       "Emulation.setDeviceMetricsOverride",
-      { width: 800, height: 1280, deviceScaleFactor: 2, mobile: true },
+      { width: 390, height: 844, deviceScaleFactor: 2.75, mobile: true },
       sessionId,
     )
     await cdp(ws, "Emulation.setTouchEmulationEnabled", { enabled: true }, sessionId)
@@ -390,6 +440,22 @@ async function main() {
     })
     await cdp(ws, "Page.navigate", { url: pageUrl }, sessionId)
     await Bun.sleep(8_000)
+    const homeEmptyPhone = await evaluate(ws, sessionId, HOME_EMPTY_JS)
+    try {
+      const shotHome = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shotHome?.data) {
+        fs.mkdirSync(path.dirname(homeEmptyScreenshotPath), { recursive: true })
+        fs.writeFileSync(homeEmptyScreenshotPath, Buffer.from(shotHome.data, "base64"))
+      }
+    } catch {}
+    await cdp(
+      ws,
+      "Emulation.setDeviceMetricsOverride",
+      { width: 800, height: 1280, deviceScaleFactor: 2, mobile: true },
+      sessionId,
+    )
+    await Bun.sleep(400)
+    const homeEmptyWide = await evaluate(ws, sessionId, HOME_EMPTY_JS)
     const probe = await evaluate(ws, sessionId, TAP_JS)
     await Bun.sleep(800)
     const settingsLayout = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
@@ -489,6 +555,16 @@ async function main() {
       !!settingsLandscape?.found &&
       settingsLandscape.stacked !== true &&
       settingsLandscape.flexDirection === "row"
+    const homeEmptyOk =
+      !!homeEmptyPhone &&
+      homeEmptyPhone.androidWebview === true &&
+      homeEmptyPhone.settingsInView === true &&
+      (homeEmptyPhone.helpCount === 0 || homeEmptyPhone.helpInView === true) &&
+      (homeEmptyPhone.maxExtra ?? 99) <= 8 &&
+      (homeEmptyPhone.sessionsBodyMinHeight === "0px" || homeEmptyPhone.sessionsBodyMinHeight === "0") &&
+      !!homeEmptyWide &&
+      (homeEmptyWide.maxExtra ?? 99) <= 8 &&
+      homeEmptyWide.settingsInView === true
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -500,6 +576,7 @@ async function main() {
       (probe.dialogAfterClick || probe.settingsClicked) &&
       !scopeCrash &&
       probe.viewportFitCover === true &&
+      homeEmptyOk &&
       settingsPortraitOk &&
       accordionOk &&
       collapseOk &&
@@ -510,6 +587,8 @@ async function main() {
       ok,
       pageUrl,
       probe,
+      homeEmptyPhone,
+      homeEmptyWide,
       settingsLayout,
       settingsAccordion,
       settingsScroll,
@@ -520,6 +599,7 @@ async function main() {
       exceptions,
       scopeCrash,
       whiteOnly,
+      homeEmptyOk,
       settingsPortraitOk,
       accordionOk,
       collapseOk,
@@ -527,6 +607,7 @@ async function main() {
       densityOk,
       landscapeOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
+      homeEmptyScreenshotPath: fs.existsSync(homeEmptyScreenshotPath) ? homeEmptyScreenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
       portraitScrolledScreenshotPath: fs.existsSync(portraitScrolledScreenshotPath)
         ? portraitScrolledScreenshotPath
@@ -543,19 +624,21 @@ async function main() {
           ? "self-test failed: LayoutProvider TypeError reading scope"
           : whiteOnly
             ? "self-test failed: titlebar-only / white home (asset-path router mismatch)"
-            : !settingsPortraitOk
-              ? "self-test failed: Settings is still a squished two-column layout in portrait"
-              : !accordionOk
-                ? "self-test failed: Settings category title still sticky-locked or sections are not accordions"
-                : !collapseOk
-                  ? "self-test failed: Settings section did not collapse"
-                  : !scrollOk
-                    ? "self-test failed: 「通用」 still locked after scroll"
-                    : !densityOk
-                      ? "self-test failed: portrait Settings accordion gaps or blank scroll still excessive"
-                      : !landscapeOk
-                        ? "self-test failed: landscape Settings is no longer two-column"
-                        : "self-test failed: Settings control was not found or did not handle the tap",
+            : !homeEmptyOk
+              ? "self-test failed: empty home still overflows / Settings not in view"
+              : !settingsPortraitOk
+                ? "self-test failed: Settings is still a squished two-column layout in portrait"
+                : !accordionOk
+                  ? "self-test failed: Settings category title still sticky-locked or sections are not accordions"
+                  : !collapseOk
+                    ? "self-test failed: Settings section did not collapse"
+                    : !scrollOk
+                      ? "self-test failed: 「通用」 still locked after scroll"
+                      : !densityOk
+                        ? "self-test failed: portrait Settings accordion gaps or blank scroll still excessive"
+                        : !landscapeOk
+                          ? "self-test failed: landscape Settings is no longer two-column"
+                          : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

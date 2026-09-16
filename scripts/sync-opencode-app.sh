@@ -62,6 +62,10 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
+    if [[ "$base" == *ui-home-empty* ]] && grep -q 'data-slot="home-sessions-body"' "$SRC/packages/app/src/pages/home/home-sessions-view.tsx"; then
+      echo "Already applied $base"
+      continue
+    fi
     if git -C "$SRC" apply --check "$patch" >/dev/null 2>&1; then
       git -C "$SRC" apply "$patch"
       echo "Applied $patch"
