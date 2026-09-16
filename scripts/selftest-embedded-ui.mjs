@@ -518,6 +518,78 @@ const HOME_EMPTY_JS = `(() => {
   };
 })()`
 
+const HANDLE_BACK_JS = `(() => {
+  var visible = function (el) {
+    if (!el) return false;
+    var s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  var overlayOpen = function () {
+    var sels = [
+      '[data-component="dialog-overlay"]',
+      '[data-component="dialog-v2"]',
+      '[data-slot="dialog-content"]',
+      '[role="dialog"]',
+      '[data-component="popover-content"]',
+      '[role="menu"]',
+      '[role="listbox"]'
+    ];
+    for (var i = 0; i < sels.length; i++) {
+      var nodes = document.querySelectorAll(sels[i]);
+      for (var j = 0; j < nodes.length; j++) {
+        if (visible(nodes[j])) return true;
+      }
+    }
+    return false;
+  };
+  var fireEscape = function () {
+    var opts = { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true };
+    try { window.dispatchEvent(new KeyboardEvent('keydown', opts)); } catch (e1) {}
+    try { document.dispatchEvent(new KeyboardEvent('keydown', opts)); } catch (e2) {}
+  };
+  window.__ocAndroidHandleBack = function () {
+    if (overlayOpen()) {
+      fireEscape();
+      return 'overlay';
+    }
+    return 'root';
+  };
+  return window.__ocAndroidHandleBack();
+})()`
+
+const OVERLAY_STATE_JS = `(() => {
+  var visible = function (el) {
+    if (!el) return false;
+    var s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden') return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  var dialogs = Array.from(document.querySelectorAll('[role="dialog"], [data-component="dialog-v2"], .settings-v2-server-dialog')).filter(visible);
+  return {
+    hostname: location.hostname,
+    pathname: location.pathname,
+    overlay: dialogs.length > 0,
+    dialogCount: dialogs.length,
+    homeCopy: /Projects|项目|Nothing here yet|Settings|设置/.test(document.body.innerText || ''),
+  };
+})()`
+
+const CLICK_SETTINGS_JS = `(() => {
+  const nodes = Array.from(document.querySelectorAll('button, [role="button"], [data-action]'));
+  const settings = nodes.find((el) => {
+    const label = ((el.getAttribute('data-action') || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).trim().toLowerCase();
+    return el.getAttribute('data-action') === 'home-open-settings' || label.includes('settings') || label.includes('设置');
+  });
+  if (!settings) return { clicked: false };
+  settings.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  settings.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+  settings.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  return { clicked: true };
+})()`
+
 
 async function main() {
   if (!fs.existsSync(path.join(assets, "index.html"))) {
@@ -544,7 +616,7 @@ async function main() {
       "--disable-dev-shm-usage",
       `--remote-debugging-port=${debugPort}`,
       `--host-resolver-rules=MAP ${HOST} 127.0.0.1`,
-      "--user-data-dir=/tmp/oc-selftest-chrome-139",
+      "--user-data-dir=/tmp/oc-selftest-chrome-1310",
       "--window-size=390,844",
       "about:blank",
     ],
@@ -838,6 +910,49 @@ async function main() {
         fs.writeFileSync(addPath, Buffer.from(shotAdd.data, "base64"))
       }
     } catch {}
+    const backFromAdd = await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(280)
+    const afterBackFromAdd = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    const backCloses = []
+    let lastBack = backFromAdd
+    for (let i = 0; i < 5; i++) {
+      lastBack = await evaluate(ws, sessionId, HANDLE_BACK_JS)
+      backCloses.push(lastBack)
+      await Bun.sleep(200)
+      const state = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+      if (lastBack === "root" && state?.overlay !== true) break
+    }
+    const atHomeAfterBack = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    await evaluate(ws, sessionId, CLICK_SETTINGS_JS)
+    await Bun.sleep(700)
+    const settingsReopened = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    const backFromSettings = await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(280)
+    const afterBackFromSettings = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    await evaluate(ws, sessionId, CLICK_SETTINGS_JS)
+    await Bun.sleep(700)
+    const settingsForEsc = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    await evaluate(
+      ws,
+      sessionId,
+      `(() => {
+        var opts = { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true };
+        window.dispatchEvent(new KeyboardEvent('keydown', opts));
+        document.dispatchEvent(new KeyboardEvent('keydown', opts));
+        return true;
+      })()`,
+    )
+    await Bun.sleep(280)
+    const afterEsc = await evaluate(ws, sessionId, OVERLAY_STATE_JS)
+    const rootBack = await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    try {
+      const shotBack = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shotBack?.data) {
+        const backPath = "/opt/cursor/artifacts/selftest-back-from-settings.png"
+        fs.mkdirSync(path.dirname(backPath), { recursive: true })
+        fs.writeFileSync(backPath, Buffer.from(shotBack.data, "base64"))
+      }
+    } catch {}
     await cdp(
       ws,
       "Emulation.setDeviceMetricsOverride",
@@ -901,6 +1016,22 @@ async function main() {
       addServerFields.placeholder === "http://localhost:4096" &&
       addServerFields.hintDoesNotRequireCors === true &&
       addServerFields.hintMentionsProxy === true
+    const backOk =
+      afterBackFromAdd?.hostname === HOST &&
+      atHomeAfterBack?.hostname === HOST &&
+      atHomeAfterBack?.homeCopy === true &&
+      atHomeAfterBack?.overlay !== true &&
+      settingsReopened?.overlay === true &&
+      backFromSettings === "overlay" &&
+      afterBackFromSettings?.overlay !== true &&
+      afterBackFromSettings?.hostname === HOST &&
+      afterBackFromSettings?.homeCopy === true &&
+      rootBack === "root"
+    const escOk =
+      settingsForEsc?.overlay === true &&
+      afterEsc?.overlay !== true &&
+      afterEsc?.hostname === HOST &&
+      afterEsc?.homeCopy === true
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -921,7 +1052,9 @@ async function main() {
       landscapeOk &&
       imeOk &&
       proxyOk &&
-      addServerOk
+      addServerOk &&
+      backOk &&
+      escOk
     const report = {
       ok,
       pageUrl,
@@ -953,6 +1086,18 @@ async function main() {
       addServerForm,
       addServerFields,
       addServerOk,
+      backFromAdd,
+      afterBackFromAdd,
+      backCloses,
+      atHomeAfterBack,
+      settingsReopened,
+      backFromSettings,
+      afterBackFromSettings,
+      settingsForEsc,
+      afterEsc,
+      rootBack,
+      backOk,
+      escOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       homeEmptyScreenshotPath: fs.existsSync(homeEmptyScreenshotPath) ? homeEmptyScreenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
@@ -994,7 +1139,11 @@ async function main() {
                               ? "self-test failed: native proxy health/SSE from appassets origin still depends on remote CORS"
                               : !addServerOk
                                 ? "self-test failed: Add Server UI does not keep the real backend URL / proxy hint"
-                                : "self-test failed: Settings control was not found or did not handle the tap",
+                                : !backOk
+                                  ? "self-test failed: Back from Settings did not stay in-app / did not close overlay"
+                                  : !escOk
+                                    ? "self-test failed: ESC did not close Settings (or navigated away)"
+                                    : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

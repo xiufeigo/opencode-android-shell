@@ -45,6 +45,7 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 - Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
 - Safe area: `MainActivity` pads the **root** with `statusBars | navigationBars | displayCutout` (WebView view-padding is ignored on HyperOS). App chrome stays below the status bar.
 - Keyboard / IME: edge-to-edge makes `adjustResize` a no-op, so the root also pads `max(navigationBars, ime)`. Focused fields `scrollIntoView` when the keyboard opens.
+- **Android Back** is forwarded into the page first (same as Desktop **Escape**: close Settings / dialogs / popovers, then in-app back). The Activity finishes only at true home with nothing to dismiss. **ESC never exits** the app.
 - Routing: Android uses the same **MemoryRouter** pattern as OpenCode Desktop so `.../opencode-app/index.html` is not treated as a Solid route (that paints titlebar-only / white home).
 - Portrait Settings: below 840px the dialog stacks to a single column; category title is not sticky. Each General section is a collapsible `<details>` panel whose own title sticks while that block is in view (`frontend/patches/android-webview-portrait-settings.patch`, `frontend/patches/android-webview-settings-accordion.patch`).
 - The agent **does not** run inside the APK.
@@ -133,10 +134,12 @@ Do not hand-edit files under `app/src/main/assets/opencode-app/`.
 
 ## Keyboard, mouse, right-click (Xiaomi Pad)
 
-The page is Chromium WebView, not OpenCode Desktop / Electron.
+The page is Chromium WebView, not OpenCode Desktop / Electron. The shell does **not** implement its own shortcut map; letter keys and Ctrl/Cmd chords go to the Solid app (same keybinds as Desktop).
 
 | Input | What to expect |
 | --- | --- |
+| Android Back | First forwarded into the page as **Escape** (closes Settings / dialogs / popovers, one layer). Then in-app back/home if present. Then `WebView.goBack()` if the asset history allows it. **Only at true home with nothing to dismiss** does Back finish the Activity. |
+| Escape / ESC | Delivered to the WebView so OpenCode can close overlays. The shell **never** `finish()`es on ESC — it does not exit to the launcher. |
 | USB / Bluetooth keyboard | Character keys and many Ctrl/Cmd shortcuts reach the Solid app when the WebView has focus. |
 | Ctrl+C / Ctrl+V | Usually work. Some OEM shortcuts are swallowed by HyperOS. |
 | Function keys, Alt+Tab | Often captured by the system, not the page. |
@@ -160,6 +163,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **Empty home still scrolls:** `versionCode` 11+ drops the stacked `min-h: 100cqh` on the sessions column (that plus 项目 and 设置/帮助 overflowed the card) and zeros CSS safe-area padding because the Activity already insets the WebView.
 - **「添加服务器」fields hidden behind the keyboard:** `versionCode` 13 / **1.3.8** pads IME insets and scrolls the focused input into view.
 - **「无法连接到服务器」while browser/Desktop work:** `versionCode` 14 / **1.3.9** reverse-proxies API/SSE in-app. The backend no longer needs CORS for `https://appassets.androidplatform.net`. Uninstall then reinstall if you are sideloading over an older debug APK.
+- **Back from Settings exits to the launcher:** `versionCode` 15 / **1.3.10** forwards Android Back into the page (Escape closes Settings). ESC never finishes the Activity.
 
 ## Security
 

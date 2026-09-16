@@ -7,6 +7,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.webkit.ConsoleMessage
@@ -42,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var assetLoader: WebViewAssetLoader
     private lateinit var gateway: LocalGateway
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var backInFlight = false
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -72,19 +74,12 @@ class MainActivity : AppCompatActivity() {
 
         binding.errorRetry.setOnClickListener { loadEmbeddedFrontend() }
 
-        onBackPressedDispatcher.addCallback(
-            this,
-            object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    if (binding.webView.canGoBack()) {
-                        binding.webView.goBack()
-                    } else {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
-                    }
-                }
-            },
-        )
+        val backCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                handleAndroidBack(this)
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, backCallback)
 
         loadEmbeddedFrontend()
     }
@@ -97,6 +92,42 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         binding.webView.requestFocus()
+    }
+
+    /**
+     * ESC is for the Solid UI (close Settings/dialogs), never for leaving the process.
+     * The WebView receives the key via [super.dispatchKeyEvent]; we then consume it so
+     * no OEM mapping can turn it into Back / finish().
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handled = super.dispatchKeyEvent(event)
+        if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) return true
+        return handled
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_ESCAPE) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private fun handleAndroidBack(callback: OnBackPressedCallback) {
+        if (backInFlight) return
+        backInFlight = true
+        binding.webView.requestFocus()
+        binding.webView.evaluateJavascript(AndroidBackJs.INVOKE) { raw ->
+            backInFlight = false
+            val result = AndroidBackJs.parse(raw)
+            Log.i(LOG_TAG, "back js=$result canGoBack=${binding.webView.canGoBack()}")
+            when {
+                result == AndroidBackJs.OVERLAY || result == AndroidBackJs.NAV -> Unit
+                binding.webView.canGoBack() -> binding.webView.goBack()
+                else -> {
+                    callback.isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    callback.isEnabled = true
+                }
+            }
+        }
     }
 
     private fun loadEmbeddedFrontend() {
@@ -210,11 +241,13 @@ class MainActivity : AppCompatActivity() {
                 binding.progress.visibility = View.VISIBLE
                 hideError()
                 view?.evaluateJavascript(TOUCH_FIX_JS, null)
+                view?.evaluateJavascript(AndroidBackJs.INSTALL, null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 CookieManager.getInstance().flush()
                 binding.webView.evaluateJavascript(TOUCH_FIX_JS, null)
+                binding.webView.evaluateJavascript(AndroidBackJs.INSTALL, null)
                 binding.webView.evaluateJavascript(IME_SCROLL_JS, null)
                 binding.webView.requestFocus()
             }
@@ -395,6 +428,7 @@ class MainActivity : AppCompatActivity() {
                   root.removeAttribute('inert');
                 }
                 window.__ocAndroidShell = true;
+                window.__ocAndroidEscapeNeverExits = true;
                 try {
                   if (window.OpenCodeAndroid) {
                     window.__ocAndroidProxy = {
