@@ -41,11 +41,6 @@ apply_android_embed_patch() {
   local patch base
   for patch in "$PATCH_DIR"/*.patch; do
     [[ -f "$patch" ]] || continue
-    if git -C "$SRC" apply --check "$patch" >/dev/null 2>&1; then
-      git -C "$SRC" apply "$patch"
-      echo "Applied $patch"
-      continue
-    fi
     base="$(basename "$patch")"
     if [[ "$base" == *no-origin* ]] && grep -q AndroidMemoryRouter "$SRC/packages/app/src/entry.tsx"; then
       echo "Already applied $base"
@@ -57,6 +52,19 @@ apply_android_embed_patch() {
     fi
     if [[ "$base" == *portrait-settings* ]] && grep -q "max-width: 839px" "$SRC/packages/app/src/components/settings-v2/settings-v2.css"; then
       echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *settings-accordion* ]] && grep -q "SettingsSectionV2" "$SRC/packages/app/src/components/settings-v2/general.tsx"; then
+      echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *touchable-home* ]] && grep -q 'server.key || "offline"' "$SRC/packages/app/src/app.tsx"; then
+      echo "Already applied $base"
+      continue
+    fi
+    if git -C "$SRC" apply --check "$patch" >/dev/null 2>&1; then
+      git -C "$SRC" apply "$patch"
+      echo "Applied $patch"
       continue
     fi
     echo "Failed to apply $patch against $REF" >&2

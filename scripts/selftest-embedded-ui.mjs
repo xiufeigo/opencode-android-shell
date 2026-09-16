@@ -23,6 +23,9 @@ const screenshotPath =
   process.env.SELFTEST_SCREENSHOT || "/opt/cursor/artifacts/selftest-home-android-path.png"
 const portraitScreenshotPath =
   process.env.SELFTEST_PORTRAIT_SCREENSHOT || "/opt/cursor/artifacts/selftest-settings-portrait.png"
+const portraitScrolledScreenshotPath =
+  process.env.SELFTEST_PORTRAIT_SCROLLED_SCREENSHOT ||
+  "/opt/cursor/artifacts/selftest-settings-portrait-scrolled.png"
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8"
@@ -202,6 +205,66 @@ const SETTINGS_LAYOUT_JS = `(() => {
   };
 })()`
 
+const SETTINGS_ACCORDION_JS = `(() => {
+  const panels = Array.from(document.querySelectorAll('.settings-v2-panel')).filter((el) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && r.width > 0 && r.height > 0;
+  });
+  const panel = panels[0];
+  const tabHeader = panel ? panel.querySelector('.settings-v2-tab-header') : null;
+  const tabHeaderStyle = tabHeader ? getComputedStyle(tabHeader) : null;
+  const sections = panel ? Array.from(panel.querySelectorAll('details.settings-v2-section')) : [];
+  const summaries = sections.map((el) => {
+    const sum = el.querySelector('summary.settings-v2-section-title');
+    return {
+      title: (sum && sum.textContent || '').trim().slice(0, 40),
+      open: el.open,
+      sticky: sum ? getComputedStyle(sum).position : null,
+    };
+  });
+  const tabTitle = tabHeader ? (tabHeader.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 40) : null;
+  return {
+    panelFound: !!panel,
+    tabHeaderDisplay: tabHeaderStyle ? tabHeaderStyle.display : null,
+    tabHeaderPosition: tabHeaderStyle ? tabHeaderStyle.position : null,
+    tabHeaderHidden: !tabHeader || (tabHeaderStyle && tabHeaderStyle.display === 'none'),
+    tabTitle,
+    sectionCount: sections.length,
+    summaries,
+    firstOpen: sections[0] ? sections[0].open : null,
+  };
+})()`
+
+const SETTINGS_SCROLL_JS = `(() => {
+  const panels = Array.from(document.querySelectorAll('.settings-v2-panel')).filter((el) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && r.width > 0 && r.height > 0;
+  });
+  const panel = panels[0];
+  if (!panel) return { scrolled: false };
+  const appearance = Array.from(panel.querySelectorAll('summary, h3')).find((el) => /外观|Appearance/.test(el.textContent || ''));
+  if (appearance) appearance.scrollIntoView({ block: 'start' });
+  else panel.scrollTop = Math.min(panel.scrollHeight, 420);
+  const tabHeader = panel.querySelector('.settings-v2-tab-header');
+  const tabHeaderStyle = tabHeader ? getComputedStyle(tabHeader) : null;
+  const sticky = Array.from(panel.querySelectorAll('summary.settings-v2-section-title, h3.settings-v2-section-title')).filter((el) => {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const pr = panel.getBoundingClientRect();
+    return s.position === 'sticky' && r.height > 0 && Math.abs(r.top - pr.top) < 8;
+  });
+  return {
+    scrolled: true,
+    scrollTop: Math.round(panel.scrollTop),
+    tabHeaderHidden: !tabHeader || (tabHeaderStyle && tabHeaderStyle.display === 'none'),
+    stickyTitles: sticky.map((el) => (el.textContent || '').trim().slice(0, 40)),
+    lockedGeneral: sticky.some((el) => /^(通用|General)$/.test((el.textContent || '').trim())) && sticky.length === 1 && /^(通用|General)$/.test((sticky[0].textContent || '').trim()) && panel.scrollTop > 80,
+  };
+})()`
+
+
 async function main() {
   if (!fs.existsSync(path.join(assets, "index.html"))) {
     throw new Error(`missing embedded assets at ${assets}`)
@@ -268,12 +331,50 @@ async function main() {
     const probe = await evaluate(ws, sessionId, TAP_JS)
     await Bun.sleep(800)
     const settingsLayout = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
+    const settingsAccordion = await evaluate(ws, sessionId, SETTINGS_ACCORDION_JS)
     try {
       const shot = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
       if (shot?.data) {
         fs.mkdirSync(path.dirname(screenshotPath), { recursive: true })
         fs.writeFileSync(screenshotPath, Buffer.from(shot.data, "base64"))
         fs.writeFileSync(portraitScreenshotPath, Buffer.from(shot.data, "base64"))
+      }
+    } catch {}
+    if (settingsAccordion?.sectionCount >= 2 && settingsAccordion.summaries?.[1]) {
+      const collapseJs = `(() => {
+        const panels = Array.from(document.querySelectorAll('.settings-v2-panel')).filter((el) => {
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return s.display !== 'none' && r.width > 0 && r.height > 0;
+        });
+        const panel = panels[0];
+        const details = panel && panel.querySelectorAll('details.settings-v2-section')[1];
+        const sum = details && details.querySelector('summary');
+        if (sum) sum.click();
+        return { collapsed: details ? details.open === false : false, title: sum ? (sum.textContent || '').trim().slice(0, 40) : null };
+      })()`
+      settingsAccordion.collapseProbe = await evaluate(ws, sessionId, collapseJs)
+      await Bun.sleep(250)
+      const reopenJs = `(() => {
+        const panels = Array.from(document.querySelectorAll('.settings-v2-panel')).filter((el) => {
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return s.display !== 'none' && r.width > 0 && r.height > 0;
+        });
+        const details = panels[0] && panels[0].querySelectorAll('details.settings-v2-section')[1];
+        const sum = details && details.querySelector('summary');
+        if (sum && details && !details.open) sum.click();
+        return { open: details ? details.open : null };
+      })()`
+      settingsAccordion.reopenProbe = await evaluate(ws, sessionId, reopenJs)
+    }
+    const settingsScroll = await evaluate(ws, sessionId, SETTINGS_SCROLL_JS)
+    await Bun.sleep(300)
+    try {
+      const shot2 = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shot2?.data) {
+        fs.mkdirSync(path.dirname(portraitScrolledScreenshotPath), { recursive: true })
+        fs.writeFileSync(portraitScrolledScreenshotPath, Buffer.from(shot2.data, "base64"))
       }
     } catch {}
     const scopeCrash =
@@ -283,6 +384,16 @@ async function main() {
       !!settingsLayout?.found &&
       settingsLayout.stacked === true &&
       (settingsLayout.contentReadable === true || settingsLayout.content?.w >= 280)
+    const accordionOk =
+      !!settingsAccordion?.panelFound &&
+      (settingsAccordion.sectionCount ?? 0) >= 2 &&
+      settingsAccordion.tabHeaderHidden === true &&
+      settingsAccordion.summaries?.every((s) => s.sticky === "sticky")
+    const collapseOk = settingsAccordion?.collapseProbe?.collapsed === true
+    const scrollOk =
+      !!settingsScroll?.scrolled &&
+      settingsScroll.tabHeaderHidden === true &&
+      settingsScroll.lockedGeneral !== true
     const ok =
       probe &&
       probe.hostname === HOST &&
@@ -294,20 +405,31 @@ async function main() {
       (probe.dialogAfterClick || probe.settingsClicked) &&
       !scopeCrash &&
       probe.viewportFitCover === true &&
-      settingsPortraitOk
+      settingsPortraitOk &&
+      accordionOk &&
+      collapseOk &&
+      scrollOk
     const report = {
       ok,
       pageUrl,
       probe,
       settingsLayout,
+      settingsAccordion,
+      settingsScroll,
       clicked: probe?.clicked ?? [],
       responded: !!(probe?.settingsClicked && (probe?.dialogAfterClick || probe.settingsFound)),
       exceptions,
       scopeCrash,
       whiteOnly,
       settingsPortraitOk,
+      accordionOk,
+      collapseOk,
+      scrollOk,
       screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
       portraitScreenshotPath: fs.existsSync(portraitScreenshotPath) ? portraitScreenshotPath : null,
+      portraitScrolledScreenshotPath: fs.existsSync(portraitScrolledScreenshotPath)
+        ? portraitScrolledScreenshotPath
+        : null,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
@@ -319,7 +441,13 @@ async function main() {
             ? "self-test failed: titlebar-only / white home (asset-path router mismatch)"
             : !settingsPortraitOk
               ? "self-test failed: Settings is still a squished two-column layout in portrait"
-              : "self-test failed: Settings control was not found or did not handle the tap",
+              : !accordionOk
+                ? "self-test failed: Settings category title still sticky-locked or sections are not accordions"
+                : !collapseOk
+                  ? "self-test failed: Settings section did not collapse"
+                  : !scrollOk
+                    ? "self-test failed: 「通用」 still locked after scroll"
+                    : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

@@ -1,1 +1,0 @@
-import{b8 as r,bO as s}from"./index-Dr6xG4X7.js";var n=s("<div data-component=settings-v2-list>");const i=e=>(()=>{var t=n();return r(t,()=>e.children),t})();export{i as S};

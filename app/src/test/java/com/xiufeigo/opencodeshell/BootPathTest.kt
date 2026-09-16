@@ -32,5 +32,13 @@ class BootPathTest {
         val css = File("src/main/assets/opencode-app/assets/$cssName").readText()
         assertTrue("portrait Settings breakpoint missing", css.contains("839px"))
         assertTrue(css.contains("flex-direction:column") || css.contains("flex-direction: column"))
+        assertTrue("portrait must unstick the category tab header", css.contains(".settings-v2-panel .settings-v2-tab-header"))
+        assertTrue("portrait section titles must be sticky", css.contains("summary.settings-v2-section-title"))
+        val assets = File("src/main/assets/opencode-app/assets")
+        val accordionJs =
+            assets.listFiles { _, name -> name.startsWith("index-") && name.endsWith(".js") }
+                ?.any { it.readText().contains("details class=settings-v2-section") }
+                ?: false
+        assertTrue("General sections must be <details> accordions", accordionJs)
     }
 }

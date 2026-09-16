@@ -1,0 +1,218 @@
+diff --git a/packages/app/src/components/settings-v2/general.tsx b/packages/app/src/components/settings-v2/general.tsx
+index b41da10..23296b2 100644
+--- a/packages/app/src/components/settings-v2/general.tsx
++++ b/packages/app/src/components/settings-v2/general.tsx
+@@ -12,6 +12,7 @@ import { useSettings } from "@/context/settings"
+ import { ExternalLink } from "../external-link"
+ import { SettingsListV2 } from "./parts/list"
+ import { SettingsRowV2 } from "./parts/row"
++import { SettingsSectionV2 } from "./parts/section"
+ import { LayoutRetirementNotice, LayoutTransitionToggle } from "./interface-transition"
+ import {
+   createAppearanceSettingsController,
+@@ -122,8 +123,7 @@ const ShellSetting: Component<{ controller: ShellSettingsController }> = (props)
+ const AppearanceSection: Component<{ controller: AppearanceSettingsController }> = (props) => {
+   const language = useLanguage()
+   return (
+-    <div class="settings-v2-section">
+-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.appearance")}</h3>
++    <SettingsSectionV2 title={language.t("settings.general.section.appearance")}>
+       <SettingsListV2>
+         <SettingsRowV2
+           title={language.t("settings.general.row.colorScheme.title")}
+@@ -173,7 +173,7 @@ const AppearanceSection: Component<{ controller: AppearanceSettingsController }>
+         <FontSetting kind="code" fonts={props.controller.fonts} />
+         <FontSetting kind="terminal" fonts={props.controller.fonts} />
+       </SettingsListV2>
+-    </div>
++    </SettingsSectionV2>
+   )
+ }
+ 
+@@ -208,14 +208,13 @@ const FontSetting: Component<{
+ const SoundsSection: Component<{ controller: SoundSettingsController }> = (props) => {
+   const language = useLanguage()
+   return (
+-    <div class="settings-v2-section">
+-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.sounds")}</h3>
++    <SettingsSectionV2 title={language.t("settings.general.section.sounds")}>
+       <SettingsListV2>
+         <SoundSetting kind="agent" channel={props.controller.agent} />
+         <SoundSetting kind="permissions" channel={props.controller.permissions} />
+         <SoundSetting kind="errors" channel={props.controller.errors} />
+       </SettingsListV2>
+-    </div>
++    </SettingsSectionV2>
+   )
+ }
+ 
+@@ -325,7 +324,7 @@ export const SettingsGeneralV2: Component<{
+   )
+ 
+   const GeneralSection = () => (
+-    <div class="settings-v2-section">
++    <SettingsSectionV2 title={language.t("settings.tab.general")}>
+       <SettingsListV2>
+         <LanguageSetting />
+ 
+@@ -383,12 +382,11 @@ export const SettingsGeneralV2: Component<{
+           </SettingsRowV2>
+         </Show>
+       </SettingsListV2>
+-    </div>
++    </SettingsSectionV2>
+   )
+ 
+   const AdvancedSection = () => (
+-    <div class="settings-v2-section">
+-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.advanced")}</h3>
++    <SettingsSectionV2 title={language.t("settings.general.section.advanced")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -439,12 +437,11 @@ export const SettingsGeneralV2: Component<{
+           </div>
+         </SettingsRowV2>
+       </SettingsListV2>
+-    </div>
++    </SettingsSectionV2>
+   )
+ 
+   const NotificationsSection = () => (
+-    <div class="settings-v2-section">
+-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.notifications")}</h3>
++    <SettingsSectionV2 title={language.t("settings.general.section.notifications")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -483,12 +480,11 @@ export const SettingsGeneralV2: Component<{
+           </div>
+         </SettingsRowV2>
+       </SettingsListV2>
+-    </div>
++    </SettingsSectionV2>
+   )
+ 
+   const UpdatesSection = () => (
+-    <div class="settings-v2-section">
+-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.updates")}</h3>
++    <SettingsSectionV2 title={language.t("settings.general.section.updates")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -512,15 +508,13 @@ export const SettingsGeneralV2: Component<{
+           </ButtonV2>
+         </SettingsRowV2>
+       </SettingsListV2>
+-    </div>
++    </SettingsSectionV2>
+   )
+ 
+   // We can probably remove this, right?
+   const DisplaySection = () => (
+     <Show when={desktop()}>
+-      <div class="settings-v2-section">
+-        <h3 class="settings-v2-section-title">{language.t("settings.general.section.display")}</h3>
+-
++      <SettingsSectionV2 title={language.t("settings.general.section.display")}>
+         <SettingsListV2>
+           <SettingsRowV2
+             title={language.t("settings.general.row.pinchZoom.title")}
+@@ -531,7 +525,7 @@ export const SettingsGeneralV2: Component<{
+             </div>
+           </SettingsRowV2>
+         </SettingsListV2>
+-      </div>
++      </SettingsSectionV2>
+     </Show>
+   )
+ 
+diff --git a/packages/app/src/components/settings-v2/parts/section.tsx b/packages/app/src/components/settings-v2/parts/section.tsx
+new file mode 100644
+index 0000000..644a6c4
+--- /dev/null
++++ b/packages/app/src/components/settings-v2/parts/section.tsx
+@@ -0,0 +1,17 @@
++import type { Component, JSX } from "solid-js"
++import "../settings-v2.css"
++
++/** Collapsible settings block. Native <details> so several panels can stay open
++ *  (AccordionV2 is single-card chrome and single-open by default). */
++export const SettingsSectionV2: Component<{
++  title?: string | JSX.Element
++  children: JSX.Element
++  defaultOpen?: boolean
++}> = (props) => {
++  return (
++    <details class="settings-v2-section" open={props.defaultOpen !== false} data-component="settings-v2-section">
++      {props.title ? <summary class="settings-v2-section-title">{props.title}</summary> : null}
++      {props.children}
++    </details>
++  )
++}
+diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
+--- a/packages/app/src/components/settings-v2/settings-v2.css
++++ b/packages/app/src/components/settings-v2/settings-v2.css
+@@ -267,6 +267,62 @@
+   }
+ }
+ 
++/* Portrait accordion / scroll-spy: official .settings-v2-tab-header is sticky, so
++   「通用」 pins over every subsection. Unstick (hide title-only headers — nav
++   already shows the category). Sticky the in-view .settings-v2-section-title
++   instead. Sections are <details> so each block collapses independently. */
++.settings-v2-section > summary.settings-v2-section-title {
++  list-style: none;
++}
++
++.settings-v2-section > summary.settings-v2-section-title::-webkit-details-marker {
++  display: none;
++}
++
++@media (max-width: 839px) {
++  .settings-v2-panel .settings-v2-tab-header {
++    position: static;
++    z-index: auto;
++    background: var(--v2-background-bg-base);
++  }
++
++  .settings-v2-panel
++    .settings-v2-tab-header:not(.settings-v2-tab-header--stacked):not(.settings-v2-servers-header) {
++    display: none;
++  }
++
++  .settings-v2-section > .settings-v2-section-title,
++  .settings-v2-section > summary.settings-v2-section-title {
++    position: sticky;
++    top: 0;
++    z-index: 6;
++    box-sizing: border-box;
++    margin: 0 -16px;
++    padding: 12px 16px;
++    background: var(--v2-background-bg-base);
++    cursor: pointer;
++    display: flex;
++    align-items: center;
++    justify-content: space-between;
++    gap: 8px;
++  }
++
++  .settings-v2-section > summary.settings-v2-section-title::after {
++    content: "";
++    width: 7px;
++    height: 7px;
++    flex-shrink: 0;
++    border-inline-end: 1.5px solid var(--v2-icon-icon-muted);
++    border-bottom: 1.5px solid var(--v2-icon-icon-muted);
++    transform: rotate(45deg);
++    transition: transform 160ms ease;
++  }
++
++  .settings-v2-section[open] > summary.settings-v2-section-title::after {
++    transform: rotate(-135deg);
++  }
++}
++
+ .settings-v2-nav-footer {
+   display: flex;
+   flex-direction: column;
