@@ -157,17 +157,32 @@ diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/
    /* Nav (flex 0) + panel { height:100% of the 720px tabs } overflows
       dialog-content and creates a blank scroller. Fill only the remaining
       column (flex-grow + height:0), and keep overflow on this panel. */
-@@ -308,8 +325,8 @@
+@@ -308,21 +325,21 @@
    }
- 
+
    .settings-v2-tab-body {
 -    padding: 0 16px 8px;
 -    gap: 0;
 +    padding: 8px 8px 12px;
 +    gap: 4px;
    }
- 
+
    .settings-v2-section {
+     gap: 8px;
+   }
+
+-  .settings-v2-section:not([open]) {
++  details.settings-v2-section:not([open]) {
+     gap: 0;
+   }
+
+-  .settings-v2-section:not([open]) > :not(summary) {
++  details.settings-v2-section:not([open]) > :not(summary) {
+     display: none !important;
+   }
+
+-  .settings-v2-section:not([open])::details-content {
++  details.settings-v2-section:not([open])::details-content {
 @@ -336,23 +353,36 @@
      top: 0;
      z-index: 6;

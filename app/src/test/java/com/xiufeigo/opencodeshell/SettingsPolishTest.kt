@@ -20,6 +20,7 @@ class SettingsPolishTest {
         assertTrue(text.contains("icon=\"sliders\""))
         assertTrue(text.contains("white-space: nowrap"))
         assertTrue(text.contains("settings-v2-tab-header [data-component=\"button-v2\"]"))
+        assertTrue(text.contains("details.settings-v2-section:not([open])"))
         assertTrue(text.contains("KeybindV2"))
         assertTrue(text.contains("settings-v2-shortcut-row"))
     }
@@ -32,6 +33,10 @@ class SettingsPolishTest {
                 ?: error("missing entry stylesheet in index.html")
         val css = File("src/main/assets/opencode-app/assets/$cssName").readText()
         assertTrue(css.contains("settings-v2-section-title-main"))
+        assertTrue(
+            "collapsed accordion CSS must target details only",
+            css.contains("details.settings-v2-section:not([open])"),
+        )
         assertTrue(css.contains("settings-v2-tab-header [data-component=\"button-v2\"]") || css.contains("settings-v2-tab-header [data-component=button-v2]"))
         val jsName =
             Regex("""src="\./assets/(index-[^"]+\.js)"""").find(html)?.groupValues?.get(1)

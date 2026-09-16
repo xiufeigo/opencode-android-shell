@@ -1,1 +1,0 @@
-import{cs as o,c5 as a,c9 as e,bM as c}from"./index-KQIlQGn_.js";function u(){const t=o(),n=a();return e(()=>({mutationFn:t().mcp.toggle,onError:s=>c({variant:"error",title:n.t("common.requestFailed"),description:s instanceof Error?s.message:String(s)})}))}export{u};

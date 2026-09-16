@@ -1012,8 +1012,14 @@ async function runConnectedSurface(ws, sessionId, input) {
         /重置为默认值|Reset to defaults|Reset/.test(el.textContent || ""),
       );
       const rr = reset ? reset.getBoundingClientRect() : null;
-      const keycaps = dialog ? dialog.querySelectorAll('[data-component="keybind-v2"], [data-slot="keybind-v2-key"]').length : 0;
-      const rows = dialog ? dialog.querySelectorAll('[data-slot="settings-v2-shortcut-row"], [data-keybind-id]').length : 0;
+      const keycaps = dialog ? Array.from(dialog.querySelectorAll('[data-component="keybind-v2"], [data-slot="keybind-v2-key"]')).filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      }).length : 0;
+      const rows = dialog ? Array.from(dialog.querySelectorAll('[data-slot="settings-v2-shortcut-row"], [data-keybind-id]')).filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      }).length : 0;
       const wrapped = !!(tr && tr.height > 28);
       return {
         opened: /Esc|Escape|Ctrl|⌘|Command/.test(text) || /shortcut|快捷/.test(text.toLowerCase()),
