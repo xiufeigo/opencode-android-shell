@@ -36,7 +36,19 @@ object SystemUiAppearance {
             else -> return null
         }
         return try {
-            if (packed.length == 8) Color.parseColor("#$packed") else Color.parseColor("#$packed")
+            val a: Int
+            val rgb: String
+            if (packed.length == 8) {
+                a = packed.substring(0, 2).toInt(16)
+                rgb = packed.substring(2)
+            } else {
+                a = 0xFF
+                rgb = packed
+            }
+            val r = rgb.substring(0, 2).toInt(16)
+            val g = rgb.substring(2, 4).toInt(16)
+            val b = rgb.substring(4, 6).toInt(16)
+            (a shl 24) or (r shl 16) or (g shl 8) or b
         } catch (_: Exception) {
             null
         }
@@ -44,9 +56,9 @@ object SystemUiAppearance {
 
     fun darkFromThemeColor(css: String?): Boolean? {
         val color = parseCssColor(css) ?: return null
-        val r = Color.red(color)
-        val g = Color.green(color)
-        val b = Color.blue(color)
+        val r = (color shr 16) and 0xFF
+        val g = (color shr 8) and 0xFF
+        val b = color and 0xFF
         val luminance = (0.299 * r + 0.587 * g + 0.114 * b)
         return luminance < 140
     }
