@@ -31,6 +31,7 @@ Launcher icon: official OpenCode mark — see [`frontend/branding/SOURCE.md`](fr
 - Launch goes **directly** into the official home (sidebar: 项目 / 添加项目 / 设置 / 帮助). There is no native “Connect server” screen.
 - With zero servers, the official empty state is shown. Add a backend via **设置 → 服务器** (same list + 「添加服务器」 dialog as Desktop).
 - The WebView asset origin is **not** treated as an HTTP server (see `frontend/patches/android-webview-no-origin-server.patch`).
+- With zero servers, server-scoped providers use a disconnected stub (`http://127.0.0.1:0`, not shown in Settings) so Layout/ServerSDK can init (`frontend/patches/android-webview-disconnected-sdk.patch`).
 - The agent **does not** run inside the APK.
 
 ## Run the backend (PC)
@@ -105,7 +106,7 @@ chmod +x scripts/sync-opencode-app.sh
 OPENCODE_REF=v1.18.31 ./scripts/sync-opencode-app.sh
 ```
 
-That clones `anomalyco/opencode` at the tag, applies `frontend/patches/android-webview-no-origin-server.patch`, runs `vite build --base ./ --sourcemap false` in `packages/app`, copies `dist/` into `app/src/main/assets/opencode-app/`, and updates `frontend/OPENCODE_APP_VERSION`.
+That clones `anomalyco/opencode` at the tag, applies `frontend/patches/*.patch`, runs `vite build --base ./ --sourcemap false` in `packages/app`, copies `dist/` into `app/src/main/assets/opencode-app/`, and updates `frontend/OPENCODE_APP_VERSION`.
 
 Then `./gradlew assembleDebug`. Commit the vendored assets with the pin file.
 

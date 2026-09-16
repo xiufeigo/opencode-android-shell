@@ -8,7 +8,7 @@ SRC="${OPENCODE_SRC:-}"
 WORKDIR="${TMPDIR:-/tmp}/opencode-app-src"
 DEST="$ROOT/app/src/main/assets/opencode-app"
 PIN="$ROOT/frontend/OPENCODE_APP_VERSION"
-PATCH="$ROOT/frontend/patches/android-webview-no-origin-server.patch"
+PATCH_DIR="$ROOT/frontend/patches"
 
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun is required. Install from https://bun.sh" >&2
@@ -34,22 +34,30 @@ if [[ -z "$SRC" ]]; then
 fi
 
 apply_android_embed_patch() {
-  local entry="$SRC/packages/app/src/entry.tsx"
-  if [[ ! -f "$PATCH" ]]; then
-    echo "missing $PATCH" >&2
+  if [[ ! -d "$PATCH_DIR" ]]; then
+    echo "missing $PATCH_DIR" >&2
     exit 1
   fi
-  if git -C "$SRC" apply --check "$PATCH" >/dev/null 2>&1; then
-    git -C "$SRC" apply "$PATCH"
-    echo "Applied $PATCH"
-    return
-  fi
-  if grep -q "ANDROID_ASSET_HOST" "$entry"; then
-    echo "Android WebView entry patch already present"
-    return
-  fi
-  echo "Failed to apply $PATCH against $REF" >&2
-  exit 1
+  local patch base
+  for patch in "$PATCH_DIR"/*.patch; do
+    [[ -f "$patch" ]] || continue
+    if git -C "$SRC" apply --check "$patch" >/dev/null 2>&1; then
+      git -C "$SRC" apply "$patch"
+      echo "Applied $patch"
+      continue
+    fi
+    base="$(basename "$patch")"
+    if [[ "$base" == *no-origin* ]] && grep -q ANDROID_ASSET_HOST "$SRC/packages/app/src/entry.tsx"; then
+      echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *disconnected* ]] && grep -q DISCONNECTED_HTTP_SERVER "$SRC/packages/app/src/context/server.tsx"; then
+      echo "Already applied $base"
+      continue
+    fi
+    echo "Failed to apply $patch against $REF" >&2
+    exit 1
+  done
 }
 
 apply_android_embed_patch
@@ -75,8 +83,8 @@ tag=$REF
 commit=$COMMIT
 source=https://github.com/anomalyco/opencode
 built_with=vite build --base ./ --sourcemap false
-android_patch=frontend/patches/android-webview-no-origin-server.patch
-android_patch_purpose=Do not treat the WebView asset origin (appassets.androidplatform.net) as a builtin HTTP server. Cold start uses the official home UI; servers are added via Settings → Server.
+android_patch=frontend/patches/*.patch
+android_patch_purpose=Do not treat the WebView asset origin as a builtin HTTP server. Provide a disconnected SDK stub so Layout/ServerSDK can init with zero configured servers (fixes cold-start TypeError reading .scope). Servers are added via Settings → Server.
 EOF
 
 echo "Vendored $REF ($COMMIT) into $DEST"
