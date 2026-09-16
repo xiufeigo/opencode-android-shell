@@ -31,13 +31,20 @@ class BootPathTest {
     }
 
     @Test
-    fun vendoredCssStacksSettingsBelow840px() {
+    fun vendoredCssStacksSettingsOnPhonesOnly() {
         val html = File("src/main/assets/opencode-app/index.html").readText()
         val cssName =
             Regex("""href="\./assets/(index-[^"]+\.css)"""").find(html)?.groupValues?.get(1)
                 ?: error("missing entry stylesheet in index.html")
         val css = File("src/main/assets/opencode-app/assets/$cssName").readText()
-        assertTrue("portrait Settings breakpoint missing", css.contains("839px"))
+        assertTrue("phone Settings accordion breakpoint missing", css.contains("639px"))
+        assertTrue(
+            "tablet Settings must not inherit the unscoped IME 480px dialog cap",
+            css.contains(":has(.command-palette-v2)") &&
+                (css.contains("980px") && css.contains("100vw - 32px") ||
+                    css.contains("min(calc(100vw - 32px), 980px)") ||
+                    css.contains("min(calc(100vw - 32px),980px)")),
+        )
         assertTrue(css.contains("flex-direction:column") || css.contains("flex-direction: column"))
         assertTrue("portrait must unstick the category tab header", css.contains(".settings-v2-panel .settings-v2-tab-header"))
         assertTrue("portrait section titles must be sticky", css.contains("summary.settings-v2-section-title"))

@@ -33,6 +33,12 @@ const portraitCollapsedScreenshotPath =
 const homeEmptyScreenshotPath =
   process.env.SELFTEST_HOME_EMPTY_SCREENSHOT ||
   "/opt/cursor/artifacts/selftest-home-empty-portrait.png"
+const landscapeScreenshotPath =
+  process.env.SELFTEST_LANDSCAPE_SCREENSHOT ||
+  "/opt/cursor/artifacts/selftest-settings-tablet-landscape.png"
+const paletteScreenshotPath =
+  process.env.SELFTEST_PALETTE_SCREENSHOT ||
+  "/opt/cursor/artifacts/selftest-palette-tablet-landscape.png"
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8"
@@ -1713,13 +1719,11 @@ async function runConnectedSurface(ws, sessionId, input) {
       const root = document.getElementById("root");
       const dock = document.querySelector("[data-slot='session-terminal-dock'], #terminal-panel");
       const vh = document.documentElement.clientHeight || window.innerHeight;
-      const labels = Array.from(document.querySelectorAll("[role='tab'], button, [data-action]")).map((el) =>
-        ((el.getAttribute("data-action") || "") + " " + (el.textContent || "")).trim(),
-      );
+      const tabLabels = Array.from(document.querySelectorAll("[role='tab']")).map((el) => (el.textContent || "").trim());
       const tabs = {
-        session: labels.some((t) => /session-mobile-tab-session|会话|Session/.test(t)),
-        changes: labels.some((t) => /session-mobile-tab-changes|更改|Changes/.test(t)),
-        context: labels.some((t) => /session-mobile-tab-context|上下文|Context/.test(t)),
+        session: tabLabels.some((t) => /会话|^Session$/.test(t)),
+        changes: tabLabels.some((t) => /更改|^Changes$/.test(t)),
+        context: tabLabels.some((t) => /上下文|^Context$/.test(t)),
       };
       if (root) root.style.height = Math.round(vh * 0.55) + "px";
       const stuck = root ? Math.round(root.getBoundingClientRect().height) : null;
@@ -2002,6 +2006,8 @@ const TAP_JS = `(() => {
 const SETTINGS_LAYOUT_JS = `(() => {
   const tabs = document.querySelector('[data-component="tabs-v2"][data-variant="settings"]');
   const list = document.querySelector('[data-slot="tabs-v2-list"]');
+  const dialog = document.querySelector('[data-component="dialog-v2"][data-variant="settings"]');
+  const container = dialog && dialog.querySelector('[data-slot="dialog-container"]');
   const contents = Array.from(document.querySelectorAll('[data-slot="tabs-v2-content"]'));
   const content = contents.find((el) => {
     const s = getComputedStyle(el);
@@ -2013,21 +2019,96 @@ const SETTINGS_LAYOUT_JS = `(() => {
   const tr = tabs.getBoundingClientRect();
   const lr = list.getBoundingClientRect();
   const cr = content ? content.getBoundingClientRect() : { width: 0, height: 0, top: 0, left: 0 };
+  const dr = dialog ? dialog.getBoundingClientRect() : { width: 0, height: 0 };
+  const cnr = container ? container.getBoundingClientRect() : { width: 0, height: 0, top: 0 };
   const dir = getComputedStyle(tabs).flexDirection;
   const stacked = dir === 'column' || lr.width >= tr.width * 0.85 || cr.top >= lr.bottom - 4;
   const selectWidth = select ? select.getBoundingClientRect().width : 0;
+  const titles = Array.from(document.querySelectorAll('[data-slot="settings-v2-row-title"]')).filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  });
+  const wrapSamples = titles.slice(0, 8).map((el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) || 16;
+    return {
+      t: (el.textContent || '').trim().slice(0, 40),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+      lines: lh ? Math.round(r.height / lh) : null,
+    };
+  });
+  const chineseWrapNarrow = wrapSamples.some((s) => s.w > 0 && s.w < 80 && s.h > 36);
   return {
     found: true,
     viewport: { w: innerWidth, h: innerHeight },
     flexDirection: dir,
+    dialog: { w: Math.round(dr.width), h: Math.round(dr.height), alignItems: dialog ? getComputedStyle(dialog).alignItems : null },
+    container: { w: Math.round(cnr.width), h: Math.round(cnr.height), top: Math.round(cnr.top) },
     tabs: { w: Math.round(tr.width), h: Math.round(tr.height) },
     list: { w: Math.round(lr.width), h: Math.round(lr.height), top: Math.round(lr.top) },
     content: { w: Math.round(cr.width), h: Math.round(cr.height), top: Math.round(cr.top), left: Math.round(cr.left) },
     stacked,
     selectWidth: Math.round(selectWidth),
     contentReadable: cr.width >= 280,
+    wideDesktopCard: cnr.width >= 700 && cr.width >= 400,
+    chineseWrapNarrow,
+    wrapSamples,
     hasGeneral: /通用|General/.test(document.body.innerText || ''),
   };
+})()`
+
+const PALETTE_LAYOUT_JS = `(() => {
+  const visible = (el) => {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const dialog = Array.from(document.querySelectorAll('[data-component="dialog-v2"]')).find((el) => visible(el) && el.querySelector('.command-palette-v2'));
+  const anyDialog = Array.from(document.querySelectorAll('[data-component="dialog-v2"], [role="dialog"]')).find(visible);
+  const host = dialog || anyDialog;
+  if (!host) return { found: false, viewport: { w: innerWidth, h: innerHeight } };
+  const container = host.querySelector('[data-slot="dialog-container"]') || host;
+  const hr = host.getBoundingClientRect();
+  const cr = container.getBoundingClientRect();
+  const cs = getComputedStyle(host);
+  const mid = (cr.top + cr.bottom) / 2;
+  const viewMid = innerHeight / 2;
+  const dockedBottom = cs.alignItems === 'flex-end' || cr.bottom > innerHeight - 24 && cr.top > viewMid + 40;
+  const centered = Math.abs(mid - viewMid) <= Math.max(80, innerHeight * 0.22);
+  return {
+    found: true,
+    viewport: { w: innerWidth, h: innerHeight },
+    hasPaletteClass: !!host.querySelector('.command-palette-v2'),
+    alignItems: cs.alignItems,
+    dialog: { w: Math.round(hr.width), h: Math.round(hr.height) },
+    container: { w: Math.round(cr.width), h: Math.round(cr.height), top: Math.round(cr.top), bottom: Math.round(cr.bottom), mid: Math.round(mid) },
+    viewMid: Math.round(viewMid),
+    dockedBottom,
+    centered,
+    sample: (host.innerText || '').trim().slice(0, 120),
+  };
+})()`
+
+const OPEN_PALETTE_JS = `(() => {
+  const click = (el) => {
+    if (!el) return false;
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return true;
+  };
+  const plus = document.querySelector('[data-action="titlebar-tab-plus"]');
+  const plusClicked = plus ? click(plus) : false;
+  if (!plusClicked) {
+    const opts = { key: 'k', code: 'KeyK', ctrlKey: true, bubbles: true, cancelable: true, composed: true };
+    window.dispatchEvent(new KeyboardEvent('keydown', opts));
+    document.dispatchEvent(new KeyboardEvent('keydown', opts));
+  }
+  return { plusClicked, keyed: !plusClicked, plusLabel: plus ? ((plus.getAttribute('aria-label') || '') + ' ' + (plus.textContent || '')).trim().slice(0, 40) : null };
 })()`
 
 const SETTINGS_ACCORDION_JS = `(() => {
@@ -2427,6 +2508,25 @@ async function main() {
       themeDark?.androidWebview === true &&
       (themeDark?.scheme === "dark" || themeDark?.themeColor === "#080808" || /0,\s*0,\s*0|8,\s*8,\s*8/.test(themeDark?.bg || "")) &&
       (themeLight?.scheme === "light" || themeLight?.themeColor === "#fafafa" || /250,\s*250,\s*250|255,\s*255,\s*255/.test(themeLight?.bg || ""))
+    await cdp(
+      ws,
+      "Emulation.setEmulatedMedia",
+      {
+        features: [
+          { name: "pointer", value: "coarse" },
+          { name: "hover", value: "none" },
+          { name: "prefers-color-scheme", value: "dark" },
+        ],
+      },
+      sessionId,
+    )
+    await cdp(
+      ws,
+      "Emulation.setDeviceMetricsOverride",
+      { width: 390, height: 844, deviceScaleFactor: 2.75, mobile: true },
+      sessionId,
+    )
+    await Bun.sleep(400)
     const probe = await evaluate(ws, sessionId, TAP_JS)
     await Bun.sleep(800)
     const settingsLayout = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
@@ -2494,6 +2594,13 @@ async function main() {
     )
     await Bun.sleep(400)
     const settingsLandscape = await evaluate(ws, sessionId, SETTINGS_LAYOUT_JS)
+    try {
+      const shotL = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shotL?.data) {
+        fs.mkdirSync(path.dirname(landscapeScreenshotPath), { recursive: true })
+        fs.writeFileSync(landscapeScreenshotPath, Buffer.from(shotL.data, "base64"))
+      }
+    } catch {}
     const imeCss = await evaluate(
       ws,
       sessionId,
@@ -2755,7 +2862,11 @@ async function main() {
     const landscapeOk =
       !!settingsLandscape?.found &&
       settingsLandscape.stacked !== true &&
-      settingsLandscape.flexDirection === "row"
+      settingsLandscape.flexDirection === "row" &&
+      (settingsLandscape.container?.w ?? 0) >= 700 &&
+      (settingsLandscape.content?.w ?? 0) >= 400 &&
+      settingsLandscape.chineseWrapNarrow !== true &&
+      settingsLandscape.wideDesktopCard === true
     const homeEmptyOk =
       !!homeEmptyPhone &&
       homeEmptyPhone.androidWebview === true &&
@@ -2823,6 +2934,47 @@ async function main() {
       }
     } catch {}
     const surfaceOk = Array.isArray(surface?.checklist) && surface.checklist.every((c) => c.result !== "FAIL")
+    await cdp(
+      ws,
+      "Emulation.setDeviceMetricsOverride",
+      { width: 1280, height: 800, deviceScaleFactor: 2, mobile: true },
+      sessionId,
+    )
+    await Bun.sleep(400)
+    const openPalette = await evaluate(ws, sessionId, OPEN_PALETTE_JS)
+    await Bun.sleep(1000)
+    let paletteLandscape = await evaluate(ws, sessionId, PALETTE_LAYOUT_JS)
+    if (!paletteLandscape?.found) {
+      await evaluate(
+        ws,
+        sessionId,
+        `(() => {
+          const opts = { key: 'k', code: 'KeyK', ctrlKey: true, bubbles: true, cancelable: true, composed: true };
+          window.dispatchEvent(new KeyboardEvent('keydown', opts));
+          document.dispatchEvent(new KeyboardEvent('keydown', opts));
+          const p = { key: 'p', code: 'KeyP', ctrlKey: true, bubbles: true, cancelable: true, composed: true };
+          window.dispatchEvent(new KeyboardEvent('keydown', p));
+          document.dispatchEvent(new KeyboardEvent('keydown', p));
+          return true;
+        })()`,
+      )
+      await Bun.sleep(900)
+      paletteLandscape = await evaluate(ws, sessionId, PALETTE_LAYOUT_JS)
+    }
+    try {
+      const shotP = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shotP?.data) {
+        fs.mkdirSync(path.dirname(paletteScreenshotPath), { recursive: true })
+        fs.writeFileSync(paletteScreenshotPath, Buffer.from(shotP.data, "base64"))
+      }
+    } catch {}
+    await evaluate(ws, sessionId, HANDLE_BACK_JS)
+    await Bun.sleep(200)
+    const paletteOk =
+      !!paletteLandscape?.found &&
+      paletteLandscape.dockedBottom !== true &&
+      (paletteLandscape.centered === true || paletteLandscape.alignItems === "flex-start") &&
+      (paletteLandscape.container?.w ?? 0) >= 320
     const regressionChecklist = [
       { id: "connection.add_server_ui_real_url", result: addServerOk ? "PASS" : "FAIL", detail: addServerFields },
       { id: "connection.proxy_without_remote_cors", result: proxyOk ? "PASS" : "FAIL", detail: proxyProbe },
@@ -2832,6 +2984,8 @@ async function main() {
       { id: "shell.system_bars_follow_color_scheme", result: themeOk ? "PASS" : "FAIL", detail: { themeDark, themeLight } },
       { id: "regression.ime_dialog_css", result: imeOk ? "PASS" : "FAIL", detail: imeCss },
       { id: "regression.portrait_settings_accordion", result: accordionOk && settingsPortraitOk ? "PASS" : "FAIL" },
+      { id: "regression.tablet_settings_two_column", result: landscapeOk ? "PASS" : "FAIL", detail: settingsLandscape },
+      { id: "regression.command_palette_centered", result: paletteOk ? "PASS" : "FAIL", detail: { openPalette, paletteLandscape } },
       { id: "regression.proxy_sse_chunked", result: proxyProbe?.sse?.ok === true && (proxyProbe?.sse?.restDelayMs ?? 0) >= 80 ? "PASS" : "FAIL", detail: proxyProbe?.sse },
     ]
     const fullChecklist = [...regressionChecklist, ...(surface?.checklist || [])]
@@ -2854,6 +3008,7 @@ async function main() {
       scrollOk &&
       densityOk &&
       landscapeOk &&
+      paletteOk &&
       imeOk &&
       proxyOk &&
       addServerOk &&
@@ -2873,6 +3028,9 @@ async function main() {
       settingsScroll,
       settingsDensity,
       settingsLandscape,
+      openPalette,
+      paletteLandscape,
+      paletteOk,
       clicked: probe?.clicked ?? [],
       responded: !!(probe?.settingsClicked && (probe?.dialogAfterClick || probe.settingsFound)),
       exceptions,
@@ -2888,6 +3046,7 @@ async function main() {
       scrollOk,
       densityOk,
       landscapeOk,
+      paletteOk,
       imeCss,
       imeOk,
       proxyProbe,
@@ -2927,6 +3086,8 @@ async function main() {
       addServerScreenshotPath: fs.existsSync("/opt/cursor/artifacts/selftest-add-server.png")
         ? "/opt/cursor/artifacts/selftest-add-server.png"
         : null,
+      landscapeScreenshotPath: fs.existsSync(landscapeScreenshotPath) ? landscapeScreenshotPath : null,
+      paletteScreenshotPath: fs.existsSync(paletteScreenshotPath) ? paletteScreenshotPath : null,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
@@ -2951,7 +3112,9 @@ async function main() {
                       : !densityOk
                         ? "self-test failed: portrait Settings accordion gaps or blank scroll still excessive"
                         : !landscapeOk
-                          ? "self-test failed: landscape Settings is no longer two-column"
+                          ? "self-test failed: tablet landscape Settings is not the official wide two-column card"
+                          : !paletteOk
+                            ? "self-test failed: command palette is bottom-docked instead of centered"
                           : !imeOk
                             ? "self-test failed: IME dialog CSS / interactive-widget missing"
                             : !proxyOk
