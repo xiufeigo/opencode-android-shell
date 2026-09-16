@@ -1496,6 +1496,10 @@ async function runConnectedSurface(ws, sessionId, input) {
     sessionId,
   )
   await Bun.sleep(400)
+  const sid =
+    apiProbe?.created?.body?.data?.id ||
+    apiProbe?.created?.body?.id ||
+    apiProbe?.created?.body?.sessionID
   const openedSession = await evaluate(
     ws,
     sessionId,
@@ -1507,8 +1511,23 @@ async function runConnectedSurface(ws, sessionId, input) {
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
       };
+      function ocB64(s) {
+        const bytes = new TextEncoder().encode(String(s || ""));
+        const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+        return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
+      }
+      const sid = ${JSON.stringify(sid || "")};
+      const serve = ${JSON.stringify(serveUrl)};
+      const href = sid ? ("/server/" + ocB64(serve) + "/session/" + sid) : null;
+      let viaHistory = false;
+      try {
+        if (href && window.__ocAndroidHistory && typeof window.__ocAndroidHistory.set === "function") {
+          window.__ocAndroidHistory.set({ value: href, scroll: false, replace: false });
+          viaHistory = true;
+        }
+      } catch (e) {}
       let ring = document.querySelector('[data-action="session-open-context"]');
-      if (ring && visible(ring)) return { alreadyInSession: true, ring: true };
+      if (ring && visible(ring)) return { alreadyInSession: true, ring: true, href, viaHistory };
       const home = Array.from(document.querySelectorAll("button, [role='button']")).find((el) => {
         const t = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).trim().toLowerCase();
         return visible(el) && (t === "home" || t === "主页" || t.indexOf("home") === 0);
@@ -1516,10 +1535,10 @@ async function runConnectedSurface(ws, sessionId, input) {
       ocTap(home);
       const row = document.querySelector('[data-component="home-session-row"]');
       const tappedRow = ocTap(row);
-      return { alreadyInSession: false, home: !!home, row: !!row, tappedRow };
+      return { alreadyInSession: false, home: !!home, row: !!row, tappedRow, href, viaHistory, history: !!window.__ocAndroidHistory };
     })()`,
   )
-  await Bun.sleep(1800)
+  await Bun.sleep(2500)
   const ringTap = await evaluate(
     ws,
     sessionId,

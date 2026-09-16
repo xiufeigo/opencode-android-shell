@@ -173,4 +173,16 @@ diff --git a/packages/ui/src/v2/components/tooltip-v2.tsx b/packages/ui/src/v2/c
 +  if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")) return true
    return window.matchMedia?.("(pointer: coarse)")?.matches === true
  }
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -26,6 +26,9 @@
+ /** Same idea as Desktop's MemoryRouter: the document URL is the asset file, not the app route. */
+ function AndroidMemoryRouter(props: BaseRouterProps) {
+   const history = createMemoryHistory()
++  if (typeof window !== "undefined") {
++    ;(window as Window & { __ocAndroidHistory?: ReturnType<typeof createMemoryHistory> }).__ocAndroidHistory = history
++  }
+   return <MemoryRouter {...props} history={history} />
+ }
  
