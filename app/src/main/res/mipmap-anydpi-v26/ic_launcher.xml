@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Both layers are the full-bleed mark so OEM masks (and HyperOS, which
-         often ignores a color-only background) still fill the squircle. -->
+    <!-- Never point foreground at @mipmap/ic_launcher: on API 26+ that is THIS
+         XML and the launcher falls back to the Android robot. -->
     <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@mipmap/ic_launcher" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>

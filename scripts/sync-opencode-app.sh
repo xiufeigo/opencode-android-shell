@@ -47,7 +47,7 @@ apply_android_embed_patch() {
       continue
     fi
     base="$(basename "$patch")"
-    if [[ "$base" == *no-origin* ]] && grep -q ANDROID_ASSET_HOST "$SRC/packages/app/src/entry.tsx"; then
+    if [[ "$base" == *no-origin* ]] && grep -q AndroidMemoryRouter "$SRC/packages/app/src/entry.tsx"; then
       echo "Already applied $base"
       continue
     fi

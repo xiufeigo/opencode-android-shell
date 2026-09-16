@@ -87,6 +87,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadEmbeddedFrontend() {
         hideError()
+        // File URL must stay under /assets/opencode-app/ so relative Vite assets
+        // resolve. Solid routing uses Desktop's MemoryRouter (not this pathname).
         binding.webView.loadUrl(EMBEDDED_INDEX_URL)
     }
 

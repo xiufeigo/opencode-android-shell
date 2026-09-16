@@ -9,6 +9,25 @@ import java.util.zip.Inflater
 
 class LauncherIconTest {
     @Test
+    fun adaptiveXmlDoesNotSelfReferenceLauncher() {
+        for (name in listOf("ic_launcher.xml", "ic_launcher_round.xml")) {
+            val xml = File("src/main/res/mipmap-anydpi-v26/$name").readText()
+            assertTrue("$name must use the foreground PNG", xml.contains("@mipmap/ic_launcher_foreground"))
+            assertTrue("$name must use the dark background drawable", xml.contains("@drawable/ic_launcher_background"))
+            assertTrue(
+                "$name must not point foreground at @mipmap/ic_launcher (API 26+ that is this XML → Android robot)",
+                !xml.contains("android:drawable=\"@mipmap/ic_launcher\""),
+            )
+        }
+        for (density in listOf("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")) {
+            for (file in listOf("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png")) {
+                val png = File("src/main/res/mipmap-$density/$file")
+                assertTrue("missing $png", png.isFile && png.length() > 100)
+            }
+        }
+    }
+
+    @Test
     fun xxxhdpiLauncherIsOfficialMarkNotWhiteSquare() {
         val image = readPng(File("src/main/res/mipmap-xxxhdpi/ic_launcher.png"))
         assertEquals(192, image.width)

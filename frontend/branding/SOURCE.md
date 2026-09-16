@@ -20,7 +20,7 @@ Copies: `frontend/branding/favicon-v3.svg`, preview `frontend/branding/launcher-
 - `mipmap-*/ic_launcher.png` — opaque full-bleed (legacy + adaptive foreground)
 - `mipmap-*/ic_launcher_round.png` — same mark, circular alpha
 - `mipmap-*/ic_launcher_foreground.png` — 108–432px, same full-bleed art
-- Adaptive XML uses a solid dark background drawable plus the full-bleed PNG as foreground
+- Adaptive XML uses a solid dark background drawable plus **`@mipmap/ic_launcher_foreground`** (never `@mipmap/ic_launcher`, which is the XML itself on API 26+ and becomes the Android robot)
 
 Regenerate: `python3 scripts/generate-launcher-icons.py`
 

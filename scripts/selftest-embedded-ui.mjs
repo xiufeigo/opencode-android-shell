@@ -2,9 +2,11 @@
 /**
  * Headless Chrome self-test for the embedded OpenCode assets.
  *
- * Serves app/src/main/assets/opencode-app as http://appassets.androidplatform.net:<port>
- * so the Android-origin patches apply, then clicks Settings and Add-project
- * controls through the Chrome DevTools Protocol.
+ * Serves files at the same pathname WebViewAssetLoader uses:
+ *   /assets/opencode-app/index.html  (hostname appassets.androidplatform.net)
+ *
+ * Official Desktop boots with MemoryRouter at "/". A Browser Router against the
+ * asset file path paints Titlebar (grid-plus / +) and never mounts NewHome.
  */
 import { spawn } from "node:child_process"
 import http from "node:http"
@@ -15,7 +17,10 @@ import { fileURLToPath } from "node:url"
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)))
 const assets = path.join(root, "app/src/main/assets/opencode-app")
 const HOST = "appassets.androidplatform.net"
+const ANDROID_MOUNT = "/assets/opencode-app"
 const reportPath = process.env.SELFTEST_REPORT || path.join(root, "selftest-embedded-ui.json")
+const screenshotPath =
+  process.env.SELFTEST_SCREENSHOT || "/opt/cursor/artifacts/selftest-home-android-path.png"
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8"
@@ -33,6 +38,7 @@ function startServer() {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url || "/", `http://${HOST}`)
       let rel = decodeURIComponent(url.pathname)
+      if (rel.startsWith(ANDROID_MOUNT)) rel = rel.slice(ANDROID_MOUNT.length) || "/"
       if (rel === "/") rel = "/index.html"
       const file = path.join(assets, rel)
       if (!file.startsWith(assets) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
@@ -108,6 +114,7 @@ const TAP_JS = `(() => {
   const labelOf = (el) =>
     ((el.getAttribute('data-action') || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).trim();
   const nodes = Array.from(document.querySelectorAll('button, [role="button"], [data-action], a'));
+  const visibleButtons = nodes.filter(visible);
   const settings = nodes.find((el) => {
     const label = labelOf(el).toLowerCase();
     return visible(el) && (el.getAttribute('data-action') === 'home-open-settings' || label.includes('settings') || label.includes('设置'));
@@ -133,25 +140,32 @@ const TAP_JS = `(() => {
   const settingsOk = click(settings, 'settings');
   const addOk = click(add, 'add-project');
   const dialog = document.querySelector('[role="dialog"], [data-component*="dialog"], [data-component*="settings"]');
+  const bodyText = (document.body.innerText || '');
+  const homeCopy = /Projects|项目|Nothing here yet|Get started|还没有|Create a session|创建会话|Settings|设置/.test(bodyText);
   return {
     hostname: location.hostname,
+    pathname: location.pathname,
     title: document.title,
     hasRoot: !!document.getElementById('root'),
+    rootChildCount: document.getElementById('root')?.childElementCount ?? 0,
     androidShell: !!window.__ocAndroidShell,
     settingsFound: !!settings,
     settingsLabel: settings ? labelOf(settings).slice(0, 80) : null,
     addFound: !!add,
     addLabel: add ? labelOf(add).slice(0, 80) : null,
     homeFound: !!home,
+    visibleButtonCount: visibleButtons.length,
     clicked: fired,
     settingsClicked: settingsOk,
     addClicked: addOk,
     homeClicked: homeOk,
     dialogAfterClick: !!dialog,
     pointerEvents: getComputedStyle(document.documentElement).pointerEvents,
-    bodyText: (document.body.innerText || '').slice(0, 400),
-    hasScopeError: /Cannot read properties of undefined/.test(document.body.innerText || '') || /reading 'scope'/.test(document.body.innerText || ''),
+    bodyText: bodyText.slice(0, 400),
+    homeCopy,
+    hasScopeError: /Cannot read properties of undefined/.test(bodyText) || /reading 'scope'/.test(bodyText),
     viewportFitCover: /viewport-fit\\s*=\\s*cover/.test(document.querySelector('meta[name="viewport"]')?.content || ''),
+    titlebarOnly: visibleButtons.length > 0 && visibleButtons.length <= 2 && !homeCopy,
   };
 })()`
 
@@ -161,7 +175,7 @@ async function main() {
   }
   const server = await startServer()
   const port = server.address().port
-  const pageUrl = `http://${HOST}:${port}/index.html`
+  const pageUrl = `http://${HOST}:${port}${ANDROID_MOUNT}/index.html`
   const debugPort = 9222
   const chrome = spawn(
     "google-chrome",
@@ -189,6 +203,19 @@ async function main() {
     const { sessionId } = await cdp(ws, "Target.attachToTarget", { targetId, flatten: true })
     await cdp(ws, "Page.enable", {}, sessionId)
     await cdp(ws, "Runtime.enable", {}, sessionId)
+    await cdp(
+      ws,
+      "Emulation.setDeviceMetricsOverride",
+      { width: 1280, height: 800, deviceScaleFactor: 2, mobile: true },
+      sessionId,
+    )
+    await cdp(ws, "Emulation.setTouchEmulationEnabled", { enabled: true }, sessionId)
+    await cdp(
+      ws,
+      "Emulation.setEmulatedMedia",
+      { features: [{ name: "pointer", value: "coarse" }, { name: "hover", value: "none" }] },
+      sessionId,
+    )
     const exceptions = []
     ws.addEventListener("message", (ev) => {
       const data = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data)
@@ -206,13 +233,24 @@ async function main() {
     await cdp(ws, "Page.navigate", { url: pageUrl }, sessionId)
     await Bun.sleep(8_000)
     const probe = await evaluate(ws, sessionId, TAP_JS)
+    try {
+      const shot = await cdp(ws, "Page.captureScreenshot", { format: "png" }, sessionId)
+      if (shot?.data) {
+        fs.mkdirSync(path.dirname(screenshotPath), { recursive: true })
+        fs.writeFileSync(screenshotPath, Buffer.from(shot.data, "base64"))
+      }
+    } catch {}
     const scopeCrash =
       exceptions.some((e) => /reading 'scope'/.test(e)) || !!probe?.hasScopeError
+    const whiteOnly = !probe?.homeCopy || probe?.titlebarOnly || (probe?.visibleButtonCount ?? 0) < 3
     const ok =
       probe &&
       probe.hostname === HOST &&
+      probe.pathname === `${ANDROID_MOUNT}/index.html` &&
       probe.settingsFound &&
       probe.settingsClicked &&
+      probe.homeCopy &&
+      !whiteOnly &&
       (probe.dialogAfterClick || probe.settingsClicked) &&
       !scopeCrash &&
       probe.viewportFitCover === true
@@ -221,9 +259,11 @@ async function main() {
       pageUrl,
       probe,
       clicked: probe?.clicked ?? [],
-      responded: !!(probe?.settingsClicked && (probe.dialogAfterClick || probe.settingsFound)),
+      responded: !!(probe?.settingsClicked && (probe?.dialogAfterClick || probe.settingsFound)),
       exceptions,
       scopeCrash,
+      whiteOnly,
+      screenshotPath: fs.existsSync(screenshotPath) ? screenshotPath : null,
     }
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
@@ -231,7 +271,9 @@ async function main() {
       throw new Error(
         scopeCrash
           ? "self-test failed: LayoutProvider TypeError reading scope"
-          : "self-test failed: Settings control was not found or did not handle the tap",
+          : whiteOnly
+            ? "self-test failed: titlebar-only / white home (asset-path router mismatch)"
+            : "self-test failed: Settings control was not found or did not handle the tap",
       )
     }
     ws.close()

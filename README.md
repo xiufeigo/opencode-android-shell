@@ -37,6 +37,7 @@ If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinsta
 - With zero servers, server-scoped providers use an **offline SDK stub** (never fetches `http://127.0.0.1:0`) so Layout/ServerSDK can init (`frontend/patches/android-webview-disconnected-sdk.patch`).
 - Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
 - Safe area: `MainActivity` pads the **root** with `statusBars | navigationBars | displayCutout` (WebView view-padding is ignored on HyperOS). App chrome stays below the status bar.
+- Routing: Android uses the same **MemoryRouter** pattern as OpenCode Desktop so `.../opencode-app/index.html` is not treated as a Solid route (that paints titlebar-only / white home).
 - The agent **does not** run inside the APK.
 
 ## Run the backend (PC)
@@ -138,8 +139,8 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - Allow **LAN / local network** if a privacy toggle appears.
 - Install unknown sources to sideload the debug APK.
 - Autostart is not required; the agent stays on the PC.
-- **Icon still white after upgrade:** uninstall the app, then install the new APK. HyperOS keeps the previous adaptive icon until the package is removed. `versionCode` 6+ ships full-bleed dark `#131010` PNGs (window ~70% of the mask).
-- **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.1+.
+- **Icon still white / Android robot after upgrade:** uninstall the app, then install the new APK. HyperOS caches the previous adaptive icon until the package is removed. `versionCode` 7+ ships full-bleed dark `#131010` PNGs; adaptive XML uses `ic_launcher_foreground` (never self-references `ic_launcher`, which becomes the Android robot on API 26+).
+- **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.2+.
 
 ## Security
 
