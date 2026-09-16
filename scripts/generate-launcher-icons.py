@@ -1,44 +1,40 @@
 #!/usr/bin/env python3
-"""Rasterize the official OpenCode favicon-v3 mark into Android mipmap PNGs.
+"""Rasterize the official OpenCode favicon-v3 into legacy-only launcher PNGs.
 
-Official SVG (512×512): full-bleed #131010, white window (128,96)–(384,416),
-gray pane in the lower hole.
-
-Two mappings:
-  * Legacy ic_launcher (48–192dp): SCALE=1 so the square PNG *is* the favicon.
-    Launchers that ignore adaptive (or HyperOS after uninstall) show this.
-  * Adaptive FG/BG (108–432dp): SCALE=72/108 so the *entire* favicon, including
-    its dark margin, sits in the 66% safe zone. SCALE=1 on 108dp lets the OEM
-    mask eat the dark margin and leaves a white plate + tiny hole.
-
-HyperOS/MIUI ignores a color-only <shape> background and content-crops a
-*uniform* dark field onto a white plate. Both adaptive layers are the same
-opaque PNG; the dark field is Bayer-dithered. Never reference @mipmap/ic_launcher
-from the adaptive XML (API 26+ that is the XML itself → Android robot).
+HyperOS/MIUI has repeatedly mangled adaptive-icon XML (white plate + tiny glyph).
+This generator does **not** emit mipmap-anydpi-v26 adaptive XML. Both
+android:icon and android:roundIcon are the same full-canvas opaque PNG:
+favicon drawn edge-to-edge on #131010, no transparent margins, no 72/108 shrink.
+The launcher applies its own squircle/circle mask to the bitmap.
 """
 from __future__ import annotations
 
+import shutil
 import struct
 import zlib
 from pathlib import Path
 
-BG_ALT = (0x1E, 0x18, 0x18, 0xFF)
+DARK = (0x13, 0x10, 0x10, 0xFF)
 WHITE = (0xFF, 0xFF, 0xFF, 0xFF)
 GRAY = (0x5A, 0x58, 0x58, 0xFF)
-TRANSPARENT = (0x00, 0x00, 0x00, 0x00)
 
+# Official favicon-v3.svg on a 512 canvas.
 OUTER = (128, 96, 384, 416)
 HOLE = (192, 160, 320, 352)
 GRAY_PANE = (192, 224, 320, 352)
 
-LEGACY_SCALE = 1.0
-# Map the full 512 SVG onto the 72dp safe zone of a 108dp adaptive canvas.
-ADAPTIVE_SCALE = 72.0 / 108.0
-CX = CY = 256.0
-
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "app" / "src" / "main" / "res"
 PREVIEW_DIR = ROOT / "frontend" / "branding"
+ARTIFACTS = Path("/opt/cursor/artifacts")
+
+DENSITIES = {
+    "mdpi": 48,
+    "hdpi": 72,
+    "xhdpi": 96,
+    "xxhdpi": 144,
+    "xxxhdpi": 192,
+}
 
 
 def in_rect(x: float, y: float, rect: tuple[int, int, int, int]) -> bool:
@@ -46,46 +42,22 @@ def in_rect(x: float, y: float, rect: tuple[int, int, int, int]) -> bool:
     return x0 <= x < x1 and y0 <= y < y1
 
 
-def dither_dark(px: int, py: int) -> tuple[int, int, int, int]:
-    bayer = (px & 1) ^ ((py >> 1) & 1)
-    n = (px * 13 + py * 31) & 7
-    if bayer:
-        return (min(0x28, 0x13 + 6 + (n >> 1)), 0x14 + (n >> 2), 0x14, 0xFF)
-    return (0x13 + (n >> 2), 0x10, 0x10, 0xFF)
-
-
-def sample_512(x: float, y: float, px: int, py: int, scale: float) -> tuple[int, int, int, int]:
-    sx = CX + (x - CX) / scale
-    sy = CY + (y - CY) / scale
-    if not (0 <= sx < 512 and 0 <= sy < 512):
-        return dither_dark(px, py)
-    if in_rect(sx, sy, GRAY_PANE):
+def sample_512(x: float, y: float) -> tuple[int, int, int, int]:
+    if in_rect(x, y, GRAY_PANE):
         return GRAY
-    if in_rect(sx, sy, OUTER) and not in_rect(sx, sy, HOLE):
+    if in_rect(x, y, OUTER) and not in_rect(x, y, HOLE):
         return WHITE
-    return dither_dark(px, py)
+    return DARK
 
 
-def render(size: int, scale: float, round_mask: bool = False) -> list[tuple[int, int, int, int]]:
+def render(size: int) -> list[tuple[int, int, int, int]]:
     pixels: list[tuple[int, int, int, int]] = []
     to_svg = 512.0 / size
-    r = (size - 1) / 2.0
-    r2 = r * r
-    edge = max(1, size // 128)
     for py in range(size):
         y = (py + 0.5) * to_svg
         for px in range(size):
             x = (px + 0.5) * to_svg
-            pixel = sample_512(x, y, px, py, scale)
-            if px < edge or py < edge or px >= size - edge or py >= size - edge:
-                if pixel[0] < 40:
-                    pixel = BG_ALT
-            if round_mask:
-                dx = px - r
-                dy = py - r
-                if dx * dx + dy * dy > r2:
-                    pixel = TRANSPARENT
-            pixels.append(pixel)
+            pixels.append(sample_512(x, y))
     return pixels
 
 
@@ -109,85 +81,70 @@ def write_png(path: Path, size: int, pixels: list[tuple[int, int, int, int]]) ->
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", compressed) + chunk(b"IEND", b""))
 
 
-def squircle_preview(size: int, src: list[tuple[int, int, int, int]]) -> list[tuple[int, int, int, int]]:
-    """Simulate a 72/108 adaptive mask on a light checker."""
-    out: list[tuple[int, int, int, int]] = []
-    r = size * (72.0 / 108.0) / 2.0
-    cx = cy = (size - 1) / 2.0
+def squircle_on_wallpaper(
+    size: int,
+    src: list[tuple[int, int, int, int]],
+    wallpaper: tuple[int, int, int],
+    pad: int,
+) -> tuple[int, list[tuple[int, int, int, int]]]:
+    """Clip the launcher bitmap with a squircle onto a solid wallpaper (HyperOS-style)."""
+    canvas = size + pad * 2
+    out: list[tuple[int, int, int, int]] = [(wallpaper[0], wallpaper[1], wallpaper[2], 0xFF)] * (canvas * canvas)
+    r = size / 2.0 * 0.98
+    cx = cy = pad + (size - 1) / 2.0
     p = 4.0
     for py in range(size):
         for px in range(size):
-            nx = abs(px - cx) / r
-            ny = abs(py - cy) / r
+            nx = abs((pad + px) - cx) / r
+            ny = abs((pad + py) - cy) / r
             if nx**p + ny**p <= 1.0:
-                out.append(src[py * size + px])
-            else:
-                g = 0xE8 if ((px // 8) + (py // 8)) & 1 else 0xF4
-                out.append((g, g, g, 0xFF))
-    return out
+                out[(pad + py) * canvas + (pad + px)] = src[py * size + px]
+    return canvas, out
+
+
+def rm(path: Path) -> None:
+    if path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
 
 
 def main() -> None:
-    launcher = {
-        "mdpi": 48,
-        "hdpi": 72,
-        "xhdpi": 96,
-        "xxhdpi": 144,
-        "xxxhdpi": 192,
-    }
-    foreground = {
-        "mdpi": 108,
-        "hdpi": 162,
-        "xhdpi": 216,
-        "xxhdpi": 324,
-        "xxxhdpi": 432,
-    }
-
-    for density, size in launcher.items():
-        square = render(size, LEGACY_SCALE, round_mask=False)
-        round_px = render(size, LEGACY_SCALE, round_mask=True)
-        write_png(OUT / f"mipmap-{density}" / "ic_launcher.png", size, square)
-        write_png(OUT / f"mipmap-{density}" / "ic_launcher_round.png", size, round_px)
-
-    for density, size in foreground.items():
-        pixels = render(size, ADAPTIVE_SCALE, round_mask=False)
-        write_png(OUT / f"mipmap-{density}" / "ic_launcher_foreground.png", size, pixels)
-
-    bg = OUT / "drawable-nodpi"
-    write_png(bg / "ic_launcher_background.png", 432, render(432, ADAPTIVE_SCALE, round_mask=False))
+    rm(OUT / "mipmap-anydpi-v26")
+    rm(OUT / "drawable-nodpi" / "ic_launcher_background.png")
+    for density in DENSITIES:
+        rm(OUT / f"mipmap-{density}" / "ic_launcher_foreground.png")
     xml_bg = OUT / "drawable" / "ic_launcher_background.xml"
-    if xml_bg.exists():
-        xml_bg.unlink()
+    rm(xml_bg)
 
-    legacy_preview = render(192, LEGACY_SCALE, round_mask=False)
-    adaptive_preview = render(192, ADAPTIVE_SCALE, round_mask=False)
-    fg = render(432, ADAPTIVE_SCALE, round_mask=False)
-    write_png(PREVIEW_DIR / "launcher-xxxhdpi.png", 192, legacy_preview)
-    write_png(PREVIEW_DIR / "launcher-foreground-xxxhdpi.png", 432, fg)
-    artifacts = Path("/opt/cursor/artifacts")
-    if artifacts.is_dir():
-        write_png(artifacts / "opencode-launcher-xxxhdpi-1.3.3.png", 192, legacy_preview)
-        write_png(artifacts / "opencode-launcher-foreground-xxxhdpi-1.3.3.png", 432, fg)
-        write_png(
-            artifacts / "opencode-launcher-mask-preview-1.3.3.png",
-            192,
-            squircle_preview(192, adaptive_preview),
-        )
-
-    master = render(512, LEGACY_SCALE)
+    master = render(512)
     cx, cy = 256, 288
     assert master[cy * 512 + cx][:3] == GRAY[:3], master[cy * 512 + cx]
-    corner = master[8 * 512 + 8]
-    assert corner[0] < 40 and corner[1] < 40 and corner[2] < 40, corner
+    for x, y in ((0, 0), (511, 0), (0, 511), (511, 511), (8, 8)):
+        c = master[y * 512 + x]
+        assert c == DARK, (x, y, c)
+        assert c[3] == 0xFF
 
-    adaptive = render(512, ADAPTIVE_SCALE)
-    inset = int(512 * 18 / 108)
-    edge_px = adaptive[256 * 512 + inset]
-    assert edge_px[0] < 50, f"adaptive mask edge is not dark: {edge_px}"
-    # Inside the safe zone the official white chrome must still exist.
-    white = sum(1 for r, g, b, a in adaptive if r > 240)
-    assert white > 1000, white
-    print("Wrote official-scale full-bleed launcher PNGs under", OUT)
+    for density, size in DENSITIES.items():
+        pixels = render(size)
+        write_png(OUT / f"mipmap-{density}" / "ic_launcher.png", size, pixels)
+        # Identical opaque bitmap — no circular hole HyperOS can fill with a white plate.
+        write_png(OUT / f"mipmap-{density}" / "ic_launcher_round.png", size, pixels)
+
+    preview = render(192)
+    write_png(PREVIEW_DIR / "launcher-xxxhdpi.png", 192, preview)
+    canvas, squircle_white = squircle_on_wallpaper(192, preview, (0xFF, 0xFF, 0xFF), 48)
+    write_png(PREVIEW_DIR / "launcher-squircle-white.png", canvas, squircle_white)
+    canvas, squircle_sky = squircle_on_wallpaper(192, preview, (0x9E, 0xD8, 0xF7), 48)
+    write_png(PREVIEW_DIR / "launcher-squircle-wallpaper.png", canvas, squircle_sky)
+
+    if ARTIFACTS.is_dir():
+        write_png(ARTIFACTS / "opencode-launcher-xxxhdpi-1.3.7.png", 192, preview)
+        write_png(ARTIFACTS / "opencode-launcher-squircle-white-1.3.7.png", canvas, squircle_white)
+        write_png(ARTIFACTS / "opencode-launcher-squircle-wallpaper-1.3.7.png", canvas, squircle_sky)
+
+    print("Wrote legacy-only full-bleed launcher PNGs under", OUT)
+    print("Removed mipmap-anydpi-v26 adaptive XML")
 
 
 if __name__ == "__main__":

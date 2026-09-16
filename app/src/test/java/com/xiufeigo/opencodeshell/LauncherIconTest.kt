@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
@@ -9,27 +10,26 @@ import java.util.zip.Inflater
 
 class LauncherIconTest {
     @Test
-    fun adaptiveXmlDoesNotSelfReferenceLauncher() {
-        for (name in listOf("ic_launcher.xml", "ic_launcher_round.xml")) {
-            val xml = File("src/main/res/mipmap-anydpi-v26/$name").readText()
-            assertTrue("$name must use the foreground PNG", xml.contains("@mipmap/ic_launcher_foreground"))
-            assertTrue("$name must use the dark background drawable", xml.contains("@drawable/ic_launcher_background"))
-            assertTrue(
-                "$name must not point foreground at @mipmap/ic_launcher (API 26+ that is this XML → Android robot)",
-                !xml.contains("android:drawable=\"@mipmap/ic_launcher\""),
-            )
-        }
+    fun noAdaptiveIconXmlForHyperOS() {
+        val anydpi = File("src/main/res/mipmap-anydpi-v26")
+        assertFalse(
+            "mipmap-anydpi-v26 adaptive XML lets HyperOS compose a white plate + tiny glyph",
+            anydpi.exists() && anydpi.walk().any { it.extension == "xml" },
+        )
+        val res = File("src/main/res")
+        val adaptive =
+            res.walk().filter { it.isFile && it.extension == "xml" }.any {
+                it.readText().contains("<adaptive-icon")
+            }
+        assertFalse("no adaptive-icon XML may remain under res/", adaptive)
+        assertFalse(File("src/main/res/drawable-nodpi/ic_launcher_background.png").exists())
         for (density in listOf("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")) {
-            for (file in listOf("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png")) {
+            assertFalse(File("src/main/res/mipmap-$density/ic_launcher_foreground.png").exists())
+            for (file in listOf("ic_launcher.png", "ic_launcher_round.png")) {
                 val png = File("src/main/res/mipmap-$density/$file")
                 assertTrue("missing $png", png.isFile && png.length() > 100)
             }
         }
-        val bg = File("src/main/res/drawable-nodpi/ic_launcher_background.png")
-        assertTrue("adaptive background must be a bitmap, not a color shape", bg.isFile && bg.length() > 100)
-        val image = readPng(bg)
-        assertFullBleedDark(image)
-        assertMark(image)
     }
 
     @Test
@@ -38,24 +38,30 @@ class LauncherIconTest {
         assertEquals(192, image.width)
         assertEquals(192, image.height)
         assertMark(image)
-        assertFullBleedDark(image)
+        assertFullBleedDarkOpaque(image)
     }
 
     @Test
-    fun xxxhdpiForegroundIsOfficialMarkNotWhiteSquare() {
-        val image = readPng(File("src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png"))
-        assertEquals(432, image.width)
-        assertEquals(432, image.height)
-        assertMark(image)
-        assertFullBleedDark(image)
-    }
-
-    @Test
-    fun roundLauncherHasTransparencyOutsideCircle() {
+    fun roundLauncherIsIdenticalOpaqueBitmap() {
+        val square = File("src/main/res/mipmap-xxxhdpi/ic_launcher.png").readBytes()
+        val round = File("src/main/res/mipmap-xxxhdpi/ic_launcher_round.png").readBytes()
+        assertTrue("round icon must be the same opaque PNG as ic_launcher", square.contentEquals(round))
         val image = readPng(File("src/main/res/mipmap-xxxhdpi/ic_launcher_round.png"))
         val corner = image.argb(0, 0)
-        assertEquals(0, (corner ushr 24) and 0xFF)
+        assertEquals(0xFF, (corner ushr 24) and 0xFF)
+        assertTrue("round corner must be dark, not white/transparent: 0x${Integer.toHexString(corner)}", isDark(corner))
         assertMark(image)
+    }
+
+    @Test
+    fun manifestUsesLegacyMipmapNotAdaptive() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertTrue(manifest.contains("android:icon=\"@mipmap/ic_launcher\""))
+        assertTrue(
+            manifest.contains("android:roundIcon=\"@mipmap/ic_launcher\"") ||
+                manifest.contains("android:roundIcon=\"@mipmap/ic_launcher_round\""),
+        )
+        assertFalse(manifest.contains("@mipmap/ic_launcher_foreground"))
     }
 
     private fun assertMark(image: PngImage) {
@@ -84,26 +90,19 @@ class LauncherIconTest {
         val cy = image.height * 9 / 16
         val center = image.argb(cx, cy)
         assertTrue("center should be the gray/dark hole, not white chrome: 0x${Integer.toHexString(center)}", isGray(center) || isDark(center))
+        assertEquals("launcher PNG must be fully opaque", image.width * image.height, opaque)
     }
 
-    private fun assertFullBleedDark(image: PngImage) {
-        val inset = image.width / 20
-        for (x in listOf(inset, image.width - 1 - inset)) {
-            for (y in listOf(inset, image.height - 1 - inset)) {
+    private fun assertFullBleedDarkOpaque(image: PngImage) {
+        for (x in listOf(0, 1, image.width - 1, image.width - 2)) {
+            for (y in listOf(0, 1, image.height - 1, image.height - 2)) {
                 val p = image.argb(x, y)
-                assertTrue("corner/edge 0x${Integer.toHexString(p)} at $x,$y should be dark full-bleed", isDark(p))
+                assertEquals("corner alpha at $x,$y", 0xFF, (p ushr 24) and 0xFF)
+                assertTrue("corner 0x${Integer.toHexString(p)} at $x,$y must be dark, not white/transparent", isDark(p))
             }
-            val mid = image.argb(x, image.height / 2)
-            assertTrue("side edge 0x${Integer.toHexString(mid)} at x=$x should be dark", isDark(mid))
         }
-        // 18/108 dp is the adaptive mask edge. Must stay dark so the squircle
-        // is a dark plate, not zoomed white chrome.
-        val maskInset = image.width * 18 / 108
-        val maskEdge = image.argb(maskInset, image.height / 2)
-        assertTrue(
-            "adaptive mask edge 0x${Integer.toHexString(maskEdge)} at x=$maskInset is not dark (window zoomed too far)",
-            isDark(maskEdge),
-        )
+        val midLeft = image.argb(0, image.height / 2)
+        assertTrue("left edge 0x${Integer.toHexString(midLeft)} should be dark", isDark(midLeft))
     }
 
     private fun isDark(p: Int): Boolean {

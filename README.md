@@ -140,7 +140,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - Allow **LAN / local network** if a privacy toggle appears.
 - Install unknown sources to sideload the debug APK.
 - Autostart is not required; the agent stays on the PC.
-- **Icon still white / Android robot after upgrade:** uninstall the app, then install the new APK. HyperOS caches the previous adaptive icon until the package is removed. `versionCode` 8+ ships full-bleed PNGs for **both** adaptive layers (not a color-only background).
+- **Icon still white / tiny glyph after upgrade:** uninstall the app, then install the new APK. HyperOS caches the previous adaptive icon until the package is removed. `versionCode` 12+ ships **legacy-only** full-bleed PNGs (no `adaptive-icon` XML).
 - **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.3+.
 - **Settings squished in portrait:** `versionCode` 8+ stacks the Settings dialog to a single column below 840px CSS width.
 - **Settings「通用」stuck while scrolling:** `versionCode` 9+ hides the sticky category title; each section is a collapsible panel whose own title sticks.
