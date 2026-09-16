@@ -1,8 +1,50 @@
 diff --git a/packages/app/src/components/dialog-select-server.tsx b/packages/app/src/components/dialog-select-server.tsx
-index 1a87ac1..4d19bf5 100644
+index 1a87ac1..e53782e 100644
 --- a/packages/app/src/components/dialog-select-server.tsx
 +++ b/packages/app/src/components/dialog-select-server.tsx
-@@ -197,7 +197,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
+@@ -9,7 +9,7 @@ import { TextField } from "@opencode-ai/ui/text-field"
+ import { useMutation } from "@tanstack/solid-query"
+ import { showToast } from "@/utils/toast"
+ import { useNavigate } from "@solidjs/router"
+-import { createEffect, createMemo, createResource, Show } from "solid-js"
++import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js"
+ import { createStore } from "solid-js/store"
+ import { ServerHealthIndicator, ServerRow } from "@/components/server/server-row"
+ import { useGlobal } from "@/context/global"
+@@ -23,6 +23,9 @@ import { useTabs } from "@/context/tabs"
+ 
+ const DEFAULT_USERNAME = "opencode"
+ 
++/** Shared so Settings list + add-server dialog (separate controllers) show the same 默认 tag. */
++const [sharedDefaultKey, setSharedDefaultKey] = createSignal<ServerConnection.Key | null | undefined>(undefined)
++
+ interface ServerFormProps {
+   value: string
+   name: string
+@@ -69,13 +72,21 @@ function useDefaultServer() {
+   const setDefault = async (key: ServerConnection.Key | null) => {
+     try {
+       await platform.setDefaultServer?.(key)
++      setSharedDefaultKey(key)
+       defaultUrlActions.mutate(key)
+     } catch (err) {
+       showRequestError(language, err)
+     }
+   }
+ 
+-  return { defaultKey: () => defaultKey.latest, canDefault, setDefault }
++  return {
++    defaultKey: () => {
++      const shared = sharedDefaultKey()
++      return shared !== undefined ? shared : defaultKey.latest
++    },
++    canDefault,
++    setDefault,
++  }
+ }
+ 
+ function useServerPreview() {
+@@ -197,7 +208,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
    const global = useGlobal()
    const platform = usePlatform()
    const language = useLanguage()
@@ -11,7 +53,7 @@ index 1a87ac1..4d19bf5 100644
    const { previewStatus } = useServerPreview()
    const checkServerHealth = useCheckServerHealth()
    const connectErrorMessage = async (http: ServerConnection.HttpBase) => {
-@@ -280,7 +280,8 @@ export function useServerManagementController(options: { onSelect?: () => void;
+@@ -280,7 +291,8 @@ export function useServerManagementController(options: { onSelect?: () => void;
  
        resetAdd()
        if (options.navigateOnAdd === false) {
@@ -21,7 +63,7 @@ index 1a87ac1..4d19bf5 100644
          options.onSelect?.()
          return
        }
-@@ -358,10 +359,8 @@ export function useServerManagementController(options: { onSelect?: () => void;
+@@ -358,10 +370,8 @@ export function useServerManagementController(options: { onSelect?: () => void;
    })
  
    const settings = useSettings()
@@ -34,7 +76,7 @@ index 1a87ac1..4d19bf5 100644
    )
  
    const sortedItems = createMemo(() => {
-@@ -387,16 +386,28 @@ export function useServerManagementController(options: { onSelect?: () => void;
+@@ -387,16 +397,28 @@ export function useServerManagementController(options: { onSelect?: () => void;
      })
    })
  
@@ -65,7 +107,7 @@ index 1a87ac1..4d19bf5 100644
    }
  
    const handleAddChange = (value: string) => {
-@@ -563,6 +574,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
+@@ -563,6 +585,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
      formError: () => (isAddMode() ? store.addServer.error : store.editServer.error),
      formStatus: () => (isAddMode() ? store.addServer.status : store.editServer.status),
      select,
@@ -73,7 +115,7 @@ index 1a87ac1..4d19bf5 100644
      setDefault,
      startAdd,
      startEdit,
-@@ -578,7 +590,6 @@ export function useServerManagementController(options: { onSelect?: () => void;
+@@ -578,7 +601,6 @@ export function useServerManagementController(options: { onSelect?: () => void;
  
  export function ServerConnectionList(props: { controller: ReturnType<typeof useServerManagementController> }) {
    const language = useLanguage()
@@ -81,7 +123,7 @@ index 1a87ac1..4d19bf5 100644
  
    return (
      <div class="flex flex-1 min-h-0 flex-col gap-4">
-@@ -593,7 +604,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
+@@ -593,7 +615,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
          items={props.controller.sortedItems}
          key={(x) => x.http.url}
          onSelect={(x) => {

@@ -95,7 +95,32 @@ Health paths match official OpenCode clients: `GET /api/health`, then `GET /glob
 2. Open **设置 → 服务器** (Settings → Server).
 3. Tap **添加服务器** and enter a **real** URL such as `http://192.168.1.10:4096` or `https://backend.opencode.xiufeigo.xyz`. Optional Basic Auth is on that same form. Do not paste the loopback `opencode-proxy` URL.
 4. The add-server dialog notes that the shell reverse-proxies natively. If connect fails, the error distinguishes authentication vs generic network when possible. `adb logcat -s OpenCodeShell` prints gateway/TLS/health details.
-5. The server list, default server, and health indicator match OpenCode Desktop.
+5. After add, the new server is **applied immediately** (active connection + launch default). The card shows **当前** (Current) and **默认** (Default).
+6. To switch later: **tap the server name/row** (勾选/应用) or **⋮ → 设为默认**. Both call `setActive` and persist the default. Providers, Models, and new sessions use that server. The green health dot alone does **not** mean “selected”.
+
+Desktop’s Settings v2 list is management-only (no row click; `设为默认` is launch-default only). Switching the live SDK there happens from the session status popover / home sidebar. Android stays on Settings after add and has no home status popover, so this shell adds the tap-to-apply path.
+
+## Operation-logic review (1.3.13)
+
+Compared to official OpenCode Desktop/web against local `opencode serve` (selftest: 35 PASS / 0 FAIL / 4 N/A).
+
+| Issue | Outcome |
+| --- | --- |
+| Settings v2 row is not selectable; after add you stay on the list with no 勾选 | **Fixed.** Row tap → `setActive` + `setDefault`. **当前** / **默认** tags. |
+| `设为默认` only wrote `defaultServerUrl`, did not activate | **Fixed.** Menu item also `setActive`. `onClick` + `onSelect` so WebView touch is not a silent no-op. |
+| Add-dialog and Settings list used separate `defaultKey` resources → 默认 tag stale after add | **Fixed.** Shared default-key signal. |
+| `active` started as `"offline"` and was not persisted → reload ignored the list | **Fixed.** Hydrate to default/first server in the list. |
+| Home sidebar click only changed project *selection*, not the SDK | **Fixed.** `focusServer` also `setActive`. |
+| 新会话 hidden / silent no-op with zero picked projects | **Fixed.** Create session if a server is focused (homedir / `.` fallback). |
+| Multi-server switch, set default, delete | **Fixed / tested.** E2E adds two backends, switches by row tap, 设为默认, deletes the extra. |
+| Providers / Models after apply | **Fixed / tested** (still via dedicated-origin proxy; no backend CORS). |
+| Create session after apply | **Tested** (home 新会话 + `POST /api/session`). |
+| Back stack / dialog dismiss / ESC | **Kept.** Back closes overlay; ESC is not a shell shortcut. |
+| Add-project directory picker | **Deferred (N/A).** Official folder dialog is not wired to Android storage. Not a silent Settings action. |
+| Desktop status popover on home | **Deferred (N/A).** Android apply path is Settings row / 设为默认 (covered above). |
+| Host PTY / file tree / diff | **Deferred (N/A).** Require a host workspace; unchanged. |
+
+No open blockers for select/apply.
 
 ## Build a debug APK
 
@@ -168,6 +193,7 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 - **「无法连接到服务器」while browser/Desktop work:** `versionCode` 14 / **1.3.9** reverse-proxies API/SSE in-app. The backend no longer needs CORS for `https://appassets.androidplatform.net`. Uninstall then reinstall if you are sideloading over an older debug APK.
 - **Back from Settings exits to the launcher:** `versionCode` 15 / **1.3.10** forwards Android Back into the page (closes Settings). `versionCode` 16 / **1.3.11** does **not** consume ESC in the shell — Vim/terminal Esc pass through; only Back closes overlays / may exit at root.
 - **Providers / Models empty after selecting a server (1.3.9–1.3.11):** official v1 `OpenCode.make` joins with `new URL('/api/...', baseUrl)`, which dropped `/opencode-proxy/<token>/<enc>`. Health still worked because it falls back to the v2 SDK (string concat) and `/global/health`. **1.3.12** binds a dedicated loopback origin per backend so `/api/provider`, `/api/model`, `/api/session`, `/global/*`, `/event`, and `/pty` stay on the proxy; fetch also restores a lost mux prefix. Protocol probes go through the proxy (not the real URL, so CORS is still unused).
+- **Added a server but it was not applied (1.3.12):** official Settings v2 has no row-select; `设为默认` is launch-default only. **1.3.13** / `versionCode` 18: tap the card or 设为默认 to make that server the active connection (**当前** + **默认**). Uninstall then reinstall if you are sideloading over an older debug APK.
 
 ## Security
 

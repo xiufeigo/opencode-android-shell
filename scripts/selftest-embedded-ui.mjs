@@ -390,24 +390,27 @@ async function fillAndSubmitAddServer(ws, sessionId, url, name) {
   const opened = await evaluate(
     ws,
     sessionId,
-    `(${TAP_EL}; (() => {
+    `(() => { ${TAP_EL}
       const add = Array.from(document.querySelectorAll("button, [role='button']")).find((el) => {
         const t = ((el.textContent || "") + " " + (el.getAttribute("aria-label") || "")).trim();
         return t.includes("Add server") || t.includes("添加服务器");
       });
       return { clicked: ocTap(add), label: add ? (add.textContent || "").trim().slice(0, 40) : null };
-    })())`,
+    })()`,
   )
-  await Bun.sleep(600)
+  await Bun.sleep(900)
   const filled = await evaluate(
     ws,
     sessionId,
     `(() => {
-      const dialog = document.querySelector(".settings-v2-server-dialog") || document.querySelector('[role="dialog"]');
-      if (!dialog) return { dialogFound: false };
-      const inputs = Array.from(dialog.querySelectorAll("input:not([type='password'])"));
-      const urlInput = inputs[0];
-      const nameInput = inputs[1];
+      const dialog = document.querySelector(".settings-v2-server-dialog");
+      if (!dialog) {
+        const any = document.querySelector('[role="dialog"]');
+        return { dialogFound: false, anyDialog: !!any, anyText: any ? (any.innerText || "").slice(0, 120) : null };
+      }
+      const inputs = Array.from(dialog.querySelectorAll('[data-slot="text-input-v2-input"], input:not([type="password"])'));
+      const urlInput = inputs.find((el) => el.type !== "password" && el.type !== "search") || inputs[0];
+      const nameInput = inputs.filter((el) => el !== urlInput && el.type !== "password")[0];
       const nativeSet = (el, value) => {
         if (!el) return false;
         const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
@@ -430,7 +433,7 @@ async function fillAndSubmitAddServer(ws, sessionId, url, name) {
   const submitted = await evaluate(
     ws,
     sessionId,
-    `(${TAP_EL}; (() => {
+    `(() => { ${TAP_EL}
       const dialog = document.querySelector(".settings-v2-server-dialog");
       const buttons = Array.from((dialog || document).querySelectorAll("button"));
       const submit = buttons.find((el) => /添加服务器|Add server|Checking|检查中/.test(el.textContent || "")) ||
@@ -438,7 +441,7 @@ async function fillAndSubmitAddServer(ws, sessionId, url, name) {
       const contrast = dialog && dialog.querySelector('[data-component="button-v2"][data-variant="contrast"], button:last-of-type');
       const target = submit || contrast;
       return { clicked: ocTap(target), label: target ? (target.textContent || "").trim().slice(0, 40) : null, busy: /Checking|检查中/.test(target ? target.textContent : "") };
-    })())`,
+    })()`,
   )
   let last = null
   for (let i = 0; i < 20; i++) {
@@ -661,7 +664,11 @@ async function runConnectedSurface(ws, sessionId, input) {
   const serversTab = await evaluate(ws, sessionId, clickTab("/服务器|Servers/"))
   await Bun.sleep(500)
   const addServe = await fillAndSubmitAddServer(ws, sessionId, serveUrl, "local-serve")
-  const afterAdd = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+  let afterAdd = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+  for (let i = 0; i < 8 && !(afterAdd?.serveCurrent && afterAdd?.serveDefault); i++) {
+    await Bun.sleep(250)
+    afterAdd = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
+  }
   checklist.push(
     item(
       "connection.add_server_via_ui",
@@ -679,11 +686,11 @@ async function runConnectedSurface(ws, sessionId, input) {
   const applyClick = await evaluate(
     ws,
     sessionId,
-    `(${TAP_EL}; (() => {
+    `(() => { ${TAP_EL}
       const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(serveUrl)});
       const btn = row && row.querySelector('[data-action="settings-apply-server"]');
       return { clicked: ocTap(btn), key: row ? row.getAttribute("data-server-key") : null };
-    })())`,
+    })()`,
   )
   await Bun.sleep(600)
   const afterApply = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
@@ -711,10 +718,10 @@ async function runConnectedSurface(ws, sessionId, input) {
     const switchClick = await evaluate(
       ws,
       sessionId,
-      `(${TAP_EL}; (() => {
+      `(() => { ${TAP_EL}
         const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(serveUrl)});
         return { clicked: ocTap(row && row.querySelector('[data-action="settings-apply-server"]')) };
-      })())`,
+      })()`,
     )
     await Bun.sleep(700)
     afterSwitch = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
@@ -728,22 +735,22 @@ async function runConnectedSurface(ws, sessionId, input) {
     setDefaultMenu = await evaluate(
       ws,
       sessionId,
-      `(${TAP_EL}; (() => {
+      `(() => { ${TAP_EL}
         const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(secondUrl)});
         const menu = row && row.querySelector('[data-action="settings-server-menu"]');
         const opened = ocTap(menu);
         return { opened, hasMenu: !!menu };
-      })())`,
+      })()`,
     )
     await Bun.sleep(400)
     const setDefaultClick = await evaluate(
       ws,
       sessionId,
-      `(${TAP_EL}; (() => {
+      `(() => { ${TAP_EL}
         const item = document.querySelector('[data-action="settings-server-set-default"]');
         const byText = Array.from(document.querySelectorAll('[role="menuitem"], [data-component="menu-v2-item"]')).find((el) => /设为默认|Set as default/.test(el.textContent || ""));
         return { clicked: ocTap(item || byText), label: (item || byText) ? ((item || byText).textContent || "").trim().slice(0, 40) : null };
-      })())`,
+      })()`,
     )
     await Bun.sleep(700)
     const afterMenuDefault = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
@@ -759,29 +766,29 @@ async function runConnectedSurface(ws, sessionId, input) {
     const switchBack = await evaluate(
       ws,
       sessionId,
-      `(${TAP_EL}; (() => {
+      `(() => { ${TAP_EL}
         const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(serveUrl)});
         return { clicked: ocTap(row && row.querySelector('[data-action="settings-apply-server"]')) };
-      })())`,
+      })()`,
     )
     await Bun.sleep(500)
     const openDelete = await evaluate(
       ws,
       sessionId,
-      `(${TAP_EL}; (() => {
+      `(() => { ${TAP_EL}
         const row = Array.from(document.querySelectorAll(".settings-v2-servers-row")).find((el) => el.getAttribute("data-server-key") === ${JSON.stringify(secondUrl)});
         return { opened: ocTap(row && row.querySelector('[data-action="settings-server-menu"]')) };
-      })())`,
+      })()`,
     )
     await Bun.sleep(400)
     const deleteClick = await evaluate(
       ws,
       sessionId,
-      `(${TAP_EL}; (() => {
+      `(() => { ${TAP_EL}
         const item = document.querySelector('[data-action="settings-server-delete"]');
         const byText = Array.from(document.querySelectorAll('[role="menuitem"], [data-component="menu-v2-item"]')).find((el) => /删除|Delete/.test(el.textContent || ""));
         return { clicked: ocTap(item || byText), switchBack: ${JSON.stringify(!!switchBack?.clicked)} };
-      })())`,
+      })()`,
     )
     await Bun.sleep(700)
     afterDelete = await evaluate(ws, sessionId, inspectServersExpression(serveUrl, secondUrl))
@@ -912,13 +919,13 @@ async function runConnectedSurface(ws, sessionId, input) {
   const newSessionUi = await evaluate(
     ws,
     sessionId,
-    `(${TAP_EL}; (() => {
+    `(() => { ${TAP_EL}
       const btn = document.querySelector('[data-action="home-new-session"]') ||
         Array.from(document.querySelectorAll("button, [role='button']")).find((el) => /新会话|New session/.test(el.textContent || ""));
       const before = location.pathname + location.hash;
       const clicked = ocTap(btn);
       return { hasButton: !!btn, clicked, label: btn ? (btn.textContent || "").trim().slice(0, 40) : null, before };
-    })())`,
+    })()`,
   )
   await Bun.sleep(2500)
   const afterNewSession = await evaluate(
@@ -931,7 +938,7 @@ async function runConnectedSurface(ws, sessionId, input) {
       return {
         composer,
         overlay,
-        sessionish: /会话|Session|prompt|Ask|Ask anything|问/.test(text),
+        sessionish: composer || (!/Create a session to get started|Nothing here yet/.test(text) && /session|会话/.test(text.toLowerCase())),
         sample: text.slice(0, 300),
       };
     })()`,
@@ -939,7 +946,7 @@ async function runConnectedSurface(ws, sessionId, input) {
   checklist.push(
     item(
       "home.create_session_after_apply",
-      newSessionUi?.hasButton && (afterNewSession?.composer || afterNewSession?.sessionish || newSessionUi?.clicked) ? "PASS" : "FAIL",
+      newSessionUi?.hasButton && newSessionUi?.clicked && (afterNewSession?.composer || afterNewSession?.sessionish) ? "PASS" : "FAIL",
       { newSessionUi, afterNewSession },
     ),
   )
