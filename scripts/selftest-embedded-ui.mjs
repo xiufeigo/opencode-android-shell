@@ -1528,6 +1528,7 @@ async function runConnectedSurface(ws, sessionId, input) {
       } catch (e) {}
       let ring = document.querySelector('[data-action="session-open-context"]');
       if (ring && visible(ring)) return { alreadyInSession: true, ring: true, href, viaHistory };
+      if (viaHistory) return { alreadyInSession: false, home: false, row: false, tappedRow: false, href, viaHistory, history: !!window.__ocAndroidHistory };
       const home = Array.from(document.querySelectorAll("button, [role='button']")).find((el) => {
         const t = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).trim().toLowerCase();
         return visible(el) && (t === "home" || t === "主页" || t.indexOf("home") === 0);
