@@ -15,6 +15,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -26,7 +27,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
-import androidx.webkit.WebViewClientCompat
 import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -177,7 +177,7 @@ class MainActivity : AppCompatActivity() {
             setNeedInitialFocus(true)
         }
 
-        binding.webView.webViewClient = object : WebViewClientCompat() {
+        binding.webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest,
