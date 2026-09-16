@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "OpenCodeShell"
+rootProject.name = "OpenCode"
 include(":app")

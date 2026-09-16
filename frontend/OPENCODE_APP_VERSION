@@ -3,3 +3,5 @@ tag=v1.18.31
 commit=014614d35b397775e5d397a490fc72368c894ec2
 source=https://github.com/anomalyco/opencode
 built_with=vite build --base ./ --sourcemap false
+android_patch=frontend/patches/android-webview-no-origin-server.patch
+android_patch_purpose=Do not treat the WebView asset origin (appassets.androidplatform.net) as a builtin HTTP server. Cold start uses the official home UI; servers are added via Settings → Server.

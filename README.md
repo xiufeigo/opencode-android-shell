@@ -1,11 +1,13 @@
-# OpenCode Shell (Route B)
+# OpenCode (Android)
 
-Android wrapper that **embeds** the official OpenCode V2 frontend (`@opencode-ai/app`, SolidJS + Vite) and talks to a user-configured LAN backend. This is not a thin remote `opencode web` tab: the UI ships inside the APK (same family of UI as OpenCode Desktop).
+Android wrapper that **embeds** the official OpenCode V2 frontend (`@opencode-ai/app`, SolidJS + Vite) and talks to backends you add in the official **Settings → Server** UI — the same flow as OpenCode Desktop.
 
-Package id: `com.xiufeigo.opencodeshell`  
+Installed name: **OpenCode**  
+Package id: `com.xiufeigo.opencodeshell` (unchanged)  
 Min SDK: 26 (Android 8.0)
 
-Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VERSION) (currently **v1.18.31**).
+Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VERSION) (currently **v1.18.31**).  
+Launcher icon: official OpenCode mark — see [`frontend/branding/SOURCE.md`](frontend/branding/SOURCE.md).
 
 ## Architecture
 
@@ -14,8 +16,8 @@ Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VER
 │  Android WebView                            │
 │  origin: https://appassets.androidplatform.net │
 │  assets: official packages/app dist         │
-│  Server list / default / Basic Auth:        │
-│    official Settings → Server UI            │
+│  Cold start: official home UI               │
+│  Servers: Settings → Server (in-app)        │
 └───────────────────┬─────────────────────────┘
                     │ fetch / CORS
                     ▼
@@ -26,10 +28,9 @@ Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VER
 └─────────────────────────────────────────────┘
 ```
 
-- Production `packages/app` uses `location.origin` as the fallback backend. Inside this app that origin is **not** the agent, so a small first-run helper writes the official keys:
-  - `opencode.settings.dat:defaultServerUrl`
-  - `opencode.global.dat:server` (list + username/password)
-- After that, **add / list / default server** is the official in-app Server UI (Desktop-like). The gear overlay re-runs the bootstrap helper if the backend URL changed.
+- Launch goes **directly** into the official home (sidebar: 项目 / 添加项目 / 设置 / 帮助). There is no native “Connect server” screen.
+- With zero servers, the official empty state is shown. Add a backend via **设置 → 服务器** (same list + 「添加服务器」 dialog as Desktop).
+- The WebView asset origin is **not** treated as an HTTP server (see `frontend/patches/android-webview-no-origin-server.patch`).
 - The agent **does not** run inside the APK.
 
 ## Run the backend (PC)
@@ -42,7 +43,7 @@ opencode serve --hostname 0.0.0.0 --port 4096 --cors https://appassets.androidpl
 
 `opencode web` also works if you pass the same `--hostname` / `--cors`. Binding `127.0.0.1` is not reachable from the tablet.
 
-Optional Basic Auth:
+Optional Basic Auth (enter username/password in **Settings → Server** when adding the server):
 
 ```bash
 OPENCODE_SERVER_USERNAME=opencode OPENCODE_SERVER_PASSWORD=secret \
@@ -67,11 +68,10 @@ Phone/tablet and PC must share Wi-Fi. Allow TCP **4096** on the PC firewall.
 
 ## Point the app at the backend
 
-1. Install OpenCode Shell and open it.
-2. First launch asks for **Server URL** (example `http://192.168.1.10:4096`) and optional Basic Auth. Save.
-3. The official UI loads from APK assets and connects to that backend.
-4. Later, use **OpenCode Settings → Server** to add more servers, set the default, and edit username/password (same fields as Desktop).
-5. The small gear is only the native bootstrap helper (re-seed default server). It is not a second full settings app.
+1. Install **OpenCode** and open it. You should see the official home immediately.
+2. Open **设置 → 服务器** (Settings → Server).
+3. Tap **添加服务器** and enter a URL such as `http://192.168.1.10:4096` or `https://backend.opencode.example`. Optional Basic Auth is on that same form.
+4. The server list, default server, and health indicator match OpenCode Desktop.
 
 ## Build a debug APK
 
@@ -105,11 +105,11 @@ chmod +x scripts/sync-opencode-app.sh
 OPENCODE_REF=v1.18.31 ./scripts/sync-opencode-app.sh
 ```
 
-That clones `anomalyco/opencode` at the tag, runs `vite build --base ./ --sourcemap false` in `packages/app`, copies `dist/` into `app/src/main/assets/opencode-app/`, restores `frontend/bootstrap.html`, and updates `frontend/OPENCODE_APP_VERSION`.
+That clones `anomalyco/opencode` at the tag, applies `frontend/patches/android-webview-no-origin-server.patch`, runs `vite build --base ./ --sourcemap false` in `packages/app`, copies `dist/` into `app/src/main/assets/opencode-app/`, and updates `frontend/OPENCODE_APP_VERSION`.
 
 Then `./gradlew assembleDebug`. Commit the vendored assets with the pin file.
 
-Do not hand-edit files under `app/src/main/assets/opencode-app/` except `bootstrap.html` (kept in `frontend/bootstrap.html`).
+Do not hand-edit files under `app/src/main/assets/opencode-app/`.
 
 ## Keyboard, mouse, right-click (Xiaomi Pad)
 
@@ -128,14 +128,14 @@ Keep the WebView focused (tap the UI once after attaching a keyboard).
 
 ## HyperOS / Xiaomi notes
 
-- **Settings → Apps → OpenCode Shell → Battery** → Unrestricted if the session dies in the background.
+- **Settings → Apps → OpenCode → Battery** → Unrestricted if the session dies in the background.
 - Allow **LAN / local network** if a privacy toggle appears.
 - Install unknown sources to sideload the debug APK.
 - Autostart is not required; the agent stays on the PC.
 
 ## Security
 
-- First-run credentials sit in EncryptedSharedPreferences and are copied into the official WebView `localStorage` server list (same place Desktop’s web entry uses).
+- Server URLs and Basic Auth live in the official WebView `localStorage` server list (same place Desktop’s web entry uses).
 - Cleartext HTTP is enabled for LAN (`network_security_config.xml`) and mixed content is allowed because the UI origin is HTTPS while the API is often `http://192.168.x.x`.
 - Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS + Basic Auth.
 

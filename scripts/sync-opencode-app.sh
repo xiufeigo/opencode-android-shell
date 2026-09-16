@@ -8,7 +8,7 @@ SRC="${OPENCODE_SRC:-}"
 WORKDIR="${TMPDIR:-/tmp}/opencode-app-src"
 DEST="$ROOT/app/src/main/assets/opencode-app"
 PIN="$ROOT/frontend/OPENCODE_APP_VERSION"
-BOOTSTRAP="$ROOT/frontend/bootstrap.html"
+PATCH="$ROOT/frontend/patches/android-webview-no-origin-server.patch"
 
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun is required. Install from https://bun.sh" >&2
@@ -33,6 +33,27 @@ if [[ -z "$SRC" ]]; then
   SRC="$WORKDIR"
 fi
 
+apply_android_embed_patch() {
+  local entry="$SRC/packages/app/src/entry.tsx"
+  if [[ ! -f "$PATCH" ]]; then
+    echo "missing $PATCH" >&2
+    exit 1
+  fi
+  if git -C "$SRC" apply --check "$PATCH" >/dev/null 2>&1; then
+    git -C "$SRC" apply "$PATCH"
+    echo "Applied $PATCH"
+    return
+  fi
+  if grep -q "ANDROID_ASSET_HOST" "$entry"; then
+    echo "Android WebView entry patch already present"
+    return
+  fi
+  echo "Failed to apply $PATCH against $REF" >&2
+  exit 1
+}
+
+apply_android_embed_patch
+
 COMMIT="$(git -C "$SRC" rev-parse HEAD)"
 cd "$SRC"
 bun install --filter @opencode-ai/app
@@ -46,7 +67,6 @@ mkdir -p "$DEST"
 cp -a "$SRC/packages/app/dist/." "$DEST/"
 rm -f "$DEST/_headers"
 find "$DEST" -name '*.map' -delete
-cp "$BOOTSTRAP" "$DEST/bootstrap.html"
 
 mkdir -p "$(dirname "$PIN")"
 cat > "$PIN" <<EOF
@@ -55,6 +75,8 @@ tag=$REF
 commit=$COMMIT
 source=https://github.com/anomalyco/opencode
 built_with=vite build --base ./ --sourcemap false
+android_patch=frontend/patches/android-webview-no-origin-server.patch
+android_patch_purpose=Do not treat the WebView asset origin (appassets.androidplatform.net) as a builtin HTTP server. Cold start uses the official home UI; servers are added via Settings → Server.
 EOF
 
 echo "Vendored $REF ($COMMIT) into $DEST"

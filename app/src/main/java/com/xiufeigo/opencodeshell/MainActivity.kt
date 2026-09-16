@@ -32,18 +32,8 @@ import com.xiufeigo.opencodeshell.databinding.ActivityMainBinding
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var settings: SettingsStore
     private lateinit var assetLoader: WebViewAssetLoader
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
-    private var httpAuthAttempts = 0
-
-    private val settingsLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode == RESULT_OK && settings.hasServerUrl) {
-            loadEmbeddedFrontend(applyBootstrap = true)
-        }
-    }
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -56,7 +46,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        settings = settingsStore()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -68,9 +57,7 @@ class MainActivity : AppCompatActivity() {
         padOverlayForCutout()
         configureWebView()
 
-        binding.settingsButton.setOnClickListener { openSettings() }
-        binding.errorRetry.setOnClickListener { loadEmbeddedFrontend(applyBootstrap = settings.hasServerUrl) }
-        binding.errorSettings.setOnClickListener { openSettings() }
+        binding.errorRetry.setOnClickListener { loadEmbeddedFrontend() }
 
         onBackPressedDispatcher.addCallback(
             this,
@@ -86,10 +73,7 @@ class MainActivity : AppCompatActivity() {
             },
         )
 
-        if (!settings.hasServerUrl) {
-            openSettings()
-        }
-        loadEmbeddedFrontend(applyBootstrap = false)
+        loadEmbeddedFrontend()
     }
 
     override fun onResume() {
@@ -106,27 +90,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openSettings() {
-        settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
-    }
-
-    private fun loadEmbeddedFrontend(applyBootstrap: Boolean) {
-        httpAuthAttempts = 0
+    private fun loadEmbeddedFrontend() {
         hideError()
-        val url = if (applyBootstrap && settings.hasServerUrl) {
-            val builder = Uri.parse(EMBEDDED_BOOTSTRAP_URL).buildUpon()
-                .appendQueryParameter("server", settings.serverUrl)
-            if (settings.username.isNotBlank()) {
-                builder.appendQueryParameter("username", settings.username)
-            }
-            if (settings.password.isNotBlank()) {
-                builder.appendQueryParameter("password", settings.password)
-            }
-            builder.build().toString()
-        } else {
-            EMBEDDED_INDEX_URL
-        }
-        binding.webView.loadUrl(url)
+        binding.webView.loadUrl(EMBEDDED_INDEX_URL)
     }
 
     private fun hideSystemBars() {
@@ -147,7 +113,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
+    @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
@@ -207,7 +173,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                httpAuthAttempts = 0
                 CookieManager.getInstance().flush()
                 binding.webView.requestFocus()
             }
@@ -218,18 +183,12 @@ class MainActivity : AppCompatActivity() {
                 host: String?,
                 realm: String?,
             ) {
-                if (handler == null) return
-                if (settings.hasCredentials && httpAuthAttempts < 2) {
-                    httpAuthAttempts++
-                    handler.proceed(settings.username, settings.password)
-                } else {
-                    handler.cancel()
-                    Toast.makeText(
-                        this@MainActivity,
-                        R.string.error_auth_failed,
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
+                handler?.cancel()
+                Toast.makeText(
+                    this@MainActivity,
+                    R.string.error_auth_failed,
+                    Toast.LENGTH_LONG,
+                ).show()
             }
 
             override fun onReceivedError(
@@ -319,8 +278,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val ASSET_HOST = "appassets.androidplatform.net"
-        const val EMBEDDED_ORIGIN = "https://$ASSET_HOST"
         const val EMBEDDED_INDEX_URL = "https://$ASSET_HOST/assets/opencode-app/index.html"
-        const val EMBEDDED_BOOTSTRAP_URL = "https://$ASSET_HOST/assets/opencode-app/bootstrap.html"
     }
 }
