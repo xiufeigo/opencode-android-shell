@@ -1,0 +1,353 @@
+diff --git a/packages/app/src/context/layout.tsx b/packages/app/src/context/layout.tsx
+index 6235f35..e6a80ff 100644
+--- a/packages/app/src/context/layout.tsx
++++ b/packages/app/src/context/layout.tsx
+@@ -24,6 +24,16 @@ import { closeSessionTab, openSessionTab, previewSessionTab, type SessionTabs }
+ 
+ export { createSessionKeyReader, ensureSessionKey, pruneSessionKeys }
+ 
++/** Layout persist must not throw when ServerSDK is still empty (zero configured servers). */
++function readSdkScope(serverSdk: { (): { scope?: ServerScope } | undefined } | { scope?: ServerScope } | undefined) {
++  try {
++    const sdk = typeof serverSdk === "function" ? serverSdk() : serverSdk
++    return sdk?.scope ?? ServerScope.local
++  } catch {
++    return ServerScope.local
++  }
++}
++
+ export type { ProjectAvatarVariant }
+ 
+ const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
+@@ -267,7 +277,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+       }
+     }
+ 
+-    const target = Persist.serverGlobal(serverSdk().scope, "layout", ["layout.v6"])
++    const target = Persist.serverGlobal(readSdkScope(serverSdk), "layout", ["layout.v6"])
+     const [store, setStore, _, ready] = persisted(
+       { ...target, migrate },
+       createStore({
+@@ -572,8 +582,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+ 
+         const projectID = project.id
+         void (async () => {
+-          const sdk = serverSdk()
+-          if ((await sdk.protocol) !== "v1") return
++          const sdk = typeof serverSdk === "function" ? serverSdk() : serverSdk
++          if (!sdk || (await sdk.protocol) !== "v1") return
+           return sdk.client.project
+             .update({ projectID, directory: worktree, icon: { color } })
+             .then((response) => response.data)
+@@ -623,7 +633,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+       handoff: {
+         tabs: createMemo(() => store.handoff?.tabs),
+         setTabs(dir: string, id: string) {
+-          setStore("handoff", "tabs", { scope: serverSdk().scope, dir, id, at: Date.now() })
++          setStore("handoff", "tabs", { scope: readSdkScope(serverSdk), dir, id, at: Date.now() })
+         },
+         clearTabs() {
+           if (!store.handoff?.tabs) return
+diff --git a/packages/app/src/context/notification.tsx b/packages/app/src/context/notification.tsx
+index 799c471..2da522d 100644
+--- a/packages/app/src/context/notification.tsx
++++ b/packages/app/src/context/notification.tsx
+@@ -13,7 +13,7 @@ import { EventSessionError } from "@opencode-ai/sdk/v2"
+ import { Persist, persisted } from "@/utils/persist"
+ import { playSoundById } from "@/utils/sound"
+ import { useGlobal } from "./global"
+-import { ServerConnection, useServer } from "./server"
++import { DISCONNECTED_HTTP_SERVER, ServerConnection, useServer } from "./server"
+ import { type DraftTab, useTabs } from "./tabs"
+ import { requireServerKey } from "@/utils/session-route"
+ import type { ServerScope } from "@/utils/server-scope"
+@@ -137,7 +137,9 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
+     const activeSession = createMemo(() => params.id)
+ 
+     const ensure = (key: ServerConnection.Key) => {
+-      const conn = global.servers.list().find((item) => ServerConnection.key(item) === key)
++      const conn =
++        global.servers.list().find((item) => ServerConnection.key(item) === key) ??
++        (global.servers.list().length === 0 ? DISCONNECTED_HTTP_SERVER : undefined)
+       if (!conn) throw new Error(`Notification server not found: ${key}`)
+       const ctx = global.ensureServerCtx(conn)
+       const existing = states.get(ctx.sdk.scope)
+@@ -182,8 +184,8 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
+       const list = global.servers.list()
+       const key = activeServer()
+       if (list.some((conn) => ServerConnection.key(conn) === key)) return ensure(key)
+-      const conn = list.find((conn) => ServerConnection.key(conn) === server.key) ?? list[0]
+-      if (!conn) throw new Error("Notification server not found")
++      const conn = list.find((item) => ServerConnection.key(item) === server.key) ?? list[0]
++      if (!conn) return ensure(ServerConnection.key(DISCONNECTED_HTTP_SERVER))
+       return ensure(ServerConnection.key(conn))
+     }
+ 
+diff --git a/packages/app/src/context/permission.tsx b/packages/app/src/context/permission.tsx
+index d6d8019..2da778d 100644
+--- a/packages/app/src/context/permission.tsx
++++ b/packages/app/src/context/permission.tsx
+@@ -8,7 +8,7 @@ import type { ServerSync } from "./server-sync"
+ import { useParams, useSearchParams } from "@solidjs/router"
+ import { decode64 } from "@/utils/base64"
+ import { useGlobal } from "./global"
+-import { ServerConnection, useServer } from "./server"
++import { DISCONNECTED_HTTP_SERVER, ServerConnection, useServer } from "./server"
+ import { type DraftTab, useTabs } from "./tabs"
+ import { useSettings } from "./settings"
+ import { requireServerKey } from "@/utils/session-route"
+@@ -76,7 +76,9 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
+     })
+ 
+     const ensure = (key: ServerConnection.Key) => {
+-      const conn = global.servers.list().find((item) => ServerConnection.key(item) === key)
++      const conn =
++        global.servers.list().find((item) => ServerConnection.key(item) === key) ??
++        (global.servers.list().length === 0 ? DISCONNECTED_HTTP_SERVER : undefined)
+       if (!conn) throw new Error(`Permission server not found: ${key}`)
+       const ctx = global.ensureServerCtx(conn)
+       const existing = states.get(ctx.sdk.scope)
+@@ -120,10 +122,15 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
+     let lastSelected: PermissionState | undefined
+     const selected = () => {
+       const key = activeServer()
+-      if (global.servers.list().some((conn) => ServerConnection.key(conn) === key)) {
++      const list = global.servers.list()
++      if (list.some((conn) => ServerConnection.key(conn) === key)) {
+         lastSelected = ensure(key)
+       }
+       if (lastSelected) return lastSelected
++      if (list.length === 0) {
++        lastSelected = ensure(ServerConnection.key(DISCONNECTED_HTTP_SERVER))
++        return lastSelected
++      }
+       return ensure(server.key)
+     }
+     const activeDirectory = createMemo(() => {
+diff --git a/packages/app/src/context/server-sdk.tsx b/packages/app/src/context/server-sdk.tsx
+index 7dd2a6e..670a00d 100644
+--- a/packages/app/src/context/server-sdk.tsx
++++ b/packages/app/src/context/server-sdk.tsx
+@@ -5,9 +5,14 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
+ import { makeEventListener } from "@solid-primitives/event-listener"
+ import { type Accessor, batch, createMemo, createResource, onCleanup, onMount } from "solid-js"
+ import { createApiForServer, createSdkForServer, type ServerApi } from "@/utils/server"
+-import { useLanguage } from "./language"
+ import { usePlatform } from "./platform"
+-import { ServerConnection, useServer } from "./server"
++import {
++  DISCONNECTED_HTTP_SERVER,
++  disconnectedFetch,
++  isDisconnectedHttp,
++  ServerConnection,
++  useServer,
++} from "./server"
+ import { createRefCountMap } from "@/utils/refcount"
+ import { useGlobal } from "./global"
+ import { ServerScope } from "@/utils/server-scope"
+@@ -187,17 +192,21 @@ type ServerSDKBase = {
+ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerScope): ServerSDKBase {
+   const platform = usePlatform()
+   const abort = new AbortController()
++  const disconnected = isDisconnectedHttp(server)
++  const sdkFetch = disconnected ? disconnectedFetch : platform.fetch
+ 
+-  const eventFetch = (() => {
+-    if (!platform.fetch || !server) return
+-    try {
+-      const url = new URL(server.http.url)
+-      const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
+-      if (url.protocol === "http:" && !loopback) return platform.fetch
+-    } catch {
+-      return
+-    }
+-  })()
++  const eventFetch = disconnected
++    ? disconnectedFetch
++    : (() => {
++        if (!platform.fetch || !server) return
++        try {
++          const url = new URL(server.http.url)
++          const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
++          if (url.protocol === "http:" && !loopback) return platform.fetch
++        } catch {
++          return
++        }
++      })()
+ 
+   const eventApi = createApiForServer({ server: server.http, fetch: eventFetch })
+   const eventSdk = createSdkForServer({
+@@ -205,7 +214,9 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+     fetch: eventFetch,
+     server: server.http,
+   })
+-  const protocol = detectServerProtocol(server.http, platform.fetch ?? globalThis.fetch)
++  const protocol = disconnected
++    ? Promise.resolve("v2" as ServerProtocol)
++    : detectServerProtocol(server.http, platform.fetch ?? globalThis.fetch)
+   const [protocolKind] = createResource(
+     () => protocol,
+     (value) => value,
+@@ -258,6 +269,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+   let generation = 0
+ 
+   const start = () => {
++    if (disconnected) return Promise.resolve()
+     if (started) return run
+     started = true
+     const active = ++generation
+@@ -335,14 +347,14 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+ 
+   const sdk = createSdkForServer({
+     server: server.http,
+-    fetch: platform.fetch,
++    fetch: sdkFetch,
+     throwOnError: true,
+   })
+-  const currentApi: ServerApi = createApiForServer({ server: server.http, fetch: platform.fetch })
++  const currentApi: ServerApi = createApiForServer({ server: server.http, fetch: sdkFetch })
+   const legacy = (directory?: string) =>
+     createSdkForServer({
+       server: server.http,
+-      fetch: platform.fetch,
++      fetch: sdkFetch,
+       throwOnError: true,
+       directory,
+     })
+@@ -365,7 +377,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+     createClient(opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">) {
+       return createSdkForServer({
+         server: server.http,
+-        fetch: platform.fetch,
++        fetch: sdkFetch,
+         ...opts,
+       })
+     },
+@@ -389,13 +401,15 @@ export const { use: useServerSDK, provider: ServerSDKProvider } = createSimpleCo
+   // /new-session draft retargeting its server) without re-instantiating the subtree.
+   init: (props: { server?: Accessor<ServerConnection.Any | undefined> }) => {
+     const global = useGlobal()
+-    const language = useLanguage()
+     const server = useServer()
+ 
+     return createMemo<ServerSDK>(() => {
+-      const conn = props.server?.() ?? server.current
+-      if (!conn) throw new Error(language.t("error.serverSDK.noServerAvailable"))
+-      return global.ensureServerCtx(conn).sdk
++      try {
++        const conn = props.server?.() ?? server.current ?? DISCONNECTED_HTTP_SERVER
++        return global.ensureServerCtx(conn).sdk
++      } catch {
++        return global.ensureServerCtx(DISCONNECTED_HTTP_SERVER).sdk
++      }
+     })
+   },
+ })
+diff --git a/packages/app/src/context/server-sync.tsx b/packages/app/src/context/server-sync.tsx
+index 13a0b74..16cc234 100644
+--- a/packages/app/src/context/server-sync.tsx
++++ b/packages/app/src/context/server-sync.tsx
+@@ -42,7 +42,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
+ import { NormalizedProviderListResponse } from "@opencode-ai/session-ui/context"
+ import { createRefCountMap } from "@/utils/refcount"
+ import { useGlobal } from "./global"
+-import { ServerConnection, useServer } from "./server"
++import { DISCONNECTED_HTTP_SERVER, ServerConnection, useServer } from "./server"
+ import { retry } from "@opencode-ai/core/util/retry"
+ import type { ServerScope } from "@/utils/server-scope"
+ import { createHomeSessionIndexCache } from "./global-sync/home-session-index"
+@@ -743,12 +743,10 @@ export const { use: useServerSync, provider: ServerSyncProvider } = createSimple
+   // re-instantiating the subtree (mirrors useServerSDK).
+   init: (props: { server?: Accessor<ServerConnection.Any | undefined> }) => {
+     const global = useGlobal()
+-    const language = useLanguage()
+     const server = useServer()
+ 
+     return createMemo<ServerSync>(() => {
+-      const conn = props.server?.() ?? server.current
+-      if (!conn) throw new Error(language.t("error.serverSDK.noServerAvailable"))
++      const conn = props.server?.() ?? server.current ?? DISCONNECTED_HTTP_SERVER
+       return global.ensureServerCtx(conn).sync
+     })
+   },
+diff --git a/packages/app/src/context/server.tsx b/packages/app/src/context/server.tsx
+index 450129f..a03b727 100644
+--- a/packages/app/src/context/server.tsx
++++ b/packages/app/src/context/server.tsx
+@@ -242,6 +242,33 @@ export namespace ServerConnection {
+     !!conn && (builtin(conn) || (conn.type === "http" && isLocalHost(conn.http.url) === "local"))
+ }
+ 
++/** Not listed in Settings. Used so server-scoped providers can init with zero configured servers. */
++export const DISCONNECTED_HTTP_SERVER: ServerConnection.Http = {
++  type: "http",
++  http: { url: "http://127.0.0.1:0" },
++}
++
++export function isDisconnectedHttp(conn?: ServerConnection.Any) {
++  if (!conn || conn.type !== "http") return false
++  try {
++    const url = new URL(conn.http.url)
++    const host = url.hostname.replace(/^\[|\]$/g, "")
++    return (host === "127.0.0.1" || host === "localhost" || host === "::1") && url.port === "0"
++  } catch {
++    return conn.http.url.includes("127.0.0.1:0")
++  }
++}
++
++/** Never hits the network. Keeps Layout/ServerSDK alive with zero configured backends. */
++export const disconnectedFetch: typeof fetch = async (_input, init) => {
++  if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError")
++  return new Response(JSON.stringify({ healthy: false, disconnected: true }), {
++    status: 503,
++    statusText: "Disconnected",
++    headers: { "content-type": "application/json" },
++  })
++}
++
+ export function nextServerAfterRemoval(
+   servers: ServerConnection.Any[],
+   removed: ServerConnection.Key,
+@@ -313,7 +340,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
+     }
+ 
+     const isReady = Object.assign(
+-      createMemo(() => ready() && !!state.active),
++      createMemo(() => ready()),
+       { promise: ready.promise },
+     )
+ 
+diff --git a/packages/app/src/utils/server-health.ts b/packages/app/src/utils/server-health.ts
+index 1d7d9e4..759db56 100644
+--- a/packages/app/src/utils/server-health.ts
++++ b/packages/app/src/utils/server-health.ts
+@@ -74,6 +74,13 @@ export async function checkServerHealth(
+   fetch: typeof globalThis.fetch,
+   opts?: CheckServerHealthOptions,
+ ): Promise<ServerHealth> {
++  try {
++    const url = new URL(server.url)
++    const host = url.hostname.replace(/^\[|\]$/g, "")
++    if ((host === "127.0.0.1" || host === "localhost" || host === "::1") && url.port === "0") {
++      return { healthy: false }
++    }
++  } catch {}
+   const timeout = opts?.signal ? undefined : timeoutSignal(opts?.timeoutMs ?? defaultTimeoutMs)
+   const signal = opts?.signal ?? timeout?.signal
+   const retryCount = opts?.retryCount ?? defaultRetryCount
+diff --git a/packages/app/src/utils/server-protocol.ts b/packages/app/src/utils/server-protocol.ts
+index 27b8dc2..855e90f 100644
+--- a/packages/app/src/utils/server-protocol.ts
++++ b/packages/app/src/utils/server-protocol.ts
+@@ -25,6 +25,11 @@ export async function detectServerProtocol(
+   server: ServerConnection.HttpBase,
+   fetch: typeof globalThis.fetch,
+ ): Promise<ServerProtocol> {
++  try {
++    const url = new URL(server.url)
++    const host = url.hostname.replace(/^\[|\]$/g, "")
++    if ((host === "127.0.0.1" || host === "localhost" || host === "::1") && url.port === "0") return "v2"
++  } catch {}
+   const legacy = await probe(server, fetch, "/global/health").catch(() => undefined)
+   if (legacy && "healthy" in legacy && legacy.healthy === true) return "v1"
+ 

@@ -1,0 +1,208 @@
+diff --git a/packages/app/src/i18n/en.ts b/packages/app/src/i18n/en.ts
+index 76c7e1d..2f87cfb 100644
+--- a/packages/app/src/i18n/en.ts
++++ b/packages/app/src/i18n/en.ts
+@@ -356,10 +356,10 @@ export const dict = {
+   "dialog.server.add.placeholder": "http://localhost:4096",
+   "dialog.server.add.error": "Could not connect to server",
+   "dialog.server.add.errorCors":
+-    "Could not connect (CORS). This Android shell origin is https://appassets.androidplatform.net — the server MUST allow it: opencode serve --cors https://appassets.androidplatform.net",
++    "Could not connect. If the URL is reachable in a browser, check username/password. The Android shell proxies API calls natively and does not require server CORS.",
+   "dialog.server.add.errorAuth": "Server requires authentication. Enter username and password.",
+   "dialog.server.add.corsHint":
+-    "Android WebView origin is https://appassets.androidplatform.net. You MUST allow that CORS origin: opencode serve --cors https://appassets.androidplatform.net (or opencode.json server.cors). Reverse proxies must forward Access-Control-Allow-Origin.",
++    "Enter the real backend URL (for example https://backend.example.com). This Android shell reverse-proxies API/SSE natively — you do not need --cors for the WebView origin.",
+   "dialog.server.add.checking": "Checking...",
+   "dialog.server.add.button": "Add server",
+   "dialog.server.add.name": "Server name (optional)",
+diff --git a/packages/app/src/i18n/zh.ts b/packages/app/src/i18n/zh.ts
+index 1815e53..0a06c9c 100644
+--- a/packages/app/src/i18n/zh.ts
++++ b/packages/app/src/i18n/zh.ts
+@@ -467,10 +467,10 @@ export const dict = {
+   "dialog.server.add.placeholder": "http://localhost:4096",
+   "dialog.server.add.error": "无法连接到服务器",
+   "dialog.server.add.errorCors":
+-    "无法连接（CORS）。本 Android 壳的 origin 是 https://appassets.androidplatform.net，服务器必须允许：opencode serve --cors https://appassets.androidplatform.net",
++    "无法连接。若浏览器能打开该地址，请检查用户名/密码。本 Android 壳通过应用内代理转发 API，服务器无需配置 CORS。",
+   "dialog.server.add.errorAuth": "服务器需要认证，请填写用户名和密码。",
+   "dialog.server.add.corsHint":
+-    "Android WebView 的 origin 是 https://appassets.androidplatform.net。服务器必须允许该 CORS origin：opencode serve --cors https://appassets.androidplatform.net（或在 opencode.json 的 server.cors 中加入）。反向代理需转发 Access-Control-Allow-Origin。",
++    "请填写真实后端 URL（例如 https://backend.example.com）。本 Android 壳会在本地反向代理 API/SSE，无需在服务器上允许 WebView 的 CORS origin。",
+   "dialog.server.add.checking": "检查中...",
+   "dialog.server.add.button": "添加服务器",
+   "dialog.server.add.name": "服务器名称（可选）",
+diff --git a/packages/app/src/utils/android-proxy.test.ts b/packages/app/src/utils/android-proxy.test.ts
+new file mode 100644
+index 0000000..ef8ec4e
+--- /dev/null
++++ b/packages/app/src/utils/android-proxy.test.ts
+@@ -0,0 +1,35 @@
++import { afterEach, describe, expect, test } from "bun:test"
++import { androidProxyBaseUrl, isDisconnectedStubUrl } from "./android-proxy"
++
++describe("androidProxyBaseUrl", () => {
++  afterEach(() => {
++    delete window.OpenCodeAndroid
++    delete window.__ocAndroidProxy
++  })
++
++  test("leaves the real URL unchanged without a native bridge", () => {
++    expect(androidProxyBaseUrl("https://backend.opencode.xiufeigo.xyz")).toBe(
++      "https://backend.opencode.xiufeigo.xyz",
++    )
++  })
++
++  test("does not rewrite the offline stub", () => {
++    window.OpenCodeAndroid = {
++      proxyOrigin: () => "http://127.0.0.1:9",
++      proxyPrefix: () => "/opencode-proxy/tok/",
++    }
++    expect(isDisconnectedStubUrl("http://127.0.0.1:0")).toBe(true)
++    expect(androidProxyBaseUrl("http://127.0.0.1:0")).toBe("http://127.0.0.1:0")
++  })
++
++  test("rewrites onto the native proxy and keeps the real URL encodable", () => {
++    window.OpenCodeAndroid = {
++      proxyOrigin: () => "http://127.0.0.1:9",
++      proxyPrefix: () => "/opencode-proxy/tok/",
++    }
++    const real = "https://backend.opencode.xiufeigo.xyz"
++    expect(androidProxyBaseUrl(real)).toBe(
++      `http://127.0.0.1:9/opencode-proxy/tok/${encodeURIComponent(real)}`,
++    )
++  })
++})
+diff --git a/packages/app/src/utils/android-proxy.ts b/packages/app/src/utils/android-proxy.ts
+new file mode 100644
+index 0000000..5c50261
+--- /dev/null
++++ b/packages/app/src/utils/android-proxy.ts
+@@ -0,0 +1,47 @@
++/** Native loopback reverse proxy injected by the Android WebView shell. */
++export type AndroidProxyConfig = { origin: string; prefix: string }
++
++function readAndroidProxyConfig(): AndroidProxyConfig | undefined {
++  if (typeof window === "undefined") return
++  try {
++    const bridge = window.OpenCodeAndroid
++    if (bridge && typeof bridge.proxyOrigin === "function" && typeof bridge.proxyPrefix === "function") {
++      const origin = bridge.proxyOrigin()
++      const prefix = bridge.proxyPrefix()
++      if (origin && prefix) return { origin, prefix }
++    }
++  } catch {}
++  const injected = window.__ocAndroidProxy
++  if (injected?.origin && injected?.prefix) return injected
++  return
++}
++
++export function isDisconnectedStubUrl(url: string) {
++  try {
++    const parsed = new URL(url)
++    const host = parsed.hostname.replace(/^\[|\]$/g, "")
++    return (host === "127.0.0.1" || host === "localhost" || host === "::1") && parsed.port === "0"
++  } catch {
++    return url.includes("127.0.0.1:0")
++  }
++}
++
++/** Rewrite a real backend base URL onto the native proxy so fetch is not subject to remote CORS. */
++export function androidProxyBaseUrl(realUrl: string) {
++  const trimmed = realUrl.trim().replace(/\/+$/, "")
++  if (!trimmed || isDisconnectedStubUrl(trimmed)) return trimmed
++  if (trimmed.includes("/opencode-proxy/")) return trimmed
++  const cfg = readAndroidProxyConfig()
++  if (!cfg) return trimmed
++  return `${cfg.origin.replace(/\/+$/, "")}${cfg.prefix}${encodeURIComponent(trimmed)}`
++}
++
++declare global {
++  interface Window {
++    OpenCodeAndroid?: {
++      proxyOrigin: () => string
++      proxyPrefix: () => string
++    }
++    __ocAndroidProxy?: AndroidProxyConfig
++  }
++}
+diff --git a/packages/app/src/utils/server-health.ts b/packages/app/src/utils/server-health.ts
+index 0ccc479..33c72ba 100644
+--- a/packages/app/src/utils/server-health.ts
++++ b/packages/app/src/utils/server-health.ts
+@@ -1,6 +1,7 @@
+ import { usePlatform } from "@/context/platform"
+ import { ServerConnection } from "@/context/server"
+ import { authTokenFromCredentials, createSdkForServer } from "./server"
++import { androidProxyBaseUrl } from "@/utils/android-proxy"
+ import { ClientError, OpenCode } from "@opencode-ai/client"
+ import { Accessor, createEffect, onCleanup } from "solid-js"
+ import { createStore, reconcile } from "solid-js/store"
+@@ -21,7 +22,7 @@ function isAndroidAssetOrigin() {
+ }
+ 
+ function healthUrl(server: ServerConnection.HttpBase, path: "/api/health" | "/global/health") {
+-  return `${server.url.replace(/\/+$/, "")}${path}`
++  return `${androidProxyBaseUrl(server.url)}${path}`
+ }
+ 
+ function authHeaders(server: ServerConnection.HttpBase): Record<string, string> {
+@@ -152,7 +153,7 @@ export async function checkServerHealth(
+   }
+   const attempt = async (count: number): Promise<ServerHealth> => {
+     const current = await OpenCode.make({
+-      baseUrl: server.url,
++      baseUrl: androidProxyBaseUrl(server.url),
+       fetch,
+       headers: server.password
+         ? {
+diff --git a/packages/app/src/utils/server.ts b/packages/app/src/utils/server.ts
+index 1c8292c..eadbbc5 100644
+--- a/packages/app/src/utils/server.ts
++++ b/packages/app/src/utils/server.ts
+@@ -2,6 +2,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
+ import { OpenCode, type OpenCodeClient } from "@opencode-ai/client/promise"
+ import type { ServerConnection } from "@/context/server"
+ import { decode64 } from "@/utils/base64"
++import { androidProxyBaseUrl } from "@/utils/android-proxy"
+ 
+ export function authTokenFromCredentials(input: { username?: string; password: string }) {
+   return btoa(`${input.username ?? "opencode"}:${input.password}`)
+@@ -37,7 +38,7 @@ export function createSdkForServer({
+       ...(config.headers instanceof Headers ? Object.fromEntries(config.headers.entries()) : config.headers),
+       ...auth,
+     },
+-    baseUrl: server.url,
++    baseUrl: androidProxyBaseUrl(server.url),
+   })
+ }
+ 
+@@ -46,7 +47,7 @@ export function createApiForServer(input: {
+   fetch?: typeof globalThis.fetch
+ }): OpenCodeClient {
+   return OpenCode.make({
+-    baseUrl: input.server.url,
++    baseUrl: androidProxyBaseUrl(input.server.url),
+     fetch: input.fetch,
+     headers: input.server.password
+       ? {
+diff --git a/packages/app/src/utils/terminal-websocket-url.ts b/packages/app/src/utils/terminal-websocket-url.ts
+index a32b239..d1d6580 100644
+--- a/packages/app/src/utils/terminal-websocket-url.ts
++++ b/packages/app/src/utils/terminal-websocket-url.ts
+@@ -1,4 +1,5 @@
+ import { authTokenFromCredentials } from "@/utils/server"
++import { androidProxyBaseUrl } from "@/utils/android-proxy"
+ 
+ export function terminalWebSocketURL(input: {
+   protocol?: "v1" | "v2"
+@@ -13,7 +14,8 @@ export function terminalWebSocketURL(input: {
+   authToken?: boolean
+ }) {
+   const isV1 = input.protocol === "v1"
+-  const next = new URL(`${input.url}${isV1 ? `/pty/${input.id}/connect` : `/api/pty/${input.id}/connect`}`)
++  const base = androidProxyBaseUrl(input.url)
++  const next = new URL(`${base}${isV1 ? `/pty/${input.id}/connect` : `/api/pty/${input.id}/connect`}`)
+   if (isV1) {
+     next.searchParams.set("directory", input.directory)
+   } else {

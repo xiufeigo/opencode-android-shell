@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCode</string>
+    <string name="retry">Retry</string>
+    <string name="error_load_failed">Could not load OpenCode: %1$s</string>
+    <string name="error_auth_failed">HTTP Basic Auth failed. Add username and password under Settings → Server.</string>
+</resources>

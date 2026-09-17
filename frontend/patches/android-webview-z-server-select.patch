@@ -1,0 +1,429 @@
+diff --git a/packages/app/src/components/dialog-select-server.tsx b/packages/app/src/components/dialog-select-server.tsx
+index 1a87ac1..e53782e 100644
+--- a/packages/app/src/components/dialog-select-server.tsx
++++ b/packages/app/src/components/dialog-select-server.tsx
+@@ -9,7 +9,7 @@ import { TextField } from "@opencode-ai/ui/text-field"
+ import { useMutation } from "@tanstack/solid-query"
+ import { showToast } from "@/utils/toast"
+ import { useNavigate } from "@solidjs/router"
+-import { createEffect, createMemo, createResource, Show } from "solid-js"
++import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js"
+ import { createStore } from "solid-js/store"
+ import { ServerHealthIndicator, ServerRow } from "@/components/server/server-row"
+ import { useGlobal } from "@/context/global"
+@@ -23,6 +23,9 @@ import { useTabs } from "@/context/tabs"
+ 
+ const DEFAULT_USERNAME = "opencode"
+ 
++/** Shared so Settings list + add-server dialog (separate controllers) show the same 默认 tag. */
++const [sharedDefaultKey, setSharedDefaultKey] = createSignal<ServerConnection.Key | null | undefined>(undefined)
++
+ interface ServerFormProps {
+   value: string
+   name: string
+@@ -69,13 +72,21 @@ function useDefaultServer() {
+   const setDefault = async (key: ServerConnection.Key | null) => {
+     try {
+       await platform.setDefaultServer?.(key)
++      setSharedDefaultKey(key)
+       defaultUrlActions.mutate(key)
+     } catch (err) {
+       showRequestError(language, err)
+     }
+   }
+ 
+-  return { defaultKey: () => defaultKey.latest, canDefault, setDefault }
++  return {
++    defaultKey: () => {
++      const shared = sharedDefaultKey()
++      return shared !== undefined ? shared : defaultKey.latest
++    },
++    canDefault,
++    setDefault,
++  }
+ }
+ 
+ function useServerPreview() {
+@@ -197,7 +208,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
+   const global = useGlobal()
+   const platform = usePlatform()
+   const language = useLanguage()
+-  const { defaultKey, canDefault, setDefault } = useDefaultServer()
++  const { defaultKey, canDefault, setDefault: persistDefault } = useDefaultServer()
+   const { previewStatus } = useServerPreview()
+   const checkServerHealth = useCheckServerHealth()
+   const connectErrorMessage = async (http: ServerConnection.HttpBase) => {
+@@ -280,7 +291,8 @@ export function useServerManagementController(options: { onSelect?: () => void;
+ 
+       resetAdd()
+       if (options.navigateOnAdd === false) {
+-        server.add(conn)
++        const added = server.add(conn)
++        if (added) await apply(added)
+         options.onSelect?.()
+         return
+       }
+@@ -358,10 +370,8 @@ export function useServerManagementController(options: { onSelect?: () => void;
+   })
+ 
+   const settings = useSettings()
+-  const current = createMemo<ServerConnection.Any | undefined>(() =>
+-    settings.general.newLayoutDesigns()
+-      ? undefined
+-      : (items().find((x) => ServerConnection.key(x) === server.key) ?? items()[0]),
++  const current = createMemo<ServerConnection.Any | undefined>(
++    () => items().find((x) => ServerConnection.key(x) === server.key) ?? items()[0],
+   )
+ 
+   const sortedItems = createMemo(() => {
+@@ -387,16 +397,28 @@ export function useServerManagementController(options: { onSelect?: () => void;
+     })
+   })
+ 
++  async function apply(conn: ServerConnection.Any) {
++    const key = ServerConnection.key(conn)
++    server.setActive(key)
++    if (canDefault()) await persistDefault(key)
++  }
++
++  const setDefault = async (key: ServerConnection.Key | null) => {
++    await persistDefault(key)
++    if (key) server.setActive(key)
++  }
++
+   async function select(conn: ServerConnection.Any, persist?: boolean) {
+     if (!persist && global.servers.health[ServerConnection.key(conn)]?.healthy === false) return
+     options.onSelect?.()
+     if (persist && conn.type === "http") {
+-      server.add(conn)
++      const added = server.add(conn)
++      if (added) await apply(added)
+       navigate("/")
+       return
+     }
++    await apply(conn)
+     navigate("/")
+-    queueMicrotask(() => server.setActive(ServerConnection.key(conn)))
+   }
+ 
+   const handleAddChange = (value: string) => {
+@@ -563,6 +585,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
+     formError: () => (isAddMode() ? store.addServer.error : store.editServer.error),
+     formStatus: () => (isAddMode() ? store.addServer.status : store.editServer.status),
+     select,
++    apply,
+     setDefault,
+     startAdd,
+     startEdit,
+@@ -578,7 +601,6 @@ export function useServerManagementController(options: { onSelect?: () => void;
+ 
+ export function ServerConnectionList(props: { controller: ReturnType<typeof useServerManagementController> }) {
+   const language = useLanguage()
+-  const settings = useSettings()
+ 
+   return (
+     <div class="flex flex-1 min-h-0 flex-col gap-4">
+@@ -593,7 +615,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
+         items={props.controller.sortedItems}
+         key={(x) => x.http.url}
+         onSelect={(x) => {
+-          if (x && !settings.general.newLayoutDesigns()) void props.controller.select(x)
++          if (x) void props.controller.select(x)
+         }}
+         divider={true}
+       >
+diff --git a/packages/app/src/components/server/server-row-menu.tsx b/packages/app/src/components/server/server-row-menu.tsx
+index 0a2920d..2f591a1 100644
+--- a/packages/app/src/components/server/server-row-menu.tsx
++++ b/packages/app/src/components/server/server-row-menu.tsx
+@@ -64,6 +64,7 @@ export const ServerRowMenuView: Component<{
+         size="small"
+         icon={<IconV2 name="outline-dots" />}
+         aria-label={props.labels.more}
++        data-action="settings-server-menu"
+       />
+       <MenuV2.Portal>
+         <MenuV2.Content>
+@@ -71,21 +72,43 @@ export const ServerRowMenuView: Component<{
+             <MenuV2.GroupLabel>{props.labels.server}</MenuV2.GroupLabel>
+             <MenuV2.Item
+               disabled={builtin() || !httpServer()}
++              data-action="settings-server-edit"
+               onSelect={() => {
+                 const server = httpServer()
+                 if (server) props.onEdit(server)
+               }}
++              onClick={() => {
++                const server = httpServer()
++                if (server) props.onEdit(server)
++              }}
+             >
+               {props.labels.edit}
+             </MenuV2.Item>
+             <Show when={props.canDefault && !props.isDefault}>
+-              <MenuV2.Item onSelect={props.onSetDefault}>{props.labels.default}</MenuV2.Item>
++              <MenuV2.Item
++                data-action="settings-server-set-default"
++                onSelect={props.onSetDefault}
++                onClick={props.onSetDefault}
++              >
++                {props.labels.default}
++              </MenuV2.Item>
+             </Show>
+             <Show when={props.canDefault && props.isDefault}>
+-              <MenuV2.Item onSelect={props.onRemoveDefault}>{props.labels.defaultRemove}</MenuV2.Item>
++              <MenuV2.Item
++                data-action="settings-server-remove-default"
++                onSelect={props.onRemoveDefault}
++                onClick={props.onRemoveDefault}
++              >
++                {props.labels.defaultRemove}
++              </MenuV2.Item>
+             </Show>
+             <MenuV2.Separator />
+-            <MenuV2.Item disabled={builtin()} onSelect={props.onRemove}>
++            <MenuV2.Item
++              disabled={builtin()}
++              data-action="settings-server-delete"
++              onSelect={props.onRemove}
++              onClick={props.onRemove}
++            >
+               {props.labels.delete}
+             </MenuV2.Item>
+           </MenuV2.Group>
+diff --git a/packages/app/src/components/settings-v2/servers.tsx b/packages/app/src/components/settings-v2/servers.tsx
+index b93f700..fb1e5ce 100644
+--- a/packages/app/src/components/settings-v2/servers.tsx
++++ b/packages/app/src/components/settings-v2/servers.tsx
+@@ -103,9 +103,26 @@ export const SettingsServersV2: Component = () => {
+                 const key = ServerConnection.key(item)
+                 const health = () => controller.status()[key]
+                 const isDefault = () => controller.defaultKey() === key
++                const isCurrent = () => {
++                  const current = controller.current()
++                  return !!current && ServerConnection.key(current) === key
++                }
+                 return (
+-                  <div class="settings-v2-servers-row">
+-                    <div class="settings-v2-servers-lead">
++                  <div
++                    class="settings-v2-servers-row"
++                    classList={{ "settings-v2-servers-row--active": isCurrent() }}
++                    data-current={isCurrent() ? "true" : "false"}
++                    data-default={isDefault() ? "true" : "false"}
++                    data-server-key={key}
++                  >
++                    <button
++                      type="button"
++                      class="settings-v2-servers-lead settings-v2-servers-apply"
++                      data-action="settings-apply-server"
++                      aria-pressed={isCurrent() ? "true" : "false"}
++                      aria-label={`${language.t("dialog.server.apply")}: ${serverName(item)}`}
++                      onClick={() => void controller.apply(item)}
++                    >
+                       <ServerHealthIndicator health={health()} />
+                       <div class="settings-v2-servers-copy">
+                         <span class="settings-v2-servers-name">{serverName(item)}</span>
+@@ -120,8 +137,11 @@ export const SettingsServersV2: Component = () => {
+                           </Show>
+                         </span>
+                       </div>
+-                    </div>
++                    </button>
+                     <div class="settings-v2-servers-actions">
++                      <Show when={isCurrent()}>
++                        <Tag>{language.t("dialog.server.status.current")}</Tag>
++                      </Show>
+                       <Show when={controller.canDefault() && isDefault()}>
+                         <Tag>{language.t("dialog.server.status.default")}</Tag>
+                       </Show>
+diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
+index 6b66352..42473c0 100644
+--- a/packages/app/src/components/settings-v2/settings-v2.css
++++ b/packages/app/src/components/settings-v2/settings-v2.css
+@@ -819,6 +819,29 @@
+   gap: 10px;
+ }
+ 
++.settings-v2-servers-apply {
++  margin: 0;
++  padding: 8px 10px;
++  border: 0;
++  border-radius: 6px;
++  background: transparent;
++  text-align: left;
++  color: inherit;
++  cursor: pointer;
++  width: 100%;
++  -webkit-tap-highlight-color: transparent;
++}
++
++.settings-v2-servers-apply:hover,
++.settings-v2-servers-apply:focus-visible,
++.settings-v2-servers-row--active .settings-v2-servers-apply {
++  background: var(--v2-overlay-simple-overlay-hover, color-mix(in srgb, var(--v2-text-text-base) 6%, transparent));
++}
++
++.settings-v2-servers-row--active .settings-v2-servers-name {
++  font-weight: 600;
++}
++
+ .settings-v2-servers-copy {
+   display: flex;
+   min-width: 0;
+diff --git a/packages/app/src/context/server.test.ts b/packages/app/src/context/server.test.ts
+index d78880e..3256bb2 100644
+--- a/packages/app/src/context/server.test.ts
++++ b/packages/app/src/context/server.test.ts
+@@ -5,6 +5,7 @@ import {
+   createServerProjects,
+   migrateCanonicalLocalServerState,
+   nextServerAfterRemoval,
++  resolveActiveServerKey,
+   resolveServerList,
+   ServerConnection,
+ } from "./server"
+@@ -77,6 +78,27 @@ test("treats WSL sidecars as remote server connections", () => {
+   expect(ServerConnection.local({ type: "http", http: { url: "https://server.example.test" } })).toBe(false)
+ })
+ 
++test("hydrate picks default or first when active is missing from the list", () => {
++  const remote = { type: "http", displayName: "OpenCodeServer", http: { url: "https://backend.example" } } as const
++  expect(
++    resolveActiveServerKey(
++      [remote],
++      ServerConnection.Key.make("offline"),
++      ServerConnection.Key.make("https://backend.example"),
++    ),
++  ).toBe(ServerConnection.Key.make("https://backend.example"))
++  expect(resolveActiveServerKey([remote], ServerConnection.Key.make("offline"), ServerConnection.Key.make("offline"))).toBe(
++    ServerConnection.Key.make("https://backend.example"),
++  )
++  expect(
++    resolveActiveServerKey(
++      [remote],
++      ServerConnection.Key.make("https://backend.example"),
++      ServerConnection.Key.make("offline"),
++    ),
++  ).toBe(ServerConnection.Key.make("https://backend.example"))
++})
++
+ test("active server removal falls back across built-in and persisted servers", () => {
+   const local = { type: "sidecar", variant: "base", http: { url: "http://127.0.0.1:4096" } } as const
+   const debian = {
+diff --git a/packages/app/src/context/server.tsx b/packages/app/src/context/server.tsx
+index a03b727..56187d4 100644
+--- a/packages/app/src/context/server.tsx
++++ b/packages/app/src/context/server.tsx
+@@ -1,5 +1,5 @@
+ import { createSimpleContext } from "@opencode-ai/ui/context"
+-import { type Accessor, batch, createMemo } from "solid-js"
++import { type Accessor, batch, createEffect, createMemo } from "solid-js"
+ import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
+ import { Persist, persisted } from "@/utils/persist"
+ import { pathKey } from "@/utils/path-key"
+@@ -279,6 +279,18 @@ export function nextServerAfterRemoval(
+   return next ? ServerConnection.key(next) : fallback
+ }
+ 
++/** When `active` is missing from the list (e.g. Android `"offline"`), pick default or first. */
++export function resolveActiveServerKey(
++  servers: ServerConnection.Any[],
++  active: ServerConnection.Key,
++  fallback: ServerConnection.Key,
++) {
++  const keys = servers.map((server) => ServerConnection.key(server))
++  if (keys.includes(active)) return active
++  if (fallback && keys.includes(fallback)) return fallback
++  return keys[0] ?? fallback
++}
++
+ export const { use: useServer, provider: ServerProvider } = createSimpleContext({
+   name: "Server",
+   gate: true,
+@@ -359,6 +371,14 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
+     )
+     const isLocal = createMemo(() => ServerConnection.local(current()))
+ 
++    createEffect(() => {
++      if (!ready()) return
++      const list = allServers()
++      if (list.length === 0) return
++      const next = resolveActiveServerKey(list, state.active, props.defaultServer)
++      if (next && next !== state.active) setState("active", next)
++    })
++
+     return {
+       ready: isReady,
+       isLocal,
+diff --git a/packages/app/src/i18n/en.ts b/packages/app/src/i18n/en.ts
+index 2f87cfb..7232897 100644
+--- a/packages/app/src/i18n/en.ts
++++ b/packages/app/src/i18n/en.ts
+@@ -382,7 +382,9 @@ export const dict = {
+   "dialog.server.menu.defaultRemove": "Remove default",
+   "dialog.server.menu.delete": "Delete",
+   "dialog.server.current": "Current Server",
++  "dialog.server.status.current": "Current",
+   "dialog.server.status.default": "Default",
++  "dialog.server.apply": "Use this server",
+   "wsl.server.add": "Add WSL server",
+   "wsl.server.addShort": "Add WSL",
+   "wsl.server.label": "WSL",
+diff --git a/packages/app/src/i18n/zh.ts b/packages/app/src/i18n/zh.ts
+index 0a06c9c..bed5adb 100644
+--- a/packages/app/src/i18n/zh.ts
++++ b/packages/app/src/i18n/zh.ts
+@@ -489,7 +489,9 @@ export const dict = {
+   "dialog.server.menu.defaultRemove": "取消默认",
+   "dialog.server.menu.delete": "删除",
+   "dialog.server.current": "当前服务器",
++  "dialog.server.status.current": "当前",
+   "dialog.server.status.default": "默认",
++  "dialog.server.apply": "应用此服务器",
+   "wsl.server.add": "添加 WSL 服务器",
+   "wsl.server.addShort": "添加 WSL",
+   "wsl.server.label": "WSL",
+diff --git a/packages/app/src/pages/home/home-controller.ts b/packages/app/src/pages/home/home-controller.ts
+index 8b67533..431d513 100644
+--- a/packages/app/src/pages/home/home-controller.ts
++++ b/packages/app/src/pages/home/home-controller.ts
+@@ -57,7 +57,11 @@ export function createHomeController() {
+     selection: {
+       value: selection,
+       set: setSelection,
+-      focusServer: (conn: ServerConnection.Any) => setSelection({ server: ServerConnection.key(conn) }),
++      focusServer: (conn: ServerConnection.Any) => {
++        const key = ServerConnection.key(conn)
++        server.setActive(key)
++        setSelection({ server: key })
++      },
+     },
+     server: {
+       list: global.servers.list,
+@@ -109,9 +113,10 @@ export function createHomeController() {
+       },
+       openNewSession: () => {
+         const conn = focusedServer()
++        if (!conn) return
+         const project = newSessionProject()
+-        if (!conn || !project) return
+-        openProjectNewSession(conn, project.worktree)
++        const directory = project?.worktree || homedir() || "."
++        openProjectNewSession(conn, directory)
+       },
+       openProjectNewSession,
+     },
+diff --git a/packages/app/src/pages/home/home-sessions-controller.tsx b/packages/app/src/pages/home/home-sessions-controller.tsx
+index f306f20..e8112de 100644
+--- a/packages/app/src/pages/home/home-sessions-controller.tsx
++++ b/packages/app/src/pages/home/home-sessions-controller.tsx
+@@ -176,7 +176,7 @@ export function createHomeSessionsController(home: HomeController) {
+     session: {
+       showProjectName: () => !home.project.selected(),
+       server: () => home.selection.value().server,
+-      canCreate: () => !!home.project.newSession(),
++      canCreate: () => !!home.server.focused(),
+       create: home.project.openNewSession,
+       open: (session: Session, options?: OpenSessionOptions) => {
+         const directoryKey = pathKey(session.directory)
