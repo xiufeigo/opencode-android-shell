@@ -1,0 +1,322 @@
+diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app/src/pages/home/android-webview-home.css
+--- a/packages/app/src/pages/home/android-webview-home.css
++++ b/packages/app/src/pages/home/android-webview-home.css
+@@ -22,9 +22,24 @@
+   }
+ }
+ 
++html[data-android-webview],
++html[data-android-webview] body {
++  height: 100%;
++  max-height: 100%;
++  overflow: hidden;
++}
++
++html[data-android-webview] #root {
++  height: 100% !important;
++  min-height: 100% !important;
++  max-height: 100% !important;
++}
++
+ html[data-android-webview] [data-slot="app-shell"] {
+   padding-top: 0 !important;
+   padding-bottom: 0 !important;
++  min-height: 0;
++  flex: 1 1 auto;
+ }
+ 
+ /* Keyboard: Activity shrinks the WebView with IME insets. Keep dialogs inside
+@@ -35,17 +50,17 @@
+ }
+ 
+ html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-container"] {
+-  max-height: calc(100dvh - 16px);
++  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
+   width: min(480px, calc(100vw - 16px));
+ }
+ 
+ html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-content"] {
+   overflow: auto;
+-  max-height: calc(100dvh - 16px);
++  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
+ }
+ 
+ html[data-android-webview] [data-component="dialog-v2"].settings-v2-server-dialog [data-slot="dialog-container"] {
+-  max-height: calc(100dvh - 16px);
++  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
+ }
+ 
+ /* Session header context ring: keep the control above siblings and tappable. */
+@@ -63,19 +78,31 @@
+   pointer-events: none;
+ }
+ 
+-/* Phone/narrow: official review/context panel is desktop-only (>=768px). */
++/* Phone/narrow: Context lives in the 会话/更改/上下文 tab strip (web right-rail). */
+ html[data-android-webview] [data-component="android-session-context"],
+ [data-component="android-session-context"] {
+-  position: fixed;
+-  inset: 0;
+-  z-index: 80;
++  position: relative;
++  inset: auto;
++  z-index: auto;
+   display: flex;
++  flex: 1 1 auto;
++  min-height: 0;
++  height: 100%;
+   flex-direction: column;
+   pointer-events: auto;
+   background: var(--v2-background-bg-base, var(--background-stronger, #080808));
+   color: var(--v2-text-text-base, inherit);
+ }
+ 
++html[data-android-webview] [data-slot="session-panel-row"] {
++  min-height: 0;
++}
++
++html[data-android-webview] #terminal-panel,
++html[data-android-webview] [data-slot="session-terminal-dock"] {
++  max-height: 60%;
++}
++
+ [data-component="android-session-context"] .android-session-context-header {
+   display: flex;
+   align-items: center;
+diff --git a/packages/app/src/pages/session/terminal-panel.tsx b/packages/app/src/pages/session/terminal-panel.tsx
+--- a/packages/app/src/pages/session/terminal-panel.tsx
++++ b/packages/app/src/pages/session/terminal-panel.tsx
+@@ -53,7 +53,11 @@
+   onMount(() => {
+     if (typeof window === "undefined") return
+ 
+-    const sync = () => setStore("view", window.visualViewport?.height ?? window.innerHeight)
++    const layoutHeight = () =>
++      typeof document !== "undefined" && document.documentElement.clientHeight > 0
++        ? document.documentElement.clientHeight
++        : window.innerHeight
++    const sync = () => setStore("view", layoutHeight())
+     const port = window.visualViewport
+ 
+     sync()
+@@ -200,6 +204,7 @@
+     <div
+       ref={root}
+       id="terminal-panel"
++      data-slot="session-terminal-dock"
+       role="region"
+       aria-label={language.t("terminal.title")}
+       aria-hidden={!opened()}
+diff --git a/packages/app/src/pages/session/terminal-panel-v2.tsx b/packages/app/src/pages/session/terminal-panel-v2.tsx
+--- a/packages/app/src/pages/session/terminal-panel-v2.tsx
++++ b/packages/app/src/pages/session/terminal-panel-v2.tsx
+@@ -56,6 +56,12 @@
+   const max = () => store.view * 0.6
+   const pane = () => Math.min(height(), max())
+   const stacked = createMemo(() => isDesktop() && props.stacked)
++  const layoutHeight = () => {
++    if (typeof document !== "undefined" && document.documentElement.clientHeight > 0) {
++      return document.documentElement.clientHeight
++    }
++    return typeof window === "undefined" ? 1000 : window.innerHeight
++  }
+   const panelHeight = createMemo(() =>
+     isDesktop() ? (stacked() ? `${pane()}px` : "100%") : opened() ? `${pane()}px` : "0px",
+   )
+@@ -65,7 +71,7 @@
+   onMount(() => {
+     if (typeof window === "undefined") return
+ 
+-    const sync = () => setStore("view", window.visualViewport?.height ?? window.innerHeight)
++    const sync = () => setStore("view", layoutHeight())
+     const port = window.visualViewport
+ 
+     sync()
+@@ -168,6 +174,7 @@
+     <aside
+       ref={root}
+       id="terminal-panel"
++      data-slot="session-terminal-dock"
+       role="region"
+       aria-label={language.t("terminal.title")}
+       aria-hidden={!opened()}
+diff --git a/packages/app/src/pages/session.tsx b/packages/app/src/pages/session.tsx
+--- a/packages/app/src/pages/session.tsx
++++ b/packages/app/src/pages/session.tsx
+@@ -113,9 +113,13 @@
+ 
+ const sessionViewState = () => ({
+   messageId: undefined as string | undefined,
+-  mobileTab: "session" as "session" | "changes",
++  mobileTab: "session" as "session" | "changes" | "context",
+ })
+ 
++function isAndroidWebView() {
++  return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
++}
++
+ function isCurrentSessionNotFoundError(error: unknown, sessionID: string | undefined) {
+   if (!sessionID) return false
+   return isSessionNotFoundError(error, sessionID) || isLocalSessionNotFoundError(error, sessionID)
+@@ -666,6 +670,7 @@
+     return list
+   })
+   const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
++  const mobileContext = createMemo(() => !isDesktop() && store.mobileTab === "context")
+   const wantsReview = createMemo(() =>
+     isDesktop()
+       ? desktopFileTreeOpen() ||
+@@ -2024,8 +2029,10 @@
+       >
+         <Tabs.Trigger
+           value="session"
++          data-action="session-mobile-tab-session"
+           classList={{
+-            "!w-1/2 !max-w-none": true,
++            "!w-1/3 !max-w-none": isAndroidWebView(),
++            "!w-1/2 !max-w-none": !isAndroidWebView(),
+             "!border-b-0 !border-t !border-border-weak-base [&:has([data-selected])]:!border-t-transparent": bottom,
+           }}
+           classes={{ button: compact ? "w-full !py-2" : "w-full" }}
+@@ -2035,8 +2042,10 @@
+         </Tabs.Trigger>
+         <Tabs.Trigger
+           value="changes"
++          data-action="session-mobile-tab-changes"
+           classList={{
+-            "!w-1/2 !max-w-none !border-r-0": true,
++            "!w-1/3 !max-w-none": isAndroidWebView(),
++            "!w-1/2 !max-w-none !border-r-0": !isAndroidWebView(),
+             "!border-b-0 !border-t !border-border-weak-base [&:has([data-selected])]:!border-t-transparent": bottom,
+           }}
+           classes={{ button: compact ? "w-full !py-2" : "w-full" }}
+@@ -2046,6 +2055,26 @@
+             ? language.t("session.review.filesChanged", { count: reviewCount() })
+             : language.t("session.review.change.other")}
+         </Tabs.Trigger>
++        <Show when={isAndroidWebView()}>
++          <Tabs.Trigger
++            value="context"
++            data-action="session-mobile-tab-context"
++            classList={{
++              "!w-1/3 !max-w-none !border-r-0": true,
++              "!border-b-0 !border-t !border-border-weak-base [&:has([data-selected])]:!border-t-transparent": bottom,
++            }}
++            classes={{ button: compact ? "w-full !py-2" : "w-full" }}
++            onClick={() => {
++              setStore("mobileTab", "context")
++              const sessionView = view()
++              sessionView.reviewPanel.open(sessionView.reviewPanel.opened() ? "other" : "context-button")
++              void tabs().open("context")
++              tabs().setActive("context")
++            }}
++          >
++            {language.t("session.tab.context")}
++          </Tabs.Trigger>
++        </Show>
+       </Tabs.List>
+     </Tabs>
+   )
+@@ -2066,6 +2095,15 @@
+       </Show>
+       <div class="flex-1 min-h-0 overflow-hidden">
+         <Switch>
++          <Match when={params.id && mobileContext()}>
++            <div
++              data-component="android-session-context"
++              data-slot="session-mobile-context"
++              class="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden"
++            >
++              <SessionContextTab />
++            </div>
++          </Match>
+           <Match when={params.id && mobileChanges()}>
+             <div class="relative h-full overflow-hidden">
+               {reviewContent({
+@@ -2128,7 +2166,7 @@
+         </Switch>
+       </div>
+ 
+-      <Show when={(params.id || !newSessionDesign()) && !mobileChanges()}>
++      <Show when={(params.id || !newSessionDesign()) && !mobileChanges() && !mobileContext()}>
+         {(_) => {
+           const controller = createSessionComposerRegionController({
+             state: composer,
+@@ -2256,6 +2294,7 @@
+ 
+   const closeMobileContext = () => {
+     tabs().close("context")
++    setStore("mobileTab", "session")
+     const sessionView = view()
+     const hasOther = tabs()
+       .all()
+@@ -2263,8 +2302,20 @@
+     if (sessionView.reviewPanel.source() === "context-button" && !hasOther) sessionView.reviewPanel.close()
+   }
+ 
++  createEffect(
++    on(
++      () => [tabs().active(), view().reviewPanel.opened()] as const,
++      ([active, opened], prev) => {
++        if (isDesktop() || !params.id) return
++        if (active === "context" && opened && (!prev || prev[0] !== "context")) {
++          setStore("mobileTab", "context")
++        }
++      },
++    ),
++  )
++
+   createEffect(() => {
+-    if (!mobileContextOpen()) return
++    if (!mobileContext() && !mobileContextOpen()) return
+     const onKeyDown = (event: KeyboardEvent) => {
+       if (event.key !== "Escape") return
+       event.preventDefault()
+@@ -2277,44 +2328,20 @@
+   return (
+     <SessionRouteFrame>
+       <SessionHeader />
+-      <Show when={mobileContextOpen()}>
+-        <div
+-          data-component="android-session-context"
+-          data-slot="session-context-panel"
+-          role="dialog"
+-          aria-modal="true"
+-          aria-label={language.t("session.tab.context")}
+-          class="android-session-context-overlay"
+-        >
+-          <div class="android-session-context-header">
+-            <button
+-              type="button"
+-              data-action="session-context-close"
+-              data-slot="dialog-close-button"
+-              aria-label={language.t("common.closeTab")}
+-              onClick={closeMobileContext}
+-            >
+-              <span aria-hidden="true">×</span>
+-            </button>
+-            <div class="android-session-context-title">{language.t("session.tab.context")}</div>
+-          </div>
+-          <div class="android-session-context-body">
+-            <SessionContextTab />
+-          </div>
+-        </div>
+-      </Show>
+       <div
+         ref={panelRow}
+         class="flex-1 min-h-0 flex flex-col md:flex-row"
+         classList={{
+           "gap-2 p-2": settings.general.newLayoutDesigns(),
+         }}
++        data-slot="session-panel-row"
+       >
+         <Show when={!isDesktop() && !!params.id && !settings.general.newLayoutDesigns()}>{mobileTabs()}</Show>
+ 
+         <div
+           classList={{
+-            "@container relative shrink-0 flex flex-col min-h-0 h-full flex-1 md:flex-none transition-[width]": true,
++            "@container relative flex flex-col min-h-0 flex-1 md:flex-none transition-[width]": true,
++            "h-full shrink-0": isDesktop() || !terminalOpen(),
+             "duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
+               !size.active() && !ui.reviewSnap && !desktopInlineTerminalOnlyOpen(),
+           }}

@@ -1,0 +1,312 @@
+diff --git a/packages/app/src/components/dialog-select-server.tsx b/packages/app/src/components/dialog-select-server.tsx
+index 102c1a7..1a87ac1 100644
+--- a/packages/app/src/components/dialog-select-server.tsx
++++ b/packages/app/src/components/dialog-select-server.tsx
+@@ -17,7 +17,7 @@ import { useLanguage } from "@/context/language"
+ import { usePlatform } from "@/context/platform"
+ import { normalizeServerUrl, ServerConnection, useServer } from "@/context/server"
+ import { detectServerProtocol } from "@/utils/server-protocol"
+-import { type ServerHealth, useCheckServerHealth } from "@/utils/server-health"
++import { type ServerHealth, explainConnectFailure, useCheckServerHealth } from "@/utils/server-health"
+ import { useSettings } from "@/context/settings"
+ import { useTabs } from "@/context/tabs"
+ 
+@@ -200,6 +200,12 @@ export function useServerManagementController(options: { onSelect?: () => void;
+   const { defaultKey, canDefault, setDefault } = useDefaultServer()
+   const { previewStatus } = useServerPreview()
+   const checkServerHealth = useCheckServerHealth()
++  const connectErrorMessage = async (http: ServerConnection.HttpBase) => {
++    const reason = await explainConnectFailure(http, platform.fetch ?? globalThis.fetch)
++    if (reason === "cors") return language.t("dialog.server.add.errorCors")
++    if (reason === "auth") return language.t("dialog.server.add.errorAuth")
++    return language.t("dialog.server.add.error")
++  }
+   const [store, setStore] = createStore({
+     addServer: {
+       url: "",
+@@ -261,7 +267,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
+       if (store.addServer.password && store.addServer.username) conn.http.username = store.addServer.username
+       const result = await checkServerHealth(conn.http)
+       if (!result.healthy) {
+-        setStore("addServer", { error: language.t("dialog.server.add.error") })
++        setStore("addServer", { error: await connectErrorMessage(conn.http) })
+         return
+       }
+       if (
+@@ -312,7 +318,7 @@ export function useServerManagementController(options: { onSelect?: () => void;
+       }
+       const result = await checkServerHealth(conn.http)
+       if (!result.healthy) {
+-        setStore("editServer", { error: language.t("dialog.server.add.error") })
++        setStore("editServer", { error: await connectErrorMessage(conn.http) })
+         return
+       }
+       if (
+diff --git a/packages/app/src/components/settings-v2/dialog-server-v2.tsx b/packages/app/src/components/settings-v2/dialog-server-v2.tsx
+index 7113cdc..0760587 100644
+--- a/packages/app/src/components/settings-v2/dialog-server-v2.tsx
++++ b/packages/app/src/components/settings-v2/dialog-server-v2.tsx
+@@ -77,6 +77,9 @@ export const DialogServerV2: Component<{
+             <Show when={controller.formError()}>
+               <span class="settings-v2-server-dialog-error">{controller.formError()}</span>
+             </Show>
++            <Show when={typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")}>
++              <p class="settings-v2-server-dialog-hint">{language.t("dialog.server.add.corsHint")}</p>
++            </Show>
+           </div>
+           <div class="flex w-full min-w-0 flex-col gap-2">
+             <label class="settings-v2-server-dialog-label">{language.t("dialog.server.add.name")}</label>
+diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
+index 3968bf8..6b66352 100644
+--- a/packages/app/src/components/settings-v2/settings-v2.css
++++ b/packages/app/src/components/settings-v2/settings-v2.css
+@@ -899,6 +899,16 @@
+ .settings-v2-server-dialog-error {
+   font-size: 11px;
+   font-weight: 440;
+-  line-height: 1;
++  line-height: 1.35;
+   color: var(--v2-state-fg-danger);
++  white-space: pre-wrap;
++}
++
++.settings-v2-server-dialog-hint {
++  margin: 0;
++  font-size: 11px;
++  font-weight: 440;
++  line-height: 1.35;
++  color: var(--v2-text-text-muted);
++  white-space: pre-wrap;
+ }
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+index 3b1ab5c..56d89dc 100644
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -168,6 +168,16 @@ const clearAuthToken = () => {
+   history.replaceState(null, "", location.pathname + (params.size ? `?${params}` : "") + location.hash)
+ }
+ 
++const androidFetch: typeof fetch = async (input, init) => {
++  try {
++    return await fetch(input, init)
++  } catch (error) {
++    const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input)
++    console.warn("[OpenCode Android] fetch failed", url, error)
++    throw error
++  }
++}
++
+ const platform: Platform = {
+   platform: "web",
+   draftStore: createBrowserDraftStore(),
+@@ -175,6 +185,7 @@ const platform: Platform = {
+   openExternal,
+   restart,
+   notify,
++  fetch: isAndroidAssetOrigin() ? androidFetch : undefined,
+   getDefaultServer: async () => {
+     const stored = readDefaultServerUrl()
+     if (!stored || isAssetHostUrl(stored)) return null
+diff --git a/packages/app/src/i18n/en.ts b/packages/app/src/i18n/en.ts
+index 62d4dc1..76c7e1d 100644
+--- a/packages/app/src/i18n/en.ts
++++ b/packages/app/src/i18n/en.ts
+@@ -355,6 +355,11 @@ export const dict = {
+   "dialog.server.add.url": "Server address",
+   "dialog.server.add.placeholder": "http://localhost:4096",
+   "dialog.server.add.error": "Could not connect to server",
++  "dialog.server.add.errorCors":
++    "Could not connect (CORS). This Android shell origin is https://appassets.androidplatform.net — the server MUST allow it: opencode serve --cors https://appassets.androidplatform.net",
++  "dialog.server.add.errorAuth": "Server requires authentication. Enter username and password.",
++  "dialog.server.add.corsHint":
++    "Android WebView origin is https://appassets.androidplatform.net. You MUST allow that CORS origin: opencode serve --cors https://appassets.androidplatform.net (or opencode.json server.cors). Reverse proxies must forward Access-Control-Allow-Origin.",
+   "dialog.server.add.checking": "Checking...",
+   "dialog.server.add.button": "Add server",
+   "dialog.server.add.name": "Server name (optional)",
+diff --git a/packages/app/src/i18n/zh.ts b/packages/app/src/i18n/zh.ts
+index b0ba045..1815e53 100644
+--- a/packages/app/src/i18n/zh.ts
++++ b/packages/app/src/i18n/zh.ts
+@@ -466,6 +466,11 @@ export const dict = {
+   "dialog.server.add.url": "服务器 URL",
+   "dialog.server.add.placeholder": "http://localhost:4096",
+   "dialog.server.add.error": "无法连接到服务器",
++  "dialog.server.add.errorCors":
++    "无法连接（CORS）。本 Android 壳的 origin 是 https://appassets.androidplatform.net，服务器必须允许：opencode serve --cors https://appassets.androidplatform.net",
++  "dialog.server.add.errorAuth": "服务器需要认证，请填写用户名和密码。",
++  "dialog.server.add.corsHint":
++    "Android WebView 的 origin 是 https://appassets.androidplatform.net。服务器必须允许该 CORS origin：opencode serve --cors https://appassets.androidplatform.net（或在 opencode.json 的 server.cors 中加入）。反向代理需转发 Access-Control-Allow-Origin。",
+   "dialog.server.add.checking": "检查中...",
+   "dialog.server.add.button": "添加服务器",
+   "dialog.server.add.name": "服务器名称（可选）",
+diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app/src/pages/home/android-webview-home.css
+index 7e8d889..562d4e4 100644
+--- a/packages/app/src/pages/home/android-webview-home.css
++++ b/packages/app/src/pages/home/android-webview-home.css
+@@ -26,3 +26,24 @@ html[data-android-webview] [data-slot="app-shell"] {
+   padding-top: 0 !important;
+   padding-bottom: 0 !important;
+ }
++
++/* Keyboard: Activity shrinks the WebView with IME insets. Keep dialogs inside
++   that remaining viewport so 「添加服务器」 username/password stay reachable. */
++html[data-android-webview] [data-component="dialog-v2"] {
++  align-items: flex-end;
++  padding: 8px;
++}
++
++html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-container"] {
++  max-height: calc(100dvh - 16px);
++  width: min(480px, calc(100vw - 16px));
++}
++
++html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-content"] {
++  overflow: auto;
++  max-height: calc(100dvh - 16px);
++}
++
++html[data-android-webview] [data-component="dialog-v2"].settings-v2-server-dialog [data-slot="dialog-container"] {
++  max-height: calc(100dvh - 16px);
++}
+diff --git a/packages/app/src/utils/server-health.test.ts b/packages/app/src/utils/server-health.test.ts
+index 69a8c7b..340f319 100644
+--- a/packages/app/src/utils/server-health.test.ts
++++ b/packages/app/src/utils/server-health.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, test } from "bun:test"
+ import type { ServerConnection } from "@/context/server"
+-import { checkServerHealth } from "./server-health"
++import { checkServerHealth, explainConnectFailure } from "./server-health"
+ 
+ const server: ServerConnection.HttpBase = {
+   url: "http://localhost:4096",
+@@ -175,4 +175,52 @@ describe("checkServerHealth", () => {
+     expect(count).toBe(6)
+     expect(result).toEqual({ healthy: false })
+   })
++
++  test("does not probe the offline Android stub at 127.0.0.1:0", async () => {
++    let called = 0
++    const fetch = (async () => {
++      called += 1
++      throw new Error("should not fetch stub")
++    }) as unknown as typeof globalThis.fetch
++
++    const result = await checkServerHealth({ url: "http://127.0.0.1:0" }, fetch)
++    expect(result).toEqual({ healthy: false })
++    expect(called).toBe(0)
++  })
++
++  test("does not treat a real HTTPS backend as the offline stub", async () => {
++    let path = ""
++    const fetch = (async (input: RequestInfo | URL) => {
++      const url = input instanceof URL ? input : new URL(input instanceof Request ? input.url : input)
++      path = url.pathname
++      return new Response(JSON.stringify({ healthy: true, version: "1.18.31" }), {
++        status: 200,
++        headers: { "content-type": "application/json" },
++      })
++    }) as unknown as typeof globalThis.fetch
++
++    const result = await checkServerHealth({ url: "https://backend.opencode.xiufeigo.xyz" }, fetch)
++    expect(result).toEqual({ healthy: true, version: "1.18.31" })
++    expect(path).toBe("/api/health")
++  })
++})
++
++describe("explainConnectFailure", () => {
++  test("classifies HTTP 401 as auth", async () => {
++    const fetch = (async () =>
++      new Response(JSON.stringify({ message: "Authentication required" }), {
++        status: 401,
++        headers: { "content-type": "application/json", "www-authenticate": 'Basic realm="Secure Area"' },
++      })) as unknown as typeof globalThis.fetch
++
++    expect(await explainConnectFailure(server, fetch)).toBe("auth")
++  })
++
++  test("classifies TypeError as network off the Android asset origin", async () => {
++    const fetch = (async () => {
++      throw new TypeError("Failed to fetch")
++    }) as unknown as typeof globalThis.fetch
++
++    expect(await explainConnectFailure(server, fetch)).toBe("network")
++  })
+ })
+diff --git a/packages/app/src/utils/server-health.ts b/packages/app/src/utils/server-health.ts
+index 759db56..0ccc479 100644
+--- a/packages/app/src/utils/server-health.ts
++++ b/packages/app/src/utils/server-health.ts
+@@ -7,6 +7,64 @@ import { createStore, reconcile } from "solid-js/store"
+ 
+ export type ServerHealth = { healthy: boolean; version?: string }
+ 
++/** Why add-server / health failed after `{ healthy: false }`. */
++export type ConnectFailureReason = "auth" | "cors" | "network"
++
++const ANDROID_ASSET_HOST = "appassets.androidplatform.net"
++
++function isAndroidAssetOrigin() {
++  try {
++    return typeof location === "object" && location.hostname === ANDROID_ASSET_HOST
++  } catch {
++    return false
++  }
++}
++
++function healthUrl(server: ServerConnection.HttpBase, path: "/api/health" | "/global/health") {
++  return `${server.url.replace(/\/+$/, "")}${path}`
++}
++
++function authHeaders(server: ServerConnection.HttpBase): Record<string, string> {
++  if (!server.password) return { Accept: "application/json" }
++  return {
++    Accept: "application/json",
++    Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
++  }
++}
++
++function looksLikeFetchTypeError(error: unknown) {
++  if (error instanceof TypeError) return true
++  const message = error instanceof Error ? error.message : String(error)
++  return /failed to fetch|load failed|networkerror|cors/i.test(message)
++}
++
++/**
++ * Classify a failed health check so the Android add-server dialog can show CORS vs auth vs network.
++ * Official clients on Desktop/web are same-origin or allowlisted (`oc://renderer`); the WebView origin
++ * `https://appassets.androidplatform.net` is not, so CORS TypeError is the usual Android false "offline".
++ */
++export async function explainConnectFailure(
++  server: ServerConnection.HttpBase,
++  fetchFn: typeof globalThis.fetch,
++): Promise<ConnectFailureReason> {
++  const url = healthUrl(server, "/api/health")
++  try {
++    const response = await fetchFn(url, { method: "GET", headers: authHeaders(server) })
++    if (response.status === 401 || response.status === 403) return "auth"
++    return "network"
++  } catch (error) {
++    if (!looksLikeFetchTypeError(error) || !isAndroidAssetOrigin()) return "network"
++    try {
++      // Opaque success means TCP/TLS reached the host; a CORS TypeError on the credentialed
++      // request is then almost certainly a missing Access-Control-Allow-Origin for this origin.
++      await fetchFn(url, { method: "GET", mode: "no-cors" })
++      return "cors"
++    } catch {
++      return "network"
++    }
++  }
++}
++
+ interface CheckServerHealthOptions {
+   timeoutMs?: number
+   signal?: AbortSignal
+@@ -78,6 +136,7 @@ export async function checkServerHealth(
+     const url = new URL(server.url)
+     const host = url.hostname.replace(/^\[|\]$/g, "")
+     if ((host === "127.0.0.1" || host === "localhost" || host === "::1") && url.port === "0") {
++      // Offline SDK stub must never be treated as a real backend health probe.
+       return { healthy: false }
+     }
+   } catch {}

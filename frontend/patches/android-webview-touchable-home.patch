@@ -1,0 +1,187 @@
+diff --git a/packages/app/src/app.tsx b/packages/app/src/app.tsx
+index 0c95087..b848e85 100644
+--- a/packages/app/src/app.tsx
++++ b/packages/app/src/app.tsx
+@@ -548,7 +548,7 @@ function ConnectionError(props: { onRetry?: () => void; onServerSelected?: (key:
+ function ServerKey(props: ParentProps) {
+   const server = useServer()
+   return (
+-    <Show when={server.key} keyed>
++    <Show when={server.key || "offline"} keyed>
+       {props.children}
+     </Show>
+   )
+diff --git a/packages/app/src/components/titlebar.tsx b/packages/app/src/components/titlebar.tsx
+index 15d963a..7793166 100644
+--- a/packages/app/src/components/titlebar.tsx
++++ b/packages/app/src/components/titlebar.tsx
+@@ -646,6 +646,7 @@ function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState }) {
+ }
+ 
+ function ChannelIndicator(props: { debugTools?: { visible: boolean; toggle: () => void } }) {
++  if (typeof location !== "undefined" && location.hostname === "appassets.androidplatform.net") return null
+   const channel = import.meta.env.VITE_OPENCODE_CHANNEL
+   if (channel === "dev" && props.debugTools) {
+     return (
+diff --git a/packages/app/src/pages/home/home-projects-view.tsx b/packages/app/src/pages/home/home-projects-view.tsx
+index eebb0d5..4a5d28d 100644
+--- a/packages/app/src/pages/home/home-projects-view.tsx
++++ b/packages/app/src/pages/home/home-projects-view.tsx
+@@ -99,49 +99,54 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
+       </div>
+       <ScrollView data-slot="home-projects-scroll" class="min-h-0 min-w-0 shrink">
+         <Show
+-          when={props.servers().length > 1}
+-          fallback={
+-            <div class="pr-3">
+-              <Show
+-                when={props.projects().length > 0}
+-                fallback={<HomeProjectEmpty {...props} server={props.servers()[0]} items={props.recentlyClosed()} />}
+-              >
+-                <HomeProjectList
+-                  {...props}
+-                  {...contextMenuProps}
+-                  server={props.servers()[0]}
+-                  items={props.projects()}
+-                />
+-              </Show>
+-            </div>
+-          }
++          when={props.servers().length > 0}
++          fallback={<HomeNoServerEmpty language={props.language} onOpenSettings={props.onOpenSettings} />}
+         >
+-          <div class="flex min-w-0 flex-col gap-4 pr-3">
+-            <For each={props.servers()}>
+-              {(item) => {
+-                const projects = () => props.projectsForServer(item)
+-                const healthy = () => !!props.serverHealth(item)?.healthy
+-                const hasProjects = () => projects().length > 0
+-                const collapsed = () => props.collapsed(item)
+-                return (
+-                  <div class="flex min-w-0 flex-col gap-1">
+-                    <HomeServerRow
+-                      server={item}
+-                      {...props}
+-                      {...contextMenuProps}
+-                      selected={props.selection().server === ServerConnection.key(item) && !props.selection().directory}
+-                      collapsed={collapsed()}
+-                      health={props.serverHealth(item)}
+-                    />
+-                    <Show when={healthy() && hasProjects() && !collapsed()}>
+-                      <div class="mx-3 h-px bg-v2-border-border-base" />
+-                      <HomeProjectList {...props} {...contextMenuProps} server={item} items={projects()} />
+-                    </Show>
+-                  </div>
+-                )
+-              }}
+-            </For>
+-          </div>
++          <Show
++            when={props.servers().length > 1}
++            fallback={
++              <div class="pr-3">
++                <Show
++                  when={props.projects().length > 0}
++                  fallback={<HomeProjectEmpty {...props} server={props.servers()[0]} items={props.recentlyClosed()} />}
++                >
++                  <HomeProjectList
++                    {...props}
++                    {...contextMenuProps}
++                    server={props.servers()[0]}
++                    items={props.projects()}
++                  />
++                </Show>
++              </div>
++            }
++          >
++            <div class="flex min-w-0 flex-col gap-4 pr-3">
++              <For each={props.servers()}>
++                {(item) => {
++                  const projects = () => props.projectsForServer(item)
++                  const healthy = () => !!props.serverHealth(item)?.healthy
++                  const hasProjects = () => projects().length > 0
++                  const collapsed = () => props.collapsed(item)
++                  return (
++                    <div class="flex min-w-0 flex-col gap-1">
++                      <HomeServerRow
++                        server={item}
++                        {...props}
++                        {...contextMenuProps}
++                        selected={props.selection().server === ServerConnection.key(item) && !props.selection().directory}
++                        collapsed={collapsed()}
++                        health={props.serverHealth(item)}
++                      />
++                      <Show when={healthy() && hasProjects() && !collapsed()}>
++                        <div class="mx-3 h-px bg-v2-border-border-base" />
++                        <HomeProjectList {...props} {...contextMenuProps} server={item} items={projects()} />
++                      </Show>
++                    </div>
++                  )
++                }}
++              </For>
++            </div>
++          </Show>
+         </Show>
+       </ScrollView>
+       <HomeUtilityNav
+@@ -164,6 +169,7 @@ export function HomeUtilityNav(props: {
+     <div class={`${props.class ?? ""} min-w-0 flex-col gap-1 pr-3`}>
+       <HomeProjectNavButton
+         type="button"
++        data-action="home-open-settings"
+         class="text-v2-text-text-faint [&>[data-slot=icon-svg]]:text-v2-icon-icon-muted"
+         onClick={props.onOpenSettings}
+       >
+@@ -383,6 +389,26 @@ function HomeProjectSlot(
+   )
+ }
+ 
++function HomeNoServerEmpty(props: {
++  language: HomeProjectsViewProps["language"]
++  onOpenSettings: () => void
++}) {
++  return (
++    <div class="pr-3 flex min-w-0 flex-col gap-2">
++      <p class="px-1.5 text-v2-text-text-faint">{props.language.t("home.empty.description")}</p>
++      <HomeProjectNavButton
++        type="button"
++        data-action="home-open-settings"
++        class="[&>[data-slot=icon-svg]]:text-v2-icon-icon-muted"
++        onClick={props.onOpenSettings}
++      >
++        <IconV2 name="settings-gear" size="small" />
++        <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("sidebar.settings")}</span>
++      </HomeProjectNavButton>
++    </div>
++  )
++}
++
+ function HomeProjectEmpty(
+   props: HomeProjectsViewProps & {
+     server: ServerConnection.Any
+diff --git a/packages/ui/src/v2/components/tooltip-v2.tsx b/packages/ui/src/v2/components/tooltip-v2.tsx
+index 911307b..8917aff 100644
+--- a/packages/ui/src/v2/components/tooltip-v2.tsx
++++ b/packages/ui/src/v2/components/tooltip-v2.tsx
+@@ -13,6 +13,12 @@ export interface TooltipV2Props extends ComponentProps<typeof KobalteTooltip> {
+   forceOpen?: boolean
+ }
+ 
++function shouldSkipTooltip() {
++  if (typeof window === "undefined") return false
++  if (window.location?.hostname === "appassets.androidplatform.net") return true
++  return window.matchMedia?.("(pointer: coarse)")?.matches === true
++}
++
+ export function TooltipV2(props: TooltipV2Props) {
+   let ref: HTMLDivElement | undefined
+   const [state, setState] = createStore({
+@@ -84,7 +90,7 @@ export function TooltipV2(props: TooltipV2Props) {
+ 
+   return (
+     <Switch>
+-      <Match when={local.inactive}>{local.children}</Match>
++      <Match when={local.inactive || shouldSkipTooltip()}>{local.children}</Match>
+       <Match when={true}>
+         <KobalteTooltip
+           gutter={4}

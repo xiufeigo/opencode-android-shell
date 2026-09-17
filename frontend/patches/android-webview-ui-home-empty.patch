@@ -1,0 +1,109 @@
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+index 64cfce3..b8c1d01 100644
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -18,6 +18,10 @@ const ANDROID_ASSET_HOST = "appassets.androidplatform.net"
+ 
+ const isAndroidAssetOrigin = () => location.hostname === ANDROID_ASSET_HOST
+ 
++if (typeof document !== "undefined" && isAndroidAssetOrigin()) {
++  document.documentElement.dataset.androidWebview = ""
++}
++
+ /** Same idea as Desktop's MemoryRouter: the document URL is the asset file, not the app route. */
+ function AndroidMemoryRouter(props: BaseRouterProps) {
+   const history = createMemoryHistory()
+diff --git a/packages/app/src/pages/home.tsx b/packages/app/src/pages/home.tsx
+index 4fadb8a..c9e1f02 100644
+--- a/packages/app/src/pages/home.tsx
++++ b/packages/app/src/pages/home.tsx
+@@ -30,6 +30,7 @@ export function NewHome() {
+         onWheel={scroll.viewport.containOuterWheel}
+       >
+         <div
++          data-slot="home-grid"
+           class={`
+             mx-auto grid min-h-full w-full max-w-[1080px] grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-3
+             lg:grid-cols-[280px_minmax(0,720px)] lg:grid-rows-1 lg:gap-8 lg:px-6
+diff --git a/packages/app/src/index.css b/packages/app/src/index.css
+index 78a9e10..d687457 100644
+--- a/packages/app/src/index.css
++++ b/packages/app/src/index.css
+@@ -2,6 +2,7 @@
+ @import "@opencode-ai/session-ui/styles";
+ @import "@opencode-ai/ui/v2/styles/tailwind.css";
+ @import "tw-animate-css";
++@import "./pages/home/android-webview-home.css";
+ 
+ @font-face {
+   font-family: "JetBrainsMono Nerd Font Mono";
+diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app/src/pages/home/android-webview-home.css
+new file mode 100644
+index 0000000..7e8d889
+--- /dev/null
++++ b/packages/app/src/pages/home/android-webview-home.css
+@@ -0,0 +1,28 @@
++/* Android / narrow stacked home.
++ *
++ * Official sessions body is min-h: calc(100cqh - 72px) so the list column
++ * fills the desktop card. In a stacked portrait grid that min-height sits
++ * *under* the projects row and *above* HomeUtilityNav, so empty home is
++ * always taller than the card (blank scroll to 设置/帮助).
++ *
++ * Native Activity already pads status/nav bars; CSS env(safe-area-inset-*)
++ * on the app shell would double-count inside the WebView. */
++@media (max-width: 839px) {
++  [data-slot="home-sessions-body"] {
++    min-height: 0;
++    flex: 1 1 auto;
++  }
++
++  [data-slot="home-session-scroll-track-wrap"] {
++    overflow: hidden;
++  }
++
++  [data-component="home-session-scroll-track"] {
++    height: 0;
++  }
++}
++
++html[data-android-webview] [data-slot="app-shell"] {
++  padding-top: 0 !important;
++  padding-bottom: 0 !important;
++}
+diff --git a/packages/app/src/pages/home/home-sessions-view.tsx b/packages/app/src/pages/home/home-sessions-view.tsx
+index 72f2f37..bbbb64f 100644
+--- a/packages/app/src/pages/home/home-sessions-view.tsx
++++ b/packages/app/src/pages/home/home-sessions-view.tsx
+@@ -97,14 +97,17 @@ export function HomeSessionsView(props: HomeSessionsViewProps) {
+           </Show>
+         </Suspense>
+       </div>
+-      <div class="pointer-events-none sticky top-[84px] z-40 h-0 -mr-3 lg:top-[108px]">
++      <div
++        data-slot="home-session-scroll-track-wrap"
++        class="pointer-events-none sticky top-[84px] z-40 h-0 -mr-3 lg:top-[108px]"
++      >
+         <div
+           ref={props.onSetThumbTrack}
+           data-component="home-session-scroll-track"
+           class="relative ml-auto h-[calc(100cqh-84px)] w-3 lg:h-[calc(100cqh-108px)]"
+         />
+       </div>
+-      <div class="-mr-3 min-h-[calc(100cqh-72px)] lg:min-h-[calc(100cqh-96px)]">
++      <div data-slot="home-sessions-body" class="-mr-3 min-h-[calc(100cqh-72px)] lg:min-h-[calc(100cqh-96px)]">
+         <Suspense
+           fallback={
+             <div class="pt-3">
+diff --git a/packages/app/src/pages/layout-new.tsx b/packages/app/src/pages/layout-new.tsx
+index 6d76ca8..94afd10 100644
+--- a/packages/app/src/pages/layout-new.tsx
++++ b/packages/app/src/pages/layout-new.tsx
+@@ -24,6 +24,7 @@ export default function NewLayout(props: ParentProps) {
+ 
+   return (
+     <div
++      data-slot="app-shell"
+       class="relative bg-v2-background-bg-deep flex-1 min-h-0 min-w-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text"
+       style={{
+         "padding-top": "env(safe-area-inset-top, 0px)",

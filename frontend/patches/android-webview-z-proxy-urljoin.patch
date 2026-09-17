@@ -1,0 +1,275 @@
+diff --git a/packages/app/src/utils/android-proxy.test.ts b/packages/app/src/utils/android-proxy.test.ts
+index ef8ec4e..d809810 100644
+--- a/packages/app/src/utils/android-proxy.test.ts
++++ b/packages/app/src/utils/android-proxy.test.ts
+@@ -1,5 +1,5 @@
+ import { afterEach, describe, expect, test } from "bun:test"
+-import { androidProxyBaseUrl, isDisconnectedStubUrl } from "./android-proxy"
++import { androidProxyBaseUrl, isDisconnectedStubUrl, keepProxyPrefix, proxyAwareFetch } from "./android-proxy"
+ 
+ describe("androidProxyBaseUrl", () => {
+   afterEach(() => {
+@@ -32,4 +32,54 @@ describe("androidProxyBaseUrl", () => {
+       `http://127.0.0.1:9/opencode-proxy/tok/${encodeURIComponent(real)}`,
+     )
+   })
++
++  test("prefers a dedicated origin-only base from proxyBaseUrl", () => {
++    window.OpenCodeAndroid = {
++      proxyOrigin: () => "http://127.0.0.1:9",
++      proxyPrefix: () => "/opencode-proxy/tok/",
++      proxyBaseUrl: (real) => {
++        expect(real).toBe("https://backend.opencode.xiufeigo.xyz")
++        return "http://127.0.0.1:38471"
++      },
++    }
++    expect(androidProxyBaseUrl("https://backend.opencode.xiufeigo.xyz")).toBe("http://127.0.0.1:38471")
++  })
++})
++
++describe("keepProxyPrefix", () => {
++  const base = `http://127.0.0.1:9/opencode-proxy/tok/${encodeURIComponent("https://backend.opencode.xiufeigo.xyz")}`
++
++  test("restores the prefix dropped by WHATWG new URL(absolutePath, base)", () => {
++    const dropped = new URL("/api/provider", base)
++    expect(dropped.pathname).toBe("/api/provider")
++    expect(keepProxyPrefix(dropped, base)).toBe(`${base}/api/provider`)
++    expect(keepProxyPrefix(new URL("/api/model", base), base)).toBe(`${base}/api/model`)
++    expect(keepProxyPrefix(new URL("/global/config", base), base)).toBe(`${base}/global/config`)
++    expect(keepProxyPrefix(new URL("/event", base), base)).toBe(`${base}/event`)
++    expect(keepProxyPrefix(new URL("/api/session", base), base)).toBe(`${base}/api/session`)
++  })
++
++  test("leaves origin-only bases and already-prefixed URLs alone", () => {
++    expect(keepProxyPrefix("http://127.0.0.1:38471/api/provider", "http://127.0.0.1:38471")).toBe(
++      "http://127.0.0.1:38471/api/provider",
++    )
++    expect(keepProxyPrefix(`${base}/api/provider`, base)).toBe(`${base}/api/provider`)
++    expect(keepProxyPrefix("https://backend.opencode.xiufeigo.xyz/api/health", base)).toBe(
++      "https://backend.opencode.xiufeigo.xyz/api/health",
++    )
++  })
++
++  test("proxyAwareFetch rewrites dropped prefixes before calling through", async () => {
++    const seen: string[] = []
++    const inner = Object.assign(
++      async (input: RequestInfo | URL) => {
++        seen.push(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url)
++        return new Response("{}", { status: 200 })
++      },
++      { preconnect: globalThis.fetch.preconnect },
++    )
++    const fetch = proxyAwareFetch(base, inner as typeof globalThis.fetch)
++    await fetch(new URL("/api/provider", base))
++    expect(seen[0]).toBe(`${base}/api/provider`)
++  })
+ })
+diff --git a/packages/app/src/utils/android-proxy.ts b/packages/app/src/utils/android-proxy.ts
+index 5c50261..7182eed 100644
+--- a/packages/app/src/utils/android-proxy.ts
++++ b/packages/app/src/utils/android-proxy.ts
+@@ -26,11 +26,72 @@ export function isDisconnectedStubUrl(url: string) {
+   }
+ }
+ 
+-/** Rewrite a real backend base URL onto the native proxy so fetch is not subject to remote CORS. */
++function requestUrl(input: RequestInfo | URL): string {
++  if (typeof input === "string") return input
++  if (input instanceof URL) return input.toString()
++  if (typeof Request !== "undefined" && input instanceof Request) return input.url
++  return String(input)
++}
++
++/**
++ * Official v1 `OpenCode.make` does `new URL('/api/...', baseUrl)`. An absolute
++ * path replaces a path-encoded proxy prefix (`/opencode-proxy/<token>/<enc>/...`).
++ * Restore that prefix when the request stayed on the proxy origin.
++ */
++export function keepProxyPrefix(request: string | URL, proxyBase: string): string {
++  let target: URL
++  try {
++    target = typeof request === "string" ? new URL(request, proxyBase) : new URL(request.toString())
++  } catch {
++    return String(request)
++  }
++  let base: URL
++  try {
++    base = new URL(proxyBase.endsWith("/") ? proxyBase : `${proxyBase}/`)
++  } catch {
++    return target.toString()
++  }
++  if (target.origin !== base.origin) return target.toString()
++  const prefix = base.pathname.replace(/\/+$/, "")
++  if (!prefix || prefix === "/") return target.toString()
++  if (target.pathname === prefix || target.pathname.startsWith(`${prefix}/`)) return target.toString()
++  const path = target.pathname.startsWith("/") ? target.pathname : `/${target.pathname}`
++  target.pathname = `${prefix}${path}`
++  return target.toString()
++}
++
++export function proxyAwareFetch(proxyBase: string, fetchImpl?: typeof fetch): typeof fetch {
++  const inner = (fetchImpl ?? globalThis.fetch.bind(globalThis)) as typeof fetch
++  const wrapped: typeof fetch = (input, init) => {
++    const raw = requestUrl(input)
++    const fixed = keepProxyPrefix(raw, proxyBase)
++    if (fixed === raw) return inner(input as RequestInfo, init)
++    if (typeof Request !== "undefined" && input instanceof Request) {
++      return inner(new Request(fixed, input), init)
++    }
++    return inner(fixed, init)
++  }
++  return wrapped
++}
++
++/**
++ * Rewrite a real backend base URL onto the native proxy so fetch is not subject to remote CORS.
++ *
++ * Prefer `OpenCodeAndroid.proxyBaseUrl` (dedicated origin-only loopback port). That survives
++ * `new URL('/api/provider', baseUrl)` used by the v1 client. Fall back to the path-encoded
++ * mux URL plus [proxyAwareFetch].
++ */
+ export function androidProxyBaseUrl(realUrl: string) {
+   const trimmed = realUrl.trim().replace(/\/+$/, "")
+   if (!trimmed || isDisconnectedStubUrl(trimmed)) return trimmed
+   if (trimmed.includes("/opencode-proxy/")) return trimmed
++  try {
++    const bridge = typeof window !== "undefined" ? window.OpenCodeAndroid : undefined
++    if (bridge && typeof bridge.proxyBaseUrl === "function") {
++      const origin = bridge.proxyBaseUrl(trimmed)
++      if (origin) return String(origin).replace(/\/+$/, "")
++    }
++  } catch {}
+   const cfg = readAndroidProxyConfig()
+   if (!cfg) return trimmed
+   return `${cfg.origin.replace(/\/+$/, "")}${cfg.prefix}${encodeURIComponent(trimmed)}`
+@@ -41,6 +102,7 @@ declare global {
+     OpenCodeAndroid?: {
+       proxyOrigin: () => string
+       proxyPrefix: () => string
++      proxyBaseUrl?: (realUrl: string) => string
+     }
+     __ocAndroidProxy?: AndroidProxyConfig
+   }
+diff --git a/packages/app/src/utils/server-health.ts b/packages/app/src/utils/server-health.ts
+index 33c72ba..dbbebd6 100644
+--- a/packages/app/src/utils/server-health.ts
++++ b/packages/app/src/utils/server-health.ts
+@@ -1,7 +1,7 @@
+ import { usePlatform } from "@/context/platform"
+ import { ServerConnection } from "@/context/server"
+ import { authTokenFromCredentials, createSdkForServer } from "./server"
+-import { androidProxyBaseUrl } from "@/utils/android-proxy"
++import { androidProxyBaseUrl, proxyAwareFetch } from "@/utils/android-proxy"
+ import { ClientError, OpenCode } from "@opencode-ai/client"
+ import { Accessor, createEffect, onCleanup } from "solid-js"
+ import { createStore, reconcile } from "solid-js/store"
+@@ -152,9 +152,10 @@ export async function checkServerHealth(
+       .catch(() => ({ healthy: false }))
+   }
+   const attempt = async (count: number): Promise<ServerHealth> => {
++    const baseUrl = androidProxyBaseUrl(server.url)
+     const current = await OpenCode.make({
+-      baseUrl: androidProxyBaseUrl(server.url),
+-      fetch,
++      baseUrl,
++      fetch: proxyAwareFetch(baseUrl, fetch),
+       headers: server.password
+         ? {
+             Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
+diff --git a/packages/app/src/utils/server-protocol.test.ts b/packages/app/src/utils/server-protocol.test.ts
+index 2130a96..24e1eb9 100644
+--- a/packages/app/src/utils/server-protocol.test.ts
++++ b/packages/app/src/utils/server-protocol.test.ts
+@@ -37,4 +37,26 @@ describe("detectServerProtocol", () => {
+ 
+     expect(await detectServerProtocol(server, fetcher)).toBe("v1")
+   })
++
++  test("probes through the Android proxy when a dedicated origin is injected", async () => {
++    const seen: string[] = []
++    window.OpenCodeAndroid = {
++      proxyOrigin: () => "http://127.0.0.1:9",
++      proxyPrefix: () => "/opencode-proxy/tok/",
++      proxyBaseUrl: () => "http://127.0.0.1:38471",
++    }
++    const fetcher = mockFetch((input) => {
++      const url = new URL(input instanceof Request ? input.url : input)
++      seen.push(url.href)
++      if (url.pathname === "/global/health") return Promise.resolve(json({}, 404))
++      return Promise.resolve(json({ healthy: true, version: "2.0.0", pid: 123 }))
++    })
++    try {
++      expect(await detectServerProtocol(server, fetcher)).toBe("v2")
++      expect(seen.every((href) => href.startsWith("http://127.0.0.1:38471/"))).toBe(true)
++      expect(seen.some((href) => href.endsWith("/api/health"))).toBe(true)
++    } finally {
++      delete window.OpenCodeAndroid
++    }
++  })
+ })
+diff --git a/packages/app/src/utils/server-protocol.ts b/packages/app/src/utils/server-protocol.ts
+index 855e90f..507b9c7 100644
+--- a/packages/app/src/utils/server-protocol.ts
++++ b/packages/app/src/utils/server-protocol.ts
+@@ -1,5 +1,6 @@
+ import type { ServerConnection } from "@/context/server"
+ import { authTokenFromCredentials } from "./server"
++import { androidProxyBaseUrl, keepProxyPrefix } from "@/utils/android-proxy"
+ 
+ export type ServerProtocol = "v1" | "v2"
+ 
+@@ -11,7 +12,9 @@ function headers(server: ServerConnection.HttpBase) {
+ }
+ 
+ async function probe(server: ServerConnection.HttpBase, fetch: typeof globalThis.fetch, path: string) {
+-  const response = await fetch(new URL(path, server.url), {
++  const base = androidProxyBaseUrl(server.url)
++  const joined = new URL(path, base.endsWith("/") ? base : `${base}/`)
++  const response = await fetch(keepProxyPrefix(joined, base), {
+     headers: headers(server),
+     signal: AbortSignal.timeout(5_000),
+   })
+diff --git a/packages/app/src/utils/server.ts b/packages/app/src/utils/server.ts
+index eadbbc5..8be1479 100644
+--- a/packages/app/src/utils/server.ts
++++ b/packages/app/src/utils/server.ts
+@@ -2,7 +2,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
+ import { OpenCode, type OpenCodeClient } from "@opencode-ai/client/promise"
+ import type { ServerConnection } from "@/context/server"
+ import { decode64 } from "@/utils/base64"
+-import { androidProxyBaseUrl } from "@/utils/android-proxy"
++import { androidProxyBaseUrl, proxyAwareFetch } from "@/utils/android-proxy"
+ 
+ export function authTokenFromCredentials(input: { username?: string; password: string }) {
+   return btoa(`${input.username ?? "opencode"}:${input.password}`)
+@@ -31,6 +31,7 @@ export function createSdkForServer({
+       Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,
+     }
+   })()
++  const baseUrl = androidProxyBaseUrl(server.url)
+ 
+   return createOpencodeClient({
+     ...config,
+@@ -38,7 +39,8 @@ export function createSdkForServer({
+       ...(config.headers instanceof Headers ? Object.fromEntries(config.headers.entries()) : config.headers),
+       ...auth,
+     },
+-    baseUrl: androidProxyBaseUrl(server.url),
++    baseUrl,
++    fetch: proxyAwareFetch(baseUrl, config.fetch),
+   })
+ }
+ 
+@@ -46,9 +48,10 @@ export function createApiForServer(input: {
+   server: ServerConnection.HttpBase
+   fetch?: typeof globalThis.fetch
+ }): OpenCodeClient {
++  const baseUrl = androidProxyBaseUrl(input.server.url)
+   return OpenCode.make({
+-    baseUrl: androidProxyBaseUrl(input.server.url),
+-    fetch: input.fetch,
++    baseUrl,
++    fetch: proxyAwareFetch(baseUrl, input.fetch),
+     headers: input.server.password
+       ? {
+           Authorization: `Basic ${authTokenFromCredentials({

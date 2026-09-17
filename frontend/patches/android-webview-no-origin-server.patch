@@ -1,0 +1,138 @@
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+index 6e5f63f..64cfce3 100644
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -2,6 +2,7 @@
+ 
+ import * as Sentry from "@sentry/solid"
+ import { render } from "solid-js/web"
++import { MemoryRouter, createMemoryHistory, type BaseRouterProps } from "@solidjs/router"
+ import { AppBaseProviders, AppInterface } from "@/app"
+ import { loadInitialLocale } from "@/context/language"
+ import { type Platform, PlatformProvider } from "@/context/platform"
+@@ -13,6 +14,24 @@ import pkg from "../package.json"
+ import { ServerConnection } from "./context/server"
+ 
+ const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
++const GLOBAL_SERVER_STORE_KEY = "opencode.global.dat:server"
++const ANDROID_ASSET_HOST = "appassets.androidplatform.net"
++
++const isAndroidAssetOrigin = () => location.hostname === ANDROID_ASSET_HOST
++
++/** Same idea as Desktop's MemoryRouter: the document URL is the asset file, not the app route. */
++function AndroidMemoryRouter(props: BaseRouterProps) {
++  const history = createMemoryHistory()
++  return <MemoryRouter {...props} history={history} />
++}
++
++const isAssetHostUrl = (value: string) => {
++  try {
++    return new URL(value).hostname === ANDROID_ASSET_HOST
++  } catch {
++    return value.includes(ANDROID_ASSET_HOST)
++  }
++}
+ 
+ const getLocale = () => {
+   if (typeof navigator !== "object") return "en" as const
+@@ -100,15 +119,44 @@ const getCurrentUrl = () => {
+   if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
+   if (import.meta.env.DEV)
+     return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
++  // Embedded Android WebView origin is not an OpenCode HTTP backend.
++  if (isAndroidAssetOrigin()) return ""
+   return location.origin
+ }
+ 
+ const getDefaultUrl = () => {
+   const lsDefault = readDefaultServerUrl()
+-  if (lsDefault) return lsDefault
++  if (lsDefault && !isAssetHostUrl(lsDefault)) return lsDefault
+   return getCurrentUrl()
+ }
+ 
++const pruneAssetOriginFromPersistedServers = () => {
++  if (!isAndroidAssetOrigin()) return
++  const storedDefault = readDefaultServerUrl()
++  if (storedDefault && isAssetHostUrl(storedDefault)) writeDefaultServerUrl(null)
++  const raw = getStorage(GLOBAL_SERVER_STORE_KEY)
++  if (!raw) return
++  try {
++    const store = JSON.parse(raw) as { list?: unknown }
++    if (!store || !Array.isArray(store.list)) return
++    const list = store.list.filter((item) => {
++      const url =
++        typeof item === "string"
++          ? item
++          : item && typeof item === "object" && "http" in item && item.http && typeof item.http === "object" && "url" in item.http
++            ? String((item.http as { url?: string }).url ?? "")
++            : item && typeof item === "object" && "url" in item
++              ? String((item as { url?: string }).url ?? "")
++              : ""
++      return url && !isAssetHostUrl(url)
++    })
++    if (list.length === store.list.length) return
++    setStorage(GLOBAL_SERVER_STORE_KEY, JSON.stringify({ ...store, list }))
++  } catch {
++    return
++  }
++}
++
+ const clearAuthToken = () => {
+   const params = new URLSearchParams(location.search)
+   if (!params.has("auth_token")) return
+@@ -125,7 +173,8 @@ const platform: Platform = {
+   notify,
+   getDefaultServer: async () => {
+     const stored = readDefaultServerUrl()
+-    return stored ? ServerConnection.Key.make(stored) : null
++    if (!stored || isAssetHostUrl(stored)) return null
++    return ServerConnection.Key.make(stored)
+   },
+   setDefaultServer: writeDefaultServerUrl,
+ }
+@@ -151,25 +200,33 @@ if (import.meta.env.VITE_SENTRY_DSN) {
+ 
+ if (root instanceof HTMLElement) {
+   void loadInitialLocale().then((locale) => {
++    pruneAssetOriginFromPersistedServers()
+     const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
+     clearAuthToken()
+-    const server: ServerConnection.Http = {
+-      type: "http",
+-      authToken: !!auth,
+-      http: {
+-        url: getCurrentUrl(),
+-        ...auth,
+-      },
+-    }
++    const builtinUrl = getCurrentUrl()
++    const servers: Array<ServerConnection.Http> = builtinUrl
++      ? [
++          {
++            type: "http",
++            authToken: !!auth,
++            http: {
++              url: builtinUrl,
++              ...auth,
++            },
++          },
++        ]
++      : []
++    const defaultServer = ServerConnection.Key.make(getDefaultUrl() || "offline")
+     render(
+       () => (
+         <PlatformProvider value={platform}>
+           <AppBaseProviders locale={locale}>
+             <AppInterface
+-              defaultServer={ServerConnection.Key.make(getDefaultUrl())}
+-              canonicalLocalServer={ServerConnection.key(server)}
+-              servers={[server]}
++              defaultServer={defaultServer}
++              canonicalLocalServer={servers[0] ? ServerConnection.key(servers[0]) : undefined}
++              servers={servers}
+               disableHealthCheck
++              router={isAndroidAssetOrigin() ? AndroidMemoryRouter : undefined}
+             />
+           </AppBaseProviders>
+         </PlatformProvider>
