@@ -1,0 +1,108 @@
+diff --git a/packages/ui/src/components/resize-handle.css b/packages/ui/src/components/resize-handle.css
+index 5d8b90b..8570550 100644
+--- a/packages/ui/src/components/resize-handle.css
++++ b/packages/ui/src/components/resize-handle.css
+@@ -1,6 +1,7 @@
+ [data-component="resize-handle"] {
+   position: absolute;
+   z-index: 10;
++  touch-action: none;
+ 
+   &::after {
+     content: "";
+@@ -17,7 +18,7 @@
+   &:where([data-direction="horizontal"]) {
+     inset-block: 0;
+     inset-inline-end: 0;
+-    width: 8px;
++    width: 24px;
+     transform: translateX(50%);
+     cursor: col-resize;
+ 
+@@ -50,7 +51,7 @@
+   &:where([data-direction="vertical"]) {
+     inset-inline: 0;
+     inset-block-start: 0;
+-    height: 8px;
++    height: 24px;
+     transform: translateY(-50%);
+     cursor: row-resize;
+ 
+diff --git a/packages/ui/src/components/resize-handle.tsx b/packages/ui/src/components/resize-handle.tsx
+index 52a0cb5..cb8e8ae 100644
+--- a/packages/ui/src/components/resize-handle.tsx
++++ b/packages/ui/src/components/resize-handle.tsx
+@@ -28,15 +28,17 @@ export function ResizeHandle(props: ResizeHandleProps) {
+     "classList",
+   ])
+ 
+-  const handleMouseDown = (e: MouseEvent) => {
+-    if (e.detail > 1) return
++  const handlePointerDown = (e: PointerEvent) => {
++    if (e.button !== 0 || e.detail > 1) return
+     e.preventDefault()
++    const el = e.currentTarget
++    if (!(el instanceof Element)) return
++    el.setPointerCapture(e.pointerId)
++
+     const edge = local.edge ?? (local.direction === "vertical" ? "start" : "end")
+     const start = local.direction === "horizontal" ? e.clientX : e.clientY
+     const rtl =
+-      local.direction === "horizontal" &&
+-      e.currentTarget instanceof Element &&
+-      getComputedStyle(e.currentTarget).direction === "rtl"
++      local.direction === "horizontal" && getComputedStyle(el).direction === "rtl"
+     const startSize = local.size
+     const min = local.min
+     const max = local.max
+@@ -50,7 +52,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
+     document.body.style.userSelect = "none"
+     document.body.style.overflow = "hidden"
+ 
+-    const onMouseMove = (moveEvent: MouseEvent) => {
++    const onPointerMove = (moveEvent: PointerEvent) => {
+       const pos = local.direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY
+       const delta =
+         local.direction === "vertical"
+@@ -69,12 +71,15 @@ export function ResizeHandle(props: ResizeHandleProps) {
+       onResize(Math.min(max, Math.max(min, current)))
+     }
+ 
+-    const onMouseUp = () => {
++    const endDrag = () => {
+       document.body.style.userSelect = ""
+       document.body.style.overflow = ""
+-      document.removeEventListener("mousemove", onMouseMove)
+-      document.removeEventListener("mouseup", onMouseUp)
+-
++      el.removeEventListener("pointermove", onPointerMove)
++      el.removeEventListener("pointerup", endDrag)
++      el.removeEventListener("pointercancel", endDrag)
++      try {
++        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
++      } catch {}
+       if (collapsed) {
+         onCollapse?.()
+         return
+@@ -82,8 +87,9 @@ export function ResizeHandle(props: ResizeHandleProps) {
+       onCollapseChange?.(false)
+     }
+ 
+-    document.addEventListener("mousemove", onMouseMove)
+-    document.addEventListener("mouseup", onMouseUp)
++    el.addEventListener("pointermove", onPointerMove)
++    el.addEventListener("pointerup", endDrag)
++    el.addEventListener("pointercancel", endDrag)
+   }
+ 
+   return (
+@@ -96,7 +102,8 @@ export function ResizeHandle(props: ResizeHandleProps) {
+         ...local.classList,
+         [local.class ?? ""]: !!local.class,
+       }}
+-      onMouseDown={handleMouseDown}
++      style={{ "touch-action": "none" }}
++      onPointerDown={handlePointerDown}
+     />
+   )
+ }

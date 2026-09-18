@@ -40,3 +40,5 @@ Thumbs.db
 .navigation/
 output.json
 selftest-embedded-ui.json
+
+.worktree-touch/

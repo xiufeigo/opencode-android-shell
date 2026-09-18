@@ -1,0 +1,124 @@
+diff --git a/packages/app/src/components/prompt-input/submit.ts b/packages/app/src/components/prompt-input/submit.ts
+index c82c3a4..5c487f0 100644
+--- a/packages/app/src/components/prompt-input/submit.ts
++++ b/packages/app/src/components/prompt-input/submit.ts
+@@ -31,6 +31,16 @@ type PendingPrompt = {
+ 
+ const pending = new Map<string, PendingPrompt>()
+ 
++function isAndroidWebView() {
++  return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
++}
++
++// Android WebView: one-slot resend per session for failed prompt sends.
++// Resends always mint a fresh messageID (never reuse the failed one), leave
++// the composer alone, and are dropped on the next successful send of that
++// session. Desktop keeps the plain failure toast.
++const failedResends = new Map<string, () => void>()
++
+ export type FollowupDraft = {
+   sessionID: string
+   sessionDirectory: string
+@@ -616,26 +626,54 @@ export function createPromptSubmit(input: PromptSubmitInput) {
+       return true
+     }
+ 
+-    void sendFollowupDraft({
+-      api: sdk().api.session,
+-      sync: sync(),
+-      serverSync: serverSync(),
+-      draft,
+-      messageID,
+-      optimisticBusy: sessionDirectory === projectDirectory,
+-      before: waitForWorktree,
+-    }).catch((err) => {
++    const sendOnce = (withMessageID?: string) =>
++      sendFollowupDraft({
++        api: sdk().api.session,
++        sync: sync(),
++        serverSync: serverSync(),
++        draft,
++        messageID: withMessageID,
++        optimisticBusy: sessionDirectory === projectDirectory,
++        before: waitForWorktree,
++      })
++    const failSend = (err: unknown) => {
+       pending.delete(pendingKey(session.id))
+       if (sessionDirectory === projectDirectory) {
+         sync().set("session_status", session.id, { type: "idle" })
+       }
++      removeOptimisticMessage()
++      if (restoreInput()) restoreCommentItems(submission.target(), commentItems)
++      if (isAndroidWebView()) {
++        failedResends.set(session.id, () => {
++          failedResends.delete(session.id)
++          void sendOnce()
++            .then(() => {
++              failedResends.delete(session.id)
++            })
++            .catch(failSend)
++        })
++        showToast({
++          title: language.t("prompt.toast.promptSendFailed.title"),
++          description: errorMessage(err),
++          actions: [
++            {
++              label: language.t("prompt.toast.promptSendFailed.retry"),
++              onClick: () => failedResends.get(session.id)?.(),
++            },
++          ],
++        })
++        return
++      }
+       showToast({
+         title: language.t("prompt.toast.promptSendFailed.title"),
+         description: errorMessage(err),
+       })
+-      removeOptimisticMessage()
+-      if (restoreInput()) restoreCommentItems(submission.target(), commentItems)
+-    })
++    }
++    void sendOnce(messageID)
++      .then(() => {
++        failedResends.delete(session.id)
++      })
++      .catch(failSend)
+   }
+ 
+   return {
+diff --git a/packages/app/src/i18n/en.ts b/packages/app/src/i18n/en.ts
+index 76c7e1d..01ea9e8 100644
+--- a/packages/app/src/i18n/en.ts
++++ b/packages/app/src/i18n/en.ts
+@@ -319,6 +319,7 @@ export const dict = {
+   "prompt.toast.commandSendFailed.title": "Failed to send command",
+   "prompt.toast.promptSendFailed.title": "Failed to send prompt",
+   "prompt.toast.promptSendFailed.description": "Unable to retrieve session",
++  "prompt.toast.promptSendFailed.retry": "Retry",
+ 
+   "dialog.mcp.title": "MCPs",
+   "dialog.mcp.description": "{{enabled}} of {{total}} enabled",
+diff --git a/packages/app/src/i18n/zh.ts b/packages/app/src/i18n/zh.ts
+index 1815e53..a796e25 100644
+--- a/packages/app/src/i18n/zh.ts
++++ b/packages/app/src/i18n/zh.ts
+@@ -433,6 +433,7 @@ export const dict = {
+   "prompt.toast.commandSendFailed.title": "发送命令失败",
+   "prompt.toast.promptSendFailed.title": "发送提示失败",
+   "prompt.toast.promptSendFailed.description": "无法获取会话",
++  "prompt.toast.promptSendFailed.retry": "重试",
+ 
+   "dialog.mcp.title": "MCP 服务器",
+   "dialog.mcp.description": "已启用 {{enabled}} / {{total}}",
+diff --git a/packages/app/src/i18n/zht.ts b/packages/app/src/i18n/zht.ts
+index 6cc3d55..75de085 100644
+--- a/packages/app/src/i18n/zht.ts
++++ b/packages/app/src/i18n/zht.ts
+@@ -414,6 +414,7 @@ export const dict = {
+   "prompt.toast.commandSendFailed.title": "傳送命令失敗",
+   "prompt.toast.promptSendFailed.title": "傳送提示失敗",
+   "prompt.toast.promptSendFailed.description": "無法取得工作階段",
++  "prompt.toast.promptSendFailed.retry": "重試",
+ 
+   "dialog.mcp.title": "MCP",
+   "dialog.mcp.description": "已啟用 {{enabled}} / {{total}}",

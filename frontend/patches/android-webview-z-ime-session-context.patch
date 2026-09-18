@@ -1,0 +1,188 @@
+diff --git a/packages/app/src/components/session-context-usage.tsx b/packages/app/src/components/session-context-usage.tsx
+--- a/packages/app/src/components/session-context-usage.tsx
++++ b/packages/app/src/components/session-context-usage.tsx
+@@ -147,6 +147,7 @@
+               variant="ghost-muted"
+               size="large"
+               icon={circleV2()}
++              data-action="session-open-context"
+               onClick={openContext}
+               aria-label={language.t("context.usage.view")}
+             />
+@@ -156,6 +157,7 @@
+               type="button"
+               variant="ghost"
+               class="size-6"
++              data-action="session-open-context"
+               onClick={openContext}
+               aria-label={language.t("context.usage.view")}
+             >
+diff --git a/packages/app/src/pages/session.tsx b/packages/app/src/pages/session.tsx
+--- a/packages/app/src/pages/session.tsx
++++ b/packages/app/src/pages/session.tsx
+@@ -39,7 +39,7 @@
+ import { showToast } from "@/utils/toast"
+ import { base64Encode, checksum } from "@opencode-ai/core/util/encode"
+ import { useLocation, useNavigate, useParams, useSearchParams } from "@solidjs/router"
+-import { NewSessionView, SessionHeader } from "@/components/session"
++import { NewSessionView, SessionContextTab, SessionHeader } from "@/components/session"
+ import { ErrorPage } from "@/pages/error"
+ import { CommentsProvider, useComments } from "@/context/comments"
+ import { useCommand } from "@/context/command"
+@@ -2246,9 +2246,63 @@
+     </>
+   )
+ 
++  const mobileContextOpen = createMemo(() => {
++    if (isDesktop()) return false
++    if (!params.id) return false
++    const active = tabs().active()
++    const listed = tabs().all().includes("context")
++    return (active === "context" || listed) && view().reviewPanel.opened()
++  })
++
++  const closeMobileContext = () => {
++    tabs().close("context")
++    const sessionView = view()
++    const hasOther = tabs()
++      .all()
++      .some((tab) => tab !== "context" && tab !== "review")
++    if (sessionView.reviewPanel.source() === "context-button" && !hasOther) sessionView.reviewPanel.close()
++  }
++
++  createEffect(() => {
++    if (!mobileContextOpen()) return
++    const onKeyDown = (event: KeyboardEvent) => {
++      if (event.key !== "Escape") return
++      event.preventDefault()
++      event.stopPropagation()
++      closeMobileContext()
++    }
++    makeEventListener(window, "keydown", onKeyDown, { capture: true })
++  })
++
+   return (
+     <SessionRouteFrame>
+       <SessionHeader />
++      <Show when={mobileContextOpen()}>
++        <div
++          data-component="android-session-context"
++          data-slot="session-context-panel"
++          role="dialog"
++          aria-modal="true"
++          aria-label={language.t("session.tab.context")}
++          class="android-session-context-overlay"
++        >
++          <div class="android-session-context-header">
++            <button
++              type="button"
++              data-action="session-context-close"
++              data-slot="dialog-close-button"
++              aria-label={language.t("common.closeTab")}
++              onClick={closeMobileContext}
++            >
++              <span aria-hidden="true">×</span>
++            </button>
++            <div class="android-session-context-title">{language.t("session.tab.context")}</div>
++          </div>
++          <div class="android-session-context-body">
++            <SessionContextTab />
++          </div>
++        </div>
++      </Show>
+       <div
+         ref={panelRow}
+         class="flex-1 min-h-0 flex flex-col md:flex-row"
+diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app/src/pages/home/android-webview-home.css
+--- a/packages/app/src/pages/home/android-webview-home.css
++++ b/packages/app/src/pages/home/android-webview-home.css
+@@ -47,3 +47,66 @@
+ html[data-android-webview] [data-component="dialog-v2"].settings-v2-server-dialog [data-slot="dialog-container"] {
+   max-height: calc(100dvh - 16px);
+ }
++
++/* Session header context ring: keep the control above siblings and tappable. */
++html[data-android-webview] [data-action="session-open-context"] {
++  position: relative;
++  z-index: 6;
++  pointer-events: auto !important;
++  min-width: 44px;
++  min-height: 44px;
++  width: 44px !important;
++  height: 44px !important;
++}
++
++html[data-android-webview] [data-action="session-open-context"] svg {
++  pointer-events: none;
++}
++
++/* Phone/narrow: official review/context panel is desktop-only (>=768px). */
++html[data-android-webview] [data-component="android-session-context"],
++[data-component="android-session-context"] {
++  position: fixed;
++  inset: 0;
++  z-index: 80;
++  display: flex;
++  flex-direction: column;
++  pointer-events: auto;
++  background: var(--v2-background-bg-base, var(--background-stronger, #080808));
++  color: var(--v2-text-text-base, inherit);
++}
++
++[data-component="android-session-context"] .android-session-context-header {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  flex-shrink: 0;
++  height: 48px;
++  padding: 0 12px;
++  border-bottom: 1px solid var(--v2-border-border-base, var(--border-weak-base, rgba(255, 255, 255, 0.12)));
++}
++
++[data-component="android-session-context"] .android-session-context-title {
++  font-size: 14px;
++  font-weight: 500;
++}
++
++[data-component="android-session-context"] [data-action="session-context-close"] {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  width: 44px;
++  height: 44px;
++  border: 0;
++  background: transparent;
++  color: inherit;
++  font-size: 24px;
++  line-height: 1;
++  pointer-events: auto;
++}
++
++[data-component="android-session-context"] .android-session-context-body {
++  min-height: 0;
++  flex: 1 1 auto;
++  overflow: hidden;
++}
+diff --git a/packages/ui/src/v2/components/tooltip-v2.tsx b/packages/ui/src/v2/components/tooltip-v2.tsx
+--- a/packages/ui/src/v2/components/tooltip-v2.tsx
++++ b/packages/ui/src/v2/components/tooltip-v2.tsx
+@@ -16,5 +16,6 @@
+ function shouldSkipTooltip() {
+   if (typeof window === "undefined") return false
+   if (window.location?.hostname === "appassets.androidplatform.net") return true
++  if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")) return true
+   return window.matchMedia?.("(pointer: coarse)")?.matches === true
+ }
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -26,6 +26,9 @@
+ /** Same idea as Desktop's MemoryRouter: the document URL is the asset file, not the app route. */
+ function AndroidMemoryRouter(props: BaseRouterProps) {
+   const history = createMemoryHistory()
++  if (typeof window !== "undefined") {
++    ;(window as Window & { __ocAndroidHistory?: ReturnType<typeof createMemoryHistory> }).__ocAndroidHistory = history
++  }
+   return <MemoryRouter {...props} history={history} />
+ }
+ 

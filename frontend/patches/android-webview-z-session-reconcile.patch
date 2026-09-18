@@ -1,0 +1,269 @@
+diff --git a/packages/app/src/context/server-sdk.tsx b/packages/app/src/context/server-sdk.tsx
+index 670a00d..22707ad 100644
+--- a/packages/app/src/context/server-sdk.tsx
++++ b/packages/app/src/context/server-sdk.tsx
+@@ -183,6 +183,7 @@ type ServerSDKBase = {
+     on: ServerEventEmitter["on"]
+     listen: ServerEventEmitter["listen"]
+     start: () => Promise<void> | undefined
++    onStreamEstablished: (listener: () => void) => () => void
+   }
+   createClient: (
+     opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">,
+@@ -268,6 +269,27 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+   let started = false
+   let generation = 0
+ 
++  // Android WebView: stream-established hooks drive reconcileActiveSession()
++  // (server-sync). Off-Android nothing fires, so desktop behavior is unchanged.
++  function isAndroidWebView() {
++    return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
++  }
++
++  const streamEstablishedListeners = new Set<() => void>()
++  let establishmentSeq = 0
++  let settledEstablishment = 0
++  let settleTimer: ReturnType<typeof setTimeout> | undefined
++  let reconnectBackoffMs = RECONNECT_DELAY_MS
++
++  const notifyStreamEstablished = () => {
++    if (!isAndroidWebView()) return
++    for (const listener of [...streamEstablishedListeners]) {
++      try {
++        listener()
++      } catch {}
++    }
++  }
++
+   const start = () => {
+     if (disconnected) return Promise.resolve()
+     if (started) return run
+@@ -289,8 +311,26 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+             kind === "v1"
+               ? (await eventSdk.global.event({ signal: attempt.signal })).stream
+               : eventApi.event.subscribe({ signal: attempt.signal })
++          const establishment = ++establishmentSeq
++          let establishmentFired = false
++          const fireEstablished = () => {
++            if (establishmentFired || settledEstablishment >= establishment) return
++            establishmentFired = true
++            settledEstablishment = establishment
++            if (settleTimer) {
++              clearTimeout(settleTimer)
++              settleTimer = undefined
++            }
++            reconnectBackoffMs = RECONNECT_DELAY_MS
++            notifyStreamEstablished()
++          }
++          if (isAndroidWebView()) {
++            // First event wins; 3s of silence also counts (reconcile is idempotent).
++            settleTimer = setTimeout(fireEstablished, 3000)
++          }
+           let yielded = Date.now()
+           for await (const event of events) {
++            if (!establishmentFired) fireEstablished()
+             streamErrorLogged = false
+             const legacy = "payload" in event
+             if (legacy && event.payload.type === "sync") continue
+@@ -314,10 +354,17 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+         } finally {
+           abort.signal.removeEventListener("abort", onAbort)
+           attempt = undefined
++          if (settleTimer) {
++            clearTimeout(settleTimer)
++            settleTimer = undefined
++          }
+         }
+ 
+         if (abort.signal.aborted || !started || generation !== active) return
+-        await wait(RECONNECT_DELAY_MS)
++        // Capped exponential backoff on Android (background timer throttling
++        // and radio flaps); desktop keeps the fixed 250ms delay.
++        await wait(isAndroidWebView() ? reconnectBackoffMs : RECONNECT_DELAY_MS)
++        if (isAndroidWebView()) reconnectBackoffMs = Math.min(reconnectBackoffMs * 2, 5000)
+       }
+     })().finally(() => {
+       if (run !== current) return
+@@ -373,6 +420,12 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
+       on: emitter.on.bind(emitter),
+       listen: emitter.listen.bind(emitter),
+       start,
++      onStreamEstablished: (listener: () => void) => {
++        streamEstablishedListeners.add(listener)
++        return () => {
++          streamEstablishedListeners.delete(listener)
++        }
++      },
+     },
+     createClient(opts: Omit<Parameters<typeof createSdkForServer>[0], "server" | "fetch">) {
+       return createSdkForServer({
+diff --git a/packages/app/src/context/server-sync.tsx b/packages/app/src/context/server-sync.tsx
+index 16cc234..56ea5c6 100644
+--- a/packages/app/src/context/server-sync.tsx
++++ b/packages/app/src/context/server-sync.tsx
+@@ -176,6 +176,10 @@ export function seedActiveSessionStatuses(
+   }
+ }
+ 
++function isAndroidWebView() {
++  return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
++}
++
+ function makeQueryOptionsApi(
+   scope: ServerScope,
+   serverSDK: () => OpencodeClient,
+@@ -353,6 +357,114 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
+     bootstrapInstance,
+   })
+ 
++  // Android WebView: stream gaps never replay, so a reconnected stream must
++  // actively reconcile the open sessions. Desktop keeps event-only updates:
++  // reconcileActiveSession() is a no-op off-Android.
++  const RECONCILE_THROTTLE_MS = 800
++  const RECONCILE_MAX_WAIT_MS = 5000
++  const RECONCILE_FRESH_MS = 30_000
++  const RECONCILE_SESSION_LIMIT = 5
++  let reconcileInFlight: Promise<void> | undefined
++  let reconcileDirty = false
++  let reconcileTrailingTimer: ReturnType<typeof setTimeout> | undefined
++  let reconcileMaxWaitTimer: ReturnType<typeof setTimeout> | undefined
++  let lastReconcileStart = 0
++
++  async function runReconcile() {
++    // (a) Authoritative statuses overwrite local busy/idle. Never infer.
++    try {
++      const protocol = await serverSDK.protocol
++      const statuses =
++        protocol === "v1"
++          ? ((await serverSDK.client.session.status()).data ?? {})
++          : await serverSDK.api.session.active()
++      for (const [sessionID, status] of Object.entries(statuses ?? {})) {
++        session.set(
++          "session_status",
++          sessionID,
++          status?.type === "running" ? { type: "busy" } : (status ?? { type: "idle" }),
++        )
++      }
++    } catch {
++      // Keep stale statuses; the next trigger retries.
++    }
++    // (b) Refresh messages for stale known sessions. Fresh (≈live/streaming)
++    // sessions are skipped so reconcile never clobbers an active stream.
++    try {
++      const ids = Object.keys(session.data.info ?? {})
++      let refreshed = 0
++      for (const sessionID of ids) {
++        if (refreshed >= RECONCILE_SESSION_LIMIT) break
++        if (session.fresh(sessionID, RECONCILE_FRESH_MS)) continue
++        refreshed++
++        await session.sync(sessionID, { force: true }).catch(() => undefined)
++      }
++    } catch {
++      // Ignore; the status correction above already fixed the worst symptom.
++    }
++    // (c) Re-bootstrap active directories (lists, commands, providers).
++    for (const directory of Object.keys(children.children)) {
++      if (children.active(directory)) queue.push(directory)
++    }
++  }
++
++  function armReconcileMaxWait() {
++    if (reconcileMaxWaitTimer) return
++    reconcileMaxWaitTimer = setTimeout(() => {
++      reconcileMaxWaitTimer = undefined
++      lastReconcileStart = 0
++      if (!reconcileInFlight) void reconcileActiveSession()
++    }, RECONCILE_MAX_WAIT_MS)
++  }
++
++  function startReconcile() {
++    lastReconcileStart = Date.now()
++    reconcileDirty = false
++    if (reconcileMaxWaitTimer) {
++      clearTimeout(reconcileMaxWaitTimer)
++      reconcileMaxWaitTimer = undefined
++    }
++    if (reconcileTrailingTimer) {
++      clearTimeout(reconcileTrailingTimer)
++      reconcileTrailingTimer = undefined
++    }
++    const run = runReconcile().finally(() => {
++      if (reconcileInFlight === run) reconcileInFlight = undefined
++      if (reconcileDirty) {
++        reconcileDirty = false
++        lastReconcileStart = 0
++        void reconcileActiveSession()
++      }
++    })
++    reconcileInFlight = run
++    return run
++  }
++
++  function reconcileActiveSession() {
++    if (!isAndroidWebView()) return Promise.resolve()
++    if (reconcileInFlight) {
++      reconcileDirty = true
++      armReconcileMaxWait()
++      return reconcileInFlight
++    }
++    const elapsed = Date.now() - lastReconcileStart
++    if (elapsed < RECONCILE_THROTTLE_MS) {
++      reconcileDirty = true
++      if (!reconcileTrailingTimer) {
++        reconcileTrailingTimer = setTimeout(
++          () => {
++            reconcileTrailingTimer = undefined
++            void reconcileActiveSession()
++          },
++          RECONCILE_THROTTLE_MS - elapsed,
++        )
++      }
++      armReconcileMaxWait()
++      return Promise.resolve()
++    }
++    return startReconcile()
++  }
++
+   const children = createChildStoreManager({
+     owner,
+     scope: serverSDK.scope,
+@@ -621,6 +733,10 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
+   })
+ 
+   onCleanup(unsub)
++  onCleanup(() => {
++    if (reconcileTrailingTimer) clearTimeout(reconcileTrailingTimer)
++    if (reconcileMaxWaitTimer) clearTimeout(reconcileMaxWaitTimer)
++  })
+   onCleanup(() => {
+     queue.dispose()
+   })
+@@ -645,6 +761,28 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
+         void serverSDK.event.start()
+       }, 0)
+     }
++
++    // Reconcile triggers converge here: stream re-established, radio back,
++    // or app foregrounded. Each is a no-op off-Android.
++    const stopOnStreamEstablished = serverSDK.event.onStreamEstablished(() => {
++      void reconcileActiveSession()
++    })
++    onCleanup(stopOnStreamEstablished)
++    const onOnline = () => {
++      void serverSDK.event.start()
++      void reconcileActiveSession()
++    }
++    const onVisibilityChange = () => {
++      if (document.visibilityState !== "visible") return
++      void serverSDK.event.start()
++      void reconcileActiveSession()
++    }
++    window.addEventListener("online", onOnline)
++    document.addEventListener("visibilitychange", onVisibilityChange)
++    onCleanup(() => {
++      window.removeEventListener("online", onOnline)
++      document.removeEventListener("visibilitychange", onVisibilityChange)
++    })
+   })
+ 
+   const projectApi = {
