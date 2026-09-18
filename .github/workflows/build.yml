@@ -49,9 +49,12 @@ jobs:
 
       - name: Diagnose signing
         run: |
+          echo "ANDROID_PREFS_ROOT=$ANDROID_PREFS_ROOT ANDROID_USER_HOME=$ANDROID_USER_HOME HOME=$HOME"
           ls -la ~/.android/
           export PATH="$ANDROID_SDK_ROOT/build-tools/35.0.0:$PATH"
           apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -E "Signer #1|SHA-256"
+          echo "--- every debug.keystore on this runner:"
+          find / -name "debug.keystore" -not -path "/proc/*" 2>/dev/null | head
 
       - name: SHA256 and filebin upload
         run: |
