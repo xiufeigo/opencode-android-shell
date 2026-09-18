@@ -31,6 +31,7 @@ jobs:
       - name: Restore shared debug keystore
         env:
           KS_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          ANDROID_DEBUG_STORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
         run: |
           mkdir -p ~/.android
           echo "$KS_B64" | base64 -d > ~/.android/debug.keystore
@@ -39,8 +40,6 @@ jobs:
           # Self-check: must print 76:0D:C0:5F:B4:D1:A1:25 (public cert fingerprint).
           keytool -list -v -keystore ~/.android/debug.keystore \
             -storepass "$ANDROID_DEBUG_STORE_PASSWORD" 2>/dev/null | grep -E "Alias name|SHA256" || true
-        env:
-          ANDROID_DEBUG_STORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon
