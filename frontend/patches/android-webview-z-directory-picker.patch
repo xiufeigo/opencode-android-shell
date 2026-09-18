@@ -1,0 +1,126 @@
+diff --git a/packages/app/src/components/dialog-select-directory-android.css b/packages/app/src/components/dialog-select-directory-android.css
+new file mode 100644
+--- /dev/null
++++ b/packages/app/src/components/dialog-select-directory-android.css
+@@ -0,0 +1,28 @@
++/* Android shell: staged (tapped, not yet confirmed) directory row.
++ *
++ * The wrapper is display:contents so the flex-column list layout still sees
++ * the row button directly; the attribute selector keeps working because the
++ * DOM parent is unchanged. */
++[data-android-staged] {
++  display: contents;
++}
++
++html[data-android-webview] [data-android-staged] > [data-slot="list-item"] {
++  background: var(--v2-overlay-simple-overlay-hover, rgba(255, 255, 255, 0.08));
++}
++
++.directory-picker-android-footer {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++  padding: 8px 12px 12px;
++}
++
++.directory-picker-android-selection {
++  min-height: 20px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  color: var(--v2-text-text-muted, #888);
++  font-size: 12px;
++}
+diff --git a/packages/app/src/components/dialog-select-directory.tsx b/packages/app/src/components/dialog-select-directory.tsx
+--- a/packages/app/src/components/dialog-select-directory.tsx
++++ b/packages/app/src/components/dialog-select-directory.tsx
+@@ -1,14 +1,16 @@
+ import { useDialog } from "@opencode-ai/ui/context/dialog"
++import { Button } from "@opencode-ai/ui/button"
+ import { Dialog } from "@opencode-ai/ui/dialog"
+ import { FileIcon } from "@opencode-ai/ui/file-icon"
+ import { List } from "@opencode-ai/ui/list"
+ import type { ListRef } from "@opencode-ai/ui/list"
+ import { getDirectory, getFilename } from "@opencode-ai/core/util/path"
+-import { createMemo, createResource, createSignal } from "solid-js"
++import { createMemo, createResource, createSignal, Show } from "solid-js"
+ import { useLanguage } from "@/context/language"
+ import { ServerConnection } from "@/context/server"
+ import { useGlobal } from "@/context/global"
+ import { cleanPickerInput, createDirectorySearch, displayPickerPath } from "./directory-picker-domain"
++import "./dialog-select-directory-android.css"
+ import type { Path } from "@opencode-ai/sdk/v2/client"
+ 
+ interface DialogSelectDirectoryProps {
+@@ -49,7 +51,11 @@ function uniqueRows(rows: Row[]) {
+     return true
+   })
+ }
+ 
++function isAndroidWebView() {
++  return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
++}
++
+ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
+   const global = useGlobal()
+   const { sync, sdk, ...serverCtx } = global.ensureServerCtx(props.server)
+@@ -57,6 +64,9 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
+   const language = useLanguage()
+ 
+   const [filter, setFilter] = createSignal("")
++  // Android touch: single tap stages the row for an explicit confirm step
++  // instead of resolving immediately (desktop mouse behavior is unchanged).
++  const [stagedAbsolute, setStagedAbsolute] = createSignal<string | undefined>(undefined)
+   let list: ListRef | undefined
+ 
+   const missingHome = createMemo(() => !sync.data.path.home)
+@@ -160,8 +170,20 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
+           const value = displayPickerPath(item.absolute, filter(), home())
+           list?.setFilter(value.endsWith("/") ? value : value + "/")
+         }}
++        itemWrapper={
++          isAndroidWebView()
++            ? (item, node) => (
++              <div data-android-staged={item.absolute === stagedAbsolute() ? "" : undefined}>{node}</div>
++            )
++            : undefined
++        }
+         onSelect={(path) => {
+           if (!path) return
++          // Staged confirm on Android: tap highlights, the footer button resolves.
++          if (isAndroidWebView()) {
++            setStagedAbsolute(path.absolute)
++            return
++          }
+           resolve(path.absolute)
+         }}
+       >
+@@ -196,5 +218,27 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
+           )
+         }}
+       </List>
++      <Show when={isAndroidWebView()}>
++        <div class="directory-picker-android-footer">
++          <div class="directory-picker-android-selection">{stagedAbsolute() ?? ""}</div>
++          <div class="flex justify-end gap-2">
++            <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
++              {language.t("common.cancel")}
++            </Button>
++            <Button
++              type="button"
++              variant="primary"
++              size="large"
++              disabled={!stagedAbsolute()}
++              onClick={() => {
++                const absolute = stagedAbsolute()
++                if (absolute) resolve(absolute)
++              }}
++            >
++              {language.t("dialog.directory.action.selectFolder")}
++            </Button>
++          </div>
++        </div>
++      </Show>
+     </Dialog>
+   )
+ }

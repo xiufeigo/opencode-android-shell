@@ -1348,6 +1348,16 @@ async function runConnectedSurface(ws, sessionId, input) {
         listsRemote: /README|hello\\.ts|src|home|workspace|tmp|ubuntu|e2e/.test(text + names.join("\\n")),
         sample: (text || "").slice(0, 400),
         names,
+        // F1 probe: which directory dialog actually renders on platform=web.
+        // v2 = FileTree + footer confirm; legacy = List, tap-through resolve.
+        variant: !dialog
+          ? "none"
+          : dialog.querySelector(".directory-picker-v2, #directory-picker-v2-suggestions")
+            ? "v2"
+            : dialog.querySelector('[data-component="list"]')
+              ? "legacy-list"
+              : "unknown",
+        stagedFooter: !!dialog?.querySelector(".directory-picker-android-footer"),
       };
     })()`,
   )
@@ -1362,6 +1372,15 @@ async function runConnectedSurface(ws, sessionId, input) {
     await evaluate(ws, sessionId, HANDLE_BACK_JS)
     await Bun.sleep(400)
   }
+  // Staged-confirm contract: legacy list rows must not resolve on tap without
+  // the Android footer; v2 rows never auto-resolve (footer confirm owns it).
+  checklist.push(
+    item(
+      "project.open_staged_confirm",
+      !pickerUi?.dialog || pickerUi?.variant === "v2" || pickerUi?.stagedFooter ? "PASS" : "FAIL",
+      { variant: pickerUi?.variant, stagedFooter: pickerUi?.stagedFooter },
+    ),
+  )
 
   const newSessionUi = await evaluate(
     ws,

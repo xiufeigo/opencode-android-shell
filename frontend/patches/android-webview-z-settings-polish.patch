@@ -1,4 +1,141 @@
+diff --git a/packages/app/src/components/settings-keybinds.tsx b/packages/app/src/components/settings-keybinds.tsx
+index ce74be4..c9ad4a2 100644
+--- a/packages/app/src/components/settings-keybinds.tsx
++++ b/packages/app/src/components/settings-keybinds.tsx
+@@ -7,10 +7,11 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
+ import { TextField } from "@opencode-ai/ui/text-field"
+ import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
+ import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
++import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
+ import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
+ import { showToast } from "@/utils/toast"
+ import fuzzysort from "fuzzysort"
+-import { DEFAULT_PALETTE_KEYBIND, formatKeybind, parseKeybind, useCommand } from "@/context/command"
++import { DEFAULT_PALETTE_KEYBIND, formatKeybind, formatKeybindParts, parseKeybind, useCommand } from "@/context/command"
+ import { useLanguage } from "@/context/language"
+ import { useSettings } from "@/context/settings"
+ import { SettingsList } from "./settings-list"
+@@ -391,6 +392,7 @@ export function createKeybindSettingsController(
+         filteredFor(query, list(), grouped(), (id) => formatKeybind(effective(id) ?? "", language.t)),
+       title,
+       keybind: (id: string) => formatKeybind(effective(id) ?? "", language.t),
++      keybindParts: (id: string) => formatKeybindParts(effective(id) ?? "", language.t),
+     },
+     capture: {
+       active: () => store.active,
+@@ -424,6 +426,7 @@ function SettingsKeybindsV2() {
+       filtered={controller.catalog.filtered}
+       title={controller.catalog.title}
+       keybind={controller.catalog.keybind}
++      keybindParts={controller.catalog.keybindParts}
+       active={controller.capture.active}
+       onCapture={controller.capture.toggle}
+       hasOverrides={controller.settings.hasOverrides}
+@@ -437,6 +440,7 @@ function SettingsKeybindsV2View(props: {
+   filtered: (query: string) => Map<KeybindGroup, string[]>
+   title: (id: string) => string
+   keybind: (id: string) => string
++  keybindParts: (id: string) => string[]
+   active: () => string | null
+   onCapture: (id: string) => void
+   hasOverrides: () => boolean
+@@ -491,7 +495,10 @@ function SettingsKeybindsV2View(props: {
+                   <SettingsListV2>
+                     <For each={filtered().get(group) ?? []}>
+                       {(id) => (
+-                        <div class="flex items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none">
++                        <div
++                          data-slot="settings-v2-shortcut-row"
++                          class="flex items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none"
++                        >
+                           <span>{props.title(id)}</span>
+                           <button
+                             type="button"
+@@ -504,7 +511,14 @@ function SettingsKeybindsV2View(props: {
+                           >
+                             <Show
+                               when={props.active() === id}
+-                              fallback={props.keybind(id) || language.t("settings.shortcuts.unassigned")}
++                              fallback={
++                                <Show
++                                  when={props.keybindParts(id).length > 0}
++                                  fallback={language.t("settings.shortcuts.unassigned")}
++                                >
++                                  <KeybindV2 keys={props.keybindParts(id)} variant="neutral" />
++                                </Show>
++                              }
+                             >
+                               {language.t("settings.shortcuts.pressKeys")}
+                             </Show>
+diff --git a/packages/app/src/components/settings-v2/general.tsx b/packages/app/src/components/settings-v2/general.tsx
+index 91879cd..6a4ab2e 100644
+--- a/packages/app/src/components/settings-v2/general.tsx
++++ b/packages/app/src/components/settings-v2/general.tsx
+@@ -128,7 +128,7 @@ const ShellSetting: Component<{ controller: ShellSettingsController }> = (props)
+ const AppearanceSection: Component<{ controller: AppearanceSettingsController }> = (props) => {
+   const language = useLanguage()
+   return (
+-    <SettingsSectionV2 title={language.t("settings.general.section.appearance")}>
++    <SettingsSectionV2 icon="photo" title={language.t("settings.general.section.appearance")}>
+       <SettingsListV2>
+         <SettingsRowV2
+           title={language.t("settings.general.row.colorScheme.title")}
+@@ -213,7 +213,7 @@ const FontSetting: Component<{
+ const SoundsSection: Component<{ controller: SoundSettingsController }> = (props) => {
+   const language = useLanguage()
+   return (
+-    <SettingsSectionV2 title={language.t("settings.general.section.sounds")}>
++    <SettingsSectionV2 icon="status" title={language.t("settings.general.section.sounds")}>
+       <SettingsListV2>
+         <SoundSetting kind="agent" channel={props.controller.agent} />
+         <SoundSetting kind="permissions" channel={props.controller.permissions} />
+@@ -329,7 +329,7 @@ export const SettingsGeneralV2: Component<{
+   )
+ 
+   const GeneralSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.tab.general")}>
++    <SettingsSectionV2 icon="sliders" title={language.t("settings.tab.general")}>
+       <SettingsListV2>
+         <LanguageSetting />
+ 
+@@ -405,7 +405,7 @@ export const SettingsGeneralV2: Component<{
+   )
+ 
+   const AdvancedSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.general.section.advanced")}>
++    <SettingsSectionV2 icon="settings-gear" title={language.t("settings.general.section.advanced")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -460,7 +460,7 @@ export const SettingsGeneralV2: Component<{
+   )
+ 
+   const NotificationsSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.general.section.notifications")}>
++    <SettingsSectionV2 icon="speech-bubble" title={language.t("settings.general.section.notifications")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -503,7 +503,7 @@ export const SettingsGeneralV2: Component<{
+   )
+ 
+   const UpdatesSection = () => (
+-    <SettingsSectionV2 title={language.t("settings.general.section.updates")}>
++    <SettingsSectionV2 icon="cloud-upload" title={language.t("settings.general.section.updates")}>
+ 
+       <SettingsListV2>
+         <SettingsRowV2
+@@ -533,7 +533,7 @@ export const SettingsGeneralV2: Component<{
+   // We can probably remove this, right?
+   const DisplaySection = () => (
+     <Show when={desktop()}>
+-      <SettingsSectionV2 title={language.t("settings.general.section.display")}>
++      <SettingsSectionV2 icon="window-cursor" title={language.t("settings.general.section.display")}>
+         <SettingsListV2>
+           <SettingsRowV2
+             title={language.t("settings.general.row.pinchZoom.title")}
 diff --git a/packages/app/src/components/settings-v2/parts/section.tsx b/packages/app/src/components/settings-v2/parts/section.tsx
+index 644a6c4..5ad8b96 100644
 --- a/packages/app/src/components/settings-v2/parts/section.tsx
 +++ b/packages/app/src/components/settings-v2/parts/section.tsx
 @@ -1,16 +1,34 @@
@@ -40,75 +177,8 @@ diff --git a/packages/app/src/components/settings-v2/parts/section.tsx b/package
        {props.children}
      </details>
    )
-
-diff --git a/packages/app/src/components/settings-v2/general.tsx b/packages/app/src/components/settings-v2/general.tsx
---- a/packages/app/src/components/settings-v2/general.tsx
-+++ b/packages/app/src/components/settings-v2/general.tsx
-@@ -128,7 +128,7 @@
- const AppearanceSection: Component<{ controller: AppearanceSettingsController }> = (props) => {
-   const language = useLanguage()
-   return (
--    <SettingsSectionV2 title={language.t("settings.general.section.appearance")}>
-+    <SettingsSectionV2 icon="photo" title={language.t("settings.general.section.appearance")}>
-       <SettingsListV2>
-         <SettingsRowV2
-           title={language.t("settings.general.row.colorScheme.title")}
-@@ -213,7 +213,7 @@
- const SoundsSection: Component<{ controller: SoundSettingsController }> = (props) => {
-   const language = useLanguage()
-   return (
--    <SettingsSectionV2 title={language.t("settings.general.section.sounds")}>
-+    <SettingsSectionV2 icon="status" title={language.t("settings.general.section.sounds")}>
-       <SettingsListV2>
-         <SoundSetting kind="agent" channel={props.controller.agent} />
-         <SoundSetting kind="permissions" channel={props.controller.permissions} />
-@@ -329,7 +329,7 @@
-   )
- 
-   const GeneralSection = () => (
--    <SettingsSectionV2 title={language.t("settings.tab.general")}>
-+    <SettingsSectionV2 icon="sliders" title={language.t("settings.tab.general")}>
-       <SettingsListV2>
-         <LanguageSetting />
- 
-@@ -405,7 +405,7 @@
-   )
- 
-   const AdvancedSection = () => (
--    <SettingsSectionV2 title={language.t("settings.general.section.advanced")}>
-+    <SettingsSectionV2 icon="settings-gear" title={language.t("settings.general.section.advanced")}>
- 
-       <SettingsListV2>
-         <SettingsRowV2
-@@ -460,7 +460,7 @@
-   )
- 
-   const NotificationsSection = () => (
--    <SettingsSectionV2 title={language.t("settings.general.section.notifications")}>
-+    <SettingsSectionV2 icon="speech-bubble" title={language.t("settings.general.section.notifications")}>
- 
-       <SettingsListV2>
-         <SettingsRowV2
-@@ -503,7 +503,7 @@
-   )
- 
-   const UpdatesSection = () => (
--    <SettingsSectionV2 title={language.t("settings.general.section.updates")}>
-+    <SettingsSectionV2 icon="cloud-upload" title={language.t("settings.general.section.updates")}>
- 
-       <SettingsListV2>
-         <SettingsRowV2
-@@ -533,7 +533,7 @@
-   // We can probably remove this, right?
-   const DisplaySection = () => (
-     <Show when={desktop()}>
--      <SettingsSectionV2 title={language.t("settings.general.section.display")}>
-+      <SettingsSectionV2 icon="window-cursor" title={language.t("settings.general.section.display")}>
-         <SettingsListV2>
-           <SettingsRowV2
-             title={language.t("settings.general.row.pinchZoom.title")}
-
 diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
+index 42473c0..215e8f9 100644
 --- a/packages/app/src/components/settings-v2/settings-v2.css
 +++ b/packages/app/src/components/settings-v2/settings-v2.css
 @@ -267,10 +267,8 @@
@@ -157,32 +227,35 @@ diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/
    /* Nav (flex 0) + panel { height:100% of the 720px tabs } overflows
       dialog-content and creates a blank scroller. Fill only the remaining
       column (flex-grow + height:0), and keep overflow on this panel. */
-@@ -308,21 +325,21 @@
+@@ -308,23 +325,23 @@
    }
-
+ 
    .settings-v2-tab-body {
 -    padding: 0 16px 8px;
 -    gap: 0;
 +    padding: 8px 8px 12px;
 +    gap: 4px;
    }
-
+ 
    .settings-v2-section {
      gap: 8px;
    }
-
+ 
 -  .settings-v2-section:not([open]) {
 +  details.settings-v2-section:not([open]) {
      gap: 0;
    }
-
+ 
 -  .settings-v2-section:not([open]) > :not(summary) {
 +  details.settings-v2-section:not([open]) > :not(summary) {
      display: none !important;
    }
-
+ 
 -  .settings-v2-section:not([open])::details-content {
 +  details.settings-v2-section:not([open])::details-content {
+     display: none;
+     block-size: 0;
+     overflow: hidden;
 @@ -336,23 +353,36 @@
      top: 0;
      z-index: 6;
@@ -278,72 +351,3 @@ diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/
  }
  
  .settings-v2-nav-footer {
-
-diff --git a/packages/app/src/components/settings-keybinds.tsx b/packages/app/src/components/settings-keybinds.tsx
---- a/packages/app/src/components/settings-keybinds.tsx
-+++ b/packages/app/src/components/settings-keybinds.tsx
-@@ -7,10 +7,11 @@
- import { TextField } from "@opencode-ai/ui/text-field"
- import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
- import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
-+import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
- import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
- import { showToast } from "@/utils/toast"
- import fuzzysort from "fuzzysort"
--import { DEFAULT_PALETTE_KEYBIND, formatKeybind, parseKeybind, useCommand } from "@/context/command"
-+import { DEFAULT_PALETTE_KEYBIND, formatKeybind, formatKeybindParts, parseKeybind, useCommand } from "@/context/command"
- import { useLanguage } from "@/context/language"
- import { useSettings } from "@/context/settings"
- import { SettingsList } from "./settings-list"
-@@ -391,6 +392,7 @@
-         filteredFor(query, list(), grouped(), (id) => formatKeybind(effective(id) ?? "", language.t)),
-       title,
-       keybind: (id: string) => formatKeybind(effective(id) ?? "", language.t),
-+      keybindParts: (id: string) => formatKeybindParts(effective(id) ?? "", language.t),
-     },
-     capture: {
-       active: () => store.active,
-@@ -424,6 +426,7 @@
-       filtered={controller.catalog.filtered}
-       title={controller.catalog.title}
-       keybind={controller.catalog.keybind}
-+      keybindParts={controller.catalog.keybindParts}
-       active={controller.capture.active}
-       onCapture={controller.capture.toggle}
-       hasOverrides={controller.settings.hasOverrides}
-@@ -437,6 +440,7 @@
-   filtered: (query: string) => Map<KeybindGroup, string[]>
-   title: (id: string) => string
-   keybind: (id: string) => string
-+  keybindParts: (id: string) => string[]
-   active: () => string | null
-   onCapture: (id: string) => void
-   hasOverrides: () => boolean
-@@ -491,7 +495,10 @@
-                   <SettingsListV2>
-                     <For each={filtered().get(group) ?? []}>
-                       {(id) => (
--                        <div class="flex items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none">
-+                        <div
-+                          data-slot="settings-v2-shortcut-row"
-+                          class="flex items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none"
-+                        >
-                           <span>{props.title(id)}</span>
-                           <button
-                             type="button"
-@@ -504,7 +511,14 @@
-                           >
-                             <Show
-                               when={props.active() === id}
--                              fallback={props.keybind(id) || language.t("settings.shortcuts.unassigned")}
-+                              fallback={
-+                                <Show
-+                                  when={props.keybindParts(id).length > 0}
-+                                  fallback={language.t("settings.shortcuts.unassigned")}
-+                                >
-+                                  <KeybindV2 keys={props.keybindParts(id)} variant="neutral" />
-+                                </Show>
-+                              }
-                             >
-                               {language.t("settings.shortcuts.pressKeys")}
-                             </Show>

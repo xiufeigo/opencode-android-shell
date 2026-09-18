@@ -39,6 +39,8 @@ apply_android_embed_patch() {
     exit 1
   fi
   local patch base
+  # Known issue: session-context must apply before ime-session-layout.
+  # File is named android-webview-z-ime-session-context.patch so alpha order is correct.
   for patch in "$PATCH_DIR"/*.patch; do
     [[ -f "$patch" ]] || continue
     base="$(basename "$patch")"
@@ -99,6 +101,18 @@ apply_android_embed_patch() {
       continue
     fi
     if [[ "$base" == *z-tablet-dialog* ]] && grep -q 'android-tablet-dialog-layout' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null; then
+      echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *z-directory-picker* ]] && grep -q 'directory-picker-android-footer' "$SRC/packages/app/src/components/dialog-select-directory.tsx" 2>/dev/null; then
+      echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *z-session-reconcile* ]] && grep -q 'reconcileActiveSession' "$SRC/packages/app/src/context/server-sync.tsx" 2>/dev/null; then
+      echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *z-send-retry* ]] && grep -q 'failedResends' "$SRC/packages/app/src/components/prompt-input/submit.ts" 2>/dev/null; then
       echo "Already applied $base"
       continue
     fi

@@ -9,9 +9,9 @@ class SessionContextRingTest {
     fun patchOpensContextPanelFromHeaderRingOnPhoneWidth() {
         val patch =
             listOf(
-                File("../frontend/patches/android-webview-z-session-context.patch"),
-                File("../../frontend/patches/android-webview-z-session-context.patch"),
-                File("frontend/patches/android-webview-z-session-context.patch"),
+                File("../frontend/patches/android-webview-z-ime-session-context.patch"),
+                File("../../frontend/patches/android-webview-z-ime-session-context.patch"),
+                File("frontend/patches/android-webview-z-ime-session-context.patch"),
             ).firstOrNull { it.isFile } ?: error("missing session context patch")
         val text = patch.readText()
         assertTrue(text.contains("session-open-context"))

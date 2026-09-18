@@ -53,6 +53,15 @@ class MainActivity : AppCompatActivity() {
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var backInFlight = false
     private var webColorSchemeApplied = false
+    // Last root padding applied by applyImeAwarePadding. Compared on all four
+    // sides (rotation changes left/right) so identical insets never re-layout.
+    private var lastPaddingLeft = -1
+    private var lastPaddingTop = -1
+    private var lastPaddingRight = -1
+    private var lastPaddingBottom = -1
+    // Last observed IME visibility. notifyWebViewImeHidden fires only on the
+    // visible -> hidden edge so onEnd + onWindowFocusChanged can't double-fire.
+    private var imeWasVisible = false
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -170,7 +179,7 @@ class MainActivity : AppCompatActivity() {
                     if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
                     val visible = ViewCompat.getRootWindowInsets(binding.root)
                         ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-                    if (!visible) notifyWebViewImeHidden()
+                    handleImeVisibility(visible)
                 }
             },
         )
@@ -186,12 +195,28 @@ class MainActivity : AppCompatActivity() {
         )
         val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
         val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+        val bottom = imeAwareBottomPadding(bars.bottom, ime.bottom, imeVisible)
+        if (bars.left == lastPaddingLeft && bars.top == lastPaddingTop &&
+            bars.right == lastPaddingRight && bottom == lastPaddingBottom
+        ) {
+            return
+        }
+        lastPaddingLeft = bars.left
+        lastPaddingTop = bars.top
+        lastPaddingRight = bars.right
+        lastPaddingBottom = bottom
         binding.root.updatePadding(
             left = bars.left,
             top = bars.top,
             right = bars.right,
-            bottom = imeAwareBottomPadding(bars.bottom, ime.bottom, imeVisible),
+            bottom = bottom,
         )
+    }
+
+    private fun handleImeVisibility(visible: Boolean) {
+        val was = imeWasVisible
+        imeWasVisible = visible
+        if (was && !visible) notifyWebViewImeHidden()
     }
 
     private fun notifyWebViewImeHidden() {
@@ -205,12 +230,16 @@ class MainActivity : AppCompatActivity() {
             ViewCompat.requestApplyInsets(binding.root)
             val visible = ViewCompat.getRootWindowInsets(binding.root)
                 ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-            if (!visible) notifyWebViewImeHidden()
+            handleImeVisibility(visible)
         }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // Re-sync edge state without notifying: rotation/fold can change IME
+        // visibility out from under the cached flag.
+        imeWasVisible = ViewCompat.getRootWindowInsets(binding.root)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
         // Until the WebView reports its own color-scheme, follow system night.
         if (!webColorSchemeApplied) {
             applySystemUi(systemNightMode())
@@ -271,9 +300,13 @@ class MainActivity : AppCompatActivity() {
         binding.webView.isClickable = true
         binding.webView.isLongClickable = true
         binding.webView.overScrollMode = View.OVER_SCROLL_NEVER
-        binding.webView.setOnLongClickListener { false }
+        // Do NOT consume long-press: Chromium text selection / ActionMode
+        // (copy/paste/select) is entered from View.performLongClick(), which
+        // only runs when no OnLongClickListener swallows the event.
+        // isLongClickable must stay true, otherwise the framework never posts
+        // the long-press check and selection dies with it.
         binding.webView.setOnTouchListener { view, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
+            if (event.action == MotionEvent.ACTION_DOWN && !view.hasFocus()) {
                 view.requestFocus()
             }
             false
@@ -527,6 +560,32 @@ class MainActivity : AppCompatActivity() {
                 }
                 window.__ocAndroidShell = true;
                 window.__ocAndroidEscapePassThrough = true;
+                if (!document.getElementById('oc-android-touch-css')) {
+                  var style = document.createElement('style');
+                  style.id = 'oc-android-touch-css';
+                  style.textContent = 'html,body{-webkit-user-select:none;user-select:none;}'
+                    + 'input,textarea,[contenteditable],[data-component="terminal"],[data-component="terminal"] *{-webkit-user-select:text;user-select:text;}'
+                    + 'html[data-android-webview] [data-component="text-part"],'
+                    + 'html[data-android-webview] [data-component="text-part"] *,'
+                    + 'html[data-android-webview] [data-slot="text-part-body"],'
+                    + 'html[data-android-webview] [data-slot="text-part-body"] *,'
+                    + 'html[data-android-webview] [data-slot="user-message-body"],'
+                    + 'html[data-android-webview] [data-slot="user-message-body"] *,'
+                    + 'html[data-android-webview] [data-slot="user-message-text"],'
+                    + 'html[data-android-webview] [data-slot="user-message-text"] *,'
+                    + 'html[data-android-webview] [data-component="tool-output"],'
+                    + 'html[data-android-webview] [data-component="tool-output"] *,'
+                    + 'html[data-android-webview] [data-slot*="markdown"],'
+                    + 'html[data-android-webview] [data-slot*="markdown"] *,'
+                    + 'html[data-android-webview] [data-slot="message-part-todo-content"],'
+                    + 'html[data-android-webview] [data-slot="message-part-todo-content"] *,'
+                    + 'html[data-android-webview] [data-slot="session-review-diff-wrapper"],'
+                    + 'html[data-android-webview] [data-slot="session-review-diff-wrapper"] *,'
+                    + 'html[data-android-webview] pre,'
+                    + 'html[data-android-webview] code'
+                    + '{-webkit-user-select:text;user-select:text;}';
+                  document.documentElement.appendChild(style);
+                }
                 try {
                   if (window.OpenCodeAndroid) {
                     window.__ocAndroidProxy = {
@@ -543,6 +602,11 @@ class MainActivity : AppCompatActivity() {
             (function () {
               if (window.__ocImeScroll) return;
               window.__ocImeScroll = true;
+              // Settle window: OEM IME animations run ~150-400ms. Coalesce the
+              // burst of visualViewport resizes into one guarded scroll so the
+              // page does not re-center every frame (keyboard jitter).
+              var SETTLE_MS = 200;
+              var vvTimer = 0;
               var fillRoot = function () {
                 var root = document.getElementById('root');
                 if (!root) return;
@@ -550,19 +614,48 @@ class MainActivity : AppCompatActivity() {
                 root.style.minHeight = '100%';
                 root.style.maxHeight = '100%';
               };
+              var viewportHeight = function () {
+                try {
+                  if (window.visualViewport && window.visualViewport.height) {
+                    return window.visualViewport.height;
+                  }
+                } catch (e) {}
+                return window.innerHeight;
+              };
               var scrollFocused = function () {
-                fillRoot();
                 var el = document.activeElement;
                 if (!el || el === document.body || el === document.documentElement) return;
                 var tag = (el.tagName || '').toLowerCase();
                 var editable = tag === 'input' || tag === 'textarea' || el.isContentEditable === true;
                 if (!editable) return;
-                try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); }
-                catch (e) { try { el.scrollIntoView(true); } catch (e2) {} }
+                // Occlusion guard: never move fields that are fully visible.
+                // Unobscured inputs forced to 'center' on every resize were the
+                // visible jitter; 'nearest' only travels when covered.
+                try {
+                  var rect = el.getBoundingClientRect();
+                  if (rect.bottom <= viewportHeight() - 8 && rect.top >= 0) return;
+                } catch (e) {}
+                try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+                catch (e2) { try { el.scrollIntoView(false); } catch (e3) {} }
               };
-              document.addEventListener('focusin', function () { setTimeout(scrollFocused, 60); }, true);
-              window.addEventListener('resize', scrollFocused);
-              if (window.visualViewport) visualViewport.addEventListener('resize', scrollFocused);
+              // Double tick: 60ms positions early, 320ms re-checks the settled
+              // viewport. The occlusion guard makes the second tick a no-op
+              // unless the field is still covered.
+              document.addEventListener('focusin', function () {
+                setTimeout(scrollFocused, 60);
+                setTimeout(scrollFocused, 320);
+              }, true);
+              // NOTE: no window 'resize' listener. WebView height changes fire
+              // it every animation frame; reacting per-frame re-centers the
+              // field continuously. visualViewport alone (debounced) plus the
+              // focusin ticks cover IME settle; xterm/terminal refit still
+              // gets every real resize via IME_RESTORE_JS on the hidden edge.
+              if (window.visualViewport) {
+                visualViewport.addEventListener('resize', function () {
+                  if (vvTimer) return;
+                  vvTimer = setTimeout(function () { vvTimer = 0; scrollFocused(); }, SETTLE_MS);
+                });
+              }
               fillRoot();
             })();
         """

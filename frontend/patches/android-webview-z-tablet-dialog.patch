@@ -1,7 +1,59 @@
+diff --git a/packages/app/src/components/settings-v2/parts/section.tsx b/packages/app/src/components/settings-v2/parts/section.tsx
+index 5ad8b96..5844eea 100644
+--- a/packages/app/src/components/settings-v2/parts/section.tsx
++++ b/packages/app/src/components/settings-v2/parts/section.tsx
+@@ -5,14 +5,15 @@ import "../settings-v2.css"
+ 
+ /** Collapsible settings block. Native <details> so several panels can stay open
+  *  (AccordionV2 is single-card chrome and single-open by default).
+- *  Portrait (Android): collapsed by default, summary styled like the settings nav. */
++ *  Phone (Android, max-width 639px): collapsed by default, summary styled like the settings nav.
++ *  Tablet landscape / desktop: sections stay open like official web. */
+ export const SettingsSectionV2: Component<{
+   title?: string | JSX.Element
+   icon?: ComponentProps<typeof Icon>["name"]
+   children: JSX.Element
+   defaultOpen?: boolean
+ }> = (props) => {
+-  const stacked = createMediaQuery("(max-width: 839px)")
++  const stacked = createMediaQuery("(max-width: 639px)")
+   const initiallyOpen = () => (props.defaultOpen !== undefined ? props.defaultOpen : !stacked())
+   return (
+     <details
+diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
+index 215e8f9..93da72a 100644
+--- a/packages/app/src/components/settings-v2/settings-v2.css
++++ b/packages/app/src/components/settings-v2/settings-v2.css
+@@ -187,10 +187,11 @@
+   }
+ }
+ 
+-/* Android / narrow portrait: official CSS only shrinks the 240px sidebar to 144px
+-   (max-width 639px). That still two-columns a ~390–800px viewport and clips
+-   controls. Stack to a single column below 840px; landscape tablets stay row. */
+-@media (max-width: 839px) {
++/* Android phones only: official CSS only shrinks the 240px sidebar to 144px
++   (max-width 639px). That still two-columns a ~390px phone and clips controls.
++   Stack to a single-column accordion on truly narrow phones. Tablet landscape
++   (and anything ≥640px) matches official web centered two-column Settings. */
++@media (max-width: 639px) {
+   [data-component="dialog-v2"][data-variant="settings"] [data-slot="dialog-container"] {
+     width: min(calc(100vw - 16px), 980px);
+     height: min(calc(100dvh - 16px), 720px);
+@@ -291,7 +292,7 @@
+   white-space: nowrap;
+ }
+ 
+-@media (max-width: 839px) {
++@media (max-width: 639px) {
+   .settings-v2-panel .settings-v2-tab-header {
+     position: static;
+     z-index: auto;
 diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app/src/pages/home/android-webview-home.css
+index 00617be..7a2689b 100644
 --- a/packages/app/src/pages/home/android-webview-home.css
 +++ b/packages/app/src/pages/home/android-webview-home.css
-@@ -42,25 +42,69 @@
+@@ -42,25 +42,69 @@ html[data-android-webview] [data-slot="app-shell"] {
    flex: 1 1 auto;
  }
  
@@ -83,52 +135,3 @@ diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app
  }
  
  /* Session header context ring: keep the control above siblings and tappable. */
-diff --git a/packages/app/src/components/settings-v2/settings-v2.css b/packages/app/src/components/settings-v2/settings-v2.css
---- a/packages/app/src/components/settings-v2/settings-v2.css
-+++ b/packages/app/src/components/settings-v2/settings-v2.css
-@@ -187,10 +187,11 @@
-   }
- }
- 
--/* Android / narrow portrait: official CSS only shrinks the 240px sidebar to 144px
--   (max-width 639px). That still two-columns a ~390–800px viewport and clips
--   controls. Stack to a single column below 840px; landscape tablets stay row. */
--@media (max-width: 839px) {
-+/* Android phones only: official CSS only shrinks the 240px sidebar to 144px
-+   (max-width 639px). That still two-columns a ~390px phone and clips controls.
-+   Stack to a single-column accordion on truly narrow phones. Tablet landscape
-+   (and anything ≥640px) matches official web centered two-column Settings. */
-+@media (max-width: 639px) {
-   [data-component="dialog-v2"][data-variant="settings"] [data-slot="dialog-container"] {
-     width: min(calc(100vw - 16px), 980px);
-     height: min(calc(100dvh - 16px), 720px);
-@@ -291,7 +292,7 @@
-   white-space: nowrap;
- }
- 
--@media (max-width: 839px) {
-+@media (max-width: 639px) {
-   .settings-v2-panel .settings-v2-tab-header {
-     position: static;
-     z-index: auto;
-diff --git a/packages/app/src/components/settings-v2/parts/section.tsx b/packages/app/src/components/settings-v2/parts/section.tsx
---- a/packages/app/src/components/settings-v2/parts/section.tsx
-+++ b/packages/app/src/components/settings-v2/parts/section.tsx
-@@ -5,14 +5,15 @@
- 
- /** Collapsible settings block. Native <details> so several panels can stay open
-  *  (AccordionV2 is single-card chrome and single-open by default).
-- *  Portrait (Android): collapsed by default, summary styled like the settings nav. */
-+ *  Phone (Android, max-width 639px): collapsed by default, summary styled like the settings nav.
-+ *  Tablet landscape / desktop: sections stay open like official web. */
- export const SettingsSectionV2: Component<{
-   title?: string | JSX.Element
-   icon?: ComponentProps<typeof Icon>["name"]
-   children: JSX.Element
-   defaultOpen?: boolean
- }> = (props) => {
--  const stacked = createMediaQuery("(max-width: 839px)")
-+  const stacked = createMediaQuery("(max-width: 639px)")
-   const initiallyOpen = () => (props.defaultOpen !== undefined ? props.defaultOpen : !stacked())
-   return (
-     <details
