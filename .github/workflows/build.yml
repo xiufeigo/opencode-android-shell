@@ -46,5 +46,8 @@ jobs:
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           sha256sum "$APK"
-          cp "$APK" OpenCode-debug.apk
-          curl -sS -T OpenCode-debug.apk "https://filebin.net/ocandroid-$GITHUB_RUN_ID/OpenCode-debug.apk"
+          # filebin rejects .apk uploads; ship a zip like previous releases.
+          rm -f OpenCode-debug.zip
+          python3 -c "import zipfile; z = zipfile.ZipFile('OpenCode-debug.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=9); z.write('$APK', 'app-debug.apk'); z.close()"
+          curl -sS -f -T OpenCode-debug.zip "https://filebin.net/ocandroid-$GITHUB_RUN_ID/OpenCode-debug.zip"
+          echo "https://filebin.net/ocandroid-$GITHUB_RUN_ID/OpenCode-debug.zip"
