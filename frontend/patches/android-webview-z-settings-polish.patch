@@ -76,7 +76,7 @@ index 91879cd..6a4ab2e 100644
    const language = useLanguage()
    return (
 -    <SettingsSectionV2 title={language.t("settings.general.section.appearance")}>
-+    <SettingsSectionV2 icon="pencil-line" title={language.t("settings.general.section.appearance")}>
++    <SettingsSectionV2 icon="photo" title={language.t("settings.general.section.appearance")}>
        <SettingsListV2>
          <SettingsRowV2
            title={language.t("settings.general.row.colorScheme.title")}
@@ -85,7 +85,7 @@ index 91879cd..6a4ab2e 100644
    const language = useLanguage()
    return (
 -    <SettingsSectionV2 title={language.t("settings.general.section.sounds")}>
-+    <SettingsSectionV2 icon="status-active" title={language.t("settings.general.section.sounds")}>
++    <SettingsSectionV2 icon="status" title={language.t("settings.general.section.sounds")}>
        <SettingsListV2>
          <SoundSetting kind="agent" channel={props.controller.agent} />
          <SoundSetting kind="permissions" channel={props.controller.permissions} />
@@ -94,7 +94,7 @@ index 91879cd..6a4ab2e 100644
  
    const GeneralSection = () => (
 -    <SettingsSectionV2 title={language.t("settings.tab.general")}>
-+    <SettingsSectionV2 icon="bullet-list" title={language.t("settings.tab.general")}>
++    <SettingsSectionV2 icon="sliders" title={language.t("settings.tab.general")}>
        <SettingsListV2>
          <LanguageSetting />
  
