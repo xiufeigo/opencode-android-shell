@@ -10,9 +10,115 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
 
 class LocalGatewayTest {
+    @Test
+    fun eventStreamPathsAreDetected() {
+        assertTrue(LocalGateway.isEventStreamRequestPath("/event"))
+        assertTrue(LocalGateway.isEventStreamRequestPath("/global/event"))
+        assertTrue(LocalGateway.isEventStreamRequestPath("/api/event"))
+        assertTrue(LocalGateway.isEventStreamRequestPath("/api/session/ses_1/event"))
+        assertFalse(LocalGateway.isEventStreamRequestPath("/api/session/ses_1/message"))
+        assertFalse(LocalGateway.isEventStreamRequestPath("/eventual"))
+        assertFalse(LocalGateway.isEventStreamRequestPath("/events"))
+        assertFalse(LocalGateway.isEventStreamRequestPath("/api/health"))
+    }
+
+    /**
+     * CN↔SG links blackhole long-lived SSE streams without FIN/RST. Without a
+     * read timeout OkHttp waits forever and the WebView page never reconnects.
+     * The watchdog must cut the loopback stream shortly after upstream silence
+     * (35 s in production, short here) so the page reconnects and reconciles.
+     */
+    @Test
+    fun stalledSseIsCutByIdleWatchdog() {
+        val upstream = ServerSocket(0)
+        Thread {
+            try {
+                upstream.accept().use { sock ->
+                    val input = sock.getInputStream()
+                    val head = StringBuilder()
+                    val one = ByteArray(1)
+                    while (head.length < 65_536) {
+                        val n = input.read(one)
+                        if (n < 0) break
+                        head.append(one[0].toInt().toChar())
+                        if (head.endsWith("\r\n\r\n")) break
+                    }
+                    val out = sock.getOutputStream()
+                    out.write(
+                        (
+                            "HTTP/1.1 200 OK\r\n" +
+                                "Content-Type: text/event-stream\r\n" +
+                                "Connection: close\r\n\r\n" +
+                                "data: one\n\n"
+                            ).toByteArray(),
+                    )
+                    out.flush()
+                    // Half-open: stay silent, never send FIN/RST on our own.
+                    Thread.sleep(15_000)
+                }
+            } catch (_: Exception) {
+            }
+        }.apply { isDaemon = true }.start()
+        try {
+            LocalGateway(httpClient = OkHttpClient(), sseIdleReadTimeoutMs = 600).use { gateway ->
+                gateway.start()
+                val backend = "http://127.0.0.1:${upstream.localPort}"
+                val url =
+                    "${gateway.publicOrigin()}${gateway.publicPrefix()}${ProxyPath.encodeBackend(backend)}/event"
+                val client = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+                val response = client.newCall(
+                    Request.Builder().url(url).header("Origin", "https://appassets.androidplatform.net").build(),
+                ).execute()
+                assertEquals(200, response.code)
+                val stream = response.body!!.byteStream()
+                val first = ByteArray(64)
+                assertTrue("first SSE chunk must arrive", stream.read(first) > 0)
+                val beforeEof = System.nanoTime()
+                val eof = stream.read()
+                val waitedMs = (System.nanoTime() - beforeEof) / 1_000_000
+                assertEquals(-1, eof)
+                assertTrue("watchdog must cut the stalled SSE, waited=${waitedMs}ms", waitedMs < 5_000)
+            }
+        } finally {
+            try {
+                upstream.close()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    @Test
+    fun slowNonSseResponseIsNotCutBySseWatchdog() {
+        MockWebServer().use { upstream ->
+            upstream.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBodyDelay(900, TimeUnit.MILLISECONDS)
+                    .setBody("""{"ok":true}"""),
+            )
+            LocalGateway(httpClient = OkHttpClient(), sseIdleReadTimeoutMs = 300).use { gateway ->
+                gateway.start()
+                val backend = upstream.url("/").toString().trimEnd('/')
+                val url =
+                    "${gateway.publicOrigin()}${gateway.publicPrefix()}${ProxyPath.encodeBackend(backend)}/api/health"
+                val response = OkHttpClient.Builder()
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .build()
+                    .newCall(
+                        Request.Builder().url(url).header("Origin", "https://appassets.androidplatform.net").build(),
+                    )
+                    .execute()
+                assertEquals(200, response.code)
+                assertTrue(response.body!!.string().contains("\"ok\":true"))
+            }
+        }
+    }
+
     @Test
     fun healthAndPostDoNotNeedUpstreamCors() {
         MockWebServer().use { upstream ->

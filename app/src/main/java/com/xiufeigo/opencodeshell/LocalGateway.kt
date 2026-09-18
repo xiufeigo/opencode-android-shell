@@ -15,6 +15,7 @@ import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Locale
 import java.util.UUID
@@ -44,6 +45,7 @@ import javax.net.ssl.SSLSocketFactory
 class LocalGateway(
     private val httpClient: OkHttpClient = defaultClient(),
     private val sslSocketFactory: SSLSocketFactory = SSLSocketFactory.getDefault() as SSLSocketFactory,
+    private val sseIdleReadTimeoutMs: Long = SSE_IDLE_READ_TIMEOUT_MS,
 ) : Closeable {
 
     val token: String = UUID.randomUUID().toString()
@@ -57,6 +59,24 @@ class LocalGateway(
     private val portBackends = ConcurrentHashMap<Int, String>()
     private val extraSockets = CopyOnWriteArrayList<ServerSocket>()
     private val activeClients = CopyOnWriteArrayList<Socket>()
+
+    /**
+     * SSE half-open guard. opencode heartbeats every 10 s; a socket read that
+     * stays silent for [sseIdleReadTimeoutMs] means the long-lived stream was
+     * blackholed without FIN/RST (carrier NAT / middlebox, common on long-haul
+     * routes). OkHttp cannot detect that without a read timeout, so a stalled
+     * stream would hang the WebView page forever ("reply only appears after
+     * reload"). The timeout throws SocketTimeoutException, [copyStreaming]
+     * breaks, the loopback socket closes and the page's EventSource reconnects
+     * — the reconcile patch then re-syncs events missed during the gap.
+     */
+    private val sseClient: OkHttpClient by lazy {
+        if (sseIdleReadTimeoutMs <= 0L) {
+            httpClient
+        } else {
+            httpClient.newBuilder().readTimeout(sseIdleReadTimeoutMs, TimeUnit.MILLISECONDS).build()
+        }
+    }
 
     fun publicOrigin(): String = "http://127.0.0.1:$port"
 
@@ -227,7 +247,8 @@ class LocalGateway(
             else -> builder.method(method, body(parsed)).build()
         }
         val response: Response = try {
-            httpClient.newCall(request).execute()
+            val callClient = if (isEventStreamRequest(parsed)) sseClient else httpClient
+            callClient.newCall(request).execute()
         } catch (e: Exception) {
             Log.e(TAG, "upstream ${parsed.method} $upstream failed: ${e.message}")
             val msg = """{"error":${jsonString(e.message ?: "upstream failed")}}"""
@@ -375,6 +396,30 @@ class LocalGateway(
         private const val DEFAULT_ALLOW_HEADERS =
             "Authorization, Content-Type, Accept, Last-Event-ID, x-opencode-directory, x-opencode-workspace, x-opencode-ticket"
 
+        /**
+         * opencode `/event` heartbeats every 10 s. 35 s of silence means at
+         * least three heartbeats were lost, i.e. the stream is dead even though
+         * no FIN/RST arrived. Keep this well above 10 s and well below the
+         * carrier NAT idle window that blackholes it.
+         */
+        internal const val SSE_IDLE_READ_TIMEOUT_MS = 35_000L
+
+        /**
+         * SSE paths used by the official client: `/event` (v1 subscribe),
+         * `/global/event` (v2 global), `/api/event`, and session streams
+         * `/api/session/{id}/event`. The SDK's `sse.get` sets no
+         * `Accept: text/event-stream` request header (only the response is
+         * content-checked), so the path is the reliable marker.
+         */
+        internal fun isEventStreamRequestPath(path: String): Boolean =
+            path == "/event" || path.endsWith("/event")
+
+        private fun isEventStreamRequest(parsed: ParsedRequest): Boolean {
+            val accept = header(parsed.headers, "Accept")
+            if (accept != null && accept.contains("text/event-stream", ignoreCase = true)) return true
+            return isEventStreamRequestPath(parsed.path)
+        }
+
         internal fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
                 .followRedirects(true)
@@ -458,6 +503,13 @@ class LocalGateway(
             while (true) {
                 val n = try {
                     input.read(buf)
+                } catch (e: SocketTimeoutException) {
+                    // SSE idle watchdog (see sseClient): the upstream went silent
+                    // longer than any opencode heartbeat gap, so the stream is
+                    // presumed half-open. Tear down so the page reconnects
+                    // instead of hanging forever.
+                    Log.w(TAG, "upstream stream idle timeout: ${e.message}")
+                    break
                 } catch (_: Exception) {
                     break
                 }
