@@ -27,24 +27,33 @@ jobs:
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       # Same debug signature as local builds: restore the shared debug
-      # keystore so CI APKs install over local ones (and vice versa).
+      # keystore next to the checkout; app/build.gradle.kts points its
+      # explicit debug signingConfig at it (no ~/.android path guessing).
       - name: Restore shared debug keystore
         env:
           KS_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
           ANDROID_DEBUG_STORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
         run: |
-          mkdir -p ~/.android
-          echo "$KS_B64" | base64 -d > ~/.android/debug.keystore
-          chmod 600 ~/.android/debug.keystore
-          ls -la ~/.android/debug.keystore
+          echo "$KS_B64" | base64 -d > .ci-debug.keystore
+          chmod 600 .ci-debug.keystore
           # Self-check: must print 76:0D:C0:5F:B4:D1:A1:25 (public cert fingerprint).
-          keytool -list -v -keystore ~/.android/debug.keystore \
+          keytool -list -v -keystore .ci-debug.keystore \
             -storepass "$ANDROID_DEBUG_STORE_PASSWORD" 2>/dev/null | grep -E "Alias name|SHA256" || true
 
       - name: Unit tests
+        env:
+          DEBUG_KEYSTORE_PATH: ${{ github.workspace }}/.ci-debug.keystore
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Assemble debug APK
+        env:
+          DEBUG_KEYSTORE_PATH: ${{ github.workspace }}/.ci-debug.keystore
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Diagnose signing

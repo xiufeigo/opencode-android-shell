@@ -42,3 +42,4 @@ output.json
 selftest-embedded-ui.json
 
 .worktree-touch/
+.ci-debug.keystore

@@ -16,7 +16,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Shared debug key so local and CI APKs carry the same signature and
+        // install over each other. The keystore file itself is never committed:
+        // locally it is ~/.android/debug.keystore, CI restores it from Secrets
+        // to $GITHUB_WORKSPACE/.ci-debug.keystore (see .github/workflows).
+        create("sharedDebug") {
+            val ksPath =
+                System.getenv("DEBUG_KEYSTORE_PATH")
+                    ?: "${System.getProperty("user.home")}/.android/debug.keystore"
+            storeFile = File(ksPath)
+            storePassword = System.getenv("DEBUG_KEYSTORE_PASSWORD") ?: "android"
+            keyAlias = System.getenv("DEBUG_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword = System.getenv("DEBUG_KEY_PASSWORD") ?: "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("sharedDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
