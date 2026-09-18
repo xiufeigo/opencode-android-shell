@@ -56,14 +56,13 @@ jobs:
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: ./gradlew :app:assembleDebug --no-daemon
 
-      - name: Diagnose signing
+      # Guard: CI APKs must carry the shared cert (760dc05f…); fail loudly
+      # on any keystore drift instead of shipping uninstall-required builds.
+      - name: Verify APK signature
         run: |
-          echo "ANDROID_PREFS_ROOT=$ANDROID_PREFS_ROOT ANDROID_USER_HOME=$ANDROID_USER_HOME HOME=$HOME"
-          ls -la ~/.android/
           export PATH="$ANDROID_SDK_ROOT/build-tools/35.0.0:$PATH"
-          apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -E "Signer #1|SHA-256"
-          echo "--- every debug.keystore on this runner:"
-          find / -name "debug.keystore" -not -path "/proc/*" 2>/dev/null | head
+          apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee /tmp/certs.txt | grep -E "Signer #1|SHA-256"
+          grep -q "760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6" /tmp/certs.txt
 
       - name: SHA256 and filebin upload
         run: |
