@@ -18,7 +18,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship a preinstalled Android SDK; just ensure
+      # the platform + build-tools this project targets are present.
+      - name: Ensure Android platform and build-tools
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       # Same debug signature as local builds: restore the shared debug
       # keystore so CI APKs install over local ones (and vice versa).
