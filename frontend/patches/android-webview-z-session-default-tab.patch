@@ -1,0 +1,103 @@
+diff --git a/packages/app/src/components/session-context-usage.tsx b/packages/app/src/components/session-context-usage.tsx
+--- a/packages/app/src/components/session-context-usage.tsx
++++ b/packages/app/src/components/session-context-usage.tsx
+@@ -84,8 +84,11 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
+       .some((tab) => tab !== "context" && tab !== "review"),
+   )
+ 
++  const ANDROID_CTX_TAP_KEY = "__ocAndroidCtxTap" as const;
++  function requestAndroidContext(){ try { (window as unknown as Record<string, unknown>)[ANDROID_CTX_TAP_KEY] = true; } catch {} }
+   const openContext = () => {
+     if (!params.id) return
++    if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")) requestAndroidContext()
+ 
+     const sessionView = view()
+     if (contextVisible()) {
+diff --git a/packages/app/src/pages/session.tsx b/packages/app/src/pages/session.tsx
+--- a/packages/app/src/pages/session.tsx
++++ b/packages/app/src/pages/session.tsx
+@@ -120,6 +120,11 @@ function isAndroidWebView() {
+   return typeof document !== "undefined" && document.documentElement.hasAttribute("data-android-webview")
+ }
+ 
++const ANDROID_CTX_TAP_KEY = "__ocAndroidCtxTap" as const;
++function requestAndroidContext(){ try { (window as unknown as Record<string, unknown>)[ANDROID_CTX_TAP_KEY] = true; } catch {} }
++function consumeAndroidContext(){ try { const v = (window as unknown as Record<string, unknown>)[ANDROID_CTX_TAP_KEY] === true; (window as unknown as Record<string, unknown>)[ANDROID_CTX_TAP_KEY] = false; return v; } catch { return false; } }
++function clearAndroidContext(){ try { (window as unknown as Record<string, unknown>)[ANDROID_CTX_TAP_KEY] = false; } catch {} }
++
+ function isCurrentSessionNotFoundError(error: unknown, sessionID: string | undefined) {
+   if (!sessionID) return false
+   return isSessionNotFoundError(error, sessionID) || isLocalSessionNotFoundError(error, sessionID)
+@@ -670,7 +675,7 @@ export default function Page() {
+     return list
+   })
+   const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
+-  const mobileContext = createMemo(() => !isDesktop() && store.mobileTab === "context")
++  const mobileContext = createMemo(() => isAndroidWebView() && store.mobileTab === "context")
+   const wantsReview = createMemo(() =>
+     isDesktop()
+       ? desktopFileTreeOpen() ||
+@@ -2065,6 +2070,7 @@ export default function Page() {
+             }}
+             classes={{ button: compact ? "w-full !py-2" : "w-full" }}
+             onClick={() => {
++              requestAndroidContext()
+               setStore("mobileTab", "context")
+               const sessionView = view()
+               sessionView.reviewPanel.open(sessionView.reviewPanel.opened() ? "other" : "context-button")
+@@ -2304,13 +2310,50 @@ export default function Page() {
+ 
+   createEffect(
+     on(
+-      () => [tabs().active(), view().reviewPanel.opened()] as const,
+-      ([active, opened], prev) => {
+-        if (isDesktop() || !params.id) return
+-        if (active === "context" && opened && (!prev || prev[0] !== "context")) {
+-          setStore("mobileTab", "context")
++      () => params.id,
++      (id, prevId) => {
++        if (!isAndroidWebView()) return
++        if (id === prevId) return
++        clearAndroidContext()
++        setStore("mobileTab", "session")
++      },
++    ),
++  )
++
++  createEffect(
++    on(
++      () => params.id,
++      (id, prevId) => {
++        if (!isAndroidWebView() || !id || prevId) return
++        const all = tabs().all()
++        if (!all.includes("context")) return
++        const filteredAll = all.filter((t: string) => t !== "context")
++        const fallback = filteredAll.find((t: string) => t !== "review" && t !== "context")
++        if (fallback === undefined) {
++          tabs().setAll([])
++          try { tabs().close("context") } catch {}
++          try { tabs().close("review") } catch {}
++        } else {
++          tabs().setAll(filteredAll)
++          const cur = tabs().active()
++          tabs().setActive(cur && cur !== "context" && filteredAll.includes(cur) ? cur : fallback)
+         }
+       },
++      { defer: true },
++    ),
++  )
++
++  createEffect(
++    on(
++      () => [params.id, tabs().active(), view().reviewPanel.opened()] as const,
++      ([id, active, opened], prev) => {
++        if (!isAndroidWebView() || !params.id) return
++        if (id !== (prev?.[0] as string | undefined)) return
++        if (active !== "context" || !opened) return
++        if (!consumeAndroidContext()) return
++        if (prev && prev[1] === "context" && (prev[2] as boolean)) { clearAndroidContext(); return }
++        setStore("mobileTab", "context")
++      },
+     ),
+   )
+ 

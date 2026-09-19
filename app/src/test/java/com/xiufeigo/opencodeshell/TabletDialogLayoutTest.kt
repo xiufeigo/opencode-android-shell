@@ -22,6 +22,9 @@ class TabletDialogLayoutTest {
         assertTrue(text.contains("margin-top: max(48px, calc((100vh - 480px) / 2))"))
         assertTrue(text.contains("min(calc(100vw - 32px), 980px)"))
         assertTrue(text.contains(":not([data-variant=\"settings\"])"))
+        // F1 single source: phone + server-dialog use calc(100% - 16px), no min(100dvh dual source
+        assertTrue(text.contains("max-height: calc(100% - 16px)"))
+        assertTrue(!text.contains("min(calc(100dvh - 16px), calc(100% - 16px))"))
     }
 
     @Test

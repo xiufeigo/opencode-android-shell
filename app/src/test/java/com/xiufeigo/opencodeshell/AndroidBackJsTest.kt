@@ -48,7 +48,8 @@ class AndroidBackJsTest {
         val js = AndroidBackJs.INSTALL
         assertTrue(js.contains("Escape"))
         assertTrue(js.contains("dialog-overlay") || js.contains("role=\"dialog\""))
-        assertTrue(js.contains("android-session-context"))
+        assertTrue(js.contains("session-mobile-context"))
+        assertTrue(js.contains("session-mobile-tab-session"))
         assertTrue(js.contains("__ocAndroidHandleBack"))
         assertTrue(src.contains("__ocAndroidEscapePassThrough") || src.contains("xterm") || src.contains("Vim"))
     }

@@ -40,7 +40,9 @@ class SessionContextRingTest {
     @Test
     fun androidBackTreatsContextOverlayAsDismissible() {
         val js = AndroidBackJs.INSTALL
-        assertTrue(js.contains("android-session-context"))
-        assertTrue(js.contains("role=\"dialog\""))
+        assertTrue(js.contains("session-mobile-context"))
+        assertTrue(js.contains("session-mobile-tab-session"))
+        assertTrue(js.contains("session-context-panel"))
+        assertTrue(!js.contains("[data-component=\"android-session-context\"]"))
     }
 }

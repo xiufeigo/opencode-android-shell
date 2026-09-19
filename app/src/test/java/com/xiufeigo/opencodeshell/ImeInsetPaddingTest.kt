@@ -17,7 +17,7 @@ class ImeInsetPaddingTest {
     }
 
     @Test
-    fun activityAppliesImeInsetsAndAdjustResize() {
+    fun activityAppliesImeInsetsWithTrailingSettledScrollAndForce() {
         val src = File("src/main/java/com/xiufeigo/opencodeshell/MainActivity.kt").readText()
         assertTrue(src.contains("WindowInsetsCompat.Type.ime()"))
         assertTrue(src.contains("imeAwareBottomPadding"))
@@ -25,6 +25,20 @@ class ImeInsetPaddingTest {
         assertTrue(src.contains("IME_SCROLL_JS"))
         assertTrue(src.contains("IME_RESTORE_JS"))
         assertTrue(src.contains("WindowInsetsAnimationCompat"))
+        // F2 trailing settled: single timer, no double tick, stable layoutH
+        assertTrue(src.contains("SETTLE_MS = 250"))
+        assertTrue(src.contains("FALLBACK_MS = 350"))
+        assertTrue(src.contains("MAX_RETRY = 3"))
+        assertTrue(src.contains("pendingScroll"))
+        assertTrue(src.contains("var arm = function"))
+        assertTrue(src.contains("var settled = function"))
+        assertTrue(src.contains("layoutH()"))
+        assertTrue(!src.contains("setTimeout(scrollFocused, 60)"))
+        // F3 force bypass: threshold only for onProgress
+        assertTrue(src.contains("force: Boolean = false"))
+        assertTrue(src.contains("applyImeAwarePadding(insets, force = true)"))
+        assertTrue(src.contains("applyImeAwarePadding(insets, force = false)"))
+        assertTrue(src.contains("force = true"))
         val manifest = File("src/main/AndroidManifest.xml").readText()
         assertTrue(manifest.contains("android:windowSoftInputMode=\"adjustResize\""))
         val html = File("src/main/assets/opencode-app/index.html").readText()

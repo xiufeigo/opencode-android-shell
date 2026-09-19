@@ -84,7 +84,7 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
-    if [[ "$base" == *z-session-context* ]] && grep -q 'session-open-context' "$SRC/packages/app/src/components/session-context-usage.tsx" 2>/dev/null; then
+    if [[ "$base" == *z-ime-session-context* ]] && grep -q 'session-open-context' "$SRC/packages/app/src/components/session-context-usage.tsx" 2>/dev/null; then
       echo "Already applied $base"
       continue
     fi
@@ -100,7 +100,11 @@ apply_android_embed_patch() {
       echo "Already applied $base"
       continue
     fi
-    if [[ "$base" == *z-tablet-dialog* ]] && grep -q 'android-tablet-dialog-layout' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null; then
+    if [[ "$base" == *z-session-default-tab* ]] && grep -q '__ocAndroidCtxTap' "$SRC/packages/app/src/pages/session.tsx" 2>/dev/null && grep -q 'if (!consumeAndroidContext()) return' "$SRC/packages/app/src/pages/session.tsx" 2>/dev/null && grep -q 'filter((t: string) => t !== "context")' "$SRC/packages/app/src/pages/session.tsx" 2>/dev/null && grep -q '__ocAndroidCtxTap' "$SRC/packages/app/src/components/session-context-usage.tsx" 2>/dev/null; then
+      echo "Already applied $base"
+      continue
+    fi
+    if [[ "$base" == *z-tablet-dialog* ]] && grep -q 'android-tablet-dialog-layout' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null && grep -q 'max-height: calc(100% - 16px)' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null && [ "$(grep -c 'max-height: calc(100% - 16px)' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null)" -ge 3 ] && ! grep -B3 -A5 'dialog-v2.*:not(\[data-variant' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null | grep -q '100dvh' && ! grep -B5 -A5 'settings-v2-server-dialog' "$SRC/packages/app/src/pages/home/android-webview-home.css" 2>/dev/null | grep -q '100dvh'; then
       echo "Already applied $base"
       continue
     fi

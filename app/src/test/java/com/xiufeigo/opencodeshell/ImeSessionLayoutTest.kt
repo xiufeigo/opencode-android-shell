@@ -20,6 +20,8 @@ class ImeSessionLayoutTest {
         assertTrue(text.contains("session-mobile-tab-context"))
         assertTrue(text.contains("document.documentElement.clientHeight"))
         assertTrue(text.contains("h-full shrink-0"))
+        // F1 single source (final ownership: tablet-dialog; layout carries same value pre-replace)
+        assertTrue(text.contains("max-height: calc(100% - 16px)"))
     }
 
     @Test

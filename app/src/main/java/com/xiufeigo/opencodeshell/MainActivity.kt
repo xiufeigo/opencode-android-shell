@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         // adjustResize a no-op. Include IME insets so the FrameLayout shrinks and
         // 「添加服务器」fields stay above the keyboard.
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
-            applyImeAwarePadding(insets)
+            applyImeAwarePadding(insets, force = true)
             WindowInsetsCompat.CONSUMED
         }
         ViewCompat.setWindowInsetsAnimationCallback(
@@ -170,12 +170,14 @@ class MainActivity : AppCompatActivity() {
                     insets: WindowInsetsCompat,
                     runningAnimations: MutableList<WindowInsetsAnimationCompat>,
                 ): WindowInsetsCompat {
-                    applyImeAwarePadding(insets)
+                    applyImeAwarePadding(insets, force = false)
                     return insets
                 }
 
                 override fun onEnd(animation: WindowInsetsAnimationCompat) {
-                    ViewCompat.requestApplyInsets(binding.root)
+                    ViewCompat.getRootWindowInsets(binding.root)?.let {
+                        applyImeAwarePadding(it, force = true)
+                    } ?: ViewCompat.requestApplyInsets(binding.root)
                     if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
                     val visible = ViewCompat.getRootWindowInsets(binding.root)
                         ?.isVisible(WindowInsetsCompat.Type.ime()) == true
@@ -187,7 +189,7 @@ class MainActivity : AppCompatActivity() {
         applySystemUi(systemNightMode())
     }
 
-    private fun applyImeAwarePadding(insets: WindowInsetsCompat) {
+    private fun applyImeAwarePadding(insets: WindowInsetsCompat, force: Boolean = false) {
         val bars = insets.getInsets(
             WindowInsetsCompat.Type.statusBars() or
                 WindowInsetsCompat.Type.navigationBars() or
@@ -198,6 +200,14 @@ class MainActivity : AppCompatActivity() {
         val bottom = imeAwareBottomPadding(bars.bottom, ime.bottom, imeVisible)
         if (bars.left == lastPaddingLeft && bars.top == lastPaddingTop &&
             bars.right == lastPaddingRight && bottom == lastPaddingBottom
+        ) {
+            return
+        }
+        // 2px jitter gate only for per-frame onProgress. onApply/onEnd use
+        // force=true for exact calibration (tail frame, gesture keyboard,
+        // hardware keyboard never hit onEnd).
+        if (!force && bars.left == lastPaddingLeft && bars.top == lastPaddingTop &&
+            bars.right == lastPaddingRight && kotlin.math.abs(bottom - lastPaddingBottom) <= 2
         ) {
             return
         }
@@ -602,11 +612,17 @@ class MainActivity : AppCompatActivity() {
             (function () {
               if (window.__ocImeScroll) return;
               window.__ocImeScroll = true;
-              // Settle window: OEM IME animations run ~150-400ms. Coalesce the
-              // burst of visualViewport resizes into one guarded scroll so the
-              // page does not re-center every frame (keyboard jitter).
-              var SETTLE_MS = 200;
-              var vvTimer = 0;
+              // Trailing settled scroll: OEM IME runs ~150-400ms (slow、分段 up to 750ms).
+              // focusin + visualViewport.resize share one trailing timer; single
+              // scrollFocused() call after settle. No per-frame re-center.
+              var SETTLE_MS = 250;
+              var FALLBACK_MS = 350;
+              var MAX_RETRY = 3;
+              var settleTimer = 0;
+              var fallbackTimer = 0;
+              var pendingScroll = false;
+              var retry = 0;
+              var lastH = 0;
               var fillRoot = function () {
                 var root = document.getElementById('root');
                 if (!root) return;
@@ -614,10 +630,10 @@ class MainActivity : AppCompatActivity() {
                 root.style.minHeight = '100%';
                 root.style.maxHeight = '100%';
               };
-              var viewportHeight = function () {
+              var layoutH = function () {
                 try {
-                  if (window.visualViewport && window.visualViewport.height) {
-                    return window.visualViewport.height;
+                  if (document.documentElement && document.documentElement.clientHeight) {
+                    return document.documentElement.clientHeight;
                   }
                 } catch (e) {}
                 return window.innerHeight;
@@ -628,33 +644,40 @@ class MainActivity : AppCompatActivity() {
                 var tag = (el.tagName || '').toLowerCase();
                 var editable = tag === 'input' || tag === 'textarea' || el.isContentEditable === true;
                 if (!editable) return;
-                // Occlusion guard: never move fields that are fully visible.
-                // Unobscured inputs forced to 'center' on every resize were the
-                // visible jitter; 'nearest' only travels when covered.
                 try {
                   var rect = el.getBoundingClientRect();
-                  if (rect.bottom <= viewportHeight() - 8 && rect.top >= 0) return;
+                  if (rect.bottom <= layoutH() - 8 && rect.top >= 0) return;
                 } catch (e) {}
                 try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
                 catch (e2) { try { el.scrollIntoView(false); } catch (e3) {} }
               };
-              // Double tick: 60ms positions early, 320ms re-checks the settled
-              // viewport. The occlusion guard makes the second tick a no-op
-              // unless the field is still covered.
-              document.addEventListener('focusin', function () {
-                setTimeout(scrollFocused, 60);
-                setTimeout(scrollFocused, 320);
-              }, true);
-              // NOTE: no window 'resize' listener. WebView height changes fire
-              // it every animation frame; reacting per-frame re-centers the
-              // field continuously. visualViewport alone (debounced) plus the
-              // focusin ticks cover IME settle; xterm/terminal refit still
-              // gets every real resize via IME_RESTORE_JS on the hidden edge.
+              var settled = function () {
+                if (!pendingScroll) return;
+                if (settleTimer) { clearTimeout(settleTimer); settleTimer = 0; }
+                if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = 0; }
+                var h = layoutH();
+                if (h !== lastH && retry < MAX_RETRY) {
+                  lastH = h;
+                  retry++;
+                  settleTimer = setTimeout(settled, SETTLE_MS);
+                  return;
+                }
+                pendingScroll = false;
+                retry = 0;
+                lastH = h;
+                scrollFocused();
+              };
+              var arm = function () {
+                pendingScroll = true;
+                retry = 0;
+                if (settleTimer) clearTimeout(settleTimer);
+                if (fallbackTimer) clearTimeout(fallbackTimer);
+                settleTimer = setTimeout(settled, SETTLE_MS);
+                fallbackTimer = setTimeout(settled, FALLBACK_MS);
+              };
+              document.addEventListener('focusin', arm, true);
               if (window.visualViewport) {
-                visualViewport.addEventListener('resize', function () {
-                  if (vvTimer) return;
-                  vvTimer = setTimeout(function () { vvTimer = 0; scrollFocused(); }, SETTLE_MS);
-                });
+                visualViewport.addEventListener('resize', arm);
               }
               fillRoot();
             })();

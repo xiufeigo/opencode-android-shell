@@ -28,7 +28,7 @@ object AndroidBackJs {
                   var sels = [
                     '[data-component="dialog-overlay"]',
                     '[data-component="dialog-v2"]',
-                    '[data-component="android-session-context"]',
+                    '[data-slot="session-context-panel"]',
                     '[data-slot="dialog-content"]',
                     '[role="dialog"]',
                     '[data-component="popover-content"]',
@@ -66,6 +66,14 @@ object AndroidBackJs {
                   fireEscape();
                   return 'overlay';
                 }
+                try {
+                  var tabCtx = document.querySelector('[data-slot="session-mobile-context"]');
+                  if (tabCtx && visible(tabCtx)) {
+                    var backTab = document.querySelector('[data-action="session-mobile-tab-session"]');
+                    if (backTab) { click(backTab); return 'nav'; }
+                    return 'nav';
+                  }
+                } catch (eTab) {}
                 var buttons = document.querySelectorAll('button, [role="button"]');
                 for (var b = 0; b < buttons.length; b++) {
                   var el = buttons[b];

@@ -77,7 +77,7 @@ index 00617be..7a2689b 100644
 +  html[data-android-webview]
 +    [data-component="dialog-v2"]:not([data-variant="settings"]):not(:has(.command-palette-v2))
 +    [data-slot="dialog-container"] {
-+    max-height: min(calc(100dvh - 16px), calc(100% - 16px));
++    max-height: calc(100% - 16px);
 +    width: min(480px, calc(100vw - 16px));
 +  }
 +
@@ -85,19 +85,19 @@ index 00617be..7a2689b 100644
 +    [data-component="dialog-v2"]:not([data-variant="settings"]):not(:has(.command-palette-v2))
 +    [data-slot="dialog-content"] {
 +    overflow: auto;
-+    max-height: min(calc(100dvh - 16px), calc(100% - 16px));
++    max-height: calc(100% - 16px);
 +  }
  }
  
 -html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-container"] {
 +html[data-android-webview] [data-component="dialog-v2"].settings-v2-server-dialog [data-slot="dialog-container"] {
-   max-height: min(calc(100dvh - 16px), calc(100% - 16px));
+   max-height: calc(100% - 16px);
 -  width: min(480px, calc(100vw - 16px));
  }
  
 -html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-content"] {
 -  overflow: auto;
--  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
+-  max-height: calc(100% - 16px);
 +/* Settings: official centered x-large two-column card (980×600). */
 +html[data-android-webview] [data-component="dialog-v2"][data-variant="settings"] {
 +  align-items: center;
@@ -106,7 +106,7 @@ index 00617be..7a2689b 100644
  }
  
 -html[data-android-webview] [data-component="dialog-v2"].settings-v2-server-dialog [data-slot="dialog-container"] {
--  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
+-  max-height: calc(100% - 16px);
 +html[data-android-webview] [data-component="dialog-v2"][data-variant="settings"] [data-slot="dialog-container"] {
 +  width: min(calc(100vw - 32px), 980px);
 +  height: min(calc(100vh - 92px), 600px);

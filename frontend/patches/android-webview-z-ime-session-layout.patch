@@ -31,19 +31,19 @@ diff --git a/packages/app/src/pages/home/android-webview-home.css b/packages/app
  
  html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-container"] {
 -  max-height: calc(100dvh - 16px);
-+  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
++  max-height: calc(100% - 16px);
    width: min(480px, calc(100vw - 16px));
  }
  
  html[data-android-webview] [data-component="dialog-v2"] [data-slot="dialog-content"] {
    overflow: auto;
 -  max-height: calc(100dvh - 16px);
-+  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
++  max-height: calc(100% - 16px);
  }
  
  html[data-android-webview] [data-component="dialog-v2"].settings-v2-server-dialog [data-slot="dialog-container"] {
 -  max-height: calc(100dvh - 16px);
-+  max-height: min(calc(100dvh - 16px), calc(100% - 16px));
++  max-height: calc(100% - 16px);
  }
  
  /* Session header context ring: keep the control above siblings and tappable. */
