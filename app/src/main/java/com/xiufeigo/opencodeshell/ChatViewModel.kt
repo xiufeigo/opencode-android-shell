@@ -48,13 +48,55 @@ class ChatViewModel(
     private val _state = kotlinx.coroutines.flow.MutableStateFlow(ChatStore.ChatState())
     val state: kotlinx.coroutines.flow.StateFlow<ChatStore.ChatState> = _state
 
+    // Title of the tracked session; null means "no session yet" (rendered as
+    // the localized "New session" label by the view).
+    private val _currentTitle = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val currentTitle: kotlinx.coroutines.flow.StateFlow<String?> = _currentTitle
+
     var sessionID: String? = null
         private set
 
-    fun observeSession(id: String) {
+    fun observeSession(id: String, title: String? = null) {
         sessionID = id
         _state.value = ChatStore.ChatState()
+        _currentTitle.value = title
         if (started.get()) refreshSnapshot()
+    }
+
+    /**
+     * Drops back to the pre-session state: the next send creates the session
+     * server-side (existing createSession flow). Nothing is created eagerly.
+     */
+    fun newSession() {
+        sessionID = null
+        _state.value = ChatStore.ChatState()
+        _currentTitle.value = null
+    }
+
+    /**
+     * Read-only wrapper over [OpenCodeClient.listSessions] sorted by updatedAt
+     * descending; also re-syncs [currentTitle] with the tracked session.
+     */
+    fun listSessions(onResult: (List<OpenCodeClient.Session>) -> Unit) {
+        val client = clientRef.get()
+        if (client == null) {
+            onResult(emptyList())
+            return
+        }
+        scope.launch {
+            val sessions = try {
+                withContext(Dispatchers.IO) { client.listSessions() }
+                    .sortedByDescending { it.updatedAt }
+            } catch (e: Exception) {
+                Log.w(TAG, "list sessions failed: ${e.message}")
+                emptyList()
+            }
+            if (sessions.isNotEmpty()) {
+                _currentTitle.value = sessions.firstOrNull { it.id == sessionID }?.title
+                    ?: _currentTitle.value
+            }
+            onResult(sessions)
+        }
     }
 
     fun start() {
@@ -255,19 +297,30 @@ class ChatViewModel(
         id = id,
         role = role,
         timeCreated = timeCreated,
-        parts = parts.map { part ->
-            ChatStore.UiPart(
-                id = part.id,
-                type = part.type,
-                text = part.text.orEmpty(),
-                toolName = part.toolName,
-                toolStatus = part.toolStatus,
-                mime = part.mime,
-                filename = part.filename,
-                url = part.url,
-            )
-        },
+        parts = parts.map { part -> part.toUiPart() },
     )
+
+    private fun OpenCodeClient.Part.toUiPart(): ChatStore.UiPart {
+        val state = raw.optJSONObject("state")
+        val output = state?.opt("output")
+        return ChatStore.UiPart(
+            id = id,
+            type = type,
+            text = text.orEmpty(),
+            toolName = toolName,
+            toolStatus = toolStatus,
+            mime = mime,
+            filename = filename,
+            url = url,
+            toolInput = state?.optJSONObject("input")?.toString(),
+            toolOutput = when (output) {
+                null, JSONObject.NULL -> null
+                is String -> output.takeIf { it.isNotEmpty() }
+                else -> output.toString().takeIf { it.isNotEmpty() }
+            },
+            toolError = state?.optString("error", "")?.takeIf { it.isNotEmpty() },
+        )
+    }
 
     fun clearError() {
         if (_state.value.error != null) {

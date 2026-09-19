@@ -11,6 +11,8 @@ import org.json.JSONObject
  */
 object ChatStore {
 
+    private const val MAX_TOOL_TEXT_CHARS = 16_000
+
     enum class RunStatus { IDLE, RUNNING, ERROR }
 
     data class UiPart(
@@ -22,6 +24,12 @@ object ChatStore {
         val mime: String? = null,
         val filename: String? = null,
         val url: String? = null,
+        // Tool-part enrichment for the v2 tool cards. Purely additive display
+        // payloads (raw state.input JSON, state.output, state.error); they do
+        // not participate in any reduce/merge semantics.
+        val toolInput: String? = null,
+        val toolOutput: String? = null,
+        val toolError: String? = null,
     )
 
     data class UiMessage(
@@ -134,16 +142,35 @@ object ChatStore {
         )
     }
 
-    fun parsePart(obj: JSONObject): UiPart = UiPart(
-        id = obj.optString("id", "part:${obj.hashCode()}"),
-        type = obj.optString("type", "unknown"),
-        text = obj.optString("text", ""),
-        toolName = obj.optString("tool", "").takeIf { it.isNotEmpty() },
-        toolStatus = obj.optJSONObject("state")?.optString("status", "")?.takeIf { it.isNotEmpty() },
-        mime = obj.optString("mime", "").takeIf { it.isNotEmpty() },
-        filename = obj.optString("filename", "").takeIf { it.isNotEmpty() },
-        url = obj.optString("url", "").takeIf { it.isNotEmpty() },
-    )
+    fun parsePart(obj: JSONObject): UiPart {
+        val state = obj.optJSONObject("state")
+        val output = state?.opt("output")
+        return UiPart(
+            id = obj.optString("id", "part:${obj.hashCode()}"),
+            type = obj.optString("type", "unknown"),
+            text = obj.optString("text", ""),
+            toolName = obj.optString("tool", "").takeIf { it.isNotEmpty() },
+            toolStatus = state?.optString("status", "")?.takeIf { it.isNotEmpty() },
+            mime = obj.optString("mime", "").takeIf { it.isNotEmpty() },
+            filename = obj.optString("filename", "").takeIf { it.isNotEmpty() },
+            url = obj.optString("url", "").takeIf { it.isNotEmpty() },
+            toolInput = state?.optJSONObject("input")?.toString()?.let(::capToolText),
+            toolOutput = when (output) {
+                null, JSONObject.NULL -> null
+                is String -> output.takeIf { it.isNotEmpty() }?.let(::capToolText)
+                else -> output.toString().takeIf { it.isNotEmpty() }?.let(::capToolText)
+            },
+            toolError = state?.optString("error", "")?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    /**
+     * Tool bodies feed DiffUtil comparisons every stream tick; huge outputs
+     * would make every 80ms rebind compare megabytes. The card scrolls, so a
+     * cap only trims what the user cannot reasonably read anyway.
+     */
+    private fun capToolText(value: String): String =
+        if (value.length <= MAX_TOOL_TEXT_CHARS) value else value.take(MAX_TOOL_TEXT_CHARS) + "\n… (truncated)"
 
     fun parseEvent(type: String, data: JSONObject): Event? {
         // Wire format is `{"type":"...","properties":{...}}` (vendored SDK

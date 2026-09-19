@@ -4,15 +4,43 @@
     <string name="retry">Retry</string>
     <string name="error_load_failed">Could not load OpenCode: %1$s</string>
     <string name="error_auth_failed">HTTP Basic Auth failed. Add username and password under Settings → Server.</string>
+
+    <!-- composer -->
+    <string name="oc_composer_hint">Plan, build, and fix anything</string>
     <string name="chat_attach">Add file or image</string>
     <string name="chat_send">Send</string>
     <string name="chat_abort">Stop</string>
-    <string name="chat_hint">Message OpenCode… (@ to mention files)</string>
+    <string name="oc_model_label">Model</string>
+    <string name="oc_model_picker_soon">Model picker is coming in a later milestone</string>
+    <string name="oc_remove_attachment">Remove attachment</string>
+
+    <!-- header -->
+    <string name="oc_open_sessions">Open sessions</string>
+    <string name="oc_new_session">New session</string>
+    <string name="oc_context_usage">Context usage</string>
+
+    <!-- timeline -->
+    <string name="oc_thought">Thought</string>
+    <string name="oc_error_title">Something went wrong</string>
+    <string name="oc_tool_shell">Shell</string>
+    <string name="oc_tool_edit">Edit</string>
+    <string name="oc_tool_write">Write</string>
+    <string name="oc_tool_read">Read</string>
+    <string name="oc_tool_find">Find</string>
+    <string name="oc_tool_search">Search</string>
+    <string name="oc_tool_task">Task</string>
+    <string name="oc_tool_fetch">Fetch</string>
+    <string name="oc_tool_todos">To-dos</string>
+    <string name="oc_tool_error">Error</string>
+    <string name="oc_tool_generic">Tool</string>
+    <string name="oc_attachment_file">File</string>
+    <string name="oc_toggle_tool">Toggle tool details</string>
+    <string name="oc_cursor">▍</string>
+
+    <!-- legacy chat keys still used by shell plumbing -->
     <string name="chat_need_config">Open the Terminal tab once to load the server config, then come back.</string>
-    <string name="tab_chat">Chat</string>
-    <string name="tab_terminal">Terminal</string>
     <string name="chat_attach_too_large">Too large to attach: %1$s</string>
     <string name="chat_attach_limit">At most %1$d attachments per message</string>
-    <string name="chat_role_user">You</string>
-    <string name="chat_role_assistant">OpenCode</string>
+    <string name="tab_chat">Chat</string>
+    <string name="tab_terminal">Terminal</string>
 </resources>

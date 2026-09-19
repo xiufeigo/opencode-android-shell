@@ -1,0 +1,8 @@
+The files in this directory (Prism_clike.java, Prism_go.java,
+Prism_javascript.java, Prism_json.java, Prism_kotlin.java, Prism_markup.java,
+Prism_markdown.java, Prism_python.java, Prism_sql.java, Prism_yaml.java) are
+vendored from the Prism4j project v2.0.0
+(https://github.com/noties/Prism4j), licensed under the Apache License,
+Version 2.0. The only local modification is the removal of
+org.jetbrains.annotations usage. The Prism4j engine itself is consumed as a
+gradle dependency (io.noties:prism4j:2.0.0 via markwon syntax-highlight).

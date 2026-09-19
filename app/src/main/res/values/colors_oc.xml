@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OpenCode official v2 design tokens (light scope). Dark counterparts in values-night. -->
+<resources>
+    <!-- surfaces -->
+    <color name="oc_bg_base">#FFFFFF</color>
+    <color name="oc_layer_01">#FAFAFA</color>
+    <color name="oc_layer_02">#F2F2F2</color>
+    <color name="oc_layer_03">#EEEEEE</color>
+
+    <!-- borders -->
+    <color name="oc_border_base">#1A000000</color>
+    <color name="oc_border_strong">#33000000</color>
+
+    <!-- text -->
+    <color name="oc_text_base">#161616</color>
+    <color name="oc_text_muted">#5C5C5C</color>
+    <color name="oc_text_weak">#8F8F8F</color>
+    <color name="oc_text_faint">#808080</color>
+
+    <!-- icons -->
+    <color name="oc_icon_base">#3A3A3A</color>
+    <color name="oc_icon_muted">#808080</color>
+
+    <!-- states -->
+    <color name="oc_accent">#3B5CF6</color>
+    <color name="oc_success_fg">#198B43</color>
+    <color name="oc_danger_fg">#B82D35</color>
+    <color name="oc_diff_add_fg">#3A8437</color>
+    <color name="oc_diff_del_fg">#CA2D17</color>
+
+    <!-- markdown code -->
+    <color name="oc_code_inline_fg">#263FA9</color>
+    <color name="oc_code_inline_bg">#14000000</color>
+
+    <!-- syntax highlighting (light) -->
+    <color name="oc_syntax_property">#ED6DC8</color>
+    <color name="oc_syntax_type">#596600</color>
+    <color name="oc_syntax_string">#006656</color>
+    <color name="oc_syntax_constant">#007B80</color>
+    <color name="oc_syntax_primitive">#FB4804</color>
+    <color name="oc_syntax_keyword">#5C5C5C</color>
+    <color name="oc_syntax_comment">#5C5C5C</color>
+    <color name="oc_syntax_variable">#161616</color>
+    <color name="oc_syntax_punctuation">#5C5C5C</color>
+</resources>
