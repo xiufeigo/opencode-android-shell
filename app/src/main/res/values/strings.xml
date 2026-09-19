@@ -4,4 +4,15 @@
     <string name="retry">Retry</string>
     <string name="error_load_failed">Could not load OpenCode: %1$s</string>
     <string name="error_auth_failed">HTTP Basic Auth failed. Add username and password under Settings → Server.</string>
+    <string name="chat_attach">Add file or image</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_abort">Stop</string>
+    <string name="chat_hint">Message OpenCode… (@ to mention files)</string>
+    <string name="chat_need_config">Open the Terminal tab once to load the server config, then come back.</string>
+    <string name="tab_chat">Chat</string>
+    <string name="tab_terminal">Terminal</string>
+    <string name="chat_attach_too_large">Too large to attach: %1$s</string>
+    <string name="chat_attach_limit">At most %1$d attachments per message</string>
+    <string name="chat_role_user">You</string>
+    <string name="chat_role_assistant">OpenCode</string>
 </resources>

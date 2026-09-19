@@ -50,9 +50,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var assetLoader: WebViewAssetLoader
     private lateinit var gateway: LocalGateway
     private lateinit var webSockets: NativeWebSocketHub
+    private lateinit var serverConfig: ServerConfigStore
+    private lateinit var chatViewModel: ChatViewModel
+    private lateinit var chatView: ChatView
+    // Which bottom-nav tab is visible. Chat is the default so the shell boots
+    // into native chat and only pays WebView cost when the terminal opens.
+    private var currentTab: Int = R.id.nav_chat
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var backInFlight = false
     private var webColorSchemeApplied = false
+    private var lastConfigToastAt = 0L
     // Last root padding applied by applyImeAwarePadding. Compared on all four
     // sides (rotation changes left/right) so identical insets never re-layout.
     private var lastPaddingLeft = -1
@@ -84,6 +91,24 @@ class MainActivity : AppCompatActivity() {
         gateway = LocalGateway()
         gateway.start()
 
+        // Native chat stack. The WebView stays the source of truth for the
+        // server config; it pushes values through the bridge (thread-safe
+        // inside ServerConfigStore) so the direct client never needs a peek.
+        serverConfig = ServerConfigStore(this)
+        serverConfig.restore()
+        // The sync JS retries for ~6s after page load; suppress duplicate
+        // "no config" toasts within that window (showChatTab + onStart both
+        // kick the model on cold boot).
+        chatViewModel = ChatViewModel(serverConfig) {
+            val now = System.currentTimeMillis()
+            if (now - lastConfigToastAt > CONFIG_TOAST_THROTTLE_MS) {
+                lastConfigToastAt = now
+                Toast.makeText(this, R.string.chat_need_config, Toast.LENGTH_SHORT).show()
+            }
+        }
+        chatView = ChatView(this, chatViewModel)
+        binding.chatContainer.addView(chatView)
+
         // Do not hide system bars. HyperOS immersive overlays have been observed
         // swallowing every subsequent touch while chrome still paints.
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -99,18 +124,77 @@ class MainActivity : AppCompatActivity() {
         }
         onBackPressedDispatcher.addCallback(this, backCallback)
 
+        // bottom_nav is the only tab chrome: every switch funnels through
+        // showChatTab/showTerminalTab so the indicator and the visible
+        // container can never desync with currentTab.
+        binding.bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_chat -> {
+                    showChatTab()
+                    true
+                }
+
+                R.id.nav_terminal -> {
+                    showTerminalTab()
+                    true
+                }
+
+                else -> false
+            }
+        }
+        // Reselecting the visible tab must not restart anything.
+        binding.bottomNav.setOnItemReselectedListener { }
+        // Boot state: chat visible, WebView parked. The layout marks
+        // chat_container gone so the first showChatTab() makes it authoritative.
+        showChatTab()
+
         loadEmbeddedFrontend()
     }
 
     override fun onDestroy() {
+        if (::chatViewModel.isInitialized) chatViewModel.destroy()
         if (::webSockets.isInitialized) webSockets.closeAll()
         gateway.close()
         super.onDestroy()
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Symmetric with gateway.pause() in onStop; without this the proxy
+        // would keep dropping sockets forever after the first backgrounding.
+        gateway.resume()
+        // Chat SSE reconnects here after onStop closed it. Safe even before
+        // first window attach: androidx.activity pins the ViewTree owners to
+        // the decor view inside setContentView.
+        if (currentTab == R.id.nav_chat) chatView.start()
+        // The WebView renderer only wakes on the terminal tab. On chat it must
+        // stay parked (renderer + timers paused) or the battery trio in onStop
+        // is undone the moment the user returns (review MUST-FIX #3).
+        if (currentTab == R.id.nav_terminal) {
+            binding.webView.onResume()
+            binding.webView.resumeTimers()
+        }
+    }
+
+    override fun onStop() {
+        // Battery trio: native SSE down, WebView renderer idle, proxy asleep.
+        // Existing gateway streams are not killed; EventStream closes itself.
+        chatView.stop()
+        binding.webView.onPause()
+        binding.webView.pauseTimers()
+        gateway.pause()
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
-        binding.webView.requestFocus()
+        // The WebView renderer only resumes on the terminal tab; chat keeps it
+        // parked so the native screen costs nothing while visible.
+        if (currentTab == R.id.nav_terminal) {
+            binding.webView.onResume()
+            binding.webView.resumeTimers()
+            binding.webView.requestFocus()
+        }
     }
 
     /**
@@ -124,6 +208,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleAndroidBack(callback: OnBackPressedCallback) {
         if (backInFlight) return
+        // Native chat owns this tab and the WebView may even be paused here,
+        // so back exits directly instead of routing through JS. A showing
+        // mention popup just collapses first (consumed).
+        if (currentTab == R.id.nav_chat) {
+            if (chatView.dismissMentionIfShowing()) return
+            callback.isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            callback.isEnabled = true
+            return
+        }
         backInFlight = true
         binding.webView.requestFocus()
         binding.webView.evaluateJavascript(AndroidBackJs.INVOKE) { raw ->
@@ -140,6 +234,32 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun showChatTab() {
+        currentTab = R.id.nav_chat
+        binding.chatContainer.visibility = View.VISIBLE
+        binding.webContainer.visibility = View.GONE
+        // Park the renderer (state preserved) while native chat is on screen;
+        // the terminal tab reverses this.
+        binding.webView.onPause()
+        binding.webView.pauseTimers()
+        // chatView.start() is fully idempotent: the collector is keyed by an
+        // active Job check and the model retries cleanly when the server config
+        // arrived via the bridge in the meantime.
+        chatView.start()
+    }
+
+    private fun showTerminalTab() {
+        currentTab = R.id.nav_terminal
+        binding.chatContainer.visibility = View.GONE
+        binding.webContainer.visibility = View.VISIBLE
+        // Symmetric with showChatTab: the native stream stops while the
+        // WebView is the visible surface (battery), reconnects on return.
+        chatView.stop()
+        binding.webView.onResume()
+        binding.webView.resumeTimers()
+        binding.webView.requestFocus()
     }
 
     private fun loadEmbeddedFrontend() {
@@ -293,16 +413,24 @@ class MainActivity : AppCompatActivity() {
 
         webSockets = NativeWebSocketHub(binding.webView)
         binding.webView.addJavascriptInterface(
-            OpenCodeAndroidBridge(gateway, webSockets) { dark ->
-                webColorSchemeApplied = true
-                runOnUiThread { applySystemUi(dark) }
-            },
+            OpenCodeAndroidBridge(
+                gateway,
+                webSockets,
+                onColorScheme = { dark ->
+                    webColorSchemeApplied = true
+                    runOnUiThread { applySystemUi(dark) }
+                },
+                // Fires on a JS bridge thread; ServerConfigStore is volatile +
+                // prefs-backed, so no UI hop is needed.
+                onServerConfig = { json -> serverConfig.updateFromJson(json) },
+            ),
             "OpenCodeAndroid",
         )
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             val origins = setOf(ANDROID_WEBVIEW_ORIGIN, "http://$ASSET_HOST")
             WebViewCompat.addDocumentStartJavaScript(binding.webView, NativeWebSocketJs.INSTALL, origins)
             WebViewCompat.addDocumentStartJavaScript(binding.webView, SystemBarsJs.INSTALL, origins)
+            WebViewCompat.addDocumentStartJavaScript(binding.webView, ServerConfigSyncJs.INSTALL, origins)
         }
 
         binding.webView.isFocusable = true
@@ -377,6 +505,7 @@ class MainActivity : AppCompatActivity() {
                 view?.evaluateJavascript(NativeWebSocketJs.INSTALL, null)
                 view?.evaluateJavascript(AndroidBackJs.INSTALL, null)
                 view?.evaluateJavascript(SystemBarsJs.INSTALL, null)
+                view?.evaluateJavascript(ServerConfigSyncJs.INSTALL, null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -387,6 +516,7 @@ class MainActivity : AppCompatActivity() {
                 binding.webView.evaluateJavascript(IME_SCROLL_JS, null)
                 binding.webView.evaluateJavascript(IME_RESTORE_JS, null)
                 binding.webView.evaluateJavascript(SystemBarsJs.INSTALL, null)
+                binding.webView.evaluateJavascript(ServerConfigSyncJs.INSTALL, null)
                 binding.webView.requestFocus()
             }
 

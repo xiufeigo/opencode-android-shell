@@ -6,9 +6,20 @@ class OpenCodeAndroidBridge(
     private val gateway: LocalGateway,
     private val webSockets: NativeWebSocketHub,
     private val onColorScheme: (dark: Boolean) -> Unit = {},
+    private val onServerConfig: (String?) -> Unit = {},
 ) {
     @JavascriptInterface
     fun proxyOrigin(): String = gateway.publicOrigin()
+
+    /**
+     * Receives the WebView's server config (localStorage `opencode.global.dat:server`
+     * = `{url, username?, password?}`). Called after page load and whenever the
+     * user edits server settings; the shell caches it for the native client.
+     */
+    @JavascriptInterface
+    fun syncServerConfig(json: String?) {
+        onServerConfig(json)
+    }
 
     @JavascriptInterface
     fun proxyPrefix(): String = gateway.publicPrefix()

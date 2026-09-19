@@ -50,6 +50,7 @@ class LocalGateway(
 
     val token: String = UUID.randomUUID().toString()
     private val running = AtomicBoolean(false)
+    private val paused = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
     private var executor: ExecutorService? = null
     var port: Int = -1
@@ -105,6 +106,7 @@ class LocalGateway(
                 while (running.get()) {
                     try {
                         val client = socket.accept()
+                        if (dropWhilePaused(client)) continue
                         pool?.execute { handleClient(client, backend) }
                     } catch (ioe: IOException) {
                         if (running.get()) Log.w(TAG, "dedicated accept failed: ${ioe.message}")
@@ -131,6 +133,7 @@ class LocalGateway(
             while (running.get()) {
                 try {
                     val client = socket.accept()
+                    if (dropWhilePaused(client)) continue
                     pool.execute { handleClient(client, boundBackend = null) }
                 } catch (ioe: IOException) {
                     if (running.get()) Log.w(TAG, "accept failed: ${ioe.message}")
@@ -138,6 +141,20 @@ class LocalGateway(
             }
         }
         Log.i(TAG, "listening on 127.0.0.1:$port prefix=${publicPrefix()}")
+    }
+
+    /**
+     * Battery guard while the host activity is stopped: connections accepted
+     * from now on are dropped immediately instead of proxied. Accept stays
+     * blocking (no spin) and already-established streams — WebView SSE kept
+     * alive for reconnect bookkeeping — are never torn down here.
+     */
+    fun pause() {
+        paused.set(true)
+    }
+
+    fun resume() {
+        paused.set(false)
     }
 
     override fun close() {
@@ -165,6 +182,16 @@ class LocalGateway(
         portBackends.clear()
         executor?.shutdownNow()
         executor = null
+    }
+
+    /** Close a just-accepted socket without ever entering [handleClient]. */
+    private fun dropWhilePaused(client: Socket): Boolean {
+        if (!paused.get()) return false
+        try {
+            client.close()
+        } catch (_: Exception) {
+        }
+        return true
     }
 
     private fun handleClient(socket: Socket, boundBackend: String?) {
