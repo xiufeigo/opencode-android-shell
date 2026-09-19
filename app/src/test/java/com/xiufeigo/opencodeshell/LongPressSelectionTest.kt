@@ -70,10 +70,14 @@ class LongPressSelectionTest {
         assertTrue(src.contains("visualViewport.addEventListener('resize'"))
         assertTrue(src.contains("SETTLE_MS"))
         assertTrue(src.contains("block: 'nearest'"))
-        // Focusin double tick: early position + settled re-check.
-        assertTrue(src.contains("setTimeout(scrollFocused, 320)"))
+        // Trailing settled scroll: focusin + vv resize share one timer, single
+        // scroll after settle (no per-frame chase, no fixed double tick).
+        assertTrue(src.contains("var settled = function"))
+        assertTrue(src.contains("var arm = function"))
+        assertTrue(!src.contains("setTimeout(scrollFocused, 60)"))
+        assertTrue(!src.contains("setTimeout(scrollFocused, 320)"))
         // Occlusion guard: fully visible fields must not move.
-        assertTrue(src.contains("viewportHeight() - 8"))
+        assertTrue(src.contains("layoutH() - 8"))
     }
 
     @Test

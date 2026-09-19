@@ -22,7 +22,7 @@ class SessionDefaultTabTest {
         assertTrue(text.contains("if (!consumeAndroidContext()) return"))
         assertTrue(text.contains("clearAndroidContext()"))
         assertTrue(text.contains("setStore(\"mobileTab\", \"session\")"))
-        assertTrue(text.contains("mobileTab: \"session\""))
+        assertTrue(text.contains("setStore(\"mobileTab\", \"context\")"))
     }
 
     @Test
