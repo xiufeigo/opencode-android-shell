@@ -678,6 +678,7 @@ class MainActivity : AppCompatActivity() {
         const val ANDROID_WEBVIEW_ORIGIN = "https://$ASSET_HOST"
         const val EMBEDDED_INDEX_URL = "https://$ASSET_HOST/assets/opencode-app/index.html"
         private const val LOG_TAG = "OpenCodeShell"
+        private const val CONFIG_TOAST_THROTTLE_MS = 8_000L
 
         /** Offline SDK stub is only 127.0.0.1/localhost/::1 port 0 — never a real HTTPS backend. */
         internal fun isOfflineDisconnectStub(host: String?, port: Int): Boolean {
