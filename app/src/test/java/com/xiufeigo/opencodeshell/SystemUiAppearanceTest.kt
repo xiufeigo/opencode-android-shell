@@ -59,6 +59,7 @@ class SystemUiAppearanceTest {
         assertTrue(night.contains("android:windowLightStatusBar\">false"))
         assertTrue(v29.contains("enforceNavigationBarContrast\">false"))
         val nightColors = File("src/main/res/values-night/colors.xml").readText()
-        assertTrue(nightColors.contains("#FF080808") || nightColors.contains("#080808"))
+        // Official dark surface is grey-1100 (#161616), not the legacy #080808.
+        assertTrue(nightColors.contains("#FF161616") || nightColors.contains("#161616"))
     }
 }
