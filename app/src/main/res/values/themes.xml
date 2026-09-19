@@ -1,7 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      Material3 baseline defaults ship a lavender/purple palette
+      (surface #FEF7FF, secondaryContainer #E8DEF8). The official OpenCode UI
+      is strictly monochrome with a single blue accent, so every role the
+      shell actually renders is pinned to the oc_* tokens (values-night has the
+      dark variants of the same names).
+    -->
     <style name="Theme.OpenCodeShell" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimary">@color/oc_accent</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorSurface">@color/oc_bg_base</item>
+        <item name="colorOnSurface">@color/oc_text_base</item>
+        <item name="colorOnSurfaceVariant">@color/oc_text_muted</item>
+        <item name="colorSurfaceContainer">@color/oc_bg_base</item>
+        <item name="colorSurfaceContainerLow">@color/oc_bg_base</item>
+        <item name="colorSurfaceContainerHigh">@color/oc_layer_01</item>
+        <item name="colorSurfaceContainerHighest">@color/oc_layer_02</item>
+        <item name="colorSecondaryContainer">@color/oc_layer_02</item>
+        <item name="colorOnSecondaryContainer">@color/oc_text_base</item>
+        <item name="colorOutline">@color/oc_border_strong</item>
+        <item name="colorOutlineVariant">@color/oc_border_base</item>
+        <item name="colorControlHighlight">@color/oc_ripple</item>
+        <item name="android:colorControlHighlight">@color/oc_ripple</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>

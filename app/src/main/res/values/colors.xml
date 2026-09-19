@@ -2,8 +2,8 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="accent">#FF7C5CFF</color>
-    <color name="window_background">#FFFAFAFA</color>
+    <color name="accent">#FF3B5CF6</color>
+    <color name="window_background">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FF131010</color>
     <color name="error_panel">#CC1A1A1A</color>
 </resources>

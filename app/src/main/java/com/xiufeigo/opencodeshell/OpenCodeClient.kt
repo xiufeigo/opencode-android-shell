@@ -157,6 +157,9 @@ class OpenCodeClient(
         call(builder(directory, "/session").get().build()),
     ).map(Session::fromJson)
 
+    /** `GET /config` — used for the default model shown on the composer chip. */
+    fun config(): JSONObject = JSONObject(call(builder(null, "/config").get().build()))
+
     fun createSession(directory: String? = null, title: String? = null): Session {
         val body = JSONObject()
         if (!title.isNullOrBlank()) body.put("title", title)

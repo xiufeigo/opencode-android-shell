@@ -43,4 +43,5 @@
     <string name="chat_attach_limit">At most %1$d attachments per message</string>
     <string name="tab_chat">Chat</string>
     <string name="tab_terminal">Terminal</string>
+    <string name="oc_setup_hint">No server configured. Open the Terminal tab to add one, then come back.</string>
 </resources>

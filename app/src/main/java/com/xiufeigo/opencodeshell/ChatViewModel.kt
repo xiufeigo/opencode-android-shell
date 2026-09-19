@@ -53,6 +53,16 @@ class ChatViewModel(
     private val _currentTitle = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     val currentTitle: kotlinx.coroutines.flow.StateFlow<String?> = _currentTitle
 
+    // Default model from `GET /config` ("provider/modelID"), shown on the
+    // composer chip like the official UI.
+    private val _modelLabel = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val modelLabel: kotlinx.coroutines.flow.StateFlow<String?> = _modelLabel
+
+    // True while no usable server config has been seen; the chat tab then shows
+    // a setup hint instead of pretending to be a dead conversation.
+    private val _configMissing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val configMissing: kotlinx.coroutines.flow.StateFlow<Boolean> = _configMissing
+
     var sessionID: String? = null
         private set
 
@@ -103,21 +113,25 @@ class ChatViewModel(
         if (!started.compareAndSet(false, true)) return
         val server = serverConfig.server
         if (server == null || !server.isComplete) {
-            onConfigMissing()
+            // No toast here: the view shows an inline setup hint, and the
+            // WebView config sync usually lands within seconds of launch.
+            _configMissing.value = true
             started.set(false)
             return
         }
         val parsed: HttpUrl = server.url.toHttpUrlOrNull() ?: run {
-            onConfigMissing()
+            _configMissing.value = true
             started.set(false)
             return
         }
+        _configMissing.value = false
         val client = OpenCodeClient.forServer(server, sharedClient) ?: run {
-            onConfigMissing()
+            _configMissing.value = true
             started.set(false)
             return
         }
         clientRef.set(client)
+        refreshModelLabel()
         val stream = EventStream(
             baseHttpUrl = parsed,
             username = server.username,
@@ -168,6 +182,8 @@ class ChatViewModel(
     private fun requireClient(): OpenCodeClient? {
         val client = clientRef.get()
         if (client == null) {
+            onConfigMissing()
+            _configMissing.value = true
             _state.value = ChatStore.reduce(
                 _state.value,
                 ChatStore.Event.RunStatusChanged(
@@ -177,6 +193,21 @@ class ChatViewModel(
             )
         }
         return client
+    }
+
+    /** Default model for the composer chip; failure leaves the chip hidden. */
+    private fun refreshModelLabel() {
+        val client = clientRef.get() ?: return
+        scope.launch {
+            try {
+                val config = withContext(Dispatchers.IO) { client.config() }
+                _modelLabel.value = config.optString("model", "")
+                    .takeIf { it.isNotEmpty() }
+                    ?.substringAfterLast('/')
+            } catch (e: Exception) {
+                Log.w(TAG, "config fetch failed: ${e.message}")
+            }
+        }
     }
 
     fun send(text: String, attachments: List<Attachment>) {

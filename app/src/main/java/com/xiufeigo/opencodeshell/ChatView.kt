@@ -216,6 +216,12 @@ class ChatView(
                 launch {
                     viewModel.currentTitle.collect { renderTitle(it) }
                 }
+                launch {
+                    viewModel.modelLabel.collect { renderModelLabel(it) }
+                }
+                launch {
+                    viewModel.configMissing.collect { renderConfigMissing(it) }
+                }
             }
         }
         started = true
@@ -243,6 +249,14 @@ class ChatView(
 
     private fun renderTitle(title: String?) {
         binding.chatTitle.text = title ?: context.getString(R.string.oc_new_session)
+    }
+
+    private fun renderModelLabel(label: String?) {
+        binding.modelChipLabel.text = label ?: context.getString(R.string.oc_model_label)
+    }
+
+    private fun renderConfigMissing(missing: Boolean) {
+        binding.setupHint.visibility = if (missing) View.VISIBLE else View.GONE
     }
 
     @SuppressLint("NotifyDataSetChanged")

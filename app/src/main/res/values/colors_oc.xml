@@ -42,4 +42,5 @@
     <color name="oc_syntax_comment">#5C5C5C</color>
     <color name="oc_syntax_variable">#161616</color>
     <color name="oc_syntax_punctuation">#5C5C5C</color>
+    <color name="oc_ripple">#14000000</color>
 </resources>
