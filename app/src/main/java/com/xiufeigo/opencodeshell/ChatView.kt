@@ -680,7 +680,7 @@ class ChatView(
     }
 
     private fun bindThumb(image: ImageView, url: String) {
-        val cached: Bitmap? = synchronized(thumbCache) { thumbCache[url] }
+        val cached: Bitmap? = thumbCache.get(url)
         if (cached != null) {
             image.setImageBitmap(cached)
             return
@@ -688,7 +688,7 @@ class ChatView(
         image.setImageDrawable(null)
         findViewTreeLifecycleOwner()?.lifecycleScope?.launch {
             val bitmap = withContext(Dispatchers.IO) { decodeThumb(url) } ?: return@launch
-            synchronized(thumbCache) { thumbCache[url] = bitmap }
+            thumbCache.put(url, bitmap)
             image.setImageBitmap(bitmap)
         }
     }
