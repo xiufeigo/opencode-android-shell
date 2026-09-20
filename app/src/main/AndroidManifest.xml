@@ -27,5 +27,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- M0 native Compose frontend (OcApp): debug deep link "opencode-native://ui",
+             reachable via `adb shell am start -d "opencode-native://ui"`; not a launcher. -->
+        <activity
+            android:name=".OcActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.OpenCodeShell.Immersive"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="opencode-native" android:host="ui" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

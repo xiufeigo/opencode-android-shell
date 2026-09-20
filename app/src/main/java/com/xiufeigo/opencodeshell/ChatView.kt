@@ -1201,7 +1201,7 @@ class ChatView(
                 holder.item.sessionTime.visibility = View.GONE
             }
             holder.item.root.setOnClickListener {
-                viewModel.observeSession(session.id, session.title)
+                viewModel.observeSession(session.id, session.title, session.directory)
                 closeDrawer()
             }
         }

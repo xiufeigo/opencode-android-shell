@@ -103,6 +103,34 @@ class EventStreamTest {
         }
     }
 
+    @Test
+    fun appendsDirectoryQueryParamWhenProvided() {
+        MockWebServer().use { server ->
+            val body = "data: {\"type\":\"server.connected\"}\n\n"
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "text/event-stream")
+                    .setBody(body),
+            )
+            val listener = RecordingListener(expectedEvents = 1)
+            val stream = EventStream(
+                baseHttpUrl = server.url("/"),
+                username = null,
+                password = null,
+                client = EventStream.sseClient(OkHttpClient()),
+                listener = listener,
+                directory = "/data/workspace/proj",
+            )
+            stream.start()
+            assertTrue(listener.eventsLatch.await(10, TimeUnit.SECONDS))
+            stream.close()
+            val request = server.takeRequest()
+            assertEquals("/event", request.requestUrl?.encodedPath)
+            assertEquals("/data/workspace/proj", request.requestUrl?.queryParameter("directory"))
+        }
+    }
+
     /**
      * 4xx is permanent (bad URL/auth): after MAX_CLIENT_ERROR_RETRIES consecutive
      * client errors the stream must go CLOSED and stop dialing the server.

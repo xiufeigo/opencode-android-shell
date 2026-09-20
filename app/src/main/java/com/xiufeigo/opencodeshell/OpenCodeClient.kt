@@ -74,6 +74,11 @@ class OpenCodeClient(
         return call(builder(directory, path).post(body).build())
     }
 
+    private fun patch(directory: String?, path: String, json: JSONObject): String {
+        val body: RequestBody = json.toString().toRequestBody(jsonMedia)
+        return call(builder(directory, path).patch(body).build())
+    }
+
     // ------------------------------------------------------------------ model
 
     data class Part(
@@ -111,6 +116,13 @@ class OpenCodeClient(
         val role: String,
         val timeCreated: Long,
         val parts: List<Part>,
+        /**
+         * `info.tokens` flattened to one total (M2, additive display payload):
+         * `input + output + reasoning + cache.read + cache.write`, `null` when
+         * the server sent no usage or all buckets are 0. Feeds the context ring
+         * (`ContextUsage`); never participates in any store/merge semantics.
+         */
+        val tokens: Long? = null,
     ) {
         companion object {
             fun fromJson(obj: JSONObject): Message {
@@ -128,6 +140,7 @@ class OpenCodeClient(
                     role = info.optString("role", "user"),
                     timeCreated = info.optJSONObject("time")?.optLong("created", 0L) ?: 0L,
                     parts = parts,
+                    tokens = tokenTotal(info.optJSONObject("tokens")),
                 )
             }
         }
@@ -165,6 +178,17 @@ class OpenCodeClient(
         if (!title.isNullOrBlank()) body.put("title", title)
         return Session.fromJson(JSONObject(post(directory, "/session", body)))
     }
+
+    /**
+     * `PATCH /session/:sessionID` `{title}` → `Session.Info` (`research/04` §3).
+     * The only write this client gained for M2; every other method is
+     * unchanged, and the returned session is the server's authoritative state
+     * (title + updated time).
+     */
+    fun renameSession(sessionID: String, title: String, directory: String? = null): Session =
+        Session.fromJson(
+            JSONObject(patch(directory, "/session/$sessionID", JSONObject().put("title", title))),
+        )
 
     fun messages(sessionID: String, directory: String? = null): List<Message> = parseJsonArray(
         call(builder(directory, "/session/$sessionID/message").get().build()),
@@ -249,6 +273,23 @@ class OpenCodeClient(
                 }
             }
             return emptyList()
+        }
+
+        /**
+         * `tokens.input + output + reasoning + cache.read + cache.write`
+         * (`research/04` §3 message info). Returns `null` for a missing object
+         * or an all-zero total, which is what `ContextUsage` treats as "no
+         * usage yet" rather than "0 % used".
+         */
+        fun tokenTotal(tokens: JSONObject?): Long? {
+            if (tokens == null) return null
+            val cache = tokens.optJSONObject("cache")
+            val total = tokens.optLong("input", 0L) +
+                tokens.optLong("output", 0L) +
+                tokens.optLong("reasoning", 0L) +
+                (cache?.optLong("read", 0L) ?: 0L) +
+                (cache?.optLong("write", 0L) ?: 0L)
+            return total.takeIf { it > 0L }
         }
 
         fun forServer(server: ServerConfigStore.Server, http: OkHttpClient = defaultClient()): OpenCodeClient? {

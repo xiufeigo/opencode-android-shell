@@ -22,20 +22,76 @@
     <!-- timeline -->
     <string name="oc_thought">Thought</string>
     <string name="oc_error_title">Something went wrong</string>
+    <!--
+      Tool titles: literals per research/02 §3.8 + research/_i18n en.json
+      (`ui.tool.*`). The ids `oc_tool_find` / `oc_tool_search` / `oc_tool_fetch`
+      keep their View-era names because ChatView.titleForTool still references
+      them; the values are the authoritative Glob / Grep / Webfetch.
+    -->
     <string name="oc_tool_shell">Shell</string>
     <string name="oc_tool_edit">Edit</string>
     <string name="oc_tool_write">Write</string>
     <string name="oc_tool_read">Read</string>
-    <string name="oc_tool_find">Find</string>
-    <string name="oc_tool_search">Search</string>
+    <string name="oc_tool_find">Glob</string>
+    <string name="oc_tool_search">Grep</string>
     <string name="oc_tool_task">Task</string>
-    <string name="oc_tool_fetch">Fetch</string>
+    <string name="oc_tool_fetch">Webfetch</string>
     <string name="oc_tool_todos">To-dos</string>
     <string name="oc_tool_error">Error</string>
     <string name="oc_tool_generic">Tool</string>
     <string name="oc_attachment_file">File</string>
     <string name="oc_toggle_tool">Toggle tool details</string>
     <string name="oc_cursor">▍</string>
+    <string name="oc_compaction">Session compacted</string>
+    <string name="oc_composer_placeholder">Ask anything, / for commands, @ for context...</string>
+    <!-- Empty timeline placeholder; `session.new.title` ("Build anything"). -->
+    <string name="oc_timeline_empty">Build anything</string>
+    <string name="oc_back">Back</string>
+
+    <!-- M2: sticky session header (research/02 §2.2) -->
+    <string name="oc_more_options">More options</string>
+    <!-- `common.rename` / the MenuV2 entry of §2.2. -->
+    <string name="oc_rename_session">Rename</string>
+    <!-- `common.delete`; M2 renders it as a disabled placeholder. -->
+    <string name="oc_delete_session">Delete</string>
+
+    <!-- M2: session drawer (research/02 §7) -->
+    <string name="oc_sessions_empty">No sessions yet</string>
+    <!-- `common.time.*` relative-time buckets. -->
+    <string name="oc_time_just_now">just now</string>
+    <plurals name="oc_time_minutes_ago">
+        <item quantity="one">%d minute ago</item>
+        <item quantity="other">%d minutes ago</item>
+    </plurals>
+    <plurals name="oc_time_hours_ago">
+        <item quantity="one">%d hour ago</item>
+        <item quantity="other">%d hours ago</item>
+    </plurals>
+    <plurals name="oc_time_days_ago">
+        <item quantity="one">%d day ago</item>
+        <item quantity="other">%d days ago</item>
+    </plurals>
+
+    <!-- M2: grouped context tools (research/02 §3.7) -->
+    <!-- `ui.sessionTurn.status.gatheringContext` / `gatheredContext`. -->
+    <string name="oc_context_exploring">Exploring</string>
+    <string name="oc_context_explored">Explored</string>
+    <!-- `ui.messagePart.context.read|search|list` (plural). -->
+    <plurals name="oc_context_read">
+        <item quantity="one">%d read</item>
+        <item quantity="other">%d reads</item>
+    </plurals>
+    <plurals name="oc_context_search">
+        <item quantity="one">%d search</item>
+        <item quantity="other">%d searches</item>
+    </plurals>
+    <plurals name="oc_context_list">
+        <item quantity="one">%d list</item>
+        <item quantity="other">%d lists</item>
+    </plurals>
+
+    <!-- M2: session error card (research/02 §3.3) -->
+    <string name="oc_error_details">Show details</string>
 
     <!-- legacy chat keys still used by shell plumbing -->
     <string name="chat_need_config">Open the Terminal tab once to load the server config, then come back.</string>
@@ -44,4 +100,204 @@
     <string name="tab_chat">Chat</string>
     <string name="tab_terminal">Terminal</string>
     <string name="oc_setup_hint">No server configured. Open the Terminal tab to add one, then come back.</string>
+
+    <!--
+      M4: Settings dialog (research/02 §5, research/05 §5). English defaults per
+      `research/_i18n/en.json` — the en values are the upstream literals.
+    -->
+    <string name="oc_settings_title">Settings</string>
+    <string name="oc_settings_close">Close</string>
+    <string name="oc_settings_app_name">OpenCode Desktop</string>
+    <string name="oc_setting_section_desktop">Desktop</string>
+    <string name="oc_setting_section_server">Server</string>
+    <string name="oc_setting_tab_general">General</string>
+    <string name="oc_setting_tab_shortcuts">Shortcuts</string>
+    <string name="oc_setting_tab_servers">Servers</string>
+    <string name="oc_setting_tab_providers">Providers</string>
+    <string name="oc_setting_tab_models">Models</string>
+
+    <!-- General panel -->
+    <string name="oc_setting_section_appearance">Appearance</string>
+    <string name="oc_setting_section_notifications">System notifications</string>
+    <string name="oc_setting_section_sounds">Sound effects</string>
+    <string name="oc_setting_section_advanced">Advanced</string>
+    <string name="oc_setting_language">Language</string>
+    <string name="oc_setting_language_description">Change the display language for OpenCode</string>
+    <string name="oc_setting_language_en">English</string>
+    <string name="oc_setting_language_zh">简体中文</string>
+    <string name="oc_setting_language_zht">繁體中文</string>
+    <string name="oc_setting_auto_accept_permissions">Auto-accept permissions</string>
+    <string name="oc_setting_shell">Terminal shell</string>
+    <string name="oc_setting_shell_description">Shell used by the terminal and agent tools</string>
+    <string name="oc_setting_shell_auto">Auto (Default)</string>
+    <string name="oc_setting_shell_sh">sh</string>
+    <string name="oc_setting_shell_bash">bash</string>
+    <string name="oc_setting_shell_zsh">zsh</string>
+    <string name="oc_setting_reasoning_summaries">Show reasoning summaries</string>
+    <string name="oc_setting_reasoning_summaries_description">Display model reasoning summaries in the timeline</string>
+    <string name="oc_setting_shell_expand">Expand shell tool parts</string>
+    <string name="oc_setting_shell_expand_description">Show shell tool parts expanded by default in the timeline</string>
+    <string name="oc_setting_edit_expand">Expand edit tool parts</string>
+    <string name="oc_setting_edit_expand_description">Show edit, write, and patch tool parts expanded by default in the timeline</string>
+    <string name="oc_setting_color_scheme">Color scheme</string>
+    <string name="oc_setting_color_scheme_description">Choose whether OpenCode follows the system, light, or dark theme</string>
+    <string name="oc_setting_scheme_system">System</string>
+    <string name="oc_setting_scheme_light">Light</string>
+    <string name="oc_setting_scheme_dark">Dark</string>
+    <string name="oc_setting_theme">Theme</string>
+    <string name="oc_setting_theme_description">Customise how OpenCode is themed.</string>
+    <string name="oc_setting_theme_oc2">OC-2</string>
+    <string name="oc_setting_ui_font">UI Font</string>
+    <string name="oc_setting_ui_font_description">Customise the font used throughout the interface</string>
+    <string name="oc_setting_code_font">Code Font</string>
+    <string name="oc_setting_code_font_description">Customise the font used in code blocks</string>
+    <string name="oc_setting_terminal_font">Terminal Font</string>
+    <string name="oc_setting_terminal_font_description">Customise the font used in the terminal</string>
+    <string name="oc_setting_notify_agent">Agent</string>
+    <string name="oc_setting_notify_agent_description">Show system notification when the agent is complete or needs attention</string>
+    <string name="oc_setting_notify_permissions">Permissions</string>
+    <string name="oc_setting_notify_permissions_description">Show system notification when a permission is required</string>
+    <string name="oc_setting_notify_errors">Errors</string>
+    <string name="oc_setting_notify_errors_description">Show system notification when an error occurs</string>
+    <string name="oc_setting_sound_none">None</string>
+    <string name="oc_setting_sound_default">Default</string>
+    <string name="oc_setting_show_file_tree">File tree</string>
+    <string name="oc_setting_show_file_tree_description">Show the file tree panel in sessions</string>
+    <string name="oc_setting_show_search">Command palette</string>
+    <string name="oc_setting_show_search_description">Show the search and command palette button in the title bar</string>
+    <string name="oc_setting_show_status">Server status</string>
+    <string name="oc_setting_show_status_description">Show the server status button in the title bar</string>
+    <string name="oc_setting_show_custom_agents">Show agent</string>
+    <string name="oc_setting_show_custom_agents_description">Switch between agents in the composer. When hidden, defaults to Build agent.</string>
+    <string name="oc_setting_font_default">Default</string>
+    <string name="oc_setting_value_on">On</string>
+    <string name="oc_setting_value_off">Off</string>
+
+    <!-- Servers tab (research/02 §5.4 / §5.5) -->
+    <string name="oc_servers_add">Add server</string>
+    <string name="oc_servers_edit">Edit server</string>
+    <string name="oc_servers_search">Search servers</string>
+    <string name="oc_servers_empty">No servers yet</string>
+    <string name="oc_servers_no_results">No results found</string>
+    <string name="oc_servers_default_tag">Default</string>
+    <string name="oc_servers_no_username">no username</string>
+    <string name="oc_servers_more">Server actions</string>
+    <string name="oc_servers_menu_edit">Edit</string>
+    <string name="oc_servers_menu_default">Set as default</string>
+    <string name="oc_servers_menu_delete">Delete</string>
+    <string name="oc_server_address">Server address</string>
+    <string name="oc_server_url_placeholder">http://localhost:4096</string>
+    <string name="oc_server_name">Server name (optional)</string>
+    <string name="oc_server_name_placeholder">Localhost</string>
+    <string name="oc_server_username">Username (optional)</string>
+    <string name="oc_server_password">Password (optional)</string>
+    <string name="oc_server_add_button">Add server</string>
+    <string name="oc_server_save_button">Save</string>
+    <string name="oc_server_checking">Checking...</string>
+    <string name="oc_server_error_connect">Could not connect to server</string>
+    <string name="oc_server_error_auth">Server requires authentication. Enter username and password.</string>
+    <string name="oc_server_error_cors">Could not connect. If the URL is reachable in a browser, check username/password. The Android shell proxies API calls natively and does not require server CORS.</string>
+    <string name="oc_server_cors_hint">Enter the real backend URL (for example https://backend.example.com). This Android shell reverse-proxies API/SSE natively — you do not need --cors for the WebView origin.</string>
+    <string name="oc_common_cancel">Cancel</string>
+    <string name="oc_common_save">Save</string>
+    <string name="oc_common_loading">Loading</string>
+    <string name="oc_common_close">Close</string>
+
+    <!-- Shortcuts tab (research/02 §5.6) -->
+    <string name="oc_setting_shortcuts_title">Keyboard shortcuts</string>
+    <string name="oc_shortcut_group_general">General</string>
+    <string name="oc_shortcut_group_session">Session</string>
+    <string name="oc_shortcut_group_navigation">Navigation</string>
+    <string name="oc_shortcut_group_model">Model and agent</string>
+    <string name="oc_shortcut_group_terminal">Terminal</string>
+    <string name="oc_shortcut_group_prompt">Prompt</string>
+    <string name="oc_shortcut_palette">Command palette</string>
+    <string name="oc_shortcut_settings_open">Open settings</string>
+    <string name="oc_shortcut_file_open">Open file</string>
+    <string name="oc_shortcut_session_new">New session</string>
+    <string name="oc_shortcut_terminal_toggle">Toggle terminal</string>
+    <string name="oc_shortcut_prompt_submit">Send prompt</string>
+    <string name="oc_shortcut_unassigned">Unassigned</string>
+    <string name="oc_shortcut_press_keys">Press keys</string>
+    <string name="oc_shortcut_recording_soon">Recording arrives in a later milestone</string>
+
+    <!-- Providers / Models tabs (research/02 §5.2 / PLAN §4.3) -->
+    <string name="oc_providers_empty">No connected providers</string>
+    <string name="oc_providers_section_connected">Connected providers</string>
+    <string name="oc_providers_section_popular">Popular providers</string>
+    <string name="oc_models_empty">No models available</string>
+
+    <!-- Command palette (research/02 §6) -->
+    <string name="oc_palette_placeholder">Search files, commands, and sessions</string>
+    <string name="oc_palette_placeholder_home">Search commands and sessions</string>
+    <string name="oc_palette_empty">No results found</string>
+    <string name="oc_palette_group_commands">Commands</string>
+    <string name="oc_palette_group_files">Files</string>
+    <string name="oc_palette_group_session">Session</string>
+    <string name="oc_palette_title">Command palette</string>
+    <string name="oc_command_settings_open">Open settings</string>
+    <string name="oc_command_session_new">New session</string>
+    <string name="oc_command_workspace_new">New workspace</string>
+    <string name="oc_command_session_previous">Previous session</string>
+    <string name="oc_command_session_next">Next session</string>
+    <string name="oc_command_terminal_toggle">Toggle terminal</string>
+    <string name="oc_command_review_toggle">Toggle review panel</string>
+    <string name="oc_command_file_open">Open file</string>
+    <string name="oc_command_category_settings">Settings</string>
+    <string name="oc_command_category_session">Session</string>
+    <string name="oc_command_category_file">File</string>
+
+    <!--
+      M3: Home (`research/02` §1). Values are the upstream i18n literals from
+      `research/_i18n/en.json`: `home.title` / `home.projects` /
+      `home.project.add` / `home.recentlyClosed` / `home.sessions.*` /
+      `sidebar.settings` / `sidebar.help` / `command.session.new`.
+    -->
+    <string name="oc_home_title">Home</string>
+    <string name="oc_home_projects">Projects</string>
+    <string name="oc_home_add_project">Add project</string>
+    <string name="oc_home_recently_closed">Recently closed</string>
+    <string name="oc_home_sessions">Recent sessions</string>
+    <string name="oc_home_search">Search sessions</string>
+    <string name="oc_home_search_group">Sessions</string>
+    <string name="oc_home_search_no_results">No sessions found for %1$s</string>
+    <string name="oc_home_clear_search">Clear search</string>
+    <string name="oc_home_group_today">Today</string>
+    <string name="oc_home_group_yesterday">Yesterday</string>
+    <string name="oc_home_group_older">Older</string>
+    <string name="oc_home_empty">Nothing here yet</string>
+    <string name="oc_home_empty_description">Create a session to get started</string>
+    <string name="oc_home_settings">Settings</string>
+    <string name="oc_home_help">Help</string>
+    <string name="oc_home_tab_close">Close tab</string>
+    <string name="oc_home_creating">Creating a session…</string>
+    <!--
+      Placeholders for the two Home entries whose hosts are later milestones:
+      the directory picker (`dialog.directory.*`, M4/M5) and the help dialog.
+      Same pattern as the existing `oc_model_picker_soon`.
+    -->
+    <string name="oc_home_add_project_soon">Adding projects is coming in a later milestone</string>
+    <string name="oc_home_help_soon">Help is coming in a later milestone</string>
+
+    <!--
+      M5 phase 1: terminal panel chrome (research/02 §9.3 + §9.5). The literals
+      marked `terminal.*` / `command.terminal.new` below are the upstream i18n
+      values; the rest are Android additions for the route host.
+    -->
+    <string name="oc_terminal_title">Terminal</string>
+    <string name="oc_terminal_title_numbered">Terminal %1$d</string>
+    <string name="oc_terminal_new">New terminal</string>
+    <string name="oc_terminal_close">Close terminal</string>
+    <string name="oc_terminal_loading">Loading terminal…</string>
+    <string name="oc_terminal_connection_lost">Connection lost</string>
+    <string name="oc_terminal_abnormal_close">WebSocket closed abnormally: %1$d</string>
+    <string name="oc_terminal_csrf_error">PTY connect ticket rejected by the origin/CSRF check. Check the server CORS configuration.</string>
+    <string name="oc_terminal_close_panel">Close terminal panel</string>
+    <string name="oc_terminal_open">Open terminal</string>
+    <string name="oc_terminal_empty">No terminal open</string>
+    <string name="oc_terminal_full">At most %1$d terminals</string>
+    <string name="oc_terminal_create_failed">Could not create a terminal session.</string>
+    <string name="oc_terminal_server_missing">No server configured — open the WebView shell\'s Terminal tab once to sync the server config, then come back.</string>
+    <string name="oc_terminal_kernel_pending">VT kernel not wired yet (M5 phase 2: vendored termux terminal-emulator + TerminalIo patch). This slot shows the raw PTY data link.</string>
+    <string name="oc_terminal_raw_output">Raw PTY output (tail)</string>
 </resources>

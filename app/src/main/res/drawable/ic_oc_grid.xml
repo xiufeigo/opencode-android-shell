@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Titlebar Home button (`Icon name="grid-plus"` reduced to its 2×2 grid,
+  research/02 §9b.1/§9b.4). Drawn on the M3 bottom title bar.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:pathData="M4.5,4.5h5.5v5.5h-5.5zM14,4.5h5.5v5.5h-5.5zM4.5,14h5.5v5.5h-5.5zM14,14h5.5v5.5h-5.5z"
+        android:strokeColor="@color/oc_icon_muted"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round" />
+</vector>

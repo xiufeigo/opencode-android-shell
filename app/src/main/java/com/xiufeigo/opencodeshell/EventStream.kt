@@ -28,6 +28,13 @@ class EventStream(
     private val password: String?,
     private val client: OkHttpClient,
     private val listener: Listener,
+    /**
+     * Workspace directory. `/event` is an **instance-scoped** stream filtered by
+     * `instance.directory`; without it the server degrades to its process `cwd`,
+     * silently missing events for sessions in any other workspace (data-layer
+     * defect #1). Passed as `?directory=<abs path>`.
+     */
+    private val directory: String? = null,
 ) {
     interface Listener {
         /** Called on the stream thread. Return value reserved for filtering. */
@@ -59,7 +66,12 @@ class EventStream(
         if (!running.get()) return
         listener.onState(State.CONNECTING)
         val request = Request.Builder()
-            .url(baseHttpUrl.newBuilder().addPathSegment("event").build())
+            .url(
+                baseHttpUrl.newBuilder()
+                    .addPathSegment("event")
+                    .apply { if (!directory.isNullOrBlank()) addQueryParameter("directory", directory) }
+                    .build(),
+            )
             .header("Accept", "text/event-stream")
             .apply {
                 if (!username.isNullOrEmpty() || !password.isNullOrEmpty()) {

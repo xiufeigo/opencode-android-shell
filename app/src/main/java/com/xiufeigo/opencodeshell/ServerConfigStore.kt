@@ -51,6 +51,10 @@ class ServerConfigStore(context: Context) {
     var server: Server? = null
         private set
 
+    /** Last raw JSON seen — the only place the *full* list survives. */
+    @Volatile
+    private var lastJson: String? = null
+
     fun updateFromJson(json: String?): Boolean {
         if (json.isNullOrBlank()) return false
         val next = try {
@@ -58,6 +62,10 @@ class ServerConfigStore(context: Context) {
         } catch (_: JSONException) {
             null
         } ?: return false
+        lastJson = json
+        prefs.edit()
+            .putString(KEY_LIST_JSON, json)
+            .apply()
         if (next == server) return false
         server = next
         prefs.edit()
@@ -117,6 +125,75 @@ class ServerConfigStore(context: Context) {
         return Server(url, username, password)
     }
 
+    /**
+     * M4 read-only accessor: the *whole* configured list plus the active key.
+     *
+     * The M2 code path only ever needed the single active server (see [server]);
+     * the Settings → Servers tab has to render every entry, so this exposes the
+     * same parse without changing [updateFromJson] / [server] semantics.
+     */
+    fun listServers(): List<Server> {
+        val json = prefs.getString(KEY_LIST_JSON, null) ?: lastJson ?: return server?.let { listOf(it) } ?: emptyList()
+        return try {
+            parseAll(json)
+        } catch (_: JSONException) {
+            server?.let { listOf(it) } ?: emptyList()
+        }
+    }
+
+    /** The active server's URL key (`server.active` in the wire schema). */
+    fun activeUrl(): String? {
+        val json = prefs.getString(KEY_LIST_JSON, null) ?: lastJson ?: return server?.url
+        return try {
+            JSONObject(json).optString("active", "").takeIf { it.isNotEmpty() } ?: server?.url
+        } catch (_: JSONException) {
+            server?.url
+        }
+    }
+
+    /**
+     * M4 write path: replace the persisted list + active key.
+     *
+     * **Known limitation (reported to the parent):** the WebView still holds the
+     * authoritative copy in `localStorage["opencode.global.dat"]`. This writes
+     * the DataStore mirror that [OpenCodeClient] reads, so the native client
+     * immediately targets the edited server; re-opening the WebView re-syncs it
+     * through the existing `syncServerConfig` bridge call. Pushing the new value
+     * *into* the WebView needs a JS hook that M4 does not add (the bridge is
+     * read-only today) — tracked in `research/_M4_settings_palette_status.md`.
+     */
+    fun replaceAll(servers: List<Server>, activeUrl: String?): Boolean {
+        val json = JSONObject().put(
+            "list",
+            JSONArray().apply {
+                for (entry in servers) {
+                    val http = JSONObject().put("url", entry.url)
+                    entry.username?.let { http.put("username", it) }
+                    entry.password?.let { http.put("password", it) }
+                    put(JSONObject().put("type", "http").put("http", http))
+                }
+            },
+        )
+        activeUrl?.takeIf { it.isNotEmpty() }?.let { json.put("active", it) }
+        return updateFromJson(json.toString())
+    }
+
+    private fun parseAll(json: String): List<Server> {
+        val obj = JSONObject(json)
+        val list = obj.optJSONArray("list") ?: return parseLegacy(obj)?.let { listOf(it) } ?: emptyList()
+        val result = ArrayList<Server>(list.length())
+        for (i in 0 until list.length()) {
+            val entry = list.opt(i)
+            val server = when (entry) {
+                is String -> Server(entry, null, null)
+                is JSONObject -> parseEntry(entry)
+                else -> null
+            } ?: continue
+            if (server.isComplete) result.add(server)
+        }
+        return result
+    }
+
     /** Top-level `{url, username?, password?}` (early M1 shape). */
     private fun parseLegacy(obj: JSONObject): Server? {
         val url = obj.optString("url", "").trim()
@@ -128,6 +205,7 @@ class ServerConfigStore(context: Context) {
     }
 
     fun restore() {
+        lastJson = prefs.getString(KEY_LIST_JSON, null)
         val url = prefs.getString(KEY_URL, null) ?: return
         server = Server(url, prefs.getString(KEY_USER, null), prefs.getString(KEY_PASS, null))
     }
@@ -138,5 +216,8 @@ class ServerConfigStore(context: Context) {
         private const val KEY_URL = "url"
         private const val KEY_USER = "username"
         private const val KEY_PASS = "password"
+
+        /** M4: the untouched `{"list":[...],"active":...}` payload. */
+        private const val KEY_LIST_JSON = "list_json"
     }
 }

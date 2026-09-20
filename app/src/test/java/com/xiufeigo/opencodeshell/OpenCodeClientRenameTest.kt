@@ -1,0 +1,96 @@
+package com.xiufeigo.opencodeshell
+
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * M2 data-layer additions, kept in their own file so the M1 `OpenCodeClientTest`
+ * stays untouched: `PATCH /session/:id` (rename) and the additive `tokens`
+ * flattening that feeds the context ring.
+ */
+class OpenCodeClientRenameTest {
+
+    private fun client(server: MockWebServer) =
+        OpenCodeClient(server.url("/").toString().toHttpUrlOrNull()!!, null, null)
+
+    @Test
+    fun renameSessionPatchesTheSessionTitle() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"id":"ses_1","title":"Renamed","directory":"/w","time":{"updated":77}}""",
+                ),
+            )
+            val c = client(server)
+            val session = c.renameSession("ses_1", "Renamed")
+            assertEquals("ses_1", session.id)
+            assertEquals("Renamed", session.title)
+            assertEquals(77L, session.updatedAt)
+
+            val recorded = server.takeRequest()
+            assertEquals("PATCH", recorded.method)
+            assertEquals("/session/ses_1", recorded.path)
+            assertEquals("Renamed", JSONObject(recorded.body.readUtf8()).getString("title"))
+            c.close()
+        }
+    }
+
+    @Test
+    fun renameSessionCarriesTheDirectoryQueryWhenKnown() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody("""{"id":"ses_1","title":"T"}"""),
+            )
+            val c = client(server)
+            c.renameSession("ses_1", "T", directory = "/workspace")
+            assertEquals("/workspace", server.takeRequest().requestUrl!!.queryParameter("directory"))
+            c.close()
+        }
+    }
+
+    @Test
+    fun tokenTotalFlattensTheUpstreamBuckets() {
+        val raw = JSONObject(
+            """{"input":100,"output":20,"reasoning":5,"cache":{"read":7,"write":3}}""",
+        )
+        assertEquals(135L, OpenCodeClient.tokenTotal(raw))
+        // A message without usage, or with an all-zero usage, is "unknown".
+        assertNull(OpenCodeClient.tokenTotal(null))
+        assertNull(OpenCodeClient.tokenTotal(JSONObject("""{"input":0,"output":0}""")))
+        assertEquals(4L, OpenCodeClient.tokenTotal(JSONObject("""{"input":4}""")))
+    }
+
+    @Test
+    fun messagesExposeTheTokenTotalAndTheStoreKeepsIt() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """[{"info":{"id":"msg_1","sessionID":"ses_1","role":"assistant",""" +
+                        """"time":{"created":1},"tokens":{"input":10,"output":2,"cache":{"read":1}}},""" +
+                        """"parts":[{"id":"p1","type":"text","text":"hi"}]}]""",
+                ),
+            )
+            val c = client(server)
+            val messages = c.messages("ses_1")
+            assertEquals(13L, messages[0].tokens)
+
+            // The store parses the same payload (SSE `message.updated` carries
+            // the full info object, so a streaming update keeps the usage).
+            val ui = ChatStore.parseMessage(
+                JSONObject(
+                    """{"info":{"id":"msg_1","role":"assistant","time":{"created":1},""" +
+                        """"tokens":{"input":10,"output":2,"cache":{"read":1}}}}""",
+                ),
+            )
+            assertEquals(13L, ui!!.tokens)
+            assertTrue(ChatStore.parseMessage(JSONObject("""{"info":{"id":"m2","role":"user"}}"""))!!.tokens == null)
+            c.close()
+        }
+    }
+}

@@ -1,0 +1,22 @@
+dict: en=1399 zh=1311 zht=1309 keys
+in scope: 1082 keys over 30 namespaces (mode=separate)
+existing string/plurals/string-array names under res/values*/: 221
+[en] emitted=1082 conflicts=0 keys-missing-in-en=0 -> C:\sensorsdata\main\program\opencode-android-shell\app\src\main\res\values\strings_oc_i18n.xml
+[zh] emitted=1080 conflicts=0 keys-missing-in-zh=2 -> C:\sensorsdata\main\program\opencode-android-shell\app\src\main\res\values-zh-rCN\strings_oc_i18n.xml
+[zht] emitted=1073 conflicts=0 keys-missing-in-zht=9 -> C:\sensorsdata\main\program\opencode-android-shell\app\src\main\res\values-zh-rTW\strings_oc_i18n.xml
+
+NOT expanded: 69 namespaces / 317 keys
+  angular(1) appveyor(1) astro(2) babel(1) blade(1) build(1) bun(2) bunfig(1) capacitor(1) cargo(1) changelog(1) CMakeLists(1) component(2) composer(1) conduct(1) contributing(1) cypress(1) d(1) debugBar(29) deno(2) dependabot(1) desktop(88) editor(2) favicon(1) firebase(1) gitDecoration(3) go(2) gruntfile(1) gulpfile(1) ionic(1) jest(3) js(1) jsconfig(1) lerna(1) netlify(1) next(2) nuxt(2) nx(1) package(1) playwright(1) poetry(1) pom(1) prisma(1) puppeteer(1) pyproject(1) readme(1) remix(1) renovate(1) requirements(1) robots(1) rollup(1) sound(46) spec(4) storybook(1) svelte(1) tailwind(2) test(4) travis(1) tsconfig(1) turbo(1) variable(2) vercel(1) vine(1) vite(2) vitest(2) webpack(1) wrangler(1) wsl(67) yarn(1)
+
+warnings: 10
+  - quoted to preserve surrounding whitespace: ui.lineComment.label.prefix
+  - quoted to preserve surrounding whitespace: ui.lineComment.editorLabel.prefix
+  - quoted to preserve surrounding whitespace: provider.connect.opencodeZen.visit.prefix
+  - quoted to preserve surrounding whitespace: provider.connect.opencodeZen.visit.suffix
+  - quoted to preserve surrounding whitespace: provider.connect.oauth.code.visit.prefix
+  - quoted to preserve surrounding whitespace: provider.connect.oauth.code.visit.suffix
+  - quoted to preserve surrounding whitespace: provider.connect.oauth.auto.visit.prefix
+  - quoted to preserve surrounding whitespace: provider.connect.oauth.auto.visit.suffix
+  - quoted to preserve surrounding whitespace: provider.custom.description.prefix
+  - quoted to preserve surrounding whitespace: common.moreCountSuffix
+conflicts: 0

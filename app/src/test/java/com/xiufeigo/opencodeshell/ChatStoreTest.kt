@@ -205,4 +205,65 @@ class ChatStoreTest {
         assertEquals("ses_3", ChatStore.sessionIdOf(JSONObject("""{"id":"ses_3"}""")))
         assertNull(ChatStore.sessionIdOf(JSONObject("""{"properties":{}}""")))
     }
+
+    @Test
+    fun partDeltaAppendsTextAndDropsOrphans() {
+        var s = ChatStore.reduce(
+            ChatStore.ChatState(),
+            ChatStore.Event.Snapshot(listOf(message("msg_1", 100, listOf(part("p1", "hello"))))),
+        )
+        s = ChatStore.reduce(s, ChatStore.Event.PartDelta("msg_1", "p1", "text", " world"))
+        assertEquals("hello world", s.messages.single().parts.single().text)
+
+        // Orphan delta (missing message or part) is dropped, never crashes.
+        val before = s
+        assertEquals(before, ChatStore.reduce(s, ChatStore.Event.PartDelta("msg_none", "p1", "text", "x")))
+        assertEquals(before, ChatStore.reduce(s, ChatStore.Event.PartDelta("msg_1", "p_none", "text", "x")))
+        // Non-text fields are ignored (text-only reducer for now).
+        assertEquals(before, ChatStore.reduce(s, ChatStore.Event.PartDelta("msg_1", "p1", "toolInput", "x")))
+    }
+
+    @Test
+    fun parseEventHandlesPartDeltaAndSessionStatus() {
+        val delta = ChatStore.parseEvent(
+            "message.part.delta",
+            JSONObject(
+                """{"type":"message.part.delta","properties":
+                   {"sessionID":"ses_1","messageID":"msg_1","partID":"p1","field":"text","delta":" more"}}""",
+            ),
+        )
+        assertEquals(ChatStore.Event.PartDelta("msg_1", "p1", "text", " more"), delta)
+
+        val busy = ChatStore.parseEvent(
+            "session.status",
+            JSONObject(
+                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"busy"}}}""",
+            ),
+        )
+        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.RUNNING), busy)
+
+        val retry = ChatStore.parseEvent(
+            "session.status",
+            JSONObject(
+                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"retry"}}}""",
+            ),
+        )
+        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.RUNNING), retry)
+
+        val idle = ChatStore.parseEvent(
+            "session.status",
+            JSONObject(
+                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"idle"}}}""",
+            ),
+        )
+        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.IDLE), idle)
+
+        // Unknown status type is dropped, not mapped.
+        assertNull(
+            ChatStore.parseEvent(
+                "session.status",
+                JSONObject("""{"type":"session.status","properties":{"status":{"type":"weird"}}}"""),
+            ),
+        )
+    }
 }

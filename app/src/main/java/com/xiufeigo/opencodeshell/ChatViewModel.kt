@@ -66,8 +66,12 @@ class ChatViewModel(
     var sessionID: String? = null
         private set
 
-    fun observeSession(id: String, title: String? = null) {
+    /** Workspace directory of the tracked session; drives `?directory=` on `/event`. */
+    private var directory: String? = null
+
+    fun observeSession(id: String, title: String? = null, directory: String? = null) {
         sessionID = id
+        this.directory = directory
         _state.value = ChatStore.ChatState()
         _currentTitle.value = title
         if (started.get()) refreshSnapshot()
@@ -79,6 +83,7 @@ class ChatViewModel(
      */
     fun newSession() {
         sessionID = null
+        directory = null
         _state.value = ChatStore.ChatState()
         _currentTitle.value = null
     }
@@ -109,6 +114,33 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * M3 addition (purely additive; [start] routes through it, so its behaviour
+     * is unchanged): builds the REST client + default model label **without
+     * opening the SSE stream**.
+     *
+     * Home lists sessions through [listSessions], which needs a client, and the
+     * M1 contract is explicit that sitting on Home costs no connection — calling
+     * [start] there would open a stream the home page never reads. Returns
+     * `false` (and raises [configMissing]) when no usable server is configured,
+     * exactly like the corresponding checks in [start].
+     */
+    fun ensureClient(): Boolean {
+        if (clientRef.get() != null) return true
+        val server = serverConfig.server
+        if (server == null || !server.isComplete) {
+            _configMissing.value = true
+            return false
+        }
+        val client = OpenCodeClient.forServer(server, sharedClient) ?: run {
+            _configMissing.value = true
+            return false
+        }
+        clientRef.set(client)
+        refreshModelLabel()
+        return true
+    }
+
     fun start() {
         if (!started.compareAndSet(false, true)) return
         val server = serverConfig.server
@@ -124,19 +156,17 @@ class ChatViewModel(
             started.set(false)
             return
         }
-        _configMissing.value = false
-        val client = OpenCodeClient.forServer(server, sharedClient) ?: run {
-            _configMissing.value = true
+        if (!ensureClient()) {
             started.set(false)
             return
         }
-        clientRef.set(client)
-        refreshModelLabel()
+        _configMissing.value = false
         val stream = EventStream(
             baseHttpUrl = parsed,
             username = server.username,
             password = server.password,
             client = EventStream.sseClient(sharedClient),
+            directory = directory,
             listener = object : EventStream.Listener {
                 override fun onEvent(type: String, data: JSONObject) {
                     if (type.startsWith("session.")) {
@@ -260,12 +290,37 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * M2 addition: rename the tracked (or any) session through
+     * `PATCH /session/:id` and, on success, mirror it into [currentTitle] so the
+     * sticky header updates without a `listSessions()` round-trip. Read-only
+     * with respect to every other method: no state machine, no stream touched.
+     */
+    fun renameSession(id: String, title: String, onResult: (Boolean) -> Unit = {}) {
+        val client = clientRef.get()
+        val trimmed = title.trim()
+        if (client == null || id.isEmpty() || trimmed.isEmpty()) {
+            onResult(false)
+            return
+        }
+        scope.launch {
+            val renamed = try {
+                withContext(Dispatchers.IO) { client.renameSession(id, trimmed, directory) }
+            } catch (e: Exception) {
+                Log.w(TAG, "rename session failed: ${e.message}")
+                null
+            }
+            if (renamed != null && id == sessionID) _currentTitle.value = renamed.title
+            onResult(renamed != null)
+        }
+    }
+
     fun createSession(onReady: (String) -> Unit) {
         val client = requireClient() ?: return
         scope.launch {
             try {
                 val session = withContext(Dispatchers.IO) { client.createSession() }
-                observeSession(session.id)
+                observeSession(id = session.id, directory = session.directory)
                 onReady(session.id)
             } catch (e: Exception) {
                 Log.w(TAG, "create session failed: ${e.message}")
@@ -329,6 +384,8 @@ class ChatViewModel(
         role = role,
         timeCreated = timeCreated,
         parts = parts.map { part -> part.toUiPart() },
+        // Additive M2 display payload for the context ring (see ChatStore).
+        tokens = tokens,
     )
 
     private fun OpenCodeClient.Part.toUiPart(): ChatStore.UiPart {

@@ -43,3 +43,5 @@ selftest-embedded-ui.json
 
 .worktree-touch/
 .ci-debug.keystore
+
+research/_raw/opencode-src/

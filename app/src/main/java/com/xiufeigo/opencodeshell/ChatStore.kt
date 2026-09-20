@@ -37,6 +37,12 @@ object ChatStore {
         val role: String,
         val timeCreated: Long,
         val parts: List<UiPart>,
+        /**
+         * M2 additive display payload: `info.tokens` flattened to one total
+         * (`OpenCodeClient.tokenTotal`). Read only by the context ring
+         * (`ContextUsage`); it takes no part in [reduce] / upsert semantics.
+         */
+        val tokens: Long? = null,
     )
 
     data class ChatState(
@@ -51,6 +57,7 @@ object ChatStore {
         data class Snapshot(val messages: List<UiMessage>) : Event
         data class MessageUpdated(val message: UiMessage) : Event
         data class PartUpdated(val messageID: String, val part: UiPart) : Event
+        data class PartDelta(val messageID: String, val partID: String, val field: String, val delta: String) : Event
         data class MessageRemoved(val messageID: String) : Event
         data class RunStatusChanged(val status: RunStatus, val error: String? = null) : Event
     }
@@ -92,6 +99,8 @@ object ChatStore {
             state.copy(messages = merged.sortedBy { it.timeCreated })
         }
 
+        is Event.PartDelta -> applyPartDelta(state, event)
+
         is Event.MessageRemoved -> state.copy(
             messages = state.messages.filterNot { it.id == event.messageID },
         )
@@ -107,6 +116,27 @@ object ChatStore {
         } else {
             target.add(message)
         }
+    }
+
+    /**
+     * `message.part.delta` is a **string append**: `part[field] += delta`
+     * (field is usually "text"). The server only emits deltas for a part it has
+     * already announced via `*-start`/`part.updated`, so a delta whose message
+     * or part is missing is dropped (matches the server dropping orphans).
+     * Keeps the current message order; appends never re-sort.
+     */
+    private fun applyPartDelta(state: ChatState, event: Event.PartDelta): ChatState {
+        if (event.field != "text") return state
+        val merged = state.messages.toMutableList()
+        val messageIndex = merged.indexOfFirst { it.id == event.messageID }
+        if (messageIndex < 0) return state
+        val message = merged[messageIndex]
+        val parts = message.parts.toMutableList()
+        val partIndex = parts.indexOfFirst { it.id == event.partID }
+        if (partIndex < 0) return state
+        parts[partIndex] = parts[partIndex].copy(text = parts[partIndex].text + event.delta)
+        merged[messageIndex] = message.copy(parts = parts)
+        return state.copy(messages = merged)
     }
 
     private fun mergeParts(existing: List<UiPart>, incoming: List<UiPart>): List<UiPart> {
@@ -139,6 +169,7 @@ object ChatStore {
             role = info.optString("role", "user"),
             timeCreated = info.optJSONObject("time")?.optLong("created", 0L) ?: 0L,
             parts = parts,
+            tokens = OpenCodeClient.tokenTotal(info.optJSONObject("tokens")),
         )
     }
 
@@ -188,9 +219,31 @@ object ChatStore {
                 if (messageID.isEmpty()) null else Event.PartUpdated(messageID, parsePart(part))
             }
 
+            "message.part.delta" -> {
+                val messageID = p.optString("messageID", "").ifEmpty { p.optString("sessionID", "") }
+                val partID = p.optString("partID", "")
+                if (messageID.isEmpty() || partID.isEmpty()) null
+                else Event.PartDelta(
+                    messageID,
+                    partID,
+                    p.optString("field", "text").ifEmpty { "text" },
+                    p.optString("delta", ""),
+                )
+            }
+
             "message.removed" -> p.optString("messageID", "")
                 .takeIf { it.isNotEmpty() }
                 ?.let { Event.MessageRemoved(it) }
+
+            // `session.status` supersedes the deprecated `session.idle`; busy /
+            // retry mean the run is still alive, idle means it finished.
+            "session.status" -> {
+                when (p.optJSONObject("status")?.optString("type", "") ?: "") {
+                    "busy", "retry" -> Event.RunStatusChanged(RunStatus.RUNNING)
+                    "idle" -> Event.RunStatusChanged(RunStatus.IDLE)
+                    else -> null
+                }
+            }
 
             "session.error" -> Event.RunStatusChanged(
                 RunStatus.ERROR,

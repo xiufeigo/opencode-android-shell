@@ -1,0 +1,2 @@
+zh-rCN missing 2: drag.enter, mode.shell
+zh-rTW missing 9: dialog.server.add.errorCors, dialog.server.add.errorAuth, dialog.server.add.corsHint, dialog.server.status.current, dialog.server.apply, settings.general.row.tabPlusCreatesSession.title, settings.general.row.tabPlusCreatesSession.description, drag.enter, mode.shell

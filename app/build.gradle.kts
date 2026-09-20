@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -61,6 +62,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        compose = true
     }
 
     androidResources {
@@ -78,11 +80,30 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // `collectAsStateWithLifecycle` (used by the Compose root for theme + nav
+    // state). Already cached locally; M2 had deferred it, M3/M4 code needs it.
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // M5 phase 2 — vendored termux VT kernel (`research/06_terminal_selection.md` §1.6 A′):
+    // `terminal-view` carries `terminal-emulator` transitively (`api`). Sources live in
+    // `app/src/thirdparty/termux/` so they are copied together with the app module; the
+    // project has no `externalNativeBuild`, hence no `libtermux.so` and no 16 KB page risk.
+    implementation(project(":terminal-view"))
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:syntax-highlight:4.6.2") {
         exclude(group = "org.jetbrains", module = "annotations-java5")
     }
+    // Jetpack Compose (M0 native frontend foundation; OC2 theme in ui/theme).
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-text")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.navigation:navigation-compose:2.8.5")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
