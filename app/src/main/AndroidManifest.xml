@@ -16,26 +16,19 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".OcActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.OpenCodeShell.Immersive"
             android:windowSoftInputMode="adjustResize">
+            <!-- Launcher: the app boots straight into the 1:1 native Compose
+                 frontend (OcApp). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
-
-        <!-- M0 native Compose frontend (OcApp): debug deep link "opencode-native://ui",
-             reachable via `adb shell am start -d "opencode-native://ui"`; not a launcher. -->
-        <activity
-            android:name=".OcActivity"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
-            android:exported="false"
-            android:theme="@style/Theme.OpenCodeShell.Immersive"
-            android:windowSoftInputMode="adjustResize">
+            <!-- Debug deep link opencode-native://ui (dev convenience). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -43,5 +36,14 @@
                 <data android:scheme="opencode-native" android:host="ui" />
             </intent-filter>
         </activity>
+
+        <!-- Legacy View/WebView shell (not the launcher anymore): kept reachable
+             for any WebView-terminal fallback until that is retired. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.OpenCodeShell.Immersive"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>
