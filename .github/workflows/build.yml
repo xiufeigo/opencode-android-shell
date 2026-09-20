@@ -8,6 +8,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Needed so the tag step can create/upload a GitHub Release (the default
+# GITHUB_TOKEN is read-only for `contents`).
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
