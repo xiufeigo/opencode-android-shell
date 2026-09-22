@@ -189,21 +189,29 @@ object OcMotion {
     // ------------------------------------------------------------ M6: overlays
 
     /**
-     * Overlay enter/exit timing (`research/03` §2.1 keyframes, §3.4 table).
+     * Overlay enter/exit timing (`toast.css:28-32`, `menu.css:195-199`,
+     * `popover.css:22-28`, `hover-card.css:26-32`).
      *
-     * Two invariants the whole family shares, asserted by the unit test: the
-     * enter is **120–150 ms with `ease-out`**, the exit is **80–100 ms with
-     * `ease-in`** — leaving is always faster than arriving.
+     * Menu/select/tooltip/dialog/palette keep the design's fixed rhythm (in
+     * 120–150 ms, out 80–100 ms). Dropdown, popover and hover-card close over
+     * **150 ms `ease-out`** per their keyframes, so their runtime exit fades use
+     * [exitEasing]; toast runs its opacity fade over **160 ms**.
      */
-    enum class Overlay(val enterMs: Int, val exitMs: Int, val startScale: Float) {
+    enum class Overlay(
+        val enterMs: Int,
+        val exitMs: Int,
+        val startScale: Float,
+        val closeEasingOut: Boolean = false,
+        val opacityExitMs: Int = exitMs,
+    ) {
         /** `menu-v2-in .12s ease-out`; no dedicated out keyframe → the 80 ms rhythm. */
         MENU(120, 80, 0.96f),
 
         /** `select-v2-content-in .12s` / `select-v2-content-out 80ms`. */
         SELECT(120, 80, 0.96f),
 
-        /** `dropdown-menu-open .15s ease-out` / `dropdown-menu-close`. */
-        DROPDOWN(150, 100, 0.96f),
+        /** `dropdown-menu-open .15s ease-out` / `dropdown-menu-close 150ms ease-out`. */
+        DROPDOWN(150, 150, 0.96f, closeEasingOut = true),
 
         /** `contentShow .15s ease-out` / `contentHide .1s ease-in` (scale .98). */
         DIALOG(150, 100, 0.98f),
@@ -211,11 +219,11 @@ object OcMotion {
         /** `tooltipV2In .12s` / `tooltipV2Out 80ms`. */
         TOOLTIP(120, 80, 0.96f),
 
-        /** `toastPopIn .15s` / `toastPopOut .1s` (translateY, scale kept). */
-        TOAST(150, 100, 1f),
+        /** `toast` transform/height 280ms + opacity 160ms (`toast.css:28-32`). */
+        TOAST(280, 280, 1f, opacityExitMs = 160),
 
-        /** `popover-open` / `hover-card-open` / `sessionTabPopoverIn` (`.96`). */
-        POPOVER(150, 100, 0.96f),
+        /** `popover-open 0.15s ease-out` / `popover-close 0.15s ease-out` (+hover-card same). */
+        POPOVER(150, 150, 0.96f, closeEasingOut = true),
 
         /** Command palette: it is a dialog-v2 shell (`command-palette-v2` `.12s`). */
         PALETTE(120, 80, 0.98f),
@@ -231,8 +239,8 @@ object OcMotion {
         val enterTranslateY: Float get() = if (this == SELECT) -2f else 0f
 
         companion object {
-            /** Every family obeys the design's fixed rhythm. */
-            fun allWithinRhythm(): Boolean = entries.all {
+            /** Every rhythm family obeys the design's fixed rhythm. */
+            fun allWithinRhythm(): Boolean = entries.filter { it != TOAST && !it.closeEasingOut }.all {
                 it.enterMs in ENTER_RANGE && it.exitMs in EXIT_RANGE
             }
 
@@ -258,6 +266,12 @@ object OcMotion {
     /** Exit spec for an overlay family, honouring reduced motion. */
     fun exitSpec(overlay: Overlay, reduced: Boolean): TweenSpec<Float> = tween(
         durationMillis = durationMs(overlay.exitMs, reduced),
+        easing = if (reduced) LinearEasing else if (overlay.closeEasingOut) enterEasing else exitEasing,
+    )
+
+    /** Opacity fade on exit: toast fades in 160 ms while its transform takes 280 ms. */
+    fun exitOpacitySpec(overlay: Overlay, reduced: Boolean): TweenSpec<Float> = tween(
+        durationMillis = durationMs(overlay.opacityExitMs, reduced),
         easing = if (reduced) LinearEasing else exitEasing,
     )
 

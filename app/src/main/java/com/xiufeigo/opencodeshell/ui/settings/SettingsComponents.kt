@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -139,11 +140,25 @@ fun SettingsRow(
 /** `settings-v2-section` (`gap:16px`) + `settings-v2-section-title`. */
 @Composable
 fun SettingsSectionBlock(titleResId: Int?, content: @Composable () -> Unit) {
+    SettingsSectionBlockTitle(titleResId?.let { stringResource(it) }, content)
+}
+
+/**
+ * [SettingsSectionBlock] with an already-resolved title — the Providers/Models
+ * panels group by *dynamic* provider names that have no resource id.
+ */
+@Composable
+fun SettingsSectionBlock(title: String, content: @Composable () -> Unit) {
+    SettingsSectionBlockTitle(title, content)
+}
+
+@Composable
+private fun SettingsSectionBlockTitle(title: String?, content: @Composable () -> Unit) {
     val c = OcTheme.colors
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (titleResId != null) {
+        if (title != null) {
             Text(
-                text = stringResource(titleResId),
+                text = title,
                 color = c.textBase,
                 fontSize = 15.sp,
                 fontWeight = FontWeight(640),
@@ -221,6 +236,7 @@ fun OcTextField(
     password: Boolean = false,
     enabled: Boolean = true,
     imeAction: ImeAction = ImeAction.Done,
+    keyboardType: KeyboardType = KeyboardType.Text,
     onImeAction: (() -> Unit)? = null,
     style: TextStyle? = null,
 ) {
@@ -246,7 +262,7 @@ fun OcTextField(
             textStyle = base.copy(color = c.textBase),
             cursorBrush = SolidColor(c.textAccent),
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(imeAction = imeAction),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(
                 onDone = { onImeAction?.invoke() },
                 onGo = { onImeAction?.invoke() },
@@ -275,16 +291,33 @@ fun OcSwitch(checked: Boolean, enabled: Boolean = true, onCheckedChange: (Boolea
     }
 }
 
-/** `settings-v2-keybind-button`: `11px/530`, faint, `layer-02` on hover/press. */
+/**
+ * `settings-v2-keybind-button`: `11px/530`, faint, `layer-02` on hover/press.
+ *
+ * W5-S (D4): it is a **button** now — tapping starts/stops key capture
+ * (`keybinds.tsx:448-463` sets `settings-keybind-button--active` while capturing),
+ * and the accent tint marks the row that currently owns the keyboard.
+ */
 @Composable
-fun KeybindChip(text: String, modifier: Modifier = Modifier) {
+fun KeybindChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    recording: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
     val c = OcTheme.colors
     Box(
         modifier
-            .background(c.layer02, RoundedCornerShape(2.dp))
+            .background(if (recording) c.stateInfoBg else c.layer02, RoundedCornerShape(2.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-        Text(text, color = c.textFaint, fontSize = 11.sp, fontWeight = FontWeight(530))
+        Text(
+            text = text,
+            color = if (recording) c.stateInfoFg else c.textFaint,
+            fontSize = 11.sp,
+            fontWeight = FontWeight(530),
+        )
     }
 }
 

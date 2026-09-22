@@ -42,7 +42,12 @@ class OcMotionM6Test {
         assertEquals(120, OcMotion.Overlay.PALETTE.enterMs)
         assertEquals(80, OcMotion.Overlay.PALETTE.exitMs)
         assertEquals(150, OcMotion.Overlay.DROPDOWN.enterMs)
-        assertEquals(100, OcMotion.Overlay.DROPDOWN.exitMs)
+        assertEquals(150, OcMotion.Overlay.DROPDOWN.exitMs)
+        assertEquals(150, OcMotion.Overlay.POPOVER.enterMs)
+        assertEquals(150, OcMotion.Overlay.POPOVER.exitMs)
+        assertEquals(280, OcMotion.Overlay.TOAST.enterMs)
+        assertEquals(280, OcMotion.Overlay.TOAST.exitMs)
+        assertEquals(160, OcMotion.Overlay.TOAST.opacityExitMs)
         assertEquals(0.96f, OcMotion.Overlay.MENU.startScale)
         assertEquals(0.98f, OcMotion.Overlay.DIALOG.startScale)
         assertEquals(-2f, OcMotion.Overlay.SELECT.enterTranslateY)
@@ -73,6 +78,22 @@ class OcMotionM6Test {
     fun `a closing layer is held for its exit plus one frame`() {
         assertEquals(132L, OcMotion.exitHoldMs(OcMotion.Overlay.DIALOG, reduced = false))
         assertEquals(OcMotion.EXIT_HOLD_SLACK_MS, OcMotion.exitHoldMs(OcMotion.Overlay.DIALOG, reduced = true))
+    }
+
+    @Test
+    fun `dropdown popover and hover-card close over 150ms ease-out`() {
+        for (overlay in listOf(OcMotion.Overlay.DROPDOWN, OcMotion.Overlay.POPOVER)) {
+            assertEquals(150, overlay.exitMs)
+            assertTrue(overlay.closeEasingOut)
+            assertEquals(
+                OcMotion.enterEasing,
+                OcMotion.exitSpec(overlay, reduced = false).easing,
+            )
+        }
+        // Toast: transform/hold runs 280ms, opacity fades in 160ms.
+        assertEquals(280, OcMotion.Overlay.TOAST.exitMs)
+        assertEquals(160, OcMotion.exitOpacitySpec(OcMotion.Overlay.TOAST, reduced = false).durationMillis)
+        assertEquals(312L, OcMotion.exitHoldMs(OcMotion.Overlay.TOAST, reduced = false))
     }
 
     // ------------------------------------------------------ reduced motion

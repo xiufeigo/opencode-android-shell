@@ -26,6 +26,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -60,6 +61,11 @@ class MainActivity : AppCompatActivity() {
     private var backInFlight = false
     private var webColorSchemeApplied = false
     private var lastConfigToastAt = 0L
+    // Native server config snapshot taken before the WebView boots; the
+    // document-start sync can overwrite the store with the WebView's stale
+    // value before onPageFinished, so boot convergence compares against this.
+    private var bootServerJson: String? = null
+    private var serverConverged = false
     // Last root padding applied by applyImeAwarePadding. Compared on all four
     // sides (rotation changes left/right) so identical insets never re-layout.
     private var lastPaddingLeft = -1
@@ -94,8 +100,19 @@ class MainActivity : AppCompatActivity() {
         // Native chat stack. The WebView stays the source of truth for the
         // server config; it pushes values through the bridge (thread-safe
         // inside ServerConfigStore) so the direct client never needs a peek.
-        serverConfig = ServerConfigStore(this)
+        serverConfig = ServerConfigStore(this) { json ->
+            runOnUiThread {
+                val escaped = JSONObject.quote(json)
+                if (::binding.isInitialized) {
+                    binding.webView.evaluateJavascript("window.__ocSetServerConfig && window.__ocSetServerConfig($escaped);", null)
+                }
+            }
+        }
         serverConfig.restore()
+        // Captured before the WebView boots: the document-start sync may push
+        // the WebView's stale localStorage value over the native one before we
+        // can compare, so convergence at first page-finish uses this snapshot.
+        bootServerJson = serverConfig.rawJson()
         // The sync JS retries for ~6s after page load; suppress duplicate
         // "no config" toasts within that window (showChatTab + onStart both
         // kick the model on cold boot).
@@ -403,6 +420,41 @@ class MainActivity : AppCompatActivity() {
         controller.isAppearanceLightNavigationBars = lightBars
     }
 
+    /**
+     * One-time boot convergence between the two server-config stores.
+     *
+     * The WebView's localStorage and the native prefs mirror both accept
+     * writes, so after native Settings edits (which happen in [OcActivity],
+     * outside this Activity) the WebView may still hold a stale list. At the
+     * first page-finish we compare the WebView's value against the pre-boot
+     * native snapshot; if they differ, the native value wins: it is written
+     * into the WebView and the page reloads once so the upstream store
+     * re-hydrates from localStorage. `serverConverged` also prevents the
+     * reload from looping.
+     */
+    private fun convergeServerConfigOnce(view: WebView) {
+        if (serverConverged) return
+        val nativeJson = bootServerJson ?: return
+        serverConverged = true
+        view.evaluateJavascript(
+            "(function(){try{return localStorage.getItem('opencode.global.dat:server')||''}catch(e){return ''}})()",
+        ) { raw ->
+            val webJson = try {
+                raw?.let { org.json.JSONTokener(it).nextValue() as? String }
+            } catch (_: Exception) {
+                null
+            }
+            if (webJson != nativeJson) {
+                val escaped = JSONObject.quote(nativeJson)
+                view.evaluateJavascript(
+                    "window.__ocSetServerConfig && window.__ocSetServerConfig($escaped);",
+                    null,
+                )
+                view.reload()
+            }
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun configureWebView() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -421,8 +473,9 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { applySystemUi(dark) }
                 },
                 // Fires on a JS bridge thread; ServerConfigStore is volatile +
-                // prefs-backed, so no UI hop is needed.
-                onServerConfig = { json -> serverConfig.updateFromJson(json) },
+                // prefs-backed, so no UI hop is needed. notify=false: the value
+                // came *from* the WebView, do not echo it back.
+                onServerConfig = { json -> serverConfig.updateFromJson(json, notify = false) },
             ),
             "OpenCodeAndroid",
         )
@@ -518,6 +571,7 @@ class MainActivity : AppCompatActivity() {
                 binding.webView.evaluateJavascript(SystemBarsJs.INSTALL, null)
                 binding.webView.evaluateJavascript(ServerConfigSyncJs.INSTALL, null)
                 binding.webView.requestFocus()
+                convergeServerConfigOnce(binding.webView)
             }
 
             override fun onReceivedHttpAuthRequest(

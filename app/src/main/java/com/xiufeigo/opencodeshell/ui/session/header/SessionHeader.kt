@@ -50,6 +50,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -61,11 +62,27 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.components.OcEnterOnMount
+import com.xiufeigo.opencodeshell.ui.session.actions.LocalSessionActionsHost
+import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsHost
+import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsMenuItem
+import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsMenuState
+import com.xiufeigo.opencodeshell.ui.session.actions.rememberSessionActionsMenuState
+import com.xiufeigo.opencodeshell.ui.session.timeline.TimelineSearch
 import com.xiufeigo.opencodeshell.ui.theme.OcMotion
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 
-/** Actions of the ⋮ menu. Only [RENAME] is wired in M2 (see the status note). */
-enum class SessionMenuAction { RENAME, DELETE }
+/**
+ * Actions of the ⋮ menu that the **call site** runs. [RENAME] is edited by the
+ * header itself, [DELETE] and [EXPORT] are run by the call site (they need the
+ * session id, the server client and, for delete, the confirm dialog).
+ *
+ * The W6 session actions (撤销 / 重做 / 分叉 / 分享 / 归档) deliberately live
+ * outside this enum: they are carried out by `SessionActionsHost` (the
+ * `ui.session.actions` package), a fresh group below a divider, and the call
+ * site's `when (action)` over these three values stays exhaustive and unchanged.
+ * The two enums are bridged by `SessionActionsMenuItem`.
+ */
+enum class SessionMenuAction { RENAME, DELETE, EXPORT }
 
 /**
  * Sticky session header (`research/02` §2.2) — **one** 48 dp row, rendered as
@@ -78,8 +95,11 @@ enum class SessionMenuAction { RENAME, DELETE }
  * │   └─ h1[session-title-child]        13px/530  → clickable → InlineInput rename
  * └─ right (shrink-0, gap-2)
  *     ├─ <SessionContextUsage/>        context ring (14 dp)
- *     └─ MenuV2 (outline-dots)         ⋮  (Rename / Delete…)
+ *     └─ MenuV2 (outline-dots)         ⋮  (Rename / Export / Delete…)
  * ```
+ *
+ * A1 adds the summary trigger to that trailing cluster (`onToggleSummary`), and
+ * [SessionSummaryPopover] hosts the panel it opens.
  *
  * M2 resolution of the "app bar vs sticky row" question: the ring and the ⋮
  * menu live **in the sticky row, not in an app top bar**, so the M1
@@ -97,12 +117,57 @@ fun SessionHeader(
     onRename: (String) -> Unit,
     onBack: () -> Unit,
     onOpenDrawer: () -> Unit,
-    contextProgress: Float,
     onMenuAction: (SessionMenuAction) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Legacy sweep fraction. Superseded by [contextPercent] — kept so the
+     * pre-W4-B call site (`SessionScreen.kt:272`, which passed
+     * `ContextUsage.progressOf(messages, limit = null)`) still compiles.
+     */
+    contextProgress: Float = 0f,
+    /**
+     * `round(total / model.limit.context * 100)`, clamped 0…100; `null` while
+     * either side of the division is unknown (`ContextUsage.percentOf`). When
+     * set it wins over [contextProgress].
+     */
+    contextPercent: Int? = null,
+    /** Token total of the last assistant message — the tooltip's `Tokens` row. */
+    contextTokens: Long? = null,
+    /** Session cost (`Session.Info.cost`) — the tooltip's `Cost` row when known. */
+    contextCost: Double? = null,
+    /**
+     * Tap action of the ring. Upstream's `SessionContextUsage` toggles the
+     * Review→Context panel (`session-context-usage.tsx:93-108`); until the call
+     * site provides it, a tap opens the Cost/%/Tokens popover instead (the
+     * upstream tooltip, `:131-155`) and a long press always does.
+     */
+    onOpenContext: (() -> Unit)? = null,
+    /**
+     * A1: `session.summary.toggle` (`session/summary/popover.tsx:17-34`) — a
+     * trailing icon button that toggles the summary popover. Null hides the
+     * button; the phone form reaches the same panel through
+     * `MobileSessionTabs`' ⋯ menu (`onOpenSummary`) instead, exactly like
+     * upstream, which only mounts the popover trigger on wide screens.
+     */
+    onToggleSummary: (() -> Unit)? = null,
+    /** Highlight state of that button while the popover is up. */
+    summaryOpen: Boolean = false,
 ) {
     val c = OcTheme.colors
     var editing by remember { mutableStateOf(false) }
+    // A2: the timeline search owns the header row while it is open. The state is
+    // the session-scoped `TimelineSearch` controller (see its KDoc for why it is
+    // not a parameter: the header is rendered outside the timeline on the mobile
+    // form and inside its sticky slot on the desktop one).
+    val searching = TimelineSearch.open
+    val canSearch = TimelineSearch.available
+    // W6: the session-action rows (撤销 / 重做 / 分叉 / 分享 / 归档). The host is
+    // published by `ui/App.kt`; without it (a preview, the legacy chat tab) the
+    // five rows are simply absent and the menu keeps its three M2/A8 entries.
+    // Both reads happen before the Row so the search/rename early-outs below
+    // cannot change the composition order of these composable calls.
+    val actionsHost = LocalSessionActionsHost.current
+    val actionsMenu = if (actionsHost == null) null else rememberSessionActionsMenuState(actionsHost)
 
     Row(
         modifier = modifier
@@ -123,6 +188,13 @@ fun SessionHeader(
             contentDescription = stringResource(R.string.oc_open_sessions),
             onClick = onOpenDrawer,
         )
+
+        if (searching) {
+            // The bar replaces the title, the ring and the ⋮ menu: at phone width
+            // upstream's 200 px field does not fit next to them.
+            TimelineSearchBar(modifier = Modifier.weight(1f))
+            return@Row
+        }
 
         if (editing) {
             InlineTitleInput(
@@ -150,21 +222,40 @@ fun SessionHeader(
             )
         }
 
-        // `variant="indicator"` ring. Its upstream click opens the Review/Context
-        // panel (`openContext()`, M4 scope) — until that panel exists the ring is
-        // a non-interactive indicator rather than a dead button.
-        val contextUsageLabel = stringResource(R.string.oc_context_usage)
-        Box(
-            modifier = Modifier
-                .size(ICON_BUTTON_SIZE)
-                .semantics { contentDescription = contextUsageLabel },
-            contentAlignment = Alignment.Center,
-        ) {
-            ContextRing(progress = contextProgress)
+        // A2 entry: same slot the open bar takes, i.e. in front of the ring
+        // (`message-timeline.tsx:544-548`). Upstream reaches the search through
+        // `mod+f` only; a touch shell needs a visible button.
+        if (canSearch && !editing) TimelineSearchEntry()
+
+        // A1: the summary trigger, in front of the ring — upstream renders the
+        // `window-analytics` icon button in the same trailing cluster
+        // (`session/summary/popover.tsx:17-34`); Android's own asset set has no
+        // analytics glyph, so the generic 2×2 grid (already the Home entry's
+        // icon) stands in.
+        if (onToggleSummary != null) {
+            HeaderIconButton(
+                iconRes = R.drawable.ic_oc_grid,
+                contentDescription = stringResource(R.string.oc_command_summary_toggle),
+                onClick = onToggleSummary,
+                active = summaryOpen,
+            )
         }
+
+        // `variant="indicator"` ring, now fed by the real denominator
+        // (`--v2-background-bg-icon-button-contrast`-free, `icon-base` progress)
+        // and clickable (W4-B item 8).
+        ContextUsageButton(
+            percent = contextPercent,
+            tokens = contextTokens,
+            cost = contextCost,
+            fallbackProgress = contextProgress,
+            onOpenContext = onOpenContext,
+        )
         SessionOverflowMenu(
             onRename = { editing = true },
             onMenuAction = onMenuAction,
+            actionsHost = actionsHost,
+            actionsMenu = actionsMenu,
         )
     }
 }
@@ -177,6 +268,8 @@ private fun HeaderIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     iconModifier: Modifier = Modifier,
+    /** Accent tint only — the header's toggle affordances do not use a disc. */
+    active: Boolean = false,
 ) {
     val c = OcTheme.colors
     Box(
@@ -189,7 +282,7 @@ private fun HeaderIconButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
-            tint = c.iconBase,
+            tint = if (active) c.iconAccent else c.iconBase,
             modifier = iconModifier.size(16.dp),
         )
     }
@@ -262,14 +355,25 @@ private fun InlineTitleInput(
 /**
  * ⋮ menu (`MenuV2`): fixed **120 px** content width per §2.2, `layer-01`
  * surface, `lg` radius, a 0.5 dp border for definition on the layer background.
- * M2 wires *Rename*; *Delete* (and upstream's share/export/archive entries)
- * need milestone work beyond the session screen, so they render as disabled
- * placeholders (`research/_M2_session_status.md` §未做).
+ * M2 wires *Rename*; *Delete* runs the call site's session-delete flow (W4-E F-4);
+ * *Export…* (A8, W5-INT) serializes the session through the call site.
+ *
+ * W6 appends the five session-action rows below a divider: 撤销本轮变更 /
+ * 重做变更 / 分叉会话 / 分享会话 (取消分享会话 while the session is public) /
+ * 归档会话. They are a second group on purpose — the three entries above are
+ * `SessionMenuAction`s the *call site* runs (session id + client + confirm
+ * dialog), while these five are carried out by [SessionActionsHost], which the
+ * shell publishes for the session on screen. Enablement is
+ * `SessionActionsModel.menu(...)`'s, i.e. the same projection upstream's command
+ * palette uses for `session.undo` / `session.redo` / `session.fork`
+ * (`use-session-commands.tsx:261,269,292`); this file decides no rule of its own.
  */
 @Composable
 private fun SessionOverflowMenu(
     onRename: () -> Unit,
     onMenuAction: (SessionMenuAction) -> Unit,
+    actionsHost: SessionActionsHost?,
+    actionsMenu: SessionActionsMenuState?,
 ) {
     val c = OcTheme.colors
     val shapes = OcTheme.shapes
@@ -323,23 +427,105 @@ private fun SessionOverflowMenu(
                                 onRename()
                             },
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .height(0.5.dp)
-                                .background(c.borderBase),
+                        MenuDivider()
+                        // A8: 「导出会话」. This used to be a placeholder comment
+                        // ("server share/export is missing"); the export exists now
+                        // — the call site pulls the raw `{info, messages}` JSON and
+                        // writes it through SAF (`SessionExportSaver`).
+                        // W6: 撤销 / 重做 / 分叉 / 分享·取消分享 / 归档 — the same five
+                        // actions upstream registers as commands
+                        // surface them here because Android has no command palette in
+                        // the header and the ⋮ menu is where the user looks.
+                        MenuRow(
+                            label = stringResource(R.string.command_session_export),
+                            enabled = true,
+                            onClick = { onMenuAction(SessionMenuAction.EXPORT) },
                         )
                         MenuRow(
                             label = stringResource(R.string.oc_delete_session),
-                            enabled = false,
+                            // W4-E F-4: the destructive flow exists now (the
+                            // drawer rows run it), so the header entry stops
+                            // being a dead placeholder. Upstream renders Delete
+                            // for top-level sessions only; Android has no
+                            // `parentID`, so it is always offered.
+                            enabled = true,
                             onClick = { onMenuAction(SessionMenuAction.DELETE) },
                         )
+                        // ---- W6 session actions ------------------------------
+                        if (actionsHost != null && actionsMenu != null) {
+                            MenuDivider()
+                            MenuRow(
+                                label = stringResource(R.string.command_session_undo),
+                                enabled = actionsMenu.undoEnabled,
+                                onClick = {
+                                    expanded = false
+                                    actionsHost.start(SessionActionsMenuItem.UNDO)
+                                },
+                            )
+                            MenuRow(
+                                label = stringResource(R.string.command_session_redo),
+                                enabled = actionsMenu.redoEnabled,
+                                onClick = {
+                                    expanded = false
+                                    actionsHost.start(SessionActionsMenuItem.REDO)
+                                },
+                            )
+                            MenuRow(
+                                label = stringResource(R.string.oc_fork_session),
+                                enabled = actionsMenu.forkEnabled,
+                                onClick = {
+                                    expanded = false
+                                    actionsHost.start(SessionActionsMenuItem.FORK)
+                                },
+                            )
+                            // One row, two labels: the server keeps reporting
+                            // `share` after `DELETE …/share` (measured live), so
+                            // "public?" is the local flow the host's view model
+                            // maintains, never the payload of the last write.
+                            if (actionsMenu.shareVisible) {
+                                MenuRow(
+                                    label = stringResource(
+                                        if (actionsMenu.shared) {
+                                            R.string.command_session_unshare
+                                        } else {
+                                            R.string.command_session_share
+                                        },
+                                    ),
+                                    enabled = true,
+                                    onClick = {
+                                        expanded = false
+                                        actionsHost.start(SessionActionsMenuItem.SHARE)
+                                    },
+                                )
+                            }
+                            if (actionsMenu.archiveVisible) {
+                                MenuRow(
+                                    label = stringResource(R.string.command_session_archive),
+                                    enabled = true,
+                                    onClick = {
+                                        expanded = false
+                                        actionsHost.start(SessionActionsMenuItem.ARCHIVE)
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** The ⋮ menu's 0.5 dp group separator, inset 8 dp on both sides. */
+@Composable
+private fun MenuDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .height(0.5.dp)
+            .background(OcTheme.colors.borderBase),
+    )
 }
 
 @Composable
@@ -363,6 +549,64 @@ private fun MenuRow(label: String, enabled: Boolean, onClick: () -> Unit) {
         )
     }
 }
+
+/**
+ * A1: the wide-screen home of `SessionSummaryPanel` — a `bottom-end` popover
+ * anchored to the header band.
+ *
+ * Upstream positions it from a zero-width `h-7` anchor at `end-3 top-2.5`
+ * (`session/summary/popover.tsx:17-34`): the popover's bottom-end lands 12 px
+ * from the container's trailing edge and 38 px (10 + 28) below the header's top,
+ * `width: 280px`. Android mounts the same rectangle — the popup is a child of the
+ * header box, so `anchorBounds` **is** the header band.
+ *
+ * The content is a slot: the header stays free of session data (it lives in
+ * `ChatViewModel` / `SessionScreen`) and `SessionSummaryPanel` keeps its
+ * "values in, layout out" contract. Tapping outside dismisses
+ * (`onDismissRequest` of a focusable popup), the same way the ⋮ menu behaves.
+ */
+@Composable
+fun SessionSummaryPopover(
+    open: Boolean,
+    onDismiss: () -> Unit,
+    /** Panel width; upstream's `width: 280px`. */
+    width: Dp = SUMMARY_POPOVER_WIDTH,
+    content: @Composable () -> Unit,
+) {
+    if (!open) return
+    val density = LocalDensity.current
+    val endPx = with(density) { SUMMARY_POPOVER_END.roundToPx() }
+    val topPx = with(density) { SUMMARY_POPOVER_TOP.roundToPx() }
+    val provider = remember(endPx, topPx) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset = IntOffset(
+                x = anchorBounds.right - endPx - popupContentSize.width,
+                y = anchorBounds.top + topPx,
+            )
+        }
+    }
+    Popup(
+        popupPositionProvider = provider,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        Box(Modifier.width(width)) { content() }
+    }
+}
+
+/** `end-3` = 12 px from the container's trailing edge. */
+private val SUMMARY_POPOVER_END = 12.dp
+
+/** `top-2.5` (10 px) + the anchor's own `h-7` (28 px) = the popover's top. */
+private val SUMMARY_POPOVER_TOP = 38.dp
+
+/** `width: 280px` (`popover.tsx:17-34`), so the panel body fills `fillMaxWidth`. */
+private val SUMMARY_POPOVER_WIDTH = 280.dp
 
 /** `h-12` row (§2.2). Also the timeline's sticky top inset. */
 val HEADER_HEIGHT = 48.dp

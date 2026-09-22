@@ -29,16 +29,16 @@
     <color name="oc_diff_del_fg">#CA2D17</color>
 
     <!-- markdown code -->
-    <color name="oc_code_inline_fg">#263FA9</color>
+    <color name="oc_code_inline_fg">#2C47C8</color>
     <color name="oc_code_inline_bg">#14000000</color>
 
     <!-- syntax highlighting (light) -->
-    <color name="oc_syntax_property">#ED6DC8</color>
-    <color name="oc_syntax_type">#596600</color>
-    <color name="oc_syntax_string">#006656</color>
+    <color name="oc_syntax_property">#D16427</color>
+    <color name="oc_syntax_type">#5230C2</color>
+    <color name="oc_syntax_string">#198B43</color>
     <color name="oc_syntax_constant">#007B80</color>
-    <color name="oc_syntax_primitive">#FB4804</color>
-    <color name="oc_syntax_keyword">#5C5C5C</color>
+    <color name="oc_syntax_primitive">#C83D8B</color>
+    <color name="oc_syntax_keyword">#C83D8B</color>
     <color name="oc_syntax_comment">#5C5C5C</color>
     <color name="oc_syntax_variable">#161616</color>
     <color name="oc_syntax_punctuation">#5C5C5C</color>

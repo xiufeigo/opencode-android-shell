@@ -229,9 +229,11 @@ class SettingsPaletteModelTest {
 
     @Test
     fun paletteAndSettingsChordsMatchTheDocumentedBindings() {
-        // Ctrl+K / Ctrl+Shift+P open the palette; Ctrl+P does NOT.
+        // `mod+k` (no Shift) / `mod+shift+p` open the palette; `mod+p` is
+        // `file.open`, and `mod+shift+k` does NOT match (upstream
+        // `matchKeybind` compares every modifier strictly, `command.tsx:188-204`).
         assertTrue(isPaletteChord(ctrlOrMeta = true, keyK = true, keyP = false, shift = false))
-        assertTrue(isPaletteChord(ctrlOrMeta = true, keyK = true, keyP = false, shift = true))
+        assertFalse(isPaletteChord(ctrlOrMeta = true, keyK = true, keyP = false, shift = true))
         assertTrue(isPaletteChord(ctrlOrMeta = true, keyK = false, keyP = true, shift = true))
         assertFalse(isPaletteChord(ctrlOrMeta = true, keyK = false, keyP = true, shift = false))
         assertFalse(isPaletteChord(ctrlOrMeta = false, keyK = true, keyP = false, shift = false))

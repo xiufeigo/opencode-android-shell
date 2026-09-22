@@ -1,14 +1,18 @@
 package com.xiufeigo.opencodeshell.ui.session.composer
 
+import com.xiufeigo.opencodeshell.ChatViewModel
+
 /**
  * Pure submit/stop decisions for the composer (`research/02` §4.6 / §4.7).
  *
  * Extracted from [Composer] so the rules that choose between "send", "queue a
  * follow-up" and "stop the run" are JVM-testable: a wrong answer here either
  * aborts a live run the user did not want to stop, or silently swallows a draft.
+ *
+ * Public (not `internal`) because [Composer] is public and takes [Payload] as a
+ * callback parameter: a public composable cannot expose an internal type.
  */
-internal object ComposerSubmit {
-
+object ComposerSubmit {
     /** "Nothing left to submit": no text and no pending attachment (§4.6 `blank()`). */
     fun hasContent(text: String, attachmentCount: Int): Boolean =
         text.isNotBlank() || attachmentCount > 0
@@ -33,4 +37,29 @@ internal object ComposerSubmit {
      */
     fun enterSubmits(isShiftPressed: Boolean, isRepeat: Boolean): Boolean =
         !isShiftPressed && !isRepeat
+
+    /**
+     * W5-C: may this editor content be submitted? Shell mode requires real text
+     * (`composer/editor/interaction.ts:343-354` `canSubmit()` returns
+     * `prompt.some(content.trim())` for shell mode and never counts attachments) —
+     * `POST /session/:id/shell` has no file parts at all. Normal mode keeps the
+     * M1.5 rule, so an attachment-only prompt still sends.
+     */
+    fun canSubmit(text: String, attachmentCount: Int, shell: Boolean): Boolean =
+        if (shell) text.isNotBlank() else hasContent(text, attachmentCount)
+
+    /**
+     * The composer's submit payload (W5-C). One value carries the three write
+     * shapes so the screen can route them in one lambda:
+     * [shell] → `POST /session/:id/shell`, [command] ≠ null →
+     * `POST /session/:id/command`, otherwise a plain prompt.
+     */
+    data class Payload(
+        val text: String,
+        val attachments: List<ChatViewModel.Attachment> = emptyList(),
+        val shell: Boolean = false,
+        /** The server command name (no leading slash) when the text is one. */
+        val command: String? = null,
+        val arguments: String = "",
+    )
 }

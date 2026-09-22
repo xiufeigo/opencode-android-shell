@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import com.xiufeigo.opencodeshell.ui.OcApp
@@ -22,7 +22,7 @@ import com.xiufeigo.opencodeshell.ui.nav.NavRestore
  * composition leaves). The session screen itself starts/stops the stream, so
  * sitting on Home costs no connection.
  */
-class OcActivity : ComponentActivity() {
+class OcActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -31,8 +31,11 @@ class OcActivity : ComponentActivity() {
             // terminal panel (`PtyApi` needs the server URL + Basic auth), so it
             // is created once here instead of inside the ViewModel.
             val serverStore = remember { ServerConfigStore(applicationContext).also { it.restore() } }
+            // One SettingsStore for the theme/nav state *and* the chat
+            // ViewModel's model-picker override (`opencode.android.selectedModel`).
+            val settingsStore = remember { SettingsStore(applicationContext) }
             val chatViewModel = remember {
-                ChatViewModel(serverStore) { /* screen shows an inline setup hint */ }
+                ChatViewModel(serverStore, settingsStore) { /* screen shows an inline setup hint */ }
             }
             DisposableEffect(chatViewModel) {
                 onDispose { chatViewModel.destroy() }
@@ -52,6 +55,7 @@ class OcActivity : ComponentActivity() {
             // `OcApp` reads the live configuration instead.
             OcApp(
                 chatViewModel = chatViewModel,
+                settingsStore = settingsStore,
                 serverStore = serverStore,
                 serverKey = serverKey,
                 lastRoute = lastRoute,

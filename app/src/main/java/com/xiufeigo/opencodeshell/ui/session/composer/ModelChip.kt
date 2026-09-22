@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.xiufeigo.opencodeshell.OpenCodeClient
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.components.OcEnterOnMount
 import com.xiufeigo.opencodeshell.ui.theme.OcMotion
@@ -53,11 +53,9 @@ data class ModelOption(
 )
 
 /**
- * The model data available *today*. `ChatViewModel` exposes the configured
- * default model (`GET /config` → `model`, `/config`'s `"provider/modelID"`
- * trimmed to the model id) and nothing else — the provider/model catalog is M2.
- * So the picker gets a one-row menu for the configured model, and an empty list
- * (no config yet) makes the chip explain that the picker lands in M2.
+ * The M1.5 fallback model data, kept for its JVM tests (`ComposerM1_5Test`).
+ * The picker itself now reads the real catalog ([OpenCodeClient.Providers])
+ * through [ModelPickerItems].
  */
 object ModelOptions {
 
@@ -74,29 +72,50 @@ object ModelOptions {
  * here — the asset set has no provider icons yet) + name + `▾`.
  *
  * Always rendered, falling back to the `oc_model_label` ("Model") string like
- * `ChatView.renderModelLabel`; clicking opens the model menu, or the
- * "model picker lands later" toast while the catalog is unavailable.
+ * `ChatView.renderModelLabel`. Clicking opens the model picker
+ * ([ModelPickerContent], upstream `ModelSelectorPopoverView`); while the
+ * provider catalog is unavailable the chip explains that with a toast.
  *
- * M6 replaces M3's `material3.DropdownMenu` with the v2 `menu-v2-content` shell:
- * `layer-01`, radius 6, `min-w 160` / `max-w 23rem`, `elevation-floating`
- * (`research/03` §3.5) plus the dropdown enter/exit pair — `dropdown-menu-open`
- * `.15s ease-out` with `scale(.96) → 1`, `dropdown-menu-close` `.1s ease-in`
- * (`research/03` §2.1/§3.4). The material menu could not carry either: it paints
- * the M3 surface tokens and hard-codes its own transition.
+ * The popup keeps M6's `menu-v2-content` shell: `layer-01`, radius 6,
+ * `min-w 160` / `max-w 23rem`, `elevation-floating` (`research/03` §3.5) plus
+ * the dropdown enter pair — `dropdown-menu-open` `.15s ease-out` with
+ * `scale(.96) → 1` (`research/03` §2.1/§3.4).
  */
 @Composable
 fun ModelChip(
     current: String?,
-    options: List<ModelOption>,
-    onSelect: (ModelOption) -> Unit,
+    providers: OpenCodeClient.Providers?,
+    selectedModel: Pair<String, String>?,
+    overrideActive: Boolean,
+    onSelect: (providerID: String, modelID: String) -> Unit,
+    onUseServerDefault: () -> Unit,
     modifier: Modifier = Modifier,
+    /** W5-C B4: the pinned variant (`null` = server/agent default). */
+    variantLabel: String? = null,
+    onSelectVariant: (String?) -> Unit = {},
+    /**
+     * W5-C B1: `/model` opens this picker. The composer bumps the counter; a
+     * value change opens the menu, so the chip keeps owning its own open state.
+     */
+    openRequest: Int = 0,
 ) {
     val c = OcTheme.colors
     val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     var anchor by remember { mutableStateOf(IntSize.Zero) }
     val gapPx = with(LocalDensity.current) { MENU_GAP.roundToPx() }
-    val label = current?.takeIf { it.isNotBlank() } ?: stringResource(R.string.oc_model_label)
+    val label = buildString {
+        append(current?.takeIf { it.isNotBlank() } ?: stringResource(R.string.oc_model_label))
+        // `ComposerEditorConfiguredSelect` keeps the active variant visible next to
+        // the model (`editor.tsx:295-306` renders a second control); the phone
+        // toolbar has no room for a second chip, so the label carries it.
+        variantLabel?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
+    }
+
+    // `/model` from the command menu: open the picker on the next composition.
+    LaunchedEffect(openRequest) {
+        if (openRequest > 0) expanded = true
+    }
 
     Box(modifier = modifier.onSizeChanged { anchor = it }) {
         Row(
@@ -105,10 +124,10 @@ fun ModelChip(
                 .widthIn(max = CHIP_MAX_WIDTH)
                 .clip(OcTheme.shapes.md)
                 .clickable {
-                    if (options.isEmpty()) {
+                    if (providers == null) {
                         Toast.makeText(
                             context,
-                            R.string.oc_model_picker_soon,
+                            R.string.oc_model_picker_unavailable,
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
@@ -175,55 +194,29 @@ fun ModelChip(
                             .widthIn(min = MENU_MIN_WIDTH, max = MENU_MAX_WIDTH)
                             .clip(OcTheme.shapes.md)
                             .background(c.layer01)
-                            .border(0.5.dp, c.borderBase, OcTheme.shapes.md)
-                            .padding(vertical = 4.dp),
+                            .border(0.5.dp, c.borderBase, OcTheme.shapes.md),
                     ) {
-                        for (option in options) {
-                            ModelMenuRow(
-                                label = option.label,
-                                selected = option.id == current,
-                                onClick = {
-                                    expanded = false
-                                    onSelect(option)
-                                },
-                            )
-                        }
+                        ModelPickerContent(
+                            providers = providers,
+                            selectedModel = selectedModel,
+                            overrideActive = overrideActive,
+                            selectedVariant = variantLabel,
+                            onSelect = { providerID, modelID ->
+                                expanded = false
+                                onSelect(providerID, modelID)
+                            },
+                            onSelectVariant = { variant ->
+                                expanded = false
+                                onSelectVariant(variant)
+                            },
+                            onUseServerDefault = {
+                                expanded = false
+                                onUseServerDefault()
+                            },
+                        )
                     }
                 }
             }
-        }
-    }
-}
-
-/** `[data-slot=menu-v2-item]` — 13px/440, hover = `overlay-hover`, radius 6. */
-@Composable
-private fun ModelMenuRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    val c = OcTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp)
-            .height(MENU_ROW_HEIGHT)
-            .clip(OcTheme.shapes.sm)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = if (selected) c.textBase else c.textMuted,
-            fontSize = 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (selected) {
-            Icon(
-                painter = painterResource(R.drawable.ic_oc_check),
-                contentDescription = null,
-                tint = c.accent,
-                modifier = Modifier.size(16.dp),
-            )
         }
     }
 }
@@ -237,9 +230,6 @@ private val CHIP_MAX_WIDTH = 220.dp
 /** `menu-v2-content`: `min-width: 160px; max-width: 23rem`. */
 private val MENU_MIN_WIDTH = 160.dp
 private val MENU_MAX_WIDTH = 368.dp
-
-/** `[data-slot=menu-v2-item]` row height — a comfortable touch target. */
-private val MENU_ROW_HEIGHT = 32.dp
 
 /** Gap between the chip and its menu. */
 private val MENU_GAP = 4.dp

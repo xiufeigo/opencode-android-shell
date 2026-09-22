@@ -242,13 +242,18 @@ class ChatStoreTest {
         )
         assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.RUNNING), busy)
 
+        // A retry frame is still "running" but now carries its own detail
+        // (`ChatState.retry`, see ChatStoreWave4EventTest); it must NOT be
+        // reported as an `error`, which would mount the red error card.
         val retry = ChatStore.parseEvent(
             "session.status",
             JSONObject(
                 """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"retry"}}}""",
             ),
-        )
-        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.RUNNING), retry)
+        ) as ChatStore.Event.RunStatusChanged
+        assertEquals(ChatStore.RunStatus.RUNNING, retry.status)
+        assertNull(retry.error)
+        assertEquals(0, retry.retry?.attempt)
 
         val idle = ChatStore.parseEvent(
             "session.status",

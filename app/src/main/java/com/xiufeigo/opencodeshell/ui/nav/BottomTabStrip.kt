@@ -18,6 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,10 +49,15 @@ data class SessionTabRef(val id: String, val title: String?)
  * 1.5 × 12 dp separator between adjacent inactive slots, max slot width
  * `w-56` = 224 dp.
  *
- * Faithful deviations: the real strip is a scrollable multi-tab list with a
- * drag-reorder + hover-preview model (§9b.5/§9b.6) — M3 keeps the app-level tab
- * store (`context/tabs.tsx`) out of scope and shows the one session the shell
- * has open. Home is a *button* of the bar, not a tab (upstream: `Icon
+ * WAVE 2.3b P0 (A2 #1): the current-session slot is now the drawer's
+ * **trigger** — `titlebar.tsx:472-519` `MobileDrawerTrigger` shows the current
+ * tab's avatar + title + the tab count badge and opens [MobileTabsDrawer],
+ * which lists **every** open tab plus Home / Settings / Help rows
+ * (`:520-592`). The `session`/`sessionActive` pair is kept so existing callers
+ * compile; pass the full list via [sessions] and the route id via
+ * [activeSessionId] for the drawer content.
+ *
+ * Home is a *button* of the bar, not a tab (upstream: `Icon
  * name="grid-plus"`, keybind `home.toggle`), and `+` creates a session directly
  * with no menu (§9b.4).
  */
@@ -61,8 +70,25 @@ fun BottomTabStrip(
     onCloseSession: (SessionTabRef) -> Unit,
     onNewSession: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * WAVE 2.3b: all open tabs for the drawer list. Defaults to the legacy
+     * single slot so pre-drawer callers keep compiling; drawer hosts pass the
+     * shell's `openSessions` here.
+     */
+    sessions: List<SessionTabRef> = if (session == null) emptyList() else listOf(session),
+    /** Route's session id, or `null` off a session route (drawer Home pressed). */
+    activeSessionId: String? = session?.takeIf { sessionActive }?.id,
+    /** `sidebar.settings` — opens the settings surface. */
+    onOpenSettings: () -> Unit = {},
+    /** `sidebar.help` — opens the desktop-feedback URL. */
+    onOpenHelp: () -> Unit = {},
 ) {
     val c = OcTheme.colors
+    var drawerOpen by remember { mutableStateOf(false) }
+    // Upstream's fallback for a tab whose title has not arrived yet
+    // (`tab-title.ts:4-6` via `titlebar.tsx:430-433`).
+    val sessionLabel = stringResource(R.string.oc_tab_session)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -86,9 +112,11 @@ fun BottomTabStrip(
             // The separator only shows next to an *inactive* slot (§9b.2).
             if (!sessionActive) TabSeparator()
             SessionTab(
-                tab = session,
+                tab = session.copy(title = SessionTabs.displayTitle(session.title, sessionLabel)),
                 active = sessionActive,
-                onClick = { onOpenSession(session) },
+                // WAVE 2.3b: the slot is the drawer trigger (`MobileDrawerTrigger`
+                // `data-slot="mobile-tabs-trigger"`), not a direct open.
+                onClick = { drawerOpen = true },
                 onClose = { onCloseSession(session) },
                 modifier = Modifier.widthIn(max = TAB_MAX_WIDTH),
             )
@@ -101,14 +129,46 @@ fun BottomTabStrip(
             onClick = onNewSession,
         )
     }
+
+    MobileTabsDrawer(
+        open = drawerOpen,
+        onDismissRequest = { drawerOpen = false },
+        sessions = sessions,
+        activeSessionId = activeSessionId,
+        sessionLabel = sessionLabel,
+        onOpenSession = {
+            drawerOpen = false
+            onOpenSession(it)
+        },
+        onCloseSession = onCloseSession,
+        onNewSession = {
+            drawerOpen = false
+            onNewSession()
+        },
+        onHome = {
+            drawerOpen = false
+            onHome()
+        },
+        onOpenSettings = {
+            drawerOpen = false
+            onOpenSettings()
+        },
+        onOpenHelp = {
+            drawerOpen = false
+            onOpenHelp()
+        },
+    )
 }
 
 /**
  * `[data-titlebar-tab-slot]:not(:first-child):not([data-active="true"])::before`
  * — a 1.5 × 12 dp pill between two inactive slots.
+ *
+ * `internal` (not file-private): [DesktopTabStrip] reuses this pill, [SessionTab]
+ * and [TabIconButton] so the top and bottom placements stay one drawing.
  */
 @Composable
-private fun TabSeparator() {
+internal fun TabSeparator() {
     Box(
         Modifier
             .width(1.5.dp)
@@ -118,8 +178,9 @@ private fun TabSeparator() {
     )
 }
 
+/** One tab slot; shared by [BottomTabStrip] and [DesktopTabStrip]. */
 @Composable
-private fun SessionTab(
+internal fun SessionTab(
     tab: SessionTabRef,
     active: Boolean,
     onClick: () -> Unit,
@@ -128,6 +189,11 @@ private fun SessionTab(
 ) {
     val c = OcTheme.colors
     val shape = OcTheme.shapes.md
+    // Upstream's fallback for a tab whose title has not arrived yet
+    // (`tab-title.ts:4-6` via `titlebar.tsx:430-433`): the desktop strip resolves
+    // it at the call site; the drawer trigger above does the same, so this
+    // default only fires for callers that pass a raw tab straight in.
+    val title = SessionTabs.displayTitle(tab.title, stringResource(R.string.oc_tab_session))
     Row(
         modifier = modifier
             .height(TAB_HEIGHT)
@@ -138,7 +204,7 @@ private fun SessionTab(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = tab.title ?: stringResource(R.string.oc_new_session),
+            text = title,
             color = if (active) c.textBase else c.textFaint,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
@@ -163,8 +229,9 @@ private fun SessionTab(
     }
 }
 
+/** The Home / `+` square button; shared by both tab strips. */
 @Composable
-private fun TabIconButton(
+internal fun TabIconButton(
     iconRes: Int,
     description: String,
     tint: Color,
@@ -190,13 +257,13 @@ private fun TabIconButton(
 }
 
 /** `titlebar-v2` bar height (`h-9` = 36 dp). */
-private val BAR_HEIGHT = 36.dp
+internal val BAR_HEIGHT = 36.dp
 
 /** Tab item height (`h-7` = 28 dp), also the Home/`+` button size. */
-private val TAB_HEIGHT = 28.dp
+internal val TAB_HEIGHT = 28.dp
 
 /** `gap-1.5` = 6 dp. */
-private val TAB_GAP = 6.dp
+internal val TAB_GAP = 6.dp
 
 /** `w-56` = 224 dp slot ceiling. */
-private val TAB_MAX_WIDTH = 224.dp
+internal val TAB_MAX_WIDTH = 224.dp

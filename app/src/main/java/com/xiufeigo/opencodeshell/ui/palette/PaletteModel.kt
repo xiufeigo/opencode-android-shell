@@ -205,17 +205,26 @@ enum class PaletteHostKind {
 
     /** `DialogCommandPaletteV2` (session + new-session, same component). */
     SESSION,
+
+    /**
+     * `file.open` (`use-session-commands.tsx:163-168` + `palette.ts:96-99`):
+     * the same session palette with `filesOnly()` — `allowedCommands` is empty,
+     * so only the Files group survives.
+     */
+    FILES_ONLY,
 }
 
 fun PaletteHostKind.placeholderResId(): Int =
     when (this) {
         PaletteHostKind.HOME -> R.string.oc_palette_placeholder_home
+        PaletteHostKind.FILES_ONLY -> R.string.oc_palette_placeholder_files
         PaletteHostKind.SESSION -> R.string.oc_palette_placeholder
     }
 
 /**
  * A host's data assembly. Home omits the whole `file` category; session and
  * new-session add `file.searchFiles` results and the recent (opened) files.
+ * [FILES_ONLY] drops every command and session row (`filesOnly()`).
  */
 fun PaletteHostKind.sources(
     commands: List<PaletteEntry>,
@@ -231,6 +240,14 @@ fun PaletteHostKind.sources(
         recentFiles = recentFiles,
         includeFiles = true,
     )
+
+    PaletteHostKind.FILES_ONLY -> PaletteSources(
+        commands = emptyList(),
+        sessions = emptyList(),
+        files = files,
+        recentFiles = recentFiles,
+        includeFiles = true,
+    )
 }
 
 /** `getDirectory(path)` / `getFilename(path)` for the `file` row (§6.4). */
@@ -241,6 +258,81 @@ fun paletteSplitPath(path: String): Pair<String, String> {
 }
 
 /**
+ * `GET /session` rows for the session host (W2-C). The input order is
+ * preserved — [com.xiufeigo.opencodeshell.ChatViewModel.listSessions] already
+ * sorts `updatedAt` descending, which is the palette's session order. [server]
+ * is the `NavRestore` server key baked into the entry id
+ * (`` `session:${server}:${sessionID}` ``); [openSessionIds] marks rows with
+ * the "already open" bar.
+ *
+ * WAVE 2.3a (A4 #4): archived rows are dropped (`palette.ts:272`
+ * `!session.time.archived` — the native predicate is `archivedAt > 0`, see
+ * `HomeSessions.isArchived`) and the list is capped at [SESSION_SEARCH_LIMIT]
+ * (v2 `limit: 50`, `palette.ts:152`).
+ */
+const val SESSION_SEARCH_LIMIT: Int = 50
+
+fun sessionPaletteEntries(
+    sessions: List<com.xiufeigo.opencodeshell.OpenCodeClient.Session>,
+    server: String,
+    openSessionIds: Set<String> = emptySet(),
+    /**
+     * Row meta pinned to the right edge — upstream `command-palette-meta`
+     * (`shell/commands/dialog.tsx:267-271` renders `getRelativeTime(item.updated)`).
+     * A lambda keeps the localized bucket out of this Compose-free file; `null`
+     * omits the meta cell.
+     */
+    meta: ((com.xiufeigo.opencodeshell.OpenCodeClient.Session) -> String?)? = null,
+): List<PaletteEntry> = sessions
+    .filter { (it.archivedAt ?: 0L) <= 0L }
+    .take(SESSION_SEARCH_LIMIT)
+    .map { session ->
+        PaletteEntry.session(
+            server = server,
+            sessionID = session.id,
+            title = session.title,
+            description = session.directory,
+            meta = meta?.invoke(session),
+            open = session.id in openSessionIds,
+            archived = (session.archivedAt ?: 0L) > 0L,
+        )
+    }
+
+/**
+ * `session.previous` / `session.next` (`desktop-menu.ts:245-266`): the session
+ * [delta] rows away from [currentId] in the palette's own `updatedAt`-descending
+ * order.
+ *
+ * Wraps around at both ends (the phone has no menu bar to grey the entry out at
+ * the end of the list) and returns `null` when there is nothing to move to —
+ * either an empty list or a single session. A [currentId] that is not in the
+ * list (Home, or a session outside the loaded page) starts from the top.
+ */
+fun steppedSessionId(
+    sessions: List<com.xiufeigo.opencodeshell.OpenCodeClient.Session>,
+    currentId: String?,
+    delta: Int,
+): String? {
+    if (sessions.isEmpty() || delta == 0) return null
+    val current = sessions.indexOfFirst { it.id == currentId }
+    if (current < 0) return if (delta > 0) sessions.first().id else sessions.last().id
+    val target = moveIndex(current, delta, sessions.size)
+    return sessions[target].id.takeIf { it != currentId }
+}
+
+/**
+ * `/find/file` paths for the session host (W2-C): the server's relevance
+ * order is preserved and blank entries are dropped (they would render an
+ * empty row).
+ *
+ * WAVE 2.3a (A4 #6): capped at [ENTRY_LIMIT] — upstream slices the root-file
+ * list to 5 (`palette.ts:119-144`) and the async search is bounded by the
+ * same budget on the client.
+ */
+fun filePaletteEntries(paths: List<String>): List<PaletteEntry> =
+    paths.filter { it.isNotBlank() }.take(ENTRY_LIMIT).map { PaletteEntry.file(it) }
+
+/**
  * JVM-testable keyboard contract for the palette's `handleKeyDown` + the global
  * `Ctrl+K / Ctrl+Shift+P` hook (`command.tsx` captures at document level).
  *
@@ -248,10 +340,16 @@ fun paletteSplitPath(path: String): Pair<String, String> {
  */
 enum class PaletteKey { ARROW_DOWN, ARROW_UP, ENTER, ESCAPE }
 
-/** Global "open the palette" chord: `mod+k` or `mod+shift+p`. */
+/**
+ * Global "open the palette" chord: `mod+k` or `mod+shift+p`.
+ *
+ * Upstream `matchKeybind` (`shell/commands/command.tsx:188-204`) requires every
+ * modifier to match *exactly*, so `mod+shift+k` does **not** open the palette and
+ * `mod+p` (without Shift) is `file.open` instead.
+ */
 fun isPaletteChord(ctrlOrMeta: Boolean, keyK: Boolean, keyP: Boolean, shift: Boolean): Boolean = when {
     !ctrlOrMeta -> false
-    keyK -> true
+    keyK -> !shift
     keyP -> shift
     else -> false
 }

@@ -48,6 +48,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun NewSessionScreen(
     chatViewModel: ChatViewModel,
+    // Directory pre-picked by the caller (Home row edit action / add-project
+    // flow). WAVE 2.3b keeps the parameter so App.kt's
+    // Route.newSession(directory) wiring compiles; the sibling-owned screen
+    // body does not consume it yet (workspace selector is A2 #5, deferred).
+    preselectedDirectory: String? = null,
     onCreated: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,

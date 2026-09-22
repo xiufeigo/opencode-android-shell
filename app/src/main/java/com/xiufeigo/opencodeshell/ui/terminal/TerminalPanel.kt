@@ -39,6 +39,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -100,6 +106,36 @@ import java.util.concurrent.atomic.AtomicBoolean
  * (`research/06` §1.4/§1.5). The emulator is [TermuxPtyScreenEngine]'s, the same object the
  * data link appends to, so what the renderer draws *is* the PTY's screen.
  */
+/**
+ * Embedded entry point for the terminal (Route C, mobile four-tab view).
+ *
+ * [TerminalPanelHost] expects an already-resolved [ServerConfigStore.Server];
+ * the route host (`ui/App.kt`) gets it from the activity's singleton store. A
+ * session-scoped tab has no such handle, so this wrapper resolves the same
+ * value the way `OcActivity` does (`ServerConfigStore(context).restore()`) and
+ * hands it over unchanged — the panel itself stays the single implementation.
+ *
+ * @param onClose what the header's close affordance does when embedded: the
+ * mobile host switches back to another tab instead of popping a route.
+ */
+@Composable
+fun EmbeddedTerminalPanel(
+    directory: String? = null,
+    terminalFont: String = "",
+    onClose: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val store = remember(context) { ServerConfigStore(context).also { it.restore() } }
+    TerminalPanelHost(
+        server = store.server,
+        directory = directory,
+        terminalFont = terminalFont,
+        onClose = onClose,
+        modifier = modifier,
+    )
+}
+
 @Composable
 fun TerminalPanelHost(
     server: ServerConfigStore.Server?,
@@ -135,6 +171,14 @@ fun TerminalPanelHost(
     fun syncTabs() {
         tabList = tabs.tabs
         activeId = tabs.activeId
+    }
+
+    fun renameTab(id: String, title: String) {
+        if (tabs.rename(id, title)) syncTabs()
+    }
+
+    fun moveTab(fromIndex: Int, toIndex: Int) {
+        if (tabs.move(fromIndex, toIndex)) syncTabs()
     }
 
     fun post(block: () -> Unit) {
@@ -238,7 +282,14 @@ fun TerminalPanelHost(
                 panelError = createFailedText
                 return@launch
             }
-            val tab = tabs.add(info.id, title = info.title, focus = true)
+            // Upstream labels a tab from its **own** terminal title and falls back
+            // to `terminal.title.numbered` when it is unset/default
+            // (`session/terminal/tab.tsx:33-43`); the server's pty title is not
+            // that value — this server answers every `POST /pty` with a random
+            // code like "Terminal His6" (verified against 1.18.31), which the web
+            // UI never shows ("Terminal 1"). Passing `null` keeps the numbered
+            // default so the two frontends read the same.
+            val tab = tabs.add(info.id, title = null, focus = true)
             if (tab == null) {
                 withContext(Dispatchers.IO) { runCatching { activeApi.remove(info.id) } }
                 return@launch
@@ -284,10 +335,21 @@ fun TerminalPanelHost(
             onCreate = { createTerminal() },
             onCloseTab = { id -> closeTab(id) },
             onClosePanel = onClose,
+            onRenameTab = { id, title -> renameTab(id, title) },
+            onMoveTab = { from, to -> moveTab(from, to) },
         )
+        val activeRuntime = activeId?.let { runtimes[it] }
+        val abnormalCloseHint = activeRuntime?.error?.takeIf {
+            activeRuntime.state == PtyClient.State.RECONNECTING ||
+                activeRuntime.state == PtyClient.State.FAILED
+        }
         val hint = when {
             api == null -> stringResource(R.string.oc_terminal_server_missing)
             panelError != null -> panelError
+            abnormalCloseHint != null -> stringResource(
+                R.string.terminal_connectionLost_abnormalClose,
+                abnormalCloseHint,
+            )
             tabList.isEmpty() && busy -> stringResource(R.string.oc_terminal_loading)
             tabList.isEmpty() -> stringResource(R.string.oc_terminal_empty)
             tabs.isFull -> stringResource(R.string.oc_terminal_full, PtyProtocol.MAX_TERMINAL_SESSIONS)
@@ -373,6 +435,8 @@ private fun TerminalTabStrip(
     onCreate: () -> Unit,
     onCloseTab: (String) -> Unit,
     onClosePanel: () -> Unit,
+    onRenameTab: (String, String) -> Unit = { _, _ -> },
+    onMoveTab: (Int, Int) -> Unit = { _, _ -> },
 ) {
     val c = OcTheme.colors
     Row(
@@ -394,12 +458,25 @@ private fun TerminalTabStrip(
                 .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            for (tab in tabs) {
+            for ((index, tab) in tabs.withIndex()) {
                 TerminalTabChip(
                     title = tab.title ?: stringResource(R.string.oc_terminal_title_numbered, tab.number),
                     active = tab.id == activeId,
+                    currentTitle = tab.title,
+                    defaultTitle = stringResource(R.string.oc_terminal_title_numbered, tab.number),
                     onSelect = { onSelect(tab.id) },
                     onClose = { onCloseTab(tab.id) },
+                    onRename = { title -> onRenameTab(tab.id, title) },
+                    onMoveLeft = if (index > 0) {
+                        { onMoveTab(index, index - 1) }
+                    } else {
+                        null
+                    },
+                    onMoveRight = if (index < tabs.lastIndex) {
+                        { onMoveTab(index, index + 1) }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -412,14 +489,34 @@ private fun TerminalTabStrip(
     }
 }
 
+/**
+ * WAVE 2.3a (A4 #20): double-click renames inline, long-press opens the
+ * rename/close/move menu (`session/terminal/tab.tsx:66-177`).
+ *
+ * Desktop gestures map to touch as: double-tap = the chip's `onDoubleClick`
+ * path is unavailable in Compose `clickable`, so rename starts from the menu
+ * plus an explicit double-tap detector is out of scope — the menu's Rename row
+ * is the discoverable path and double-click on a hardware mouse still lands
+ * here through the menu. Middle-click close and drag reorder have no touch
+ * equivalent; the menu's move-left/move-right rows drive the existing model
+ * `move()` instead.
+ */
 @Composable
 private fun TerminalTabChip(
     title: String,
     active: Boolean,
+    currentTitle: String?,
+    defaultTitle: String,
     onSelect: () -> Unit,
     onClose: () -> Unit,
+    onRename: (String) -> Unit,
+    onMoveLeft: (() -> Unit)?,
+    onMoveRight: (() -> Unit)?,
 ) {
     val c = OcTheme.colors
+    var menu by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember(currentTitle, editing) { mutableStateOf(currentTitle ?: "") }
     Row(
         modifier = Modifier
             .height(TAB_HEIGHT)
@@ -430,22 +527,134 @@ private fun TerminalTabChip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = title,
-            color = if (active) c.textBase else c.textMuted,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(96.dp),
-        )
-        Icon(
-            painter = painterResource(R.drawable.ic_oc_close),
-            contentDescription = stringResource(R.string.oc_terminal_close),
-            tint = c.iconMuted,
+        if (editing) {
+            OcTerminalRenameField(
+                value = draft,
+                onValueChange = { draft = it },
+                placeholder = defaultTitle,
+                onConfirm = {
+                    editing = false
+                    onRename(draft)
+                },
+                onDismiss = { editing = false },
+            )
+        } else {
+            Text(
+                text = title,
+                color = if (active) c.textBase else c.textMuted,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(96.dp),
+            )
+        }
+        Box {
+            Icon(
+                painter = painterResource(R.drawable.ic_oc_close),
+                contentDescription = stringResource(R.string.oc_terminal_close),
+                tint = c.iconMuted,
+                modifier = Modifier
+                    .size(TAB_CLOSE_SIZE)
+                    .alpha(if (active) 1f else 0.7f)
+                    .clickable(role = Role.Button, onClick = onClose),
+            )
+        }
+        Box {
+            IconAction(
+                iconRes = R.drawable.ic_oc_dots,
+                contentDescription = defaultTitle,
+                onClick = { menu = true },
+            )
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(stringResource(R.string.common_rename), fontSize = 13.sp) },
+                    onClick = {
+                        menu = false
+                        draft = currentTitle ?: ""
+                        editing = true
+                    },
+                )
+                if (onMoveLeft != null) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(stringResource(R.string.oc_terminal_move_left), fontSize = 13.sp) },
+                        onClick = {
+                            menu = false
+                            onMoveLeft()
+                        },
+                    )
+                }
+                if (onMoveRight != null) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(stringResource(R.string.oc_terminal_move_right), fontSize = 13.sp) },
+                        onClick = {
+                            menu = false
+                            onMoveRight()
+                        },
+                    )
+                }
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(R.string.oc_terminal_close),
+                            fontSize = 13.sp,
+                            color = c.stateDangerFg,
+                        )
+                    },
+                    onClick = {
+                        menu = false
+                        onClose()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * WAVE 2.3a (A4 #20): the inline rename field (upstream `tab.tsx` Enter =
+ * save, Escape = cancel). Plain `BasicTextField` — the terminal file scope
+ * must not depend on the settings components.
+ */
+@Composable
+private fun OcTerminalRenameField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = OcTheme.colors
+    Box(
+        Modifier
+            .width(96.dp)
+            .background(c.bgDeep, RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+    ) {
+        if (value.isEmpty()) {
+            Text(placeholder, color = c.textFaint, fontSize = 12.sp, maxLines = 1)
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(color = c.textBase, fontSize = 12.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(c.textAccent),
             modifier = Modifier
-                .size(TAB_CLOSE_SIZE)
-                .alpha(if (active) 1f else 0.7f)
-                .clickable(role = Role.Button, onClick = onClose),
+                .width(96.dp)
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.Enter, Key.NumPadEnter -> {
+                            onConfirm()
+                            true
+                        }
+                        Key.Escape -> {
+                            onDismiss()
+                            true
+                        }
+                        else -> false
+                    }
+                },
         )
     }
 }
@@ -541,16 +750,27 @@ private fun TerminalSlot(
                 // A′ patch: install the remote transport (emulator + input sink + size sink).
                 runtime.io?.let { io -> view.attachIo(io) }
                 applyPalette(runtime.termux.emulator, palette)
-                view.setTypeface(typeface)
+                // Order matters: the vendored `setTextSize` is what *creates* the
+                // `TerminalRenderer` (`TerminalView.java:511-513`), while
+                // `setTypeface` dereferences `mRenderer.mTextSize` with no null
+                // check (`:516-517`). Calling setTypeface first throws
+                // NPE("Attempt to read from field 'int TerminalRenderer.mTextSize'")
+                // inside the AndroidView factory — reproduced on both entry points
+                // (terminal route chip and the embedded terminal tab).
                 view.setTextSize(textSizePx)
+                view.setTypeface(typeface)
                 view.isFocusable = true
                 view.isFocusableInTouchMode = true
                 runtime.terminalView = view
                 view
             },
             update = { view ->
-                view.setTypeface(typeface)
+                // Same ordering rule as the factory (renderer creation is owned
+                // by setTextSize); this path runs on recomposition, where the
+                // renderer already exists, but keeping one order avoids the trap
+                // resurfacing if the factory path ever changes.
                 view.setTextSize(textSizePx)
+                view.setTypeface(typeface)
                 applyPalette(runtime.termux.emulator, palette)
                 // A font/size change rebuilds the renderer: the grid must be recomputed and
                 // re-pushed (`research/06` §1.6 step 6).
@@ -701,23 +921,33 @@ internal fun resolveTerminalTypeface(fontFamily: String?): Typeface {
 /** Font families whose resolution to `Typeface.DEFAULT` is genuinely intended. */
 private val DEFAULT_FAMILY_NAMES = setOf("default", "sans-serif", "sans", "serif", "normal")
 
-/** Entry affordance for the session route (`App.kt`): 28 dp ghost square. */
+/**
+ * Entry affordance for the session route (`App.kt`): 28 dp ghost square.
+ *
+ * [active] highlights it while the docked pane is open, so the chip reads as a
+ * toggle rather than a "go somewhere" button (upstream's side panel toggle wears
+ * the same accent treatment).
+ */
 @Composable
-fun TerminalEntryButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun TerminalEntryButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+) {
     val c = OcTheme.colors
     Box(
         modifier = modifier
             .size(28.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(c.layer01)
-            .border(0.5.dp, c.borderMuted, RoundedCornerShape(6.dp))
+            .background(if (active) c.layer02 else c.layer01)
+            .border(0.5.dp, if (active) c.borderStrong else c.borderMuted, RoundedCornerShape(6.dp))
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_oc_console),
             contentDescription = stringResource(R.string.oc_terminal_open),
-            tint = c.iconMuted,
+            tint = if (active) c.iconBase else c.iconMuted,
             modifier = Modifier.size(16.dp),
         )
     }

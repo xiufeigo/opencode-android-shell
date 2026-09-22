@@ -2,9 +2,7 @@ package com.xiufeigo.opencodeshell
 
 /**
  * JS pushed into the WebView to mirror the server config into the native shell.
- * Reads localStorage `opencode.global.dat:server` ({url, username?, password?})
- * and calls the Android bridge; retried briefly because the SDK hydrates the
- * entry asynchronously after page load.
+ * It also exposes a reverse direction hook used by native Settings edits.
  */
 object ServerConfigSyncJs {
     val INSTALL = """
@@ -14,6 +12,14 @@ object ServerConfigSyncJs {
           var ATTEMPTS = 12, INTERVAL = 500;
           var tries = 0;
           var last = null;
+          window.__ocSetServerConfig = function (json) {
+            try {
+              localStorage.setItem('opencode.global.dat:server', json);
+              last = json;
+              try { OpenCodeAndroid.syncServerConfig(json); } catch (e0) {}
+              window.dispatchEvent(new CustomEvent('opencode-server-config-changed', { detail: json }));
+            } catch (e0) {}
+          };
           function read() {
             try {
               var raw = localStorage.getItem('opencode.global.dat:server');
@@ -27,7 +33,7 @@ object ServerConfigSyncJs {
             read();
             tries += 1;
             if (tries < ATTEMPTS) setTimeout(tick, INTERVAL);
-            else setInterval(read, 5000); // server edits can land long after load
+            else setInterval(read, 5000);
           }
           document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') read();

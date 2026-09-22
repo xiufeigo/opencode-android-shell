@@ -45,3 +45,7 @@ selftest-embedded-ui.json
 .ci-debug.keystore
 
 research/_raw/opencode-src/
+
+# Upstream reference checkout (own git repo, reproducible via scripts/sync-opencode-app.sh)
+_upstream/
+

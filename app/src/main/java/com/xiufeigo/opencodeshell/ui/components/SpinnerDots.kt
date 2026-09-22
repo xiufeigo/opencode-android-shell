@@ -1,6 +1,5 @@
 package com.xiufeigo.opencodeshell.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -125,7 +124,7 @@ private fun AnimatedSpinnerDots(
                 animation = tween(
                     durationMillis = dot.durationMs,
                     delayMillis = dot.delayMs,
-                    easing = FastOutSlowInEasing,
+                    easing = OcMotion.easeInOutEasing,
                 ),
                 repeatMode = RepeatMode.Reverse,
             ),

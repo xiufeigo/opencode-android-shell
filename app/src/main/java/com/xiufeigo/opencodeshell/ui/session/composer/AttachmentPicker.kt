@@ -6,12 +6,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import com.xiufeigo.opencodeshell.ChatViewModel
 import com.xiufeigo.opencodeshell.R
-import kotlinx.coroutines.launch
 
 /**
  * The composer's 「+」 SAF picker.
@@ -26,6 +24,10 @@ import kotlinx.coroutines.launch
  * same `OpenMultipleDocuments` contract with the wildcard mime filter, and the
  * same "merge with the current chips, then cap at 6" order, but the cap/dedupe
  * rule itself is the unit-tested [AttachmentPolicy.merge].
+ *
+ * W5-C B6: the read itself runs in [AttachmentUploads], so the composer can show a
+ * progress bar with a cancel button while a big pick is decoding; cancelling drops
+ * the whole round instead of adding a partial selection.
  */
 internal class AttachmentPicker(private val launch: () -> Unit) {
 
@@ -39,7 +41,6 @@ internal fun rememberAttachmentPicker(
     onAttachmentsChange: (List<ChatViewModel.Attachment>) -> Unit,
 ): AttachmentPicker {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     // The result callback runs outside the composition that registered it, so it
     // must read the *current* chips and not a stale capture.
     val currentAttachments by rememberUpdatedState(attachments)
@@ -49,8 +50,7 @@ internal fun rememberAttachmentPicker(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        scope.launch {
-            val result = AttachmentReader.readAll(context, uris)
+        AttachmentUploads.start(context, uris) { result ->
             for (name in result.tooLarge) {
                 Toast.makeText(
                     context,

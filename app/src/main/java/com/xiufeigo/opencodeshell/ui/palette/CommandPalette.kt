@@ -4,6 +4,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -70,6 +75,12 @@ fun CommandPalette(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     onHighlight: (PaletteEntry?) -> Unit = {},
+    /**
+     * W2-C: every query edit, raw. The host layer uses it to fire the
+     * server-side `/find/file` search whose async results re-enter through
+     * [sources]; the palette's own filtering stays purely local.
+     */
+    onQueryChange: (String) -> Unit = {},
 ) {
     val c = OcTheme.colors
     val config = androidx.compose.ui.platform.LocalConfiguration.current
@@ -81,15 +92,30 @@ fun CommandPalette(
 
     var query by remember { mutableStateOf("") }
     var active by remember { mutableStateOf(0) }
+    // Autofocus the search field on open (upstream `shell/commands/dialog.tsx`
+    // `autofocus`). `requestFocus` throws if the field is not laid out yet, so
+    // it is best-effort like the global keybind host.
+    val searchFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
 
     val rows = remember(sources, query) { visibleEntries(sources, query) }
     val grouped = remember(rows) { groupEntries(rows) }
     val flat = remember(grouped) { flattenRows(grouped) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    // `createEffect` on `query()` / `visibleEntries()` → `setActive(0)`.
+    // WAVE 2.3a (A4 #5): id-anchored active row (`dialog.tsx:73-100`). The old
+    // `LaunchedEffect(query, flat) { active = 0 }` jumped to the top whenever
+    // async results landed; upstream keeps `store.active` (an entry id) and
+    // falls back to the first row only when it vanishes.
+    var activeId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(query, flat) {
-        active = 0
-        onHighlight(flat.firstOrNull())
+        active = anchorActiveIndex(flat, activeId)
+        activeId = flat.getOrNull(active)?.id
+        onHighlight(flat.getOrNull(active))
+    }
+    // `block:nearest` follow (`dialog.tsx:93-95`): keep the active row visible.
+    LaunchedEffect(active, flat) {
+        if (flat.isNotEmpty()) runCatching { listState.scrollToItem(active) }
     }
 
     // §6.5: `@media (max-width: 640px)` stacks title over description.
@@ -113,12 +139,14 @@ fun CommandPalette(
                         when (event.key) {
                             Key.DirectionDown -> {
                                 active = moveIndex(active, 1, flat.size)
+                                activeId = flat.getOrNull(active)?.id
                                 onHighlight(flat.getOrNull(active))
                                 true
                             }
 
                             Key.DirectionUp -> {
                                 active = moveIndex(active, -1, flat.size)
+                                activeId = flat.getOrNull(active)?.id
                                 onHighlight(flat.getOrNull(active))
                                 true
                             }
@@ -143,7 +171,15 @@ fun CommandPalette(
                 SearchField(
                     value = query,
                     placeholder = stringResource(kind.placeholderResId()),
-                    onValueChange = { query = it },
+                    onValueChange = {
+                        query = it
+                        onQueryChange(it)
+                    },
+                    // Upstream `shell/commands/dialog.tsx:130` autofocuses the
+                    // input; without it the palette opens keyboard-dead (arrows
+                    // and Enter only bubble to the handler below from a focused
+                    // child).
+                    modifier = Modifier.focusRequester(searchFocus),
                 )
             }
             if (flat.isEmpty()) {
@@ -161,7 +197,8 @@ fun CommandPalette(
                 // `.command-palette-v2-results` → `gap:16px; padding: 6px 6px 8px`;
                 // `.command-palette-v2-group` → `gap:1px`.
                 LazyColumn(
-                    Modifier.fillMaxWidth().padding(PaddingValues(start = 6.dp, end = 6.dp, bottom = 8.dp)),
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth().padding(PaddingValues(start = 6.dp, end = 6.dp, bottom = 8.dp)),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     for ((category, entries) in grouped) {
@@ -173,6 +210,17 @@ fun CommandPalette(
                                 active = index == active,
                                 stacked = stacked,
                                 onClick = { onSelect(entry) },
+                                onHover = {
+                                    // WAVE 2.3a: hover-activates (`dialog.tsx`
+                                    // mouse handlers) — keeps keyboard and
+                                    // pointer selection in sync.
+                                    val hovered = flat.indexOfFirst { it.id == entry.id }
+                                    if (hovered >= 0 && hovered != active) {
+                                        active = hovered
+                                        activeId = entry.id
+                                        onHighlight(entry)
+                                    }
+                                },
                             )
                         }
                     }
@@ -184,10 +232,15 @@ fun CommandPalette(
 
 /** `TextInputV2 appearance="large"`, `layer-02 @60%`, radius 6, 36dp tall. */
 @Composable
-private fun SearchField(value: String, placeholder: String, onValueChange: (String) -> Unit) {
+private fun SearchField(
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = OcTheme.colors
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
             .height(36.dp)
             .background(c.layer02.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
@@ -250,6 +303,7 @@ private fun PaletteRow(
     active: Boolean,
     stacked: Boolean,
     onClick: () -> Unit,
+    onHover: () -> Unit = {},
 ) {
     val c = OcTheme.colors
     Row(
@@ -261,6 +315,7 @@ private fun PaletteRow(
                 // `onMouseDown` preventDefault + `onClick` select (§6.6).
                 onClick = onClick,
             )
+            .hoverable(onHover)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -374,4 +429,20 @@ fun stringResolvedEntries(commands: List<PaletteCommand>): List<PaletteEntry> {
         .map { (command, title, description) ->
             command.toEntry().copy(title = title, description = description)
         }
+}
+
+/**
+ * WAVE 2.3a (A4 #5): hover-activates the row (`dialog.tsx` mouse handlers).
+ * A fresh interaction source per row keeps hover state local; firing only on
+ * `false → true` avoids re-activating on every recomposition while hovered.
+ */
+@Composable
+private fun Modifier.hoverable(onHover: () -> Unit): Modifier {
+    if (onHover == {}) return this
+    val source = remember { MutableInteractionSource() }
+    val hovered by source.collectIsHoveredAsState()
+    LaunchedEffect(hovered) {
+        if (hovered) onHover()
+    }
+    return this.hoverable(interactionSource = source, enabled = true)
 }

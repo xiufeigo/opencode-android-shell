@@ -83,6 +83,45 @@ object AttachmentPolicy {
         if (comma < 0) return null
         return dataUrl.substring(comma + 1).takeIf { it.isNotEmpty() }
     }
+
+    // ---------------------------------------------------------------- paste (B6)
+
+    /** Pasted text at or past this many characters is a bulk text insert. */
+    const val LARGE_PASTE_CHARS = 8_000
+
+    /** …or this many line breaks (whichever comes first). */
+    const val LARGE_PASTE_LINES = 120
+
+    /** What a clipboard paste means to the composer. */
+    enum class PasteKind {
+        /** Nothing usable on the clipboard. */
+        NONE,
+
+        /** The clipboard holds an image/file item → attach it (SAF-equivalent read). */
+        ATTACHMENT,
+
+        /** Ordinary text → leave it to the editor's own insert. */
+        TEXT,
+
+        /** Bulk text (see [isLargePaste]) → one text chunk, never a file part. */
+        LARGE_TEXT,
+    }
+
+    /**
+     * `shouldHandlePasteAsAttachment` (`composer/editor/interaction.ts:462-466`)
+     * crossed with the brief's bulk-text rule: a file/image item wins, otherwise
+     * text is text — [LARGE_TEXT] only marks *how* it should be inserted.
+     */
+    fun pasteKind(hasAttachmentItem: Boolean, text: String?): PasteKind = when {
+        hasAttachmentItem -> PasteKind.ATTACHMENT
+        text.isNullOrEmpty() -> PasteKind.NONE
+        isLargePaste(text) -> PasteKind.LARGE_TEXT
+        else -> PasteKind.TEXT
+    }
+
+    /** `≥ 8000` characters **or** `≥ 120` line breaks (the brief's thresholds). */
+    fun isLargePaste(text: String): Boolean =
+        text.length >= LARGE_PASTE_CHARS || text.count { it == '\n' } >= LARGE_PASTE_LINES
 }
 
 /**

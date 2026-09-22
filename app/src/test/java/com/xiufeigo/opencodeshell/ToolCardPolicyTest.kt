@@ -45,9 +45,14 @@ class ToolCardPolicyTest {
     }
 
     @Test
-    fun editWithAdditionsDefaultsExpanded() {
+    fun editWithAdditionsExpandsOnlyWhenTheEditSettingIsOn() {
         val edit = part("edit", input = """{"filePath":"a.kt","oldString":"a","newString":"b"}""")
-        assertTrue(ToolCardPolicy.defaultOpen(edit))
+        // W4-B: the shipped preset is upstream's `compact`, so a standalone edit
+        // card starts collapsed (`DEFAULT_EDIT_EXPANDED = false`) …
+        assertFalse(ToolCardPolicy.defaultOpen(edit))
+        assertEquals(ToolCardPolicy.DEFAULT_EDIT_EXPANDED, ToolCardPolicy.defaultOpen(edit))
+        // … and the `editToolPartsExpanded` switch is what opens it.
+        assertTrue(ToolCardPolicy.defaultOpen(edit, editExpanded = true))
         assertFalse(ToolCardPolicy.deletionOnly(edit))
     }
 
@@ -62,12 +67,13 @@ class ToolCardPolicyTest {
     }
 
     @Test
-    fun writeWithContentDefaultsExpanded() {
+    fun writeWithContentExpandsOnlyWhenTheEditSettingIsOn() {
         val write = part("write", input = """{"filePath":"a.kt","content":"hello"}""")
-        assertTrue(ToolCardPolicy.defaultOpen(write))
+        assertFalse(ToolCardPolicy.defaultOpen(write))
+        assertTrue(ToolCardPolicy.defaultOpen(write, editExpanded = true))
         // No diff at all ⇒ upstream's `deletionOnly` is false (it needs
         // `metadata.files` / `filediff`), so the edit setting still applies.
-        assertTrue(ToolCardPolicy.defaultOpen(part("write", input = """{"filePath":"a.kt"}""")))
+        assertTrue(ToolCardPolicy.defaultOpen(part("write", input = """{"filePath":"a.kt"}"""), editExpanded = true))
     }
 
     @Test
@@ -111,8 +117,8 @@ class ToolCardPolicyTest {
     fun explicitToggleWinsOverTheDefault() {
         val edit = part("edit", input = """{"oldString":"a","newString":"b"}""")
         // Default-open card: the user closing it must be honoured ...
-        assertTrue(ToolCardPolicy.resolveOpen(edit, userOpen = null))
-        assertFalse(ToolCardPolicy.resolveOpen(edit, userOpen = false))
+        assertTrue(ToolCardPolicy.resolveOpen(edit, userOpen = null, editExpanded = true))
+        assertFalse(ToolCardPolicy.resolveOpen(edit, userOpen = false, editExpanded = true))
         // ... and vice versa for a default-closed card.
         val read = part("read", input = """{"filePath":"a"}""")
         assertFalse(ToolCardPolicy.resolveOpen(read, userOpen = null))

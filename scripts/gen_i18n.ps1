@@ -54,7 +54,17 @@ param(
         'settings', 'sidebar', 'status', 'terminal', 'theme', 'titlebar',
         'toast', 'ui', 'workspace'
     ),
-    [switch] $Quiet
+    [switch] $Quiet,
+    # v2 dict source dir (wave 2.3c): research/_i18n_v2/{en,zh,zht}.json.
+    # The default stays research/_i18n for backward compatibility.
+    [string] $I18nDir = 'research/_i18n',
+    # CompatShimJson: optional legacy dict (v1 research/_i18n/en.json + zh/zht)
+    # whose keys are re-emitted when absent from the primary dict, so Kotlin
+    # code referencing since-removed upstream keys keeps compiling. Each shim
+    # entry is wrapped in an XML comment naming it as a legacy carry-over, and
+    # the shim NEVER overrides a primary key or an existing hand-written name.
+    # Empty = no shim (pure v2 output).
+    [string] $CompatShimJson = ''
 )
 
 Set-StrictMode -Version Latest
@@ -92,7 +102,14 @@ function Read-Dict {
 
 function Get-Namespace { param([string] $Key) return ($Key -split '\.')[0] }
 
-function Convert-KeyToName { param([string] $Key) return $Key.Replace('.', '_') }
+function Convert-KeyToName {
+    param([string] $Key)
+    # Dashes are illegal in Android resource names; upstream keys use them
+    # (ssh.error.host-key, settings.timeline.{preset,description}.text-only).
+    # Underscore substitution is collision-free against the current v2 key
+    # set (verified in wave 2.3c notes).
+    return $Key.Replace('.', '_').Replace('-', '_')
+}
 
 function ConvertTo-AndroidValue {
     param([string] $Value, [string] $Key)
@@ -163,7 +180,7 @@ function Get-ExistingNames {
 # ---------------------------------------------------------------- main -------
 $resFull = Join-Path $RepoRoot $ResDir
 if (-not (Test-Path -LiteralPath $resFull)) { throw "res dir not found: $resFull" }
-$i18nDir = Join-Path $RepoRoot 'research/_i18n'
+$i18nDir = Join-Path $RepoRoot $I18nDir
 $expandAll = ($Prefixes.Count -eq 1 -and $Prefixes[0] -eq '*')
 
 $dicts = @{}
@@ -192,6 +209,33 @@ Say "in scope: $($scopeKeys.Count) keys over $($inScope.Count) namespaces (mode=
 $existing = Get-ExistingNames -ResDirFull $resFull -SkipFileName $GeneratedFileName
 Say "existing string/plurals/string-array names under res/values*/: $($existing.Count)"
 
+# Optional legacy compat shim (wave 2.3c): keys present in a previous dict
+# generation but removed upstream, kept so existing Kotlin references compile
+# until the owning wave migrates them. The shim NEVER wins over a primary key
+# or an existing hand-written name; every shim entry is comment-flagged.
+$shimByLocale = @{}
+$shimKeys = @()
+if ($CompatShimJson -ne '') {
+    $shimRoot = Join-Path $RepoRoot $CompatShimJson
+    $shimEn = Read-Dict (Join-Path $shimRoot 'en.json')
+    $primaryNames = @{}
+    foreach ($p in $en) { $primaryNames[(Convert-KeyToName $p.Key)] = $true }
+    foreach ($p in $shimEn) {
+        if ($master.ContainsKey($p.Key)) { continue }          # still upstream: primary emits it
+        $name = Convert-KeyToName $p.Key
+        if ($primaryNames.ContainsKey($name)) { continue }     # name taken by a v2 key
+        if ($existing.ContainsKey($name)) { continue }         # hand-written wins
+        $shimKeys += $p
+    }
+    foreach ($loc in $Locales) {
+        $shimDict = Read-Dict (Join-Path $shimRoot $loc.Json)
+        $map = @{}
+        foreach ($p in $shimDict) { $map[$p.Key] = $p.Value }
+        $shimByLocale[$loc.Id] = $map
+    }
+    Say "compat shim: $($shimKeys.Count) legacy keys from $CompatShimJson (flagged legacy-carryover)"
+}
+
 $summary = [System.Collections.Generic.List[string]]::new()
 $results = @()
 
@@ -200,8 +244,8 @@ foreach ($loc in $Locales) {
     [void]$sb.AppendLine('<?xml version="1.0" encoding="utf-8"?>')
     [void]$sb.AppendLine('<!--')
     [void]$sb.AppendLine('  GENERATED FILE - DO NOT EDIT BY HAND.')
-    [void]$sb.AppendLine("  Produced by scripts/gen_i18n.ps1 from research/_i18n/$($loc.Json).")
-    [void]$sb.AppendLine('  key expansion: dots -> underscores (ui.foo.bar -> ui_foo_bar); {{var}} -> %N$s.')
+    [void]$sb.AppendLine("  Produced by scripts/gen_i18n.ps1 from $I18nDir/$($loc.Json).")
+    [void]$sb.AppendLine('  key expansion: dots/dashes -> underscores (ui.foo.bar -> ui_foo_bar); {{var}} -> %N$s.')
     [void]$sb.AppendLine('  Hand-written strings stay in values/strings.xml; re-run the script to refresh.')
     [void]$sb.AppendLine('-->')
     [void]$sb.AppendLine('<resources>')
@@ -247,6 +291,36 @@ foreach ($loc in $Locales) {
             [void]$sb.AppendLine("    <string name=""$name"">$value</string>")
         }
         $emitted++
+    }
+    # Compat shim tail: legacy keys (comment-flagged, never overriding).
+    if ($shimKeys.Count -gt 0) {
+        $shimMap = $shimByLocale[$loc.Id]
+        $shimEmitted = 0
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine("    <!-- legacy-carryover (removed upstream; kept for existing Kotlin refs) -->")
+        foreach ($p in $shimKeys) {
+            $key = $p.Key
+            $name = Convert-KeyToName $key
+            if ($seenLocal.ContainsKey($name)) { continue }
+            if (-not $shimMap.ContainsKey($key)) {
+                # Locale gaps fall back to English at runtime, but a resource
+                # must exist in every locale to be referenceable: use en.
+                if ($loc.Id -eq 'en') { continue }  # en always has it (shim source)
+                $localValue = $p.Value
+            } else {
+                $localValue = $shimMap[$key]
+            }
+            $seenLocal[$name] = $key
+            $value = ConvertTo-AndroidValue -Value $localValue -Key $key
+            [void]$sb.AppendLine("    <!-- legacy-carryover: upstream key '$key' no longer exists -->")
+            if ($value.Length -eq 0) {
+                [void]$sb.AppendLine("    <string name=""$name"" />")
+            } else {
+                [void]$sb.AppendLine("    <string name=""$name"">$value</string>")
+            }
+            $shimEmitted++
+        }
+        $summary.Add("[$($loc.Id)] shim=$shimEmitted legacy-carryover strings appended")
     }
     [void]$sb.AppendLine('</resources>')
 

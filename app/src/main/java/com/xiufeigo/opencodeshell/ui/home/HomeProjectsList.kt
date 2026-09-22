@@ -17,11 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
-import kotlinx.coroutines.delay
 
 /**
  * Home's left column (`home-projects-view.tsx`, `research/02` §1.2).
@@ -58,21 +52,14 @@ internal fun HomeProjectsColumn(
     recentlyClosed: List<HomeProjects.Project>,
     selected: String?,
     onSelect: (HomeProjects.Project) -> Unit,
-    onNewSession: () -> Unit,
+    onNewSession: (HomeProjects.Project) -> Unit,
+    onCloseProject: (HomeProjects.Project) -> Unit,
+    onReopenProject: (HomeProjects.Project) -> Unit,
+    onAddProject: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = OcTheme.colors
-    // The directory picker is `dialog-select-directory-v2` (§10.1) and belongs to
-    // a later milestone; both "add project" affordances explain that instead of
-    // silently doing nothing.
-    var hint by remember { mutableStateOf(false) }
-    LaunchedEffect(hint) {
-        if (hint) {
-            delay(HINT_TIMEOUT_MS)
-            hint = false
-        }
-    }
 
     Column(modifier = modifier.fillMaxHeight().padding(top = DESKTOP_TOP_INSET)) {
         Row(
@@ -93,7 +80,7 @@ internal fun HomeProjectsColumn(
                 modifier = Modifier
                     .size(ICON_BUTTON_LARGE)
                     .clip(OcTheme.shapes.md)
-                    .clickable(role = Role.Button, onClick = { hint = true }),
+                    .clickable(role = Role.Button, onClick = onAddProject),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -104,27 +91,20 @@ internal fun HomeProjectsColumn(
                 )
             }
         }
-        if (hint) {
-            Text(
-                text = stringResource(R.string.oc_home_add_project_soon),
-                color = c.textFaint,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(start = 6.dp, bottom = 4.dp),
-            )
-        }
 
         Spacer(Modifier.height(16.dp))
 
         if (projects.isEmpty()) {
             // `HomeProjectEmpty`: the first row *is* the add-project entry.
-            AddProjectRow(onClick = { hint = true })
+            AddProjectRow(onClick = onAddProject)
         } else {
             projects.forEach { project ->
                 ProjectRow(
                     project = project,
                     selected = project.path == selected,
                     onSelect = { onSelect(project) },
-                    onNewSession = onNewSession,
+                    onNewSession = { onNewSession(project) },
+                    onClose = { onCloseProject(project) },
                 )
             }
         }
@@ -144,7 +124,7 @@ internal fun HomeProjectsColumn(
                 )
             }
             recentlyClosed.forEach { project ->
-                RecentlyClosedRow(project = project, onSelect = { onSelect(project) })
+                RecentlyClosedRow(project = project, onSelect = { onReopenProject(project) })
             }
         }
 
@@ -190,7 +170,7 @@ private fun AddProjectRow(onClick: () -> Unit) {
 
 /**
  * `HomeProjectRow`: 28 dp row, `bg-layer-03` while selected, the trailing
- * `home-project-new-session` ✎.
+ * `home-project-new-session` ✎ plus a close affordance.
  */
 @Composable
 private fun ProjectRow(
@@ -198,6 +178,7 @@ private fun ProjectRow(
     selected: Boolean,
     onSelect: () -> Unit,
     onNewSession: () -> Unit,
+    onClose: () -> Unit,
 ) {
     val c = OcTheme.colors
     Row(
@@ -233,6 +214,20 @@ private fun ProjectRow(
                 contentDescription = stringResource(R.string.oc_new_session),
                 tint = c.iconMuted,
                 modifier = Modifier.size(14.dp),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(ICON_BUTTON_LARGE)
+                .clip(OcTheme.shapes.md)
+                .clickable(role = Role.Button, onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_oc_close),
+                contentDescription = stringResource(R.string.oc_home_project_close),
+                tint = c.iconMuted,
+                modifier = Modifier.size(12.dp),
             )
         }
     }
@@ -302,4 +297,65 @@ private val ICON_BUTTON_LARGE = 28.dp
 
 private val AVATAR_SIZE = 18.dp
 
-private const val HINT_TIMEOUT_MS = 4_000L
+// Mobile dropdown (home/route.tsx:27-31): below the two-column breakpoint the
+// same column is hosted as a dropdown/list-panel at the top of the card, so
+// the project list and the add-project entry stay reachable on a phone. Same
+// callbacks as the desktop column, minus the settings entry (the mobile single
+// column renders HomeUtilityNav separately).
+@Composable
+internal fun HomeProjectsDropdown(
+    projects: List<HomeProjects.Project>,
+    recentlyClosed: List<HomeProjects.Project>,
+    selected: String?,
+    onSelect: (HomeProjects.Project) -> Unit,
+    onNewSession: (HomeProjects.Project) -> Unit,
+    onCloseProject: (HomeProjects.Project) -> Unit,
+    onReopenProject: (HomeProjects.Project) -> Unit,
+    onAddProject: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = OcTheme.colors
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(ROW_HEIGHT),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = selected?.let { HomeSessions.projectName(it) } ?: stringResource(R.string.oc_home_projects),
+                color = c.textMuted,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                modifier = Modifier
+                    .size(ICON_BUTTON_LARGE)
+                    .clip(OcTheme.shapes.md)
+                    .clickable(role = Role.Button, onClick = onAddProject),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_oc_folder_add),
+                    contentDescription = stringResource(R.string.oc_home_add_project),
+                    tint = c.iconMuted,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        projects.forEach { project ->
+            ProjectRow(
+                project = project,
+                selected = project.path == selected,
+                onSelect = { onSelect(project) },
+                onNewSession = { onNewSession(project) },
+                onClose = { onCloseProject(project) },
+            )
+        }
+        recentlyClosed.forEach { project ->
+            RecentlyClosedRow(project = project, onSelect = { onReopenProject(project) })
+        }
+    }
+}

@@ -33,13 +33,13 @@
     <color name="oc_code_inline_bg">#14FFFFFF</color>
 
     <!-- syntax highlighting (dark) -->
-    <color name="oc_syntax_property">#FF9AE2</color>
-    <color name="oc_syntax_type">#ECF58C</color>
-    <color name="oc_syntax_string">#00CEB9</color>
+    <color name="oc_syntax_property">#FFC1A4</color>
+    <color name="oc_syntax_type">#9E99F7</color>
+    <color name="oc_syntax_string">#96E3A6</color>
     <color name="oc_syntax_constant">#93E9F6</color>
-    <color name="oc_syntax_primitive">#FFBA92</color>
-    <color name="oc_syntax_keyword">#8F8F8F</color>
-    <color name="oc_syntax_comment">#8F8F8F</color>
+    <color name="oc_syntax_primitive">#F799C6</color>
+    <color name="oc_syntax_keyword">#F799C6</color>
+    <color name="oc_syntax_comment">#AEAEAE</color>
     <color name="oc_syntax_variable">#FAFAFA</color>
     <color name="oc_syntax_punctuation">#AEAEAE</color>
     <color name="oc_ripple">#1AFFFFFF</color>

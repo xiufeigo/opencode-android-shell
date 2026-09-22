@@ -4,9 +4,13 @@ import android.content.Context
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.xiufeigo.opencodeshell.v2.ServerGeneration
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Native mirror of the WebView's server config. The WebView stays the single
@@ -21,7 +25,10 @@ import org.json.JSONObject
  *   "active":"<url key>"}`
  * Legacy top-level `{url, username, password}` objects are tolerated too.
  */
-class ServerConfigStore(context: Context) {
+class ServerConfigStore(
+    context: Context,
+    private val onChanged: (String) -> Unit = {},
+) {
 
     data class Server(
         val url: String,
@@ -29,6 +36,14 @@ class ServerConfigStore(context: Context) {
         val password: String?,
     ) {
         val isComplete: Boolean get() = url.startsWith("http://") || url.startsWith("https://")
+
+        /**
+         * Wave 1: detected generation for [url] (`serverKeyOf(url)`), or null
+         * when never probed. Stored OUTSIDE the data class (see
+         * [ServerConfigStore.generationOf]/[rememberGeneration]) so every
+         * existing constructor call keeps compiling unchanged.
+         */
+        val serverKey: String get() = url.trim()
     }
 
     private val prefs = try {
@@ -51,30 +66,55 @@ class ServerConfigStore(context: Context) {
     var server: Server? = null
         private set
 
+    private val _revision = MutableStateFlow(0)
+    /** Emits after every accepted config mutation so Compose clients refresh immediately. */
+    val revision: StateFlow<Int> = _revision.asStateFlow()
+
     /** Last raw JSON seen — the only place the *full* list survives. */
     @Volatile
     private var lastJson: String? = null
 
-    fun updateFromJson(json: String?): Boolean {
+    /**
+     * Accepts a new store value.
+     *
+     * [notify] controls whether [onChanged] fires for this write. The
+     * WebView→native direction (`syncServerConfig`) passes `false` so the
+     * value is not echoed straight back into the WebView it came from; the
+     * native→WebView direction ([replaceAll]) keeps the default `true` so the
+     * WebView's localStorage mirror receives every native edit — including
+     * list edits that do not change the active server (adding a second
+     * server), which the old `next == server` early-return used to swallow.
+     */
+    fun updateFromJson(json: String?, notify: Boolean = true): Boolean {
         if (json.isNullOrBlank()) return false
         val next = try {
             parse(json)
         } catch (_: JSONException) {
             null
         } ?: return false
+        val previousRaw = prefs.getString(KEY_LIST_JSON, null) ?: lastJson
+        val serverChanged = next != server
+        val rawChanged = previousRaw != json
+        if (!serverChanged && !rawChanged) return false
         lastJson = json
         prefs.edit()
             .putString(KEY_LIST_JSON, json)
             .apply()
-        if (next == server) return false
-        server = next
-        prefs.edit()
-            .putString(KEY_URL, next.url)
-            .putString(KEY_USER, next.username)
-            .putString(KEY_PASS, next.password)
-            .apply()
+        if (serverChanged) {
+            server = next
+            prefs.edit()
+                .putString(KEY_URL, next.url)
+                .putString(KEY_USER, next.username)
+                .putString(KEY_PASS, next.password)
+                .apply()
+        }
+        _revision.value = _revision.value + 1
+        if (notify && rawChanged) onChanged(json)
         return true
     }
+
+    /** The full `{"list":[...],"active":...}` payload exactly as stored, or null. */
+    fun rawJson(): String? = prefs.getString(KEY_LIST_JSON, null) ?: lastJson
 
     /**
      * Picks the active http server from the store value, preferring exact
@@ -210,6 +250,41 @@ class ServerConfigStore(context: Context) {
         server = Server(url, prefs.getString(KEY_USER, null), prefs.getString(KEY_PASS, null))
     }
 
+    // -------------------------------------------------- Wave 1: generation cache
+    //
+    // Per-server generation (`V1`/`V2`), keyed by the normalized server URL.
+    // Persisted in the same prefs (backward-compatible: missing key ⇒ null ⇒
+    // probe on next connect). The WebView mirror JSON is untouched — the
+    // generation is a native-only cache, never synced upstream.
+    //
+    // Read path never throws: a corrupt value degrades to null (re-probe).
+
+    /** Cached generation for [serverKey] (normalized URL), or null when never probed. */
+    fun generationOf(serverKey: String): ServerGeneration? {
+        val raw = try {
+            prefs.getString(KEY_GENERATION_PREFIX + serverKey.trim(), null)
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        return try {
+            ServerGeneration.valueOf(raw)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
+    /** Persist [generation] for [serverKey]; UNKNOWN clears the entry (re-probe next time). */
+    fun rememberGeneration(serverKey: String, generation: ServerGeneration) {
+        val key = KEY_GENERATION_PREFIX + serverKey.trim()
+        try {
+            val edit = prefs.edit()
+            if (generation == ServerGeneration.UNKNOWN) edit.remove(key) else edit.putString(key, generation.name)
+            edit.apply()
+        } catch (_: Exception) {
+            // Cache-only: never fail a connect over prefs.
+        }
+    }
+
     companion object {
         private const val TAG = "ServerConfigStore"
         private const val DEFAULT_USERNAME = "opencode"
@@ -219,5 +294,8 @@ class ServerConfigStore(context: Context) {
 
         /** M4: the untouched `{"list":[...],"active":...}` payload. */
         private const val KEY_LIST_JSON = "list_json"
+
+        /** Wave 1: per-server generation cache (`KEY_GENERATION_PREFIX + normalized URL`). */
+        private const val KEY_GENERATION_PREFIX = "generation:"
     }
 }

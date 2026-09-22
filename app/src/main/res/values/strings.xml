@@ -12,6 +12,16 @@
     <string name="chat_abort">Stop</string>
     <string name="oc_model_label">Model</string>
     <string name="oc_model_picker_soon">Model picker is coming in a later milestone</string>
+    <!--
+      Model picker (`dialog.model.*` in `_upstream/.../runtime/i18n/en.ts`;
+      `oc_model_picker_use_default` / `oc_model_picker_unavailable` are
+      Android-only additions).
+    -->
+    <string name="oc_model_picker_title">Select model</string>
+    <string name="oc_model_picker_search">Search models</string>
+    <string name="oc_model_picker_empty">No model results</string>
+    <string name="oc_model_picker_use_default">Use server default</string>
+    <string name="oc_model_picker_unavailable">Model list unavailable — check the server connection</string>
     <string name="oc_remove_attachment">Remove attachment</string>
 
     <!-- header -->
@@ -54,6 +64,28 @@
     <string name="oc_rename_session">Rename</string>
     <!-- `common.delete`; M2 renders it as a disabled placeholder. -->
     <string name="oc_delete_session">Delete</string>
+    <!--
+      W6: the ⋮ menu's session actions. Every label and toast they use is the
+      upstream key of the same rule (`command_session_undo` / `_redo` / `_fork` /
+      `_share` / `_unshare` / `_archive`, `session_share_popover_*`,
+      `session_share_action_*`, `common_archive`, `toast_session_*`), which
+      `strings_oc_i18n.xml` already carries in all three locales — re-declaring
+      them here would be a duplicate resource. Only the two Android-only strings
+      below are new.
+    -->
+    <!-- 归档会话's confirmation: upstream archives from the palette with no
+         dialog; a phone ⋮ row confirms first. `command_session_archive` is the
+         dialog title. -->
+    <string name="oc_archive_session_message">Hide this session from the session list? It is not deleted — the server keeps it.</string>
+    <!-- 归档会话's toast (upstream names this family `toast.session.*`). -->
+    <string name="oc_toast_session_archive_success">Session archived</string>
+    <!--
+      The ⋮ row of 分叉会话. The palette key (`command_session_fork`, "Fork from
+      message" / 从消息创建新会话) is that row's *description* on a 120 px-wide
+      `MenuV2` (`research/02` §2.2) and would ellipsize there, so the menu uses
+      this shorter label and the fork dialog keeps the upstream title.
+    -->
+    <string name="oc_fork_session">Fork session</string>
 
     <!-- M2: session drawer (research/02 §7) -->
     <string name="oc_sessions_empty">No sessions yet</string>
@@ -99,7 +131,7 @@
     <string name="chat_attach_limit">At most %1$d attachments per message</string>
     <string name="tab_chat">Chat</string>
     <string name="tab_terminal">Terminal</string>
-    <string name="oc_setup_hint">No server configured. Open the Terminal tab to add one, then come back.</string>
+    <string name="oc_setup_hint">No server configured. Add one under Settings → Servers.</string>
 
     <!--
       M4: Settings dialog (research/02 §5, research/05 §5). English defaults per
@@ -127,6 +159,11 @@
     <string name="oc_setting_language_zh">简体中文</string>
     <string name="oc_setting_language_zht">繁體中文</string>
     <string name="oc_setting_auto_accept_permissions">Auto-accept permissions</string>
+    <!-- B3: settings.general.row.terminalPlacement.{title,description,side,bottom} -->
+    <string name="oc_setting_terminal_placement">Terminal placement</string>
+    <string name="oc_setting_terminal_placement_description">Choose where the terminal opens in sessions</string>
+    <string name="oc_setting_terminal_placement_side">Side</string>
+    <string name="oc_setting_terminal_placement_bottom">Bottom</string>
     <string name="oc_setting_shell">Terminal shell</string>
     <string name="oc_setting_shell_description">Shell used by the terminal and agent tools</string>
     <string name="oc_setting_shell_auto">Auto (Default)</string>
@@ -186,7 +223,7 @@
     <string name="oc_servers_menu_default">Set as default</string>
     <string name="oc_servers_menu_delete">Delete</string>
     <string name="oc_server_address">Server address</string>
-    <string name="oc_server_url_placeholder">http://localhost:4096</string>
+    <string name="oc_server_url_placeholder">http://10.0.2.2:4096</string>
     <string name="oc_server_name">Server name (optional)</string>
     <string name="oc_server_name_placeholder">Localhost</string>
     <string name="oc_server_username">Username (optional)</string>
@@ -197,7 +234,7 @@
     <string name="oc_server_error_connect">Could not connect to server</string>
     <string name="oc_server_error_auth">Server requires authentication. Enter username and password.</string>
     <string name="oc_server_error_cors">Could not connect. If the URL is reachable in a browser, check username/password. The Android shell proxies API calls natively and does not require server CORS.</string>
-    <string name="oc_server_cors_hint">Enter the real backend URL (for example https://backend.example.com). This Android shell reverse-proxies API/SSE natively — you do not need --cors for the WebView origin.</string>
+    <string name="oc_server_cors_hint">Enter the real backend URL (for example https://backend.example.com). On an emulator use 10.0.2.2 to reach the host machine; if that fails, run `adb reverse tcp:4096 tcp:4096` and use http://127.0.0.1:4096 (also works for USB devices). On Wi-Fi devices use the computer\'s LAN IP. The Android shell proxies API/SSE natively — no CORS needed.</string>
     <string name="oc_common_cancel">Cancel</string>
     <string name="oc_common_save">Save</string>
     <string name="oc_common_loading">Loading</string>
@@ -257,8 +294,22 @@
     <string name="oc_home_projects">Projects</string>
     <string name="oc_home_add_project">Add project</string>
     <string name="oc_home_recently_closed">Recently closed</string>
+    <!--
+      The 项目 column's own actions. `command.project.open`
+      (`runtime/i18n/en.ts:84` / `zh.ts:129` / `zht.ts:128`) is upstream's
+      picker command and the label of the open/add row; `common.close`
+      (`zh.ts:809` / `zht.ts:806`) is the ⋮ menu's close item, which a touch
+      row exposes as a visible ✕.
+    -->
+    <string name="oc_command_project_open">Open project</string>
+    <string name="oc_home_project_close">Close</string>
     <string name="oc_home_sessions">Recent sessions</string>
     <string name="oc_home_search">Search sessions</string>
+    <!--
+      `home.sessions.search.placeholder.scoped` (`runtime/i18n/en.ts:729`) while
+      a Home project is selected; %1$s = the project's display name.
+    -->
+    <string name="oc_home_search_scoped">Search sessions in %1$s</string>
     <string name="oc_home_search_group">Sessions</string>
     <string name="oc_home_search_no_results">No sessions found for %1$s</string>
     <string name="oc_home_clear_search">Clear search</string>
@@ -270,6 +321,13 @@
     <string name="oc_home_settings">Settings</string>
     <string name="oc_home_help">Help</string>
     <string name="oc_home_tab_close">Close tab</string>
+    <!--
+      W7: the desktop session tab bar (`research/02` §9b). Upstream
+      `session.tab.session` (`_upstream/packages/app/src/runtime/i18n/en.ts:740`)
+      — the label of a tab whose session has no real title yet
+      (`tab-title.ts:4-6` falls back to it for a missing/auto-generated title).
+    -->
+    <string name="oc_tab_session">Session</string>
     <string name="oc_home_creating">Creating a session…</string>
     <!--
       Placeholders for the two Home entries whose hosts are later milestones:
@@ -280,6 +338,22 @@
     <string name="oc_home_help_soon">Help is coming in a later milestone</string>
 
     <!--
+      New-session draft page + Home projects over `GET /project`
+      (`_upstream/packages/app/src/new-session/view.tsx`). Values marked
+      `session.new.*` are the upstream i18n literals
+      (`_upstream/packages/app/src/runtime/i18n/en.ts`).
+    -->
+    <string name="oc_newsession_project_add">Add project</string>
+    <string name="oc_newsession_project_new">New project</string>
+    <string name="oc_newsession_default_directory">Default directory (server cwd)</string>
+    <string name="oc_newsession_create_failed">Failed to create session</string>
+    <string name="oc_home_projects_choose_title">Choose a project directory</string>
+    <string name="oc_home_projects_select_directory">Select this directory</string>
+    <string name="oc_home_projects_parent">Parent directory</string>
+    <string name="oc_home_projects_empty_dir">No subdirectories here</string>
+    <string name="oc_home_projects_loading">Loading…</string>
+
+    <!--
       M5 phase 1: terminal panel chrome (research/02 §9.3 + §9.5). The literals
       marked `terminal.*` / `command.terminal.new` below are the upstream i18n
       values; the rest are Android additions for the route host.
@@ -288,11 +362,14 @@
     <string name="oc_terminal_title_numbered">Terminal %1$d</string>
     <string name="oc_terminal_new">New terminal</string>
     <string name="oc_terminal_close">Close terminal</string>
+    <string name="oc_terminal_move_left">Move tab left</string>
+    <string name="oc_terminal_move_right">Move tab right</string>
     <string name="oc_terminal_loading">Loading terminal…</string>
     <string name="oc_terminal_connection_lost">Connection lost</string>
     <string name="oc_terminal_abnormal_close">WebSocket closed abnormally: %1$d</string>
     <string name="oc_terminal_csrf_error">PTY connect ticket rejected by the origin/CSRF check. Check the server CORS configuration.</string>
     <string name="oc_terminal_close_panel">Close terminal panel</string>
+    <string name="oc_terminal_resize_handle">Drag to resize the terminal panel, double-tap to reset</string>
     <string name="oc_terminal_open">Open terminal</string>
     <string name="oc_terminal_empty">No terminal open</string>
     <string name="oc_terminal_full">At most %1$d terminals</string>
@@ -300,4 +377,404 @@
     <string name="oc_terminal_server_missing">No server configured — open the WebView shell\'s Terminal tab once to sync the server config, then come back.</string>
     <string name="oc_terminal_kernel_pending">VT kernel not wired yet (M5 phase 2: vendored termux terminal-emulator + TerminalIo patch). This slot shows the raw PTY data link.</string>
     <string name="oc_terminal_raw_output">Raw PTY output (tail)</string>
+
+    <!--
+      Permission dock (`SessionPermissionDock`). Title + actions are the
+      upstream literals `notification.permission.title` / `ui.permission.deny`
+      / `ui.permission.allowOnce` / `ui.permission.allowAlways`; the tool
+      descriptions are `settings.permissions.tool.*.description`.
+    -->
+    <string name="oc_permission_title">Permission required</string>
+    <string name="oc_permission_reject">Deny</string>
+    <string name="oc_permission_allow_once">Allow once</string>
+    <string name="oc_permission_always_hint">“Allow always” will remember:</string>
+    <string name="oc_permission_allow_always">Allow always</string>
+    <string name="oc_permission_tool_read">Reading a file (matches the file path)</string>
+    <string name="oc_permission_tool_edit">Modify files, including edits, writes, and patches</string>
+    <string name="oc_permission_tool_glob">Match files using glob patterns</string>
+    <string name="oc_permission_tool_grep">Search file contents using regular expressions</string>
+    <string name="oc_permission_tool_list">List files within a directory</string>
+    <string name="oc_permission_tool_bash">Run shell commands</string>
+    <string name="oc_permission_tool_task">Launch sub-agents</string>
+    <string name="oc_permission_tool_skill">Load a skill by name</string>
+    <string name="oc_permission_tool_lsp">Run language server queries</string>
+    <string name="oc_permission_tool_todowrite">Update the todo list</string>
+    <string name="oc_permission_tool_webfetch">Fetch content from a URL</string>
+    <string name="oc_permission_tool_websearch">Search the web</string>
+    <string name="oc_permission_tool_external_directory">Access files outside the project directory</string>
+    <string name="oc_permission_tool_doom_loop">Detect repeated tool calls with identical input</string>
+    <!--
+      Question dock (`SessionQuestionDock`). Title is `notification.question.title`;
+      actions are `ui.common.dismiss` / `ui.common.submit`; the custom row
+      mirrors `ui.messagePart.option.typeOwnAnswer` / `ui.question.custom.placeholder`
+      and the hints `ui.question.singleHint` / `ui.question.multiHint`.
+    -->
+    <string name="oc_question_title">Question</string>
+    <string name="oc_question_submit">Submit</string>
+    <string name="oc_question_dismiss">Dismiss</string>
+    <string name="oc_question_custom">Type your own answer</string>
+    <string name="oc_question_custom_placeholder">Your answer</string>
+    <string name="oc_question_hint_single">Select one option</string>
+    <string name="oc_question_hint_multi">Select all that apply</string>
+    <!-- Markdown body (`ui/markdown/`) — code fence long-press copy. -->
+    <string name="oc_md_copy_code">Copy code</string>
+    <string name="oc_md_copied">Copied</string>
+
+    <!--
+      Review side panel (`ui/session/review`, upstream `session-review-v2` /
+      `session-review`): 「Changes / Files」 tabs, file preview, empty/error
+      states. The header toggle reuses `oc_command_review_toggle`.
+    -->
+    <string name="oc_review_title">Review</string>
+    <string name="oc_review_tab_changes">Changes</string>
+    <string name="oc_review_tab_context">Context</string>
+    <string name="oc_review_tab_files">Files</string>
+    <string name="oc_review_changes_empty">No changes yet</string>
+    <string name="oc_review_no_patch">No textual diff available</string>
+    <string name="oc_review_files_empty">No files</string>
+    <string name="oc_review_files_error">Could not load files</string>
+    <string name="oc_review_file_error">Could not load the file</string>
+    <string name="oc_review_binary">Binary file — preview unavailable</string>
+    <string name="oc_review_copy">Copy</string>
+    <string name="oc_review_truncated">… (truncated)</string>
+
+    <!--
+      W5-R review panel (只追加，前缀 `oc_review_`). Upstream copy:
+      `ui.sessionReviewV2.filterFiles|showAllLines|hideNonDiffLines|unifiedDiff|splitDiff`,
+      `ui.sessionReview.title.git|branch|lastTurn` (`session/review/view.tsx:228-247`),
+      `session.review.noUncommittedChanges|noBranchChanges` (`view.tsx:253-257`)
+      and the no-git empty state (`session-review-empty-no-git-v2.tsx:11-27`).
+    -->
+    <string name="oc_review_filter_files">Filter files</string>
+    <string name="oc_review_filter_empty">No matching files</string>
+    <string name="oc_review_filter_clear">Clear filter</string>
+    <string name="oc_review_expand_all">Show all lines</string>
+    <string name="oc_review_collapse_all">Hide non-diff lines</string>
+    <string name="oc_review_diff_unified">Unified diff</string>
+    <string name="oc_review_diff_split">Split diff</string>
+    <string name="oc_review_scope_git">Git changes</string>
+    <string name="oc_review_scope_branch">Branch changes</string>
+    <string name="oc_review_scope_turn">Last turn changes</string>
+    <string name="oc_review_changes_empty_git">No uncommitted changes yet</string>
+    <string name="oc_review_changes_empty_branch">No branch changes yet</string>
+    <string name="oc_review_no_git_title">Create a Git repository</string>
+    <string name="oc_review_no_git_description">Track, review, and undo changes in this project</string>
+    <string name="oc_review_no_git_action">Create Git repository</string>
+    <string name="oc_review_no_git_pending">Creating Git repository…</string>
+    <string name="oc_review_resize_handle">Drag to resize the review panel, double-tap to reset</string>
+    <string name="oc_review_truncated_rows">… %1$d of %2$d diff lines shown</string>
+
+    <!--
+      B2 session context tab (`ui/session/context`), the upstream
+      `SessionContextTab` (`session/files/session-context-tab.tsx`): the sixteen
+      `context.stats.*` rows in their upstream order (`:173-193`), the optional
+      `context.systemPrompt.title` block (`:283-292`) and the
+      `context.rawMessages.title` accordion (`:294-312`). The tab label lives with
+      its siblings as `oc_review_tab_context`.
+    -->
+    <string name="oc_context_stats_session">Session</string>
+    <string name="oc_context_stats_messages">Messages</string>
+    <string name="oc_context_stats_provider">Provider</string>
+    <string name="oc_context_stats_model">Model</string>
+    <string name="oc_context_stats_limit">Context Limit</string>
+    <string name="oc_context_stats_total_tokens">Total Tokens</string>
+    <string name="oc_context_stats_usage">Usage</string>
+    <string name="oc_context_stats_input_tokens">Input Tokens</string>
+    <string name="oc_context_stats_output_tokens">Output Tokens</string>
+    <string name="oc_context_stats_reasoning_tokens">Reasoning Tokens</string>
+    <string name="oc_context_stats_cache_tokens">Cache Tokens (read/write)</string>
+    <string name="oc_context_stats_user_messages">User Messages</string>
+    <string name="oc_context_stats_assistant_messages">Assistant Messages</string>
+    <string name="oc_context_stats_total_cost">Total Cost</string>
+    <string name="oc_context_stats_session_created">Session Created</string>
+    <string name="oc_context_stats_last_activity">Last Activity</string>
+    <string name="oc_context_system_prompt_title">System Prompt</string>
+    <string name="oc_context_raw_messages_title">Raw messages</string>
+    <string name="oc_context_export_session">Export session</string>
+    <string name="oc_context_raw_truncated">… (truncated)</string>
+
+    <!--
+      W4-B session fidelity — tool group row + per-message meta (`ui/session/timeline`).
+      Upstream: `tool-renderer.tsx:516-558` (`Used {count} {names}` / `Updates`)
+      and `message-content.tsx:311-354,511-554` (meta line + copy action).
+    -->
+    <string name="oc_meta_used">Used %1$d %2$s</string>
+    <plurals name="oc_meta_thought">
+        <item quantity="one">Thought</item>
+        <item quantity="other">Thoughts</item>
+    </plurals>
+    <string name="oc_meta_updates">Updates</string>
+    <string name="oc_meta_interrupted">Interrupted</string>
+    <string name="oc_meta_copy_message">Copy message</string>
+    <string name="oc_meta_copy_response">Copy response</string>
+    <string name="oc_meta_copied">Copied</string>
+    <string name="oc_meta_duration_seconds">%1$ds</string>
+    <string name="oc_meta_duration_minutes">%1$dm %2$ds</string>
+    <string name="oc_meta_context_cost">Cost</string>
+    <string name="oc_meta_context_usage">Context</string>
+    <string name="oc_meta_context_tokens">Tokens</string>
+
+    <!-- `session.timeline.working` + `session.messages.jumpToLatest`. -->
+    <string name="oc_working_label">Working</string>
+    <string name="oc_jump_to_latest">Jump to latest</string>
+
+    <!--
+      Rows for the part types that carry only `UiPart.rawJson` (`patch`, `subtask`,
+      `agent`, `retry`) — upstream `ui.tool.patch` / `ui.tool.agent` /
+      `session-retry` / `sessionTimeline.notice.agentChanged`.
+    -->
+    <string name="oc_step_patch">Patch</string>
+    <string name="oc_step_thinking">Thinking</string>
+    <plurals name="oc_step_files">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <string name="oc_step_agent">Agent</string>
+    <string name="oc_step_agent_changed">Agent changed</string>
+    <string name="oc_step_retrying">Retrying</string>
+    <string name="oc_step_retry_attempt">attempt #%1$d</string>
+
+    <!--
+      W4-D shell wiring (`ui/settings`, `ui/palette`, `ui/App.kt`): the missing
+      root tabs, the settings search, the provider/model catalog panels and the
+      command rows the shell now actually executes.
+    -->
+    <string name="oc_setting_tab_appearance">Appearance</string>
+    <string name="oc_setting_tab_notifications">Notifications</string>
+    <string name="oc_setting_tab_projects">Projects</string>
+    <string name="oc_setting_tab_workspaces">Workspaces</string>
+    <string name="oc_setting_tab_extensions">Extensions</string>
+    <string name="oc_setting_tab_experimental">Experimental</string>
+    <string name="oc_setting_tab_about">About</string>
+    <string name="oc_settings_tab_unavailable">Soon</string>
+    <string name="oc_settings_search">Search settings</string>
+    <string name="oc_settings_search_empty">No matching settings</string>
+    <string name="oc_settings_providers_connected">Connected providers: %1$d</string>
+    <string name="oc_settings_providers_total">All providers: %1$d</string>
+    <string name="oc_settings_provider_connected_tag">Connected</string>
+    <string name="oc_settings_provider_models">%1$d models</string>
+    <string name="oc_settings_models_count">Available models: %1$d</string>
+    <string name="oc_settings_models_current">Current</string>
+    <string name="oc_settings_models_default">Server default</string>
+    <string name="oc_settings_model_context">%1$s context</string>
+    <string name="oc_settings_models_provider">Provider: %1$s</string>
+    <string name="oc_settings_providers_unavailable">Connect to a server to load the provider catalog</string>
+    <string name="oc_settings_models_search">Search models</string>
+    <string name="oc_shortcut_tab_new">New session tab</string>
+    <string name="oc_shortcut_review_toggle">Toggle review panel</string>
+    <string name="oc_shortcut_file_tree_toggle">Toggle file tree</string>
+    <string name="oc_command_file_tree_toggle">Toggle file tree</string>
+    <string name="oc_palette_placeholder_files">Search files</string>
+
+    <!--
+      W4-C mobile form (`ui/session/drawer`, `ui/session/review`,
+      `ui/session/dock`): bottom-sheet drawer, the four full-width session view
+      tabs and the question-dock pager. Prefix `oc_mobile_`; reused keys are
+      `oc_rename_session` / `oc_delete_session` / `oc_common_cancel` /
+      `oc_common_save` / `oc_terminal_title` / `oc_review_tab_changes` /
+      `oc_review_tab_files`.
+    -->
+    <string name="oc_mobile_tab_session">Session</string>
+    <string name="oc_mobile_view_select">Session view</string>
+    <string name="oc_mobile_session_rename_title">Rename session</string>
+    <string name="oc_mobile_session_delete_title">Delete session?</string>
+    <string name="oc_mobile_session_delete_message">This deletes “%1$s” and all of its messages. This cannot be undone.</string>
+    <string name="oc_mobile_question_progress">%1$d of %2$d questions</string>
+    <string name="oc_mobile_question_next">Next</string>
+    <string name="oc_mobile_question_back">Back</string>
+    <string name="oc_mobile_question_numbered">Question %1$d</string>
+    <string name="oc_form_yes">Yes</string>
+    <string name="oc_form_no">No</string>
+    <string name="oc_mobile_usage">Usage</string>
+    <string name="oc_mobile_summary">Session details</string>
+
+    <!--
+      Wave 5-T session timeline (`ui/session/timeline`, `ui/session/header`).
+      Upstream anchors: `session/timeline/search-bar.tsx` + `search-controller.ts`
+      (`session.search.placeholder` "Find...", `session.search.noResults`
+      "No matches", `ui.fileSearch.previousMatch` / `.nextMatch` / `.close`),
+      `components/message-nav.tsx` (`ui.messageNav.newMessage`),
+      `ui.sessionTurn.diffs.*` (`{{count}} Changed files`, `Show all`,
+      `Show less`, `+{{count}} more files`) and `components/timeline-separator.tsx`
+      (`ui.message.interrupted` — reused as `oc_meta_interrupted` — and
+      `ui.messagePart.compaction.started`).
+    -->
+    <string name="oc_search_open">Search session</string>
+    <string name="oc_search_placeholder">Find…</string>
+    <string name="oc_search_no_results">No matches</string>
+    <string name="oc_search_previous">Previous match</string>
+    <string name="oc_search_next">Next match</string>
+    <string name="oc_search_close">Close search</string>
+    <string name="oc_nav_new_message">New message</string>
+    <plurals name="oc_turn_changed_files">
+        <item quantity="one">%1$d Changed file</item>
+        <item quantity="other">%1$d Changed files</item>
+    </plurals>
+    <string name="oc_turn_show_all">Show all</string>
+    <string name="oc_turn_show_less">Show less</string>
+    <plurals name="oc_turn_more_files">
+        <item quantity="one">+%1$d more file</item>
+        <item quantity="other">+%1$d more files</item>
+    </plurals>
+    <string name="oc_sep_compaction_started">Session compaction started</string>
+
+    <!--
+      Wave 5-C composer (`ui/session/composer`). Upstream anchors:
+      `composer/placeholder.ts:6` (shell placeholder), `composer/editor/editor.tsx:613-671`
+      (the 「+」 add menu), `composer/commands.tsx:49-82` (the two built-in slash
+      commands `/model` and `/agent`), `providers/models/variant.ts` (the model
+      variant control) and the `@` context menu's category labels.
+    -->
+    <string name="oc_composer_placeholder_shell">Enter a shell command, e.g. git status</string>
+    <string name="oc_composer_add">Add</string>
+    <string name="oc_composer_add_attachments">Attachments</string>
+    <string name="oc_composer_add_commands">Commands</string>
+    <string name="oc_composer_add_context">Context</string>
+    <string name="oc_composer_add_shell">Shell</string>
+    <string name="oc_composer_add_paste">Paste</string>
+    <string name="oc_composer_shell_mode">Shell</string>
+    <string name="oc_composer_agent">Agent</string>
+    <string name="oc_composer_agent_default">Server default</string>
+    <string name="oc_composer_choose_agent">Choose agent</string>
+    <string name="oc_composer_variant_group">Variant</string>
+    <string name="oc_composer_variant_default">Default</string>
+    <string name="oc_composer_mention_agent">Agent</string>
+    <string name="oc_composer_mention_command">Command</string>
+    <string name="oc_composer_mention_skill">Skill</string>
+    <string name="oc_composer_mention_file">File</string>
+    <string name="oc_slash_model">Choose model</string>
+    <string name="oc_slash_agent">Switch agent</string>
+    <string name="oc_attach_preview_close">Close preview</string>
+    <string name="oc_attach_uploading">Reading attachments…</string>
+    <string name="oc_attach_cancel">Cancel</string>
+
+    <!--
+      Wave 5-E1 first-run connect page (`ui/servers/ConnectServerScreen.kt`) and
+      the W5-D3 server-health tri-state (`ui/settings/ServersPanel.kt`).
+
+      Upstream anchors: `servers/connect/screen.tsx:18-137` for the page copy and
+      `runtime/i18n/en.ts:415-431` for the source keys —
+      `server.connect.title` / `.description` / `.button` / `.address.invalid` /
+      `.failed` / `.pair.description`, plus the two field labels
+      `dialog.server.add.url` / `dialog.server.add.password`.
+
+      Android-only keys: the finer-grained `oc_connect_error_*` sentences (the
+      upstream probe collapses every transport failure into
+      `server.connect.failed`), `oc_health_*` (upstream's indicator dot carries no
+      label) and `oc_health_save_anyway` (upstream refuses the save instead of
+      warning). `oc_connect_url_placeholder` keeps this project's documented
+      address deviation: on an emulator `localhost` is the device itself, while
+      `10.0.2.2` is the host machine (`SettingsModel.DEFAULT_SERVER_URL_PLACEHOLDER`).
+      The `opencode` wordmark and the `opencode pair` command are not translated.
+    -->
+    <string name="oc_connect_title">Connect to a server</string>
+    <string name="oc_connect_description">Enter your server address and password to get started.</string>
+    <string name="oc_connect_url_label">Server address</string>
+    <string name="oc_connect_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_connect_password_label">Password</string>
+    <string name="oc_connect_button">Connect</string>
+    <string name="oc_connect_checking">Checking…</string>
+    <string name="oc_connect_pair_description">Run this command on your computer to get your connection details.</string>
+    <string name="oc_connect_address_invalid">Enter a valid HTTP or HTTPS server address.</string>
+    <string name="oc_connect_failed">Could not connect. Check the server address and password, then try again.</string>
+    <string name="oc_connect_error_timeout">The server did not answer in time. Check that it is running and reachable from this device.</string>
+    <string name="oc_connect_error_auth">The server rejected that password. Check the password, or run opencode pair again.</string>
+    <string name="oc_connect_error_unhealthy">The server answered, but reports that it is not healthy.</string>
+    <string name="oc_connect_error_invalid_response">Something answered, but it is not an OpenCode server.</string>
+    <string name="oc_connect_error_status">The server answered HTTP %1$s.</string>
+    <string name="oc_health_healthy">Server healthy</string>
+    <string name="oc_health_unhealthy">Server not reachable</string>
+    <string name="oc_health_unknown">Server health unknown</string>
+    <string name="oc_health_save_anyway">Save anyway</string>
+
+    <!--
+      W5-E5 in-app notifications (`notify/AppNotifier.kt`). One title per
+      `AppNotificationKind`; the banner picks by kind and appends the
+      notification's own detail line (session title / error text / permission or
+      question header), so no copy is assembled from fragments here.
+      Upstream: `notification.session.responseReady.title` /
+      `notification.permission.title` / `notification.question.title` /
+      `notification.session.error.title`, gated by the
+      `notifications.agent` / `notifications.permissions` / `notifications.errors`
+      settings (`shell/notifications/notification.tsx:225-281`).
+    -->
+    <string name="oc_notify_title_agent">Response ready</string>
+    <string name="oc_notify_title_permission">Permission required</string>
+    <string name="oc_notify_title_question">Question waiting</string>
+    <string name="oc_notify_title_error">Something went wrong</string>
+    <string name="oc_notify_dismiss">Dismiss</string>
+    <string name="oc_notify_dismiss_all">Dismiss all</string>
+
+    <!--
+      W5-S: settings completion (D1/D4/D5). Copy follows the upstream English
+      literals (`_upstream/packages/app/src/runtime/i18n/en.ts`); everything
+      appended here uses the `oc_settings_` / `oc_keybind_` / `oc_about_` /
+      `oc_mcp_` prefixes.
+    -->
+
+    <!-- Appearance page / Worktrees label -->
+    <string name="oc_settings_appearance_description">Customize theme and fonts</string>
+    <string name="oc_settings_tab_worktrees">Worktrees</string>
+
+    <!-- Notifications page -->
+    <string name="oc_settings_notifications_description">Choose when to receive notifications and hear sounds</string>
+
+    <!-- Timeline detail presets (D5) -->
+    <string name="oc_settings_timeline_title">Timeline</string>
+    <string name="oc_settings_timeline_detail">Timeline detail</string>
+    <string name="oc_settings_timeline_description">Choose how much detail appears in the session timeline.</string>
+    <string name="oc_settings_timeline_preset_everything">Everything</string>
+    <string name="oc_settings_timeline_preset_compact">Compact</string>
+    <string name="oc_settings_timeline_preset_quiet">Quiet</string>
+    <string name="oc_settings_timeline_custom">Custom</string>
+
+    <!-- Keybind recording (D4) -->
+    <string name="oc_settings_shortcuts_reset">Reset to defaults</string>
+    <string name="oc_settings_shortcuts_search">Search shortcuts</string>
+    <string name="oc_settings_shortcuts_empty">No shortcuts found</string>
+    <string name="oc_settings_shortcuts_conflict">%1$s is already assigned to %2$s.</string>
+
+    <!-- Projects page (D1) -->
+    <string name="oc_settings_projects_description">Manage project settings on this server</string>
+    <string name="oc_settings_projects_section">Projects</string>
+    <string name="oc_settings_projects_empty">No projects on this server</string>
+
+    <!-- Worktrees page (D1) -->
+    <string name="oc_settings_workspaces_description">Review worktrees and manage disk usage</string>
+    <string name="oc_settings_worktrees_section">Worktrees</string>
+    <string name="oc_settings_worktrees_empty">No worktrees on this server</string>
+
+    <!-- Extensions page (D1) -->
+    <string name="oc_settings_extensions_description">Manage extensions available on this server</string>
+    <string name="oc_settings_mcp_section">MCP servers</string>
+    <string name="oc_settings_mcp_empty">No MCP servers configured</string>
+    <string name="oc_settings_mcp_unsupported">This server does not support toggling MCP servers</string>
+    <string name="oc_settings_skills_section">Skills</string>
+    <string name="oc_settings_skills_empty">No skills available</string>
+    <string name="oc_settings_plugins_empty">No plugins on this server</string>
+
+    <!-- Read-only page states -->
+    <string name="oc_settings_page_reload">Reload</string>
+    <string name="oc_settings_page_no_server">Connect to a server to load this page</string>
+    <string name="oc_settings_page_failed">Could not load this page from the server (%1$s)</string>
+
+    <!-- About page (D1) -->
+    <string name="oc_about_version">Version %1$s</string>
+    <string name="oc_about_license">Released under the MIT License</string>
+    <string name="oc_about_description">OpenCode, the open source coding agent</string>
+    <string name="oc_about_website">www.opencode.ai</string>
+    <string name="oc_about_copyright">© Anomaly Innovations, Inc.</string>
+    <string name="oc_summary_server_title">Server</string>
+    <string name="oc_summary_changes">Changes</string>
+    <string name="oc_summary_close">Close</string>
+    <string name="oc_summary_empty">No summary details for this session</string>
+    <string name="oc_summary_server">Server</string>
+    <string name="oc_summary_workspace">Workspace</string>
+    <string name="oc_summary_branch">Branch</string>
+    <string name="oc_summary_project_title">Project</string>
+
+    <!-- W5-INT: the A1 summary command entry (palette + header) and the A8 export toasts. -->
+    <string name="oc_command_summary_toggle">Session summary</string>
+    <string name="oc_export_success">Session exported to %1$s</string>
+    <string name="oc_export_failed">Failed to export session</string>
 </resources>

@@ -57,8 +57,12 @@ class AndroidBackJsTest {
     @Test
     fun readmeDocumentsBackAndEscape() {
         val readme =
-            listOf(File("../README.md"), File("README.md"), File("../../README.md")).firstOrNull { it.isFile }
-                ?: error("README.md not found")
+            listOf(
+                File("../README-webview-legacy.md"),
+                File("README-webview-legacy.md"),
+                File("../../README-webview-legacy.md"),
+            ).firstOrNull { it.isFile }
+                ?: error("README-webview-legacy.md not found")
         val text = readme.readText()
         assertTrue(text.contains("Escape") || text.contains("ESC"))
         assertTrue(text.contains("Vim") || text.contains("terminal") || text.contains("xterm"))

@@ -1,426 +1,514 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   GENERATED FILE - DO NOT EDIT BY HAND.
-  Produced by scripts/gen_i18n.ps1 from research/_i18n/zht.json.
-  key expansion: dots -> underscores (ui.foo.bar -> ui_foo_bar); {{var}} -> %N$s.
+  Produced by scripts/gen_i18n.ps1 from C:\sensorsdata\main\program\opencode-android-shell\research\_i18n_v2/zht.json.
+  key expansion: dots/dashes -> underscores (ui.foo.bar -> ui_foo_bar); {{var}} -> %N$s.
   Hand-written strings stay in values/strings.xml; re-run the script to refresh.
 -->
 <resources>
 
-    <!-- ui.* -->
-    <string name="ui_sessionReview_title">工作階段變更</string>
-    <string name="ui_sessionReview_title_git">Git 變更</string>
-    <string name="ui_sessionReview_title_branch">分支變更</string>
-    <string name="ui_sessionReview_title_lastTurn">上一輪變更</string>
-    <string name="ui_sessionReview_diffStyle_unified">統一</string>
-    <string name="ui_sessionReview_diffStyle_split">並排</string>
-    <string name="ui_sessionReview_expandAll">全部展開</string>
-    <string name="ui_sessionReview_collapseAll">全部收合</string>
-    <string name="ui_sessionReview_change_added">已新增</string>
-    <string name="ui_sessionReview_change_removed">已移除</string>
-    <string name="ui_sessionReview_change_modified">已修改</string>
-    <string name="ui_sessionReview_image_loading">載入中...</string>
-    <string name="ui_sessionReview_image_placeholder">圖片</string>
-    <string name="ui_sessionReview_largeDiff_title">差異過大，無法顯示</string>
-    <string name="ui_sessionReview_largeDiff_meta">限制：%1$s 行變更。目前：%2$s 行變更。</string>
-    <string name="ui_sessionReview_largeDiff_renderAnyway">仍要顯示</string>
-    <string name="ui_sessionReviewV2_expandMode">展開或收合差異</string>
-    <string name="ui_sessionReviewV2_filterFiles">篩選檔案</string>
-    <string name="ui_sessionReviewV2_toggleSidebar">切換檔案樹</string>
-    <string name="ui_sessionReviewV2_showAllLines">顯示所有行</string>
-    <string name="ui_sessionReviewV2_hideNonDiffLines">隱藏無差異的行</string>
-    <string name="ui_sessionReviewV2_unifiedDiff">統一格式差異</string>
-    <string name="ui_sessionReviewV2_splitDiff">並排差異</string>
-    <string name="ui_sessionReviewV2_previousFile">上一個檔案</string>
-    <string name="ui_sessionReviewV2_nextFile">下一個檔案</string>
-    <string name="ui_sessionReviewV2_diffView">差異檢視</string>
-    <string name="ui_sessionReviewV2_empty_noGit_title">沒有追蹤的變更</string>
-    <string name="ui_sessionReviewV2_empty_noGit_description">追蹤、檢閱及復原此專案中的變更</string>
-    <string name="ui_sessionReviewV2_empty_noGit_action">建立 Git 儲存庫</string>
-    <string name="ui_sessionReviewV2_empty_noGit_actionLoading">正在建立 Git 儲存庫...</string>
-    <string name="ui_sessionReviewV2_empty_changes_title">尚無檔案變更</string>
-    <string name="ui_sessionReviewV2_empty_changes_description">專案變更會顯示在這裡</string>
-    <string name="ui_sessionReview_openFile">開啟檔案</string>
-    <string name="ui_sessionReview_selection_line">第 %1$s 行</string>
-    <string name="ui_sessionReview_selection_lines">第 %1$s-%2$s 行</string>
-    <string name="ui_fileMedia_kind_image">圖片</string>
-    <string name="ui_fileMedia_kind_audio">音訊</string>
-    <string name="ui_fileMedia_state_removed">%1$s已移除</string>
-    <string name="ui_fileMedia_state_loading">正在載入%1$s...</string>
-    <string name="ui_fileMedia_state_error">載入%1$s失敗</string>
-    <string name="ui_fileMedia_state_unavailable">%1$s無法預覽</string>
-    <string name="ui_fileMedia_binary_title">二進位檔案</string>
-    <string name="ui_fileMedia_binary_description_path">無法顯示 %1$s，因為它是二進位檔案。</string>
-    <string name="ui_fileMedia_binary_description_default">無法顯示此檔案，因為它是二進位檔案。</string>
-    <string name="ui_lineComment_label_prefix">"留言於 "</string>
-    <string name="ui_lineComment_label_suffix" />
-    <string name="ui_lineComment_editorLabel_prefix">"正在留言於 "</string>
-    <string name="ui_lineComment_editorLabel_suffix" />
-    <string name="ui_lineComment_placeholder">新增留言</string>
-    <string name="ui_lineComment_contextPlaceholder">新增此變更的相關資訊</string>
-    <string name="ui_lineComment_submit">留言</string>
-    <string name="ui_lineComment_cancel">取消</string>
-    <string name="ui_sessionTurn_steps_show">顯示步驟</string>
-    <string name="ui_sessionTurn_steps_hide">隱藏步驟</string>
-    <string name="ui_sessionTurn_summary_response">回覆</string>
-    <string name="ui_sessionTurn_diff_showMore">顯示更多變更（%1$s）</string>
-    <string name="ui_sessionTurn_diffs_changed_one">已變更檔案：%1$s 個</string>
-    <string name="ui_sessionTurn_diffs_changed_other">已變更檔案：%1$s 個</string>
-    <string name="ui_sessionTurn_diffs_showAll">全部顯示</string>
-    <string name="ui_sessionTurn_diffs_showLess">顯示較少</string>
-    <string name="ui_sessionTurn_diffs_more">+%1$s 個檔案</string>
-    <string name="ui_sessionTurn_retry_retrying">重試中</string>
-    <string name="ui_sessionTurn_retry_inSeconds">%1$s 秒後</string>
-    <string name="ui_sessionTurn_retry_attempt">第 %1$s 次</string>
-    <string name="ui_sessionTurn_retry_attemptLine">%1$s - 第 %2$s 次</string>
-    <string name="ui_sessionTurn_retry_geminiHot">Gemini 目前負載過高</string>
-    <string name="ui_sessionTurn_error_freeUsageExceeded">免費使用額度已用完</string>
-    <string name="ui_sessionTurn_error_addCredits">新增點數</string>
-
-    <!-- dialog.* -->
-    <string name="dialog_usageExceeded_freeTier_title">已達免費額度上限</string>
-    <string name="dialog_usageExceeded_freeTier_description">每月 $10 訂閱 OpenCode Go，可靠地使用最佳開源模型。</string>
-    <string name="dialog_usageExceeded_freeTier_actionLabel">訂閱</string>
-    <string name="dialog_usageExceeded_accountRateLimit_title">已達 Go 額度上限</string>
-    <string name="dialog_usageExceeded_accountRateLimit_description">已達使用額度上限。若要立即繼續使用此模型，請啟用可用餘額計費</string>
-    <string name="dialog_usageExceeded_accountRateLimit_actionLabel">開啟設定</string>
-
-    <!-- ui.* -->
-    <string name="ui_sessionTurn_status_delegating">正在委派工作</string>
-    <string name="ui_sessionTurn_status_planning">正在規劃下一步</string>
-    <string name="ui_sessionTurn_status_gatheringContext">正在探索</string>
-    <string name="ui_sessionTurn_status_gatheredContext">已探索</string>
-    <string name="ui_sessionTurn_status_searchingCodebase">正在搜尋程式碼庫</string>
-    <string name="ui_sessionTurn_status_searchingWeb">正在搜尋網頁</string>
-    <string name="ui_sessionTurn_status_makingEdits">正在修改</string>
-    <string name="ui_sessionTurn_status_runningCommands">正在執行命令</string>
-    <string name="ui_sessionTurn_status_thinking">思考中</string>
-    <string name="ui_sessionTurn_status_thinkingWithTopic">思考 - %1$s</string>
-    <string name="ui_sessionTurn_status_gatheringThoughts">正在整理思緒</string>
-    <string name="ui_sessionTurn_status_consideringNextSteps">正在考慮下一步</string>
-    <string name="ui_messagePart_diagnostic_error">錯誤</string>
-    <string name="ui_messagePart_title_edit">編輯</string>
-    <string name="ui_messagePart_title_write">寫入</string>
-    <string name="ui_messagePart_option_typeOwnAnswer">輸入自己的答案</string>
-    <string name="ui_messagePart_review_title">檢閱你的答案</string>
-    <string name="ui_messagePart_questions_dismissed">問題已略過</string>
-    <string name="ui_messagePart_compaction">工作階段已壓縮</string>
-    <string name="ui_messagePart_context_read_one">%1$s 次讀取</string>
-    <string name="ui_messagePart_context_read_other">%1$s 次讀取</string>
-    <string name="ui_messagePart_context_search_one">%1$s 次搜尋</string>
-    <string name="ui_messagePart_context_search_other">%1$s 次搜尋</string>
-    <string name="ui_messagePart_context_list_one">列出 %1$s 次</string>
-    <string name="ui_messagePart_context_list_other">列出 %1$s 次</string>
-    <string name="ui_list_loading">載入中</string>
-    <string name="ui_list_empty">無結果</string>
-    <string name="ui_list_clearFilter">清除篩選</string>
-    <string name="ui_list_emptyWithFilter_prefix">沒有關於</string>
-    <string name="ui_list_emptyWithFilter_suffix">的結果</string>
-    <string name="ui_fileSearch_placeholder">搜尋</string>
-    <string name="ui_fileSearch_previousMatch">上一個</string>
-    <string name="ui_fileSearch_nextMatch">下一個</string>
-    <string name="ui_fileSearch_close">關閉搜尋</string>
-    <string name="ui_messageNav_newMessage">新訊息</string>
-    <string name="ui_promptInput_noMatchingItems">沒有符合的項目</string>
-    <string name="ui_promptInput_commands">命令</string>
-    <string name="ui_promptInput_dropFiles">拖放檔案以附加</string>
-    <string name="ui_promptInput_removeAttachment">移除附件</string>
-    <string name="ui_promptInput_label">提示詞</string>
-    <string name="ui_promptInput_placeholder_shell">輸入 shell 命令...</string>
-    <string name="ui_promptInput_placeholder_normal">想問什麼都可以， / 可使用命令， @ 可加入上下文...</string>
-    <string name="ui_promptInput_add">新增圖片和檔案</string>
-    <string name="ui_promptInput_attachments">圖片和檔案</string>
-    <string name="ui_promptInput_context">上下文</string>
-    <string name="ui_promptInput_shell">shell 命令</string>
-    <string name="ui_promptInput_chooseAgent">選擇代理程式</string>
-    <string name="ui_promptInput_chooseModel">選擇模型</string>
-    <string name="ui_promptInput_chooseVariant">選擇模型變體</string>
-    <string name="ui_promptInput_send">傳送</string>
-    <string name="ui_promptInput_stop">停止</string>
-    <string name="ui_tabs_close">關閉分頁</string>
-    <string name="ui_textField_copyToClipboard">複製到剪貼簿</string>
-    <string name="ui_textField_copyLink">複製連結</string>
-    <string name="ui_textField_copied">已複製</string>
-    <string name="ui_imagePreview_alt">圖片預覽</string>
-    <string name="ui_scrollView_ariaLabel">可捲動內容</string>
-    <string name="ui_tool_read">讀取</string>
-    <string name="ui_tool_loaded">已載入</string>
-    <string name="ui_tool_list">列出</string>
-    <string name="ui_tool_glob">Glob</string>
-    <string name="ui_tool_grep">Grep</string>
-    <string name="ui_tool_task">任務</string>
-    <string name="ui_tool_webfetch">Webfetch</string>
-    <string name="ui_tool_websearch">網頁搜尋</string>
-    <string name="ui_tool_websearch_provider">%1$s 網頁搜尋</string>
-    <string name="ui_tool_shell">Shell</string>
-    <string name="ui_tool_patch">修補</string>
-    <string name="ui_tool_todos">待辦</string>
-    <string name="ui_tool_todos_read">讀取待辦</string>
-    <string name="ui_tool_questions">問題</string>
-    <string name="ui_tool_questions_numbered">問題 %1$s</string>
-    <string name="ui_tool_agent">%1$s 代理程式</string>
-    <string name="ui_tool_agent_default">代理程式</string>
-    <string name="ui_tool_skill">技能</string>
-    <string name="ui_basicTool_called">呼叫了 `%1$s`</string>
-    <string name="ui_toolErrorCard_failed">失敗</string>
-    <string name="ui_toolErrorCard_copyError">複製錯誤</string>
-    <string name="ui_common_file_one">個檔案</string>
-    <string name="ui_common_file_other">個檔案</string>
-    <string name="ui_common_question_one">個問題</string>
-    <string name="ui_common_question_other">個問題</string>
-    <string name="ui_common_add">新增</string>
-    <string name="ui_common_clear">清除</string>
-    <string name="ui_common_file">檔案</string>
-    <string name="ui_common_back">返回</string>
-    <string name="ui_common_cancel">取消</string>
-    <string name="ui_common_confirm">確認</string>
-    <string name="ui_common_dismiss">忽略</string>
-    <string name="ui_common_close">關閉</string>
-    <string name="ui_common_next">下一步</string>
-    <string name="ui_common_submit">提交</string>
-    <string name="ui_common_showMore">顯示更多</string>
-    <string name="ui_permission_deny">拒絕</string>
-    <string name="ui_permission_allowAlways">永遠允許</string>
-    <string name="ui_permission_allowOnce">允許一次</string>
-    <string name="ui_message_expand">展開訊息</string>
-    <string name="ui_message_collapse">收合訊息</string>
-    <string name="ui_message_copy">複製</string>
-    <string name="ui_message_copyMessage">複製訊息</string>
-    <string name="ui_message_forkMessage">分支到新工作階段</string>
-    <string name="ui_message_revertMessage">重設至此點</string>
-    <string name="ui_message_copyResponse">複製回覆</string>
-    <string name="ui_message_copied">已複製！</string>
-    <string name="ui_message_duration_seconds">%1$s秒</string>
-    <string name="ui_message_duration_minutesSeconds">%1$s分 %2$s秒</string>
-    <string name="ui_message_interrupted">已中斷</string>
-    <string name="ui_message_queued">已加入佇列</string>
-    <string name="ui_message_attachment_alt">附件</string>
-    <string name="ui_patch_action_deleted">已刪除</string>
-    <string name="ui_patch_action_created">已建立</string>
-    <string name="ui_patch_action_moved">已移動</string>
-    <string name="ui_patch_action_patched">已套用修補</string>
-    <string name="ui_question_subtitle_answered">已回答 %1$s 題</string>
-    <string name="ui_question_answer_none">（無答案）</string>
-    <string name="ui_question_review_notAnswered">（未回答）</string>
-    <string name="ui_question_multiHint">可多選</string>
-    <string name="ui_question_singleHint">選擇一個答案</string>
-    <string name="ui_question_custom_placeholder">輸入你的答案...</string>
+    <!-- app.* -->
+    <string name="app_name_desktop">OpenCode Desktop</string>
+    <string name="app_server_otherServers">其他伺服器</string>
+    <string name="app_server_retrying">正在自動重試…</string>
+    <string name="app_server_unreachable">無法連線至 %1$s</string>
 
     <!-- command.* -->
-    <string name="command_category_suggested">建議</string>
-    <string name="command_category_view">檢視</string>
-    <string name="command_category_project">專案</string>
-    <string name="command_category_provider">提供者</string>
-    <string name="command_category_server">伺服器</string>
-    <string name="command_category_session">工作階段</string>
-    <string name="command_category_theme">主題</string>
-    <string name="command_category_language">語言</string>
-    <string name="command_category_file">檔案</string>
-    <string name="command_category_context">上下文</string>
-    <string name="command_category_terminal">終端機</string>
-    <string name="command_category_model">模型</string>
-    <string name="command_category_mcp">MCP</string>
-    <string name="command_category_agent">代理程式</string>
-    <string name="command_category_permissions">權限</string>
-    <string name="command_category_workspace">工作區</string>
-    <string name="command_category_settings">設定</string>
-    <string name="command_logs_export">匯出記錄檔</string>
-
-    <!-- theme.* -->
-    <string name="theme_scheme_system">系統</string>
-    <string name="theme_scheme_light">淺色</string>
-    <string name="theme_scheme_dark">深色</string>
-
-    <!-- command.* -->
-    <string name="command_sidebar_toggle">切換側邊欄</string>
-    <string name="command_project_open">開啟專案</string>
-    <string name="command_project_previous">上一個專案</string>
-    <string name="command_project_next">下一個專案</string>
-    <string name="command_project_index">切換至專案 %1$s</string>
-    <string name="command_provider_connect">連線提供者</string>
-    <string name="command_server_switch">切換伺服器</string>
-    <string name="command_settings_open">開啟設定</string>
-    <string name="command_session_previous">上一個工作階段</string>
-    <string name="command_session_next">下一個工作階段</string>
-    <string name="command_session_previous_unseen">上一個未讀工作階段</string>
-    <string name="command_session_next_unseen">下一個未讀工作階段</string>
-    <string name="command_session_archive">封存工作階段</string>
-    <string name="command_palette">命令面板</string>
-    <string name="command_theme_cycle">依序切換主題</string>
-    <string name="command_theme_set">使用主題: %1$s</string>
-    <string name="command_theme_scheme_cycle">依序切換配色方案</string>
-    <string name="command_theme_scheme_set">使用配色方案: %1$s</string>
-    <string name="command_language_cycle">依序切換語言</string>
-    <string name="command_language_set">使用語言: %1$s</string>
-    <string name="command_session_new">新增工作階段</string>
-    <string name="command_file_open">開啟檔案</string>
-    <string name="command_tab_close">關閉分頁</string>
-    <string name="command_tab_reopenClosed">重新開啟已關閉的分頁</string>
-    <string name="command_context_addSelection">將選取內容加入上下文</string>
-    <string name="command_context_addSelection_description">加入目前檔案中選取的行</string>
-    <string name="command_input_focus">聚焦輸入框</string>
-    <string name="command_terminal_toggle">切換終端機</string>
-    <string name="command_fileTree_toggle">切換檔案樹</string>
-    <string name="command_review_toggle">切換檢閱</string>
-    <string name="command_terminal_new">新增終端機</string>
-    <string name="command_terminal_new_description">建立新的終端機分頁</string>
-    <string name="command_steps_toggle">切換步驟</string>
-    <string name="command_steps_toggle_description">顯示或隱藏目前訊息的步驟</string>
-    <string name="command_message_previous">上一則訊息</string>
-    <string name="command_message_previous_description">跳到上一則使用者訊息</string>
-    <string name="command_message_next">下一則訊息</string>
-    <string name="command_message_next_description">跳到下一則使用者訊息</string>
-    <string name="command_model_choose">選擇模型</string>
-    <string name="command_model_choose_description">選擇不同的模型</string>
-    <string name="command_mcp_toggle">切換 MCP</string>
-    <string name="command_mcp_toggle_description">切換 MCP</string>
     <string name="command_agent_cycle">切換下一個代理程式</string>
     <string name="command_agent_cycle_description">切換到下一個代理程式</string>
     <string name="command_agent_cycle_reverse">切換上一個代理程式</string>
     <string name="command_agent_cycle_reverse_description">切換到上一個代理程式</string>
+    <string name="command_category_agent">代理程式</string>
+    <string name="command_category_context">上下文</string>
+    <string name="command_category_file">檔案</string>
+    <string name="command_category_language">語言</string>
+    <string name="command_category_mcp">MCP</string>
+    <string name="command_category_model">模型</string>
+    <string name="command_category_permissions">權限</string>
+    <string name="command_category_project">專案</string>
+    <string name="command_category_provider">提供者</string>
+    <string name="command_category_server">伺服器</string>
+    <string name="command_category_session">工作階段</string>
+    <string name="command_category_settings">設定</string>
+    <string name="command_category_suggested">建議</string>
+    <string name="command_category_terminal">終端機</string>
+    <string name="command_category_theme">主題</string>
+    <string name="command_category_view">檢視</string>
+    <string name="command_category_workspace">工作區</string>
+    <string name="command_context_addSelection">將選取內容加入上下文</string>
+    <string name="command_context_addSelection_description">加入目前檔案中選取的行</string>
+    <string name="command_file_open">開啟檔案</string>
+    <string name="command_fileTree_toggle">切換檔案樹</string>
+    <string name="command_input_focus">聚焦輸入框</string>
+    <string name="command_language_cycle">依序切換語言</string>
+    <string name="command_language_set">使用語言: %1$s</string>
+    <string name="command_logs_export">匯出記錄檔</string>
+    <string name="command_mcp_toggle">切換 MCP</string>
+    <string name="command_mcp_toggle_description">切換 MCP</string>
+    <string name="command_message_next">下一則訊息</string>
+    <string name="command_message_next_description">跳到下一則使用者訊息</string>
+    <string name="command_message_previous">上一則訊息</string>
+    <string name="command_message_previous_description">跳到上一則使用者訊息</string>
+    <string name="command_model_choose">選擇模型</string>
+    <string name="command_model_choose_description">選擇不同的模型</string>
     <string name="command_model_variant_cycle">切換思考強度</string>
     <string name="command_model_variant_cycle_description">切換到下一個強度等級</string>
-    <string name="command_prompt_mode_shell">Shell</string>
-    <string name="command_prompt_mode_normal">Prompt</string>
-    <string name="command_permissions_autoaccept_enable">自動接受權限</string>
+    <string name="command_palette">命令面板</string>
     <string name="command_permissions_autoaccept_disable">停止自動接受權限</string>
-    <string name="command_workspace_toggle">切換工作區</string>
-    <string name="command_workspace_toggle_description">在側邊欄啟用或停用多個工作區</string>
-    <string name="command_session_undo">復原</string>
-    <string name="command_session_undo_description">復原上一則訊息</string>
-    <string name="command_session_redo">重做</string>
-    <string name="command_session_redo_description">重做上一則復原的訊息</string>
+    <string name="command_permissions_autoaccept_enable">自動接受權限</string>
+    <string name="command_project_index">切換至專案 %1$s</string>
+    <string name="command_project_next">下一個專案</string>
+    <string name="command_project_open">開啟專案</string>
+    <string name="command_project_previous">上一個專案</string>
+    <string name="command_prompt_mode_normal">Prompt</string>
+    <string name="command_prompt_mode_shell">Shell</string>
+    <string name="command_provider_connect">連線提供者</string>
+    <string name="command_review_toggle">切換檢閱</string>
+    <string name="command_server_switch">切換伺服器</string>
+    <string name="command_session_archive">封存工作階段</string>
     <string name="command_session_compact">精簡工作階段</string>
     <string name="command_session_compact_description">摘要工作階段以減少上下文大小</string>
-    <string name="command_session_fork">從訊息分支</string>
-    <string name="command_session_fork_description">從先前的訊息建立新工作階段</string>
-    <string name="command_session_share">分享工作階段</string>
-    <string name="command_session_share_description">分享此工作階段並將連結複製到剪貼簿</string>
-    <string name="command_session_unshare">取消分享工作階段</string>
-    <string name="command_session_unshare_description">停止分享此工作階段</string>
     <string name="command_session_export">匯出工作階段</string>
     <string name="command_session_export_description">將完整的工作階段記錄匯出為 JSON</string>
+    <string name="command_session_fork">從訊息分支</string>
+    <string name="command_session_fork_description">從先前的訊息建立新工作階段</string>
+    <string name="command_session_import">匯入工作階段</string>
+    <string name="command_session_new">新增工作階段</string>
+    <string name="command_session_next">下一個工作階段</string>
+    <string name="command_session_next_unseen">下一個未讀工作階段</string>
+    <string name="command_session_previous">上一個工作階段</string>
+    <string name="command_session_previous_unseen">上一個未讀工作階段</string>
+    <string name="command_session_redo">重做</string>
+    <string name="command_session_redo_description">重做上一則復原的訊息</string>
+    <string name="command_session_undo">復原</string>
+    <string name="command_session_undo_description">復原上一則訊息</string>
+    <string name="command_settings_open">開啟設定</string>
+    <string name="command_sidebar_toggle">切換側邊欄</string>
+    <string name="command_steps_toggle">切換步驟</string>
+    <string name="command_steps_toggle_description">顯示或隱藏目前訊息的步驟</string>
+    <string name="command_tab_close">關閉分頁</string>
+    <string name="command_tab_reopenClosed">重新開啟已關閉的分頁</string>
+    <string name="command_terminal_new">新增終端機</string>
+    <string name="command_terminal_new_description">建立新的終端機分頁</string>
+    <string name="command_terminal_toggle">切換終端機</string>
+    <string name="command_theme_cycle">依序切換主題</string>
+    <string name="command_theme_scheme_cycle">依序切換配色方案</string>
+    <string name="command_theme_scheme_set">使用配色方案: %1$s</string>
+    <string name="command_theme_set">使用主題: %1$s</string>
+    <string name="command_workspace_toggle">切換工作區</string>
+    <string name="command_workspace_toggle_description">在側邊欄啟用或停用多個工作區</string>
 
-    <!-- palette.* -->
-    <string name="palette_search_placeholder">搜尋檔案、命令和工作階段</string>
-    <string name="palette_search_placeholder_home">搜尋命令和工作階段</string>
-    <string name="palette_empty">找不到結果</string>
-    <string name="palette_group_commands">命令</string>
-    <string name="palette_group_files">檔案</string>
+    <!-- common.* -->
+    <string name="common_archive">封存</string>
+    <string name="common_attachment">附件</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_clear">清除</string>
+    <string name="common_close">關閉</string>
+    <string name="common_closeTab">關閉分頁</string>
+    <string name="common_connect">連線</string>
+    <string name="common_continue">繼續</string>
+    <string name="common_copied">已複製</string>
+    <string name="common_default">預設</string>
+    <string name="common_delete">刪除</string>
+    <string name="common_disconnect">中斷連線</string>
+    <string name="common_dismiss">忽略</string>
+    <string name="common_edit">編輯</string>
+    <string name="common_export">匯出</string>
+    <string name="common_goBack">返回</string>
+    <string name="common_goForward">前進</string>
+    <string name="common_key_alt">Alt</string>
+    <string name="common_key_backspace">退格鍵</string>
+    <string name="common_key_ctrl">Ctrl</string>
+    <string name="common_key_delete">Delete</string>
+    <string name="common_key_end">End</string>
+    <string name="common_key_enter">Enter</string>
+    <string name="common_key_esc">ESC</string>
+    <string name="common_key_home">Home</string>
+    <string name="common_key_insert">Insert</string>
+    <string name="common_key_meta">Meta</string>
+    <string name="common_key_pageDown">Page Down</string>
+    <string name="common_key_pageUp">Page Up</string>
+    <string name="common_key_shift">Shift</string>
+    <string name="common_key_space">空白鍵</string>
+    <string name="common_key_tab">Tab</string>
+    <string name="common_learnMore">深入了解</string>
+    <string name="common_loadMore">載入更多</string>
+    <string name="common_loading">載入中</string>
+    <string name="common_loading_ellipsis">…</string>
+    <string name="common_moreCountSuffix">" (還有 %1$s 個)"</string>
+    <string name="common_moreOptions">更多選項</string>
+    <string name="common_open">開啟</string>
+    <string name="common_rename">重新命名</string>
+    <string name="common_requestFailed">要求失敗</string>
+    <string name="common_reset">重設</string>
+    <string name="common_save">儲存</string>
+    <string name="common_saving">儲存中…</string>
+    <string name="common_search_placeholder">搜尋</string>
+    <string name="common_submit">提交</string>
+    <string name="common_time_daysAgo_short">%1$s天前</string>
+    <string name="common_time_hoursAgo_short">%1$s小時前</string>
+    <string name="common_time_justNow">剛剛</string>
+    <string name="common_time_minutesAgo_short">%1$s分鐘前</string>
+    <string name="common_unknown">未知</string>
+
+    <!-- context.* -->
+    <string name="context_breakdown_assistant">助理</string>
+    <string name="context_breakdown_note">輸入 token 的概略細分。「其他」包含工具定義和額外負擔。</string>
+    <string name="context_breakdown_other">其他</string>
+    <string name="context_breakdown_system">系統</string>
+    <string name="context_breakdown_title">上下文細分</string>
+    <string name="context_breakdown_tool">工具呼叫</string>
+    <string name="context_breakdown_user">使用者</string>
+    <string name="context_export_session">匯出工作階段</string>
+    <string name="context_rawMessages_title">原始訊息</string>
+    <string name="context_stats_assistantMessages">助理訊息</string>
+    <string name="context_stats_cacheTokens">快取 token（讀/寫）</string>
+    <string name="context_stats_inputTokens">輸入 token</string>
+    <string name="context_stats_lastActivity">最後活動</string>
+    <string name="context_stats_limit">上下文限制</string>
+    <string name="context_stats_messages">訊息數</string>
+    <string name="context_stats_model">模型</string>
+    <string name="context_stats_outputTokens">輸出 token</string>
+    <string name="context_stats_provider">提供者</string>
+    <string name="context_stats_reasoningTokens">推理 token</string>
+    <string name="context_stats_session">工作階段</string>
+    <string name="context_stats_sessionCreated">建立時間</string>
+    <string name="context_stats_totalCost">總成本</string>
+    <string name="context_stats_totalTokens">總 token</string>
+    <string name="context_stats_usage">使用量</string>
+    <string name="context_stats_userMessages">使用者訊息</string>
+    <string name="context_systemPrompt_title">系統提示詞</string>
+    <string name="context_usage_clickToView">按一下以檢視上下文</string>
+    <string name="context_usage_cost">成本</string>
+    <string name="context_usage_tokens">Token</string>
+    <string name="context_usage_usage">使用量</string>
+    <string name="context_usage_view">檢視上下文用量</string>
+
+    <!-- debugBar.* -->
+    <string name="debugBar_ariaLabel">開發效能診斷</string>
+    <string name="debugBar_cls_label">CLS</string>
+    <string name="debugBar_cls_tip">目前應用程式生命週期的累積版面配置位移。</string>
+    <string name="debugBar_delay_label">DELAY</string>
+    <string name="debugBar_delay_tip">過去 5 秒內觀察到的最差輸入延遲。</string>
+    <string name="debugBar_direction_label">DIR</string>
+    <string name="debugBar_direction_ltr">LTR</string>
+    <string name="debugBar_direction_rtl">RTL</string>
+    <string name="debugBar_direction_tip">在不變更所選語言的情況下，強制設定整個應用程式的版面配置方向</string>
+    <string name="debugBar_focus_label">FOCUS</string>
+    <string name="debugBar_focus_off">關閉</string>
+    <string name="debugBar_focus_on">開啟</string>
+    <string name="debugBar_focus_tip">強制所有互動元素顯示焦點樣式</string>
+    <string name="debugBar_fps_label">FPS</string>
+    <string name="debugBar_fps_tip">過去 5 秒內的移動影格率。</string>
+    <string name="debugBar_frame_label">FRAME</string>
+    <string name="debugBar_frame_tip">過去 5 秒內最差的影格時間。</string>
+    <string name="debugBar_inp_label">INP</string>
+    <string name="debugBar_inp_tip">過去 5 秒內的近似互動持續時間。這類似於 INP，而非官方的 Web Vitals INP。</string>
+    <string name="debugBar_jank_label">JANK</string>
+    <string name="debugBar_jank_tip">過去 5 秒內超過 32ms 的影格。</string>
+    <string name="debugBar_long_label">LONG</string>
+    <string name="debugBar_long_tip">過去 5 秒內的阻塞時間和長任務計數。最大任務：%1$s。</string>
+    <string name="debugBar_mem_label">MEM</string>
+    <string name="debugBar_mem_tip">使用的 JS 堆積與堆積限制。%1$s / %2$s。</string>
+    <string name="debugBar_mem_tipUnavailable">使用的 JS 堆積與堆積限制。僅限 Chromium。</string>
+    <string name="debugBar_na">不適用</string>
+    <string name="debugBar_nav_label">NAV</string>
+    <string name="debugBar_nav_tip">最後一次完成的涉及工作階段頁面的路由轉換，從路由器啟動到穩定後的第一次繪製。</string>
+
+    <!-- desktop.* -->
+    <string name="desktop_dialog_chooseFile">選擇檔案</string>
+    <string name="desktop_dialog_chooseFolder">選擇資料夾</string>
+    <string name="desktop_dialog_files">檔案</string>
+    <string name="desktop_dialog_saveFile">儲存檔案</string>
+    <string name="desktop_menu_actualSize">實際大小</string>
+    <string name="desktop_menu_app">OpenCode</string>
+    <string name="desktop_menu_ariaLabel">OpenCode 選單</string>
+    <string name="desktop_menu_back">上一頁</string>
+    <string name="desktop_menu_checkForUpdates">檢查更新…</string>
+    <string name="desktop_menu_closeWindow">關閉視窗</string>
+    <string name="desktop_menu_copy">複製</string>
+    <string name="desktop_menu_cut">剪下</string>
+    <string name="desktop_menu_delete">刪除</string>
+    <string name="desktop_menu_documentation">OpenCode 文件</string>
+    <string name="desktop_menu_edit">編輯</string>
+    <string name="desktop_menu_exportLogs">匯出記錄檔…</string>
+    <string name="desktop_menu_file">檔案</string>
+    <string name="desktop_menu_forward">下一頁</string>
+    <string name="desktop_menu_go">前往</string>
+    <string name="desktop_menu_help">說明</string>
+    <string name="desktop_menu_maximize">最大化</string>
+    <string name="desktop_menu_minimize">最小化</string>
+    <string name="desktop_menu_newSession">新增工作階段</string>
+    <string name="desktop_menu_newWindow">新增視窗</string>
+    <string name="desktop_menu_nextProject">下一個專案</string>
+    <string name="desktop_menu_nextSession">下一個工作階段</string>
+    <string name="desktop_menu_openProject">開啟專案…</string>
+    <string name="desktop_menu_paste">貼上</string>
+    <string name="desktop_menu_previousProject">上一個專案</string>
+    <string name="desktop_menu_previousSession">上一個工作階段</string>
+    <string name="desktop_menu_redo">重做</string>
+    <string name="desktop_menu_reload">重新載入</string>
+    <string name="desktop_menu_reloadWebview">重新載入 Webview</string>
+    <string name="desktop_menu_reportBug">回報錯誤</string>
+    <string name="desktop_menu_restart">重新啟動</string>
+    <string name="desktop_menu_selectAll">全選</string>
+    <string name="desktop_menu_settings">設定</string>
+    <string name="desktop_menu_shareFeedback">提供意見回饋</string>
+    <string name="desktop_menu_supportForum">支援論壇</string>
+    <string name="desktop_menu_toggleDeveloperTools">切換開發人員工具</string>
+    <string name="desktop_menu_toggleFileTree">切換檔案樹</string>
+    <string name="desktop_menu_toggleFullScreen">切換全螢幕</string>
+    <string name="desktop_menu_toggleSidebar">切換側邊欄</string>
+    <string name="desktop_menu_toggleTerminal">切換終端機</string>
+    <string name="desktop_menu_undo">復原</string>
+    <string name="desktop_menu_view">檢視</string>
+    <string name="desktop_menu_window">視窗</string>
+    <string name="desktop_menu_zoomIn">放大</string>
+    <string name="desktop_menu_zoomOut">縮小</string>
+    <string name="desktop_picker_error_notSelected">檔案選擇器未選取檔案</string>
+    <string name="desktop_picker_error_sizeLimit">所選附件超過 %1$s MB 的限制</string>
+    <string name="desktop_recovery_action_exportLogs">匯出記錄檔</string>
+    <string name="desktop_recovery_action_keepWaiting">繼續等待</string>
+    <string name="desktop_recovery_action_quit">結束</string>
+    <string name="desktop_recovery_action_relaunch">重新啟動應用程式</string>
+    <string name="desktop_recovery_loadFailed">OpenCode 載入失敗</string>
+    <string name="desktop_recovery_loadFailed_detail">視窗：%1$s\nURL：%2$s\n錯誤：%3$s %4$s</string>
+    <string name="desktop_recovery_terminated">OpenCode 視窗意外終止</string>
+    <string name="desktop_recovery_terminated_detail">視窗：%1$s\n原因：%2$s\n代碼：%3$s</string>
+    <string name="desktop_recovery_unknown">&lt;未知&gt;</string>
+    <string name="desktop_recovery_unresponsive">OpenCode 沒有回應</string>
+    <string name="desktop_recovery_unresponsive_detail">你可以重新啟動應用程式、開啟記錄檔，或繼續等待。</string>
+    <string name="desktop_server_local">本機伺服器</string>
+    <string name="desktop_updater_dialog_checkFailed_message">檢查更新失敗。</string>
+    <string name="desktop_updater_dialog_checkFailed_title">更新錯誤</string>
+    <string name="desktop_updater_dialog_later">稍後</string>
+    <string name="desktop_updater_dialog_ready_message">已下載更新 %1$s。要立即重新啟動嗎？</string>
+    <string name="desktop_updater_dialog_ready_title">更新已就緒</string>
+    <string name="desktop_updater_dialog_restart">重新啟動</string>
+    <string name="desktop_updater_dialog_upToDate_message">目前已是最新版本。</string>
+    <string name="desktop_updater_dialog_upToDate_title">沒有更新</string>
+    <string name="desktop_wsl_error_alreadyAdded">已新增 %1$s</string>
+    <string name="desktop_wsl_error_commandTimeout">%1$s %2$s 在 %3$sms 後逾時</string>
+    <string name="desktop_wsl_error_executeDistro">無法在發行版中執行命令</string>
+    <string name="desktop_wsl_error_failedPort">無法取得連接埠</string>
+    <string name="desktop_wsl_error_healthTimeout">%1$s 的 Sidecar 健全狀態檢查在 %2$sms 後逾時</string>
+    <string name="desktop_wsl_error_installDistro">無法安裝發行版：%1$s</string>
+    <string name="desktop_wsl_error_installOpencode">OpenCode 安裝失敗</string>
+    <string name="desktop_wsl_error_installWsl">WSL 安裝失敗</string>
+    <string name="desktop_wsl_error_listInstalled">無法列出已安裝的 WSL 發行版</string>
+    <string name="desktop_wsl_error_listOnline">無法列出線上 WSL 發行版</string>
+    <string name="desktop_wsl_error_noVersion">無版本資訊</string>
+    <string name="desktop_wsl_error_opencodeCannotRun">已安裝 opencode，但無法執行</string>
+    <string name="desktop_wsl_error_opencodeMissing">此發行版中未安裝 opencode</string>
+    <string name="desktop_wsl_error_opencodeNotInstalled">%1$s 中未安裝 OpenCode</string>
+    <string name="desktop_wsl_error_serverExited">WSL 伺服器在啟動後結束 (code=%1$s signal=%2$s)</string>
+    <string name="desktop_wsl_error_serverExitedBeforeHealthy">WSL 伺服器在健全狀態確認前結束 (code=%1$s signal=%2$s)%3$s</string>
+    <string name="desktop_wsl_error_unavailable">WSL 無法使用</string>
+    <string name="desktop_wsl_error_updateVersion">OpenCode 更新完成，但 %1$s 回報的版本仍為 %2$s；預期版本為 %3$s</string>
+    <string name="desktop_wsl_error_windowsOnly">WSL 僅適用於 Windows</string>
 
     <!-- dialog.* -->
-    <string name="dialog_provider_search_placeholder">搜尋提供者</string>
-    <string name="dialog_provider_empty">找不到提供者</string>
-    <string name="dialog_provider_group_popular">熱門</string>
-    <string name="dialog_provider_group_other">其他</string>
-    <string name="dialog_provider_custom_label">自訂 OpenAI 相容提供者</string>
-    <string name="dialog_provider_tag_recommended">推薦</string>
-    <string name="dialog_provider_opencode_note">精選模型，包含 Claude、GPT、Gemini 等等</string>
-    <string name="dialog_provider_opencode_tagline">經過最佳化的可靠模型</string>
-    <string name="dialog_provider_opencodeGo_tagline">適合所有人的低成本訂閱</string>
-    <string name="dialog_provider_anthropic_note">直接存取 Claude 模型，包括 Pro 和 Max</string>
-    <string name="dialog_provider_copilot_note">透過 GitHub Copilot 使用程式設計輔助 AI 模型</string>
-    <string name="dialog_provider_openai_note">適合快速且功能強大的通用 AI 工作之 GPT 模型</string>
-    <string name="dialog_provider_google_note">Gemini 模型，提供快速且結構化的回應</string>
-    <string name="dialog_provider_openrouter_note">從單一提供者存取所有支援的模型</string>
-    <string name="dialog_provider_vercel_note">透過智慧路由統一存取 AI 模型</string>
-    <string name="dialog_model_select_title">選擇模型</string>
-    <string name="dialog_model_search_placeholder">搜尋模型</string>
+    <string name="dialog_directory_action_selectFile">選擇檔案</string>
+    <string name="dialog_directory_action_selectFolder">選擇資料夾</string>
+    <string name="dialog_directory_empty">找不到資料夾</string>
+    <string name="dialog_directory_parent">上層目錄</string>
+    <string name="dialog_directory_readError">無法讀取此資料夾</string>
+    <string name="dialog_directory_root">根目錄</string>
+    <string name="dialog_directory_search_placeholder">搜尋資料夾</string>
+    <string name="dialog_fork_empty">沒有可用於分支的訊息</string>
+    <string name="dialog_lsp_empty">會根據檔案類型自動偵測 LSP</string>
+    <string name="dialog_mcp_description">已啟用 %1$s / %2$s</string>
+    <string name="dialog_mcp_empty">未設定 MCP</string>
+    <string name="dialog_mcp_title">MCP</string>
     <string name="dialog_model_empty">找不到模型</string>
     <string name="dialog_model_manage">管理模型</string>
     <string name="dialog_model_manage_description">自訂模型選擇器中顯示的模型。</string>
     <string name="dialog_model_manage_provider_toggle">切換所有 %1$s 模型</string>
-    <string name="dialog_model_unpaid_freeModels_title">OpenCode 提供的免費模型</string>
+    <string name="dialog_model_search_placeholder">搜尋模型</string>
+    <string name="dialog_model_select_title">選擇模型</string>
     <string name="dialog_model_unpaid_addMore_title">從熱門提供者新增更多模型</string>
+    <string name="dialog_model_unpaid_freeModels_title">OpenCode 提供的免費模型</string>
     <string name="dialog_model_unpaid_viewMoreProviders">查看另外 70 多個提供者</string>
+    <string name="dialog_plugins_empty">在 opencode.json 中設定的外掛程式</string>
+    <string name="dialog_project_edit_color">顏色</string>
+    <string name="dialog_project_edit_color_select">選擇%1$s顏色</string>
+    <string name="dialog_project_edit_icon">圖示</string>
+    <string name="dialog_project_edit_icon_alt">專案圖示</string>
+    <string name="dialog_project_edit_icon_hint">按一下或拖曳圖片</string>
+    <string name="dialog_project_edit_icon_recommended">建議：128x128px</string>
+    <string name="dialog_project_edit_name">名稱</string>
+    <string name="dialog_project_edit_title">編輯專案</string>
+    <string name="dialog_project_edit_worktree_startup">工作區啟動腳本</string>
+    <string name="dialog_project_edit_worktree_startup_description">在建立新的工作區 (worktree) 後執行。</string>
+    <string name="dialog_project_edit_worktree_startup_placeholder">例如 bun install</string>
+    <string name="dialog_provider_copilot_note">透過 GitHub Copilot 使用程式設計輔助 AI 模型</string>
+    <string name="dialog_provider_custom_label">自訂 OpenAI 相容提供者</string>
+    <string name="dialog_provider_empty">找不到提供者</string>
+    <string name="dialog_provider_google_note">Gemini 模型，提供快速且結構化的回應</string>
+    <string name="dialog_provider_group_other">其他</string>
+    <string name="dialog_provider_group_popular">熱門</string>
+    <string name="dialog_provider_openai_note">適合快速且功能強大的通用 AI 工作之 GPT 模型</string>
+    <string name="dialog_provider_opencode_note">精選模型，包含 Claude、GPT、Gemini 等等</string>
+    <string name="dialog_provider_opencode_tagline">經過最佳化的可靠模型</string>
+    <string name="dialog_provider_opencodeGo_tagline">適合所有人的低成本訂閱</string>
+    <string name="dialog_provider_openrouter_note">從單一提供者存取所有支援的模型</string>
+    <string name="dialog_provider_search_placeholder">搜尋提供者</string>
+    <string name="dialog_provider_tag_recommended">推薦</string>
+    <string name="dialog_provider_vercel_note">透過智慧路由統一存取 AI 模型</string>
     <string name="dialog_provider_viewAll">查看更多提供者</string>
+    <string name="dialog_releaseNotes_action_getStarted">開始</string>
+    <string name="dialog_releaseNotes_action_hideFuture">不再顯示</string>
+    <string name="dialog_releaseNotes_action_next">下一步</string>
+    <string name="dialog_releaseNotes_media_alt">版本預覽</string>
+    <string name="dialog_server_action_remove">移除伺服器</string>
+    <string name="dialog_server_add_button">新增伺服器</string>
+    <string name="dialog_server_add_checking">檢查中…</string>
+    <string name="dialog_server_add_error">無法連線到伺服器</string>
+    <string name="dialog_server_add_name">伺服器名稱（選填）</string>
+    <string name="dialog_server_add_namePlaceholder">Localhost</string>
+    <string name="dialog_server_add_password">密碼（選填）</string>
+    <string name="dialog_server_add_passwordPlaceholder">密碼</string>
+    <string name="dialog_server_add_placeholder">http://localhost:4096</string>
+    <string name="dialog_server_add_title">新增伺服器</string>
+    <string name="dialog_server_add_url">伺服器 URL</string>
+    <string name="dialog_server_current">目前伺服器</string>
+    <string name="dialog_server_default_clear">清除</string>
+    <string name="dialog_server_default_description">應用程式啟動時連線此伺服器，而不是啟動本機伺服器。需要重新啟動。</string>
+    <string name="dialog_server_default_none">未選擇伺服器</string>
+    <string name="dialog_server_default_set">將目前伺服器設為預設</string>
+    <string name="dialog_server_default_title">預設伺服器</string>
+    <string name="dialog_server_description">切換此應用程式連線的 OpenCode 伺服器。</string>
+    <string name="dialog_server_edit_title">編輯伺服器</string>
+    <string name="dialog_server_empty">尚無伺服器</string>
+    <string name="dialog_server_menu_default">設為預設</string>
+    <string name="dialog_server_menu_defaultRemove">取消預設</string>
+    <string name="dialog_server_menu_delete">刪除</string>
+    <string name="dialog_server_menu_edit">編輯</string>
+    <string name="dialog_server_search_placeholder">搜尋伺服器</string>
+    <string name="dialog_server_status_default">預設</string>
+    <string name="dialog_server_title">伺服器</string>
+    <string name="dialog_usageExceeded_accountRateLimit_actionLabel">開啟設定</string>
+    <string name="dialog_usageExceeded_accountRateLimit_description">已達使用額度上限。若要立即繼續使用此模型，請啟用可用餘額計費</string>
+    <string name="dialog_usageExceeded_accountRateLimit_title">已達 Go 額度上限</string>
+    <string name="dialog_usageExceeded_dontShowAgain">不再顯示</string>
+    <string name="dialog_usageExceeded_freeTier_actionLabel">訂閱</string>
+    <string name="dialog_usageExceeded_freeTier_description">訂閱 OpenCode Go，可靠地使用最佳開源模型，每月 $5 起。</string>
+    <string name="dialog_usageExceeded_freeTier_title">已達免費額度上限</string>
 
-    <!-- provider.* -->
-    <string name="provider_connect_title">連線 %1$s</string>
-    <string name="provider_connect_title_anthropicProMax">使用 Claude Pro/Max 登入</string>
-    <string name="provider_connect_selectMethod">選擇 %1$s 的登入方式。</string>
-    <string name="provider_connect_method_apiKey">API 金鑰</string>
-    <string name="provider_connect_method_browser">瀏覽器</string>
-    <string name="provider_connect_method_headless">無頭模式</string>
-    <string name="provider_connect_status_inProgress">正在授權...</string>
-    <string name="provider_connect_status_waiting">等待授權...</string>
-    <string name="provider_connect_status_failed">授權失敗: %1$s</string>
-    <string name="provider_connect_apiKey_description">輸入你的 %1$s API 金鑰以連線帳戶，並在 OpenCode 中使用 %1$s 模型。</string>
-    <string name="provider_connect_apiKey_label">%1$s API 金鑰</string>
-    <string name="provider_connect_apiKey_placeholder">API 金鑰</string>
-    <string name="provider_connect_apiKey_required">API 金鑰為必填</string>
-    <string name="provider_connect_opencodeZen_line1">OpenCode Zen 為你提供一組精選的可靠最佳化模型，用於程式碼代理程式。</string>
-    <string name="provider_connect_opencodeZen_line2">只需一個 API 金鑰，你就能使用 Claude、GPT、Gemini、GLM 等模型。</string>
-    <string name="provider_connect_opencodeZen_visit_prefix">"造訪 "</string>
-    <string name="provider_connect_opencodeZen_visit_link">opencode.ai/zen</string>
-    <string name="provider_connect_opencodeZen_visit_suffix">" 取得你的 API 金鑰。"</string>
-    <string name="provider_connect_oauth_code_visit_prefix">"造訪 "</string>
-    <string name="provider_connect_oauth_code_visit_link">此連結</string>
-    <string name="provider_connect_oauth_code_visit_suffix">" 取得授權碼，以連線你的帳戶並在 OpenCode 中使用 %1$s 模型。"</string>
-    <string name="provider_connect_oauth_code_label">%1$s 授權碼</string>
-    <string name="provider_connect_oauth_code_placeholder">授權碼</string>
-    <string name="provider_connect_oauth_code_required">授權碼為必填</string>
-    <string name="provider_connect_oauth_code_invalid">授權碼無效</string>
-    <string name="provider_connect_oauth_auto_visit_prefix">"造訪 "</string>
-    <string name="provider_connect_oauth_auto_visit_link">此連結</string>
-    <string name="provider_connect_oauth_auto_visit_suffix">" 並輸入以下程式碼，以連線你的帳戶並在 OpenCode 中使用 %1$s 模型。"</string>
-    <string name="provider_connect_oauth_auto_confirmationCode">確認碼</string>
-    <string name="provider_connect_toast_connected_title">%1$s 已連線</string>
-    <string name="provider_connect_toast_connected_description">現在可以使用 %1$s 模型了。</string>
-    <string name="provider_custom_title">自訂提供者</string>
-    <string name="provider_custom_unavailable">此伺服器無法使用自訂提供者</string>
-    <string name="provider_custom_description_prefix">設定與 OpenAI 相容的提供者。請參閱</string>
-    <string name="provider_custom_description_link">提供者設定文件</string>
-    <string name="provider_custom_description_suffix">。</string>
-    <string name="provider_custom_field_providerID_label">提供者 ID</string>
-    <string name="provider_custom_field_providerID_placeholder">myprovider</string>
-    <string name="provider_custom_field_providerID_description">使用小寫字母、數字、連字號或底線</string>
-    <string name="provider_custom_field_name_label">顯示名稱</string>
-    <string name="provider_custom_field_name_placeholder">我的 AI 提供者</string>
-    <string name="provider_custom_field_baseURL_label">基底 URL</string>
-    <string name="provider_custom_field_baseURL_placeholder">https://api.myprovider.com/v1</string>
-    <string name="provider_custom_field_apiKey_label">API 金鑰</string>
-    <string name="provider_custom_field_apiKey_placeholder">API 金鑰</string>
-    <string name="provider_custom_field_apiKey_description">選填。若您透過標頭管理驗證，可留空。</string>
-    <string name="provider_custom_models_label">模型</string>
-    <string name="provider_custom_models_id_label">ID</string>
-    <string name="provider_custom_models_id_placeholder">model-id</string>
-    <string name="provider_custom_models_name_label">名稱</string>
-    <string name="provider_custom_models_name_placeholder">顯示名稱</string>
-    <string name="provider_custom_models_remove">移除模型</string>
-    <string name="provider_custom_models_add">新增模型</string>
-    <string name="provider_custom_headers_label">標頭（選填）</string>
-    <string name="provider_custom_headers_key_label">標頭</string>
-    <string name="provider_custom_headers_key_placeholder">Header-Name</string>
-    <string name="provider_custom_headers_value_label">值</string>
-    <string name="provider_custom_headers_value_placeholder">value</string>
-    <string name="provider_custom_headers_remove">移除標頭</string>
-    <string name="provider_custom_headers_add">新增標頭</string>
-    <string name="provider_custom_error_providerID_required">提供者 ID 為必填</string>
-    <string name="provider_custom_error_providerID_format">請使用小寫字母、數字、連字號或底線</string>
-    <string name="provider_custom_error_providerID_exists">該提供者 ID 已存在</string>
-    <string name="provider_custom_error_name_required">顯示名稱為必填</string>
-    <string name="provider_custom_error_baseURL_required">基底 URL 為必填</string>
-    <string name="provider_custom_error_baseURL_format">必須以 http:// 或 https:// 開頭</string>
-    <string name="provider_custom_error_required">必填</string>
-    <string name="provider_custom_error_duplicate">重複</string>
-    <string name="provider_disconnect_toast_disconnected_title">%1$s 已中斷連線</string>
-    <string name="provider_disconnect_toast_disconnected_description">%1$s 模型已不再可用。</string>
+    <!-- directory.* -->
+    <string name="directory_error_invalidUrl">URL 中的目錄無效。</string>
+
+    <!-- error.* -->
+    <string name="error_chain_apiError">API 錯誤</string>
+    <string name="error_chain_causedBy">原因:</string>
+    <string name="error_chain_checkConfig">請檢查你的設定 (opencode.json) 中的 provider/model 名稱</string>
+    <string name="error_chain_configDirectoryTypo">%1$s 中的目錄 \"%2$s\" 無效。請將目錄重新命名為 \"%3$s\" 或移除它。這是一個常見拼寫錯誤。</string>
+    <string name="error_chain_configFrontmatterError">無法解析 %1$s 中的 frontmatter:\n%2$s</string>
+    <string name="error_chain_configInvalid">設定檔 %1$s 無效</string>
+    <string name="error_chain_configInvalidWithMessage">設定檔 %1$s 無效: %2$s</string>
+    <string name="error_chain_configJsonInvalid">設定檔 %1$s 不是有效的 JSON(C)</string>
+    <string name="error_chain_configJsonInvalidWithMessage">設定檔 %1$s 不是有效的 JSON(C): %2$s</string>
+    <string name="error_chain_didYouMean">你是不是想輸入: %1$s</string>
+    <string name="error_chain_mcpFailed">MCP 伺服器「%1$s」啟動失敗。注意：OpenCode 尚不支援 MCP 驗證。</string>
+    <string name="error_chain_modelNotFound">找不到模型: %1$s/%2$s</string>
+    <string name="error_chain_providerAuthFailed">提供者驗證失敗（%1$s）：%2$s</string>
+    <string name="error_chain_providerInitFailed">無法初始化提供者 \"%1$s\"。請檢查憑證和設定。</string>
+    <string name="error_chain_responseBody">回應內容:\n%1$s</string>
+    <string name="error_chain_retryable">可重試: %1$s</string>
+    <string name="error_chain_status">狀態: %1$s</string>
+    <string name="error_chain_unknown">未知錯誤</string>
+    <string name="error_childStore_persistedCacheCreateFailed">建立持續性快取失敗</string>
+    <string name="error_childStore_persistedProjectIconCreateFailed">建立持續性專案圖示失敗</string>
+    <string name="error_childStore_persistedProjectMetadataCreateFailed">建立持續性專案中繼資料失敗</string>
+    <string name="error_childStore_storeCreateFailed">建立儲存區失敗</string>
+    <string name="error_dev_rootNotFound">找不到根元素。你是不是忘了把它新增到 index.html？或者 id 屬性拼錯了？</string>
+    <string name="error_page_action_checkUpdates">檢查更新</string>
+    <string name="error_page_action_checking">檢查中…</string>
+    <string name="error_page_action_exportLogs">匯出記錄檔</string>
+    <string name="error_page_action_report">回報錯誤</string>
+    <string name="error_page_action_reported">已回報錯誤</string>
+    <string name="error_page_action_restart">重新啟動</string>
+    <string name="error_page_action_updateTo">更新到 %1$s</string>
+    <string name="error_page_circular">[循環]</string>
+    <string name="error_page_description">載入應用程式時發生錯誤。</string>
+    <string name="error_page_description_localServerStartup">啟動本機伺服器時發生錯誤。</string>
+    <string name="error_page_details_label">錯誤詳情</string>
+    <string name="error_page_report_discord">在 Discord 上</string>
+    <string name="error_page_report_prefix">請將此錯誤回報給 OpenCode 團隊</string>
+    <string name="error_page_title">出了點問題</string>
+    <string name="error_page_version">版本: %1$s</string>
+    <string name="error_server_invalidConfiguration">無效的設定</string>
+    <string name="error_serverSDK_noServerAvailable">無可用的伺服器</string>
+    <string name="error_serverSDK_serverNotAvailable">伺服器無法使用</string>
+    <string name="error_serverSync_connectFailed">無法連線到伺服器。是否有伺服器正在 `%1$s` 執行？</string>
+
+    <!-- home.* -->
+    <string name="home_empty_description">開啟本機專案以開始使用</string>
+    <string name="home_empty_title">沒有最近專案</string>
+    <string name="home_project_add">新增專案</string>
+    <string name="home_projects">專案</string>
+    <string name="home_providerTip">連線 75 個以上的提供者，使用 Claude、GPT、Gemini 等其他模型</string>
+    <string name="home_recentProjects">最近專案</string>
+    <string name="home_recentlyClosed">最近關閉</string>
+    <string name="home_server_collapse">收合伺服器專案</string>
+    <string name="home_server_expand">展開伺服器專案</string>
+    <string name="home_sessions_empty">這裡還沒有內容</string>
+    <string name="home_sessions_empty_description">建立工作階段以開始使用</string>
+    <string name="home_sessions_group_older">更早</string>
+    <string name="home_sessions_group_today">今天</string>
+    <string name="home_sessions_group_yesterday">昨天</string>
+    <string name="home_sessions_search_noResults">找不到符合 %1$s 的工作階段</string>
+    <string name="home_sessions_search_placeholder">搜尋工作階段</string>
+    <string name="home_sessions_search_placeholder_scoped">在 %1$s 中搜尋工作階段</string>
+    <string name="home_sessions_search_sessions">工作階段</string>
+    <string name="home_title">首頁</string>
+
+    <!-- language.* -->
+    <string name="language_ar">العربية</string>
+    <string name="language_br">Português (Brasil)</string>
+    <string name="language_bs">Bosanski</string>
+    <string name="language_da">Dansk</string>
+    <string name="language_de">Deutsch</string>
+    <string name="language_en">English</string>
+    <string name="language_es">Español</string>
+    <string name="language_fr">Français</string>
+    <string name="language_ja">日本語</string>
+    <string name="language_ko">한국어</string>
+    <string name="language_no">Norsk</string>
+    <string name="language_pl">Polski</string>
+    <string name="language_ru">Русский</string>
+    <string name="language_th">ไทย</string>
+    <string name="language_tr">Türkçe</string>
+    <string name="language_uk">Українська</string>
+    <string name="language_zh">简体中文</string>
+    <string name="language_zht">繁體中文</string>
+
+    <!-- lsp.* -->
+    <string name="lsp_label_connected">%1$s LSP</string>
+    <string name="lsp_tooltip_none">沒有 LSP 伺服器</string>
+
+    <!-- mcp.* -->
+    <string name="mcp_auth_clickToAuthenticate">按一下以進行授權</string>
+    <string name="mcp_status_connected">已連線</string>
+    <string name="mcp_status_disabled">已停用</string>
+    <string name="mcp_status_failed">失敗</string>
+    <string name="mcp_status_needs_auth">需要授權</string>
 
     <!-- model.* -->
+    <string name="model_input_audio">音訊</string>
+    <string name="model_input_image">圖片</string>
+    <string name="model_input_pdf">PDF</string>
+    <string name="model_input_text">文字</string>
+    <string name="model_input_video">影片</string>
+    <string name="model_provider_anthropic">Anthropic</string>
+    <string name="model_provider_google">Google</string>
+    <string name="model_provider_meta">Meta</string>
+    <string name="model_provider_openai">OpenAI</string>
+    <string name="model_provider_xai">xAI</string>
     <string name="model_tag_free">免費</string>
     <string name="model_tag_latest">最新</string>
-    <string name="model_provider_anthropic">Anthropic</string>
-    <string name="model_provider_openai">OpenAI</string>
-    <string name="model_provider_google">Google</string>
-    <string name="model_provider_xai">xAI</string>
-    <string name="model_provider_meta">Meta</string>
-    <string name="model_input_text">文字</string>
-    <string name="model_input_image">圖片</string>
-    <string name="model_input_audio">音訊</string>
-    <string name="model_input_video">影片</string>
-    <string name="model_input_pdf">PDF</string>
     <string name="model_tooltip_allows">支援: %1$s</string>
+    <string name="model_tooltip_context">上下文上限 %1$s</string>
     <string name="model_tooltip_context_label">上下文</string>
     <string name="model_tooltip_inputs">輸入</string>
     <string name="model_tooltip_model">模型</string>
@@ -428,42 +516,53 @@
     <string name="model_tooltip_reasoning">推理</string>
     <string name="model_tooltip_reasoning_allowed">支援推理</string>
     <string name="model_tooltip_reasoning_none">不支援推理</string>
-    <string name="model_tooltip_context">上下文上限 %1$s</string>
 
-    <!-- common.* -->
-    <string name="common_search_placeholder">搜尋</string>
-    <string name="common_goBack">返回</string>
-    <string name="common_goForward">前進</string>
-    <string name="common_loading">載入中</string>
-    <string name="common_loading_ellipsis">...</string>
-    <string name="common_cancel">取消</string>
-    <string name="common_clear">清除</string>
-    <string name="common_open">開啟</string>
-    <string name="common_connect">連線</string>
-    <string name="common_disconnect">中斷連線</string>
-    <string name="common_continue">繼續</string>
-    <string name="common_submit">提交</string>
-    <string name="common_save">儲存</string>
-    <string name="common_saving">儲存中...</string>
-    <string name="common_default">預設</string>
-    <string name="common_attachment">附件</string>
+    <!-- notification.* -->
+    <string name="notification_action_goToSession">前往工作階段</string>
+    <string name="notification_permission_description">%1$s（%2$s）需要權限</string>
+    <string name="notification_permission_title">需要權限</string>
+    <string name="notification_question_description">%1$s（%2$s）有一個問題</string>
+    <string name="notification_question_title">問題</string>
+    <string name="notification_session_error_fallbackDescription">發生錯誤</string>
+    <string name="notification_session_error_title">工作階段錯誤</string>
+    <string name="notification_session_responseReady_title">回覆已就緒</string>
+
+    <!-- palette.* -->
+    <string name="palette_empty">找不到結果</string>
+    <string name="palette_group_commands">命令</string>
+    <string name="palette_group_files">檔案</string>
+    <string name="palette_search_placeholder">搜尋檔案、命令和工作階段</string>
+    <string name="palette_search_placeholder_home">搜尋命令和工作階段</string>
 
     <!-- prompt.* -->
-    <string name="prompt_placeholder_shell">輸入 shell 命令... %1$s</string>
-    <string name="prompt_placeholder_simple">想問什麼都可以…</string>
-    <string name="prompt_placeholder_summarizeComments">摘要留言…</string>
-    <string name="prompt_placeholder_summarizeComment">摘要這則留言…</string>
-    <string name="prompt_mode_shell">Shell</string>
-    <string name="prompt_mode_normal">Prompt</string>
-    <string name="prompt_mode_shell_exit">按 esc 退出</string>
-
-    <!-- session.* -->
-    <string name="session_child_promptDisabled">無法在子代理程式工作階段中輸入提示詞。</string>
-    <string name="session_child_backToParent">返回主要工作階段。</string>
-
-    <!-- prompt.* -->
+    <string name="prompt_action_attachFile">附加檔案</string>
+    <string name="prompt_action_send">傳送</string>
+    <string name="prompt_action_stop">停止</string>
+    <string name="prompt_attachment_remove">移除附件</string>
+    <string name="prompt_context_active">作用中</string>
+    <string name="prompt_context_includeActiveFile">包含作用中檔案</string>
+    <string name="prompt_context_removeActiveFile">從上下文移除目前檔案</string>
+    <string name="prompt_context_removeFile">從上下文移除檔案</string>
+    <string name="prompt_dropzone_file_label">拖放以 @提及檔案</string>
+    <string name="prompt_dropzone_label">將圖片、PDF 或文字檔案拖放到此處</string>
     <string name="prompt_example_1">修復程式碼庫中的一個 TODO</string>
+    <string name="prompt_example_10">產生 API 文件</string>
+    <string name="prompt_example_11">最佳化資料庫查詢</string>
+    <string name="prompt_example_12">新增輸入驗證</string>
+    <string name="prompt_example_13">建立一個新的元件用於…</string>
+    <string name="prompt_example_14">我該如何部署這個專案？</string>
+    <string name="prompt_example_15">檢閱我的程式碼並提供最佳實務建議</string>
+    <string name="prompt_example_16">為這個函式新增錯誤處理</string>
+    <string name="prompt_example_17">解釋這個正規表示式</string>
+    <string name="prompt_example_18">把它轉換成 TypeScript</string>
+    <string name="prompt_example_19">在整個程式碼庫中加入記錄功能</string>
     <string name="prompt_example_2">這個專案的技術堆疊是什麼？</string>
+    <string name="prompt_example_20">哪些相依性已經過期？</string>
+    <string name="prompt_example_21">幫我寫一個遷移腳本</string>
+    <string name="prompt_example_22">為這個端點實作快取</string>
+    <string name="prompt_example_23">為這份清單加入分頁功能</string>
+    <string name="prompt_example_24">建立一個 CLI 命令用於…</string>
+    <string name="prompt_example_25">這裡的環境變數是怎麼運作的？</string>
     <string name="prompt_example_3">修復失敗的測試</string>
     <string name="prompt_example_4">解釋驗證是如何運作的</string>
     <string name="prompt_example_5">尋找並修復安全漏洞</string>
@@ -471,698 +570,1069 @@
     <string name="prompt_example_7">重構這個函式，讓它更易讀</string>
     <string name="prompt_example_8">這個錯誤是什麼意思？</string>
     <string name="prompt_example_9">幫我偵錯這個問題</string>
-    <string name="prompt_example_10">產生 API 文件</string>
-    <string name="prompt_example_11">最佳化資料庫查詢</string>
-    <string name="prompt_example_12">新增輸入驗證</string>
-    <string name="prompt_example_13">建立一個新的元件用於...</string>
-    <string name="prompt_example_14">我該如何部署這個專案？</string>
-    <string name="prompt_example_15">檢閱我的程式碼並提供最佳實務建議</string>
-    <string name="prompt_example_16">為這個函式新增錯誤處理</string>
-    <string name="prompt_example_17">解釋這個正規表示式</string>
-    <string name="prompt_example_18">把它轉換成 TypeScript</string>
-    <string name="prompt_example_19">在整個程式碼庫中加入記錄功能</string>
-    <string name="prompt_example_20">哪些相依性已經過期？</string>
-    <string name="prompt_example_21">幫我寫一個遷移腳本</string>
-    <string name="prompt_example_22">為這個端點實作快取</string>
-    <string name="prompt_example_23">為這份清單加入分頁功能</string>
-    <string name="prompt_example_24">建立一個 CLI 命令用於...</string>
-    <string name="prompt_example_25">這裡的環境變數是怎麼運作的？</string>
-    <string name="prompt_popover_emptyResults">沒有符合的結果</string>
-    <string name="prompt_popover_emptyCommands">沒有符合的命令</string>
-    <string name="prompt_dropzone_label">將圖片、PDF 或文字檔案拖放到此處</string>
-    <string name="prompt_dropzone_file_label">拖放以 @提及檔案</string>
-    <string name="prompt_slash_badge_custom">自訂</string>
-    <string name="prompt_slash_badge_skill">技能</string>
-    <string name="prompt_slash_badge_mcp">mcp</string>
-    <string name="prompt_context_active">作用中</string>
-    <string name="prompt_context_includeActiveFile">包含作用中檔案</string>
-    <string name="prompt_context_removeActiveFile">從上下文移除目前檔案</string>
-    <string name="prompt_context_removeFile">從上下文移除檔案</string>
-    <string name="prompt_action_attachFile">附加檔案</string>
+    <string name="prompt_loading">正在載入提示…</string>
     <string name="prompt_menu_addImagesAndFiles">新增檔案及更多內容</string>
-    <string name="prompt_menu_imagesAndFiles">圖片和檔案</string>
     <string name="prompt_menu_commands">命令</string>
     <string name="prompt_menu_context">上下文</string>
+    <string name="prompt_menu_imagesAndFiles">圖片和檔案</string>
     <string name="prompt_menu_shellCommand">shell 命令</string>
-    <string name="prompt_attachment_remove">移除附件</string>
-    <string name="prompt_action_send">傳送</string>
-    <string name="prompt_action_stop">停止</string>
-    <string name="prompt_toast_pasteUnsupported_title">不支援的附件</string>
-    <string name="prompt_toast_pasteUnsupported_description">此處僅能附加圖片、PDF 或文字檔案。</string>
+    <string name="prompt_mode_normal">Prompt</string>
+    <string name="prompt_mode_shell">Shell</string>
+    <string name="prompt_mode_shell_exit">按 esc 退出</string>
+    <string name="prompt_placeholder_normal">想問什麼都可以…「%1$s」</string>
+    <string name="prompt_placeholder_shell">輸入 shell 命令… %1$s</string>
+    <string name="prompt_placeholder_simple">想問什麼都可以…</string>
+    <string name="prompt_placeholder_summarizeComment">摘要這則留言…</string>
+    <string name="prompt_placeholder_summarizeComments">摘要留言…</string>
+    <string name="prompt_popover_emptyCommands">沒有符合的命令</string>
+    <string name="prompt_popover_emptyResults">沒有符合的結果</string>
+    <string name="prompt_slash_badge_custom">自訂</string>
+    <string name="prompt_slash_badge_mcp">mcp</string>
+    <string name="prompt_slash_badge_skill">技能</string>
     <string name="prompt_toast_attachmentDuplicate_title">此檔案已上傳</string>
-    <string name="prompt_toast_modelAgentRequired_title">請選擇代理程式和模型</string>
+    <string name="prompt_toast_commandSendFailed_title">傳送命令失敗</string>
     <string name="prompt_toast_modelAgentRequired_description">傳送提示前請先選擇代理程式和模型。</string>
-    <string name="prompt_toast_worktreeCreateFailed_title">建立工作樹失敗</string>
+    <string name="prompt_toast_modelAgentRequired_title">請選擇代理程式和模型</string>
+    <string name="prompt_toast_promptSendFailed_description">無法取得工作階段</string>
+    <string name="prompt_toast_promptSendFailed_title">傳送提示失敗</string>
     <string name="prompt_toast_sessionCreateFailed_title">建立工作階段失敗</string>
     <string name="prompt_toast_shellSendFailed_title">傳送 shell 命令失敗</string>
-    <string name="prompt_toast_commandSendFailed_title">傳送命令失敗</string>
-    <string name="prompt_toast_promptSendFailed_title">傳送提示失敗</string>
-    <string name="prompt_toast_promptSendFailed_description">無法取得工作階段</string>
-    <string name="prompt_toast_promptSendFailed_retry">重試</string>
+    <string name="prompt_toast_worktreeCreateFailed_title">建立工作樹失敗</string>
 
-    <!-- dialog.* -->
-    <string name="dialog_mcp_title">MCP</string>
-    <string name="dialog_mcp_description">已啟用 %1$s / %2$s</string>
-    <string name="dialog_mcp_empty">未設定 MCP</string>
-    <string name="dialog_lsp_empty">會根據檔案類型自動偵測 LSP</string>
-    <string name="dialog_plugins_empty">在 opencode.json 中設定的外掛程式</string>
-
-    <!-- mcp.* -->
-    <string name="mcp_status_connected">已連線</string>
-    <string name="mcp_status_failed">失敗</string>
-    <string name="mcp_status_needs_auth">需要授權</string>
-    <string name="mcp_status_disabled">已停用</string>
-    <string name="mcp_auth_clickToAuthenticate">按一下以進行授權</string>
-
-    <!-- dialog.* -->
-    <string name="dialog_fork_empty">沒有可用於分支的訊息</string>
-    <string name="dialog_directory_search_placeholder">搜尋資料夾</string>
-    <string name="dialog_directory_empty">找不到資料夾</string>
-    <string name="dialog_directory_action_selectFile">選擇檔案</string>
-    <string name="dialog_directory_action_selectFolder">選擇資料夾</string>
-    <string name="dialog_directory_root">根目錄</string>
-    <string name="dialog_directory_parent">上層目錄</string>
-    <string name="dialog_directory_readError">無法讀取此資料夾</string>
-
-    <!-- app.* -->
-    <string name="app_server_unreachable">無法連線至 %1$s</string>
-    <string name="app_server_retrying">正在自動重試...</string>
-    <string name="app_server_otherServers">其他伺服器</string>
-
-    <!-- dialog.* -->
-    <string name="dialog_server_title">伺服器</string>
-    <string name="dialog_server_description">切換此應用程式連線的 OpenCode 伺服器。</string>
-    <string name="dialog_server_search_placeholder">搜尋伺服器</string>
-    <string name="dialog_server_empty">尚無伺服器</string>
-    <string name="dialog_server_add_title">新增伺服器</string>
-    <string name="dialog_server_add_url">伺服器 URL</string>
-    <string name="dialog_server_add_placeholder">http://localhost:4096</string>
-    <string name="dialog_server_add_error">無法連線到伺服器</string>
-    <string name="dialog_server_add_checking">檢查中...</string>
-    <string name="dialog_server_add_button">新增伺服器</string>
-    <string name="dialog_server_add_name">伺服器名稱（選填）</string>
-    <string name="dialog_server_add_namePlaceholder">Localhost</string>
-    <string name="dialog_server_add_username">使用者名稱（選填）</string>
-    <string name="dialog_server_add_usernamePlaceholder">使用者名稱</string>
-    <string name="dialog_server_add_password">密碼（選填）</string>
-    <string name="dialog_server_add_passwordPlaceholder">密碼</string>
-    <string name="dialog_server_edit_title">編輯伺服器</string>
-    <string name="dialog_server_default_title">預設伺服器</string>
-    <string name="dialog_server_default_description">應用程式啟動時連線此伺服器，而不是啟動本機伺服器。需要重新啟動。</string>
-    <string name="dialog_server_default_none">未選擇伺服器</string>
-    <string name="dialog_server_default_set">將目前伺服器設為預設</string>
-    <string name="dialog_server_default_clear">清除</string>
-    <string name="dialog_server_action_remove">移除伺服器</string>
-    <string name="dialog_server_menu_edit">編輯</string>
-    <string name="dialog_server_menu_default">設為預設</string>
-    <string name="dialog_server_menu_defaultRemove">取消預設</string>
-    <string name="dialog_server_menu_delete">刪除</string>
-    <string name="dialog_server_current">目前伺服器</string>
-    <string name="dialog_server_status_default">預設</string>
-
-    <!-- help.* -->
-    <string name="help_tabs_toast_ariaLabel">分頁功能介紹。使用分頁整理工作和進行中的工作階段</string>
-    <string name="help_tabs_toast_dismiss">關閉分頁功能資訊</string>
-    <string name="help_tabs_title">分頁功能介紹</string>
-    <string name="help_tabs_description">使用分頁整理工作和進行中的工作階段</string>
-    <string name="help_tabs_date">7 月 14 日</string>
-    <string name="help_tabs_introduction">OpenCode Desktop 現在以分頁為核心。</string>
-    <string name="help_tabs_sessions">在分頁中開始新的工作階段，或從任一專案開啟現有的工作階段。開始新工作時請開啟新分頁，完成後再將其關閉。</string>
-    <string name="help_tabs_organize">同時開啟幾個分頁，可讓進行中的工作階段更容易整理。如果打算保留分頁，請將其重新命名為容易記住的名稱。</string>
-    <string name="help_tabs_home">你可以在新的首頁找到所有工作階段和專案。選取工作階段即可在分頁中開啟。</string>
-    <string name="help_tabs_persistence">重新開啟應用程式時，分頁仍會保持開啟。</string>
-    <string name="help_tabs_worktrees">新版設計尚未支援 Git Worktrees，此功能即將推出。如果你偏好繼續使用先前的版面，可以在設定中切換版面。請留意，新版面將在幾週後成為永久版面。</string>
-
-    <!-- server.* -->
-    <string name="server_row_noUsername">無使用者名稱</string>
-
-    <!-- dialog.* -->
-    <string name="dialog_project_edit_title">編輯專案</string>
-    <string name="dialog_project_edit_name">名稱</string>
-    <string name="dialog_project_edit_icon">圖示</string>
-    <string name="dialog_project_edit_icon_alt">專案圖示</string>
-    <string name="dialog_project_edit_icon_hint">按一下或拖曳圖片</string>
-    <string name="dialog_project_edit_icon_recommended">建議：128x128px</string>
-    <string name="dialog_project_edit_color">顏色</string>
-    <string name="dialog_project_edit_color_select">選擇%1$s顏色</string>
-    <string name="dialog_project_edit_worktree_startup">工作區啟動腳本</string>
-    <string name="dialog_project_edit_worktree_startup_description">在建立新的工作區 (worktree) 後執行。</string>
-    <string name="dialog_project_edit_worktree_startup_placeholder">例如 bun install</string>
-    <string name="dialog_releaseNotes_action_getStarted">開始</string>
-    <string name="dialog_releaseNotes_action_next">下一步</string>
-    <string name="dialog_releaseNotes_action_hideFuture">不再顯示</string>
-    <string name="dialog_releaseNotes_media_alt">版本預覽</string>
-    <string name="dialog_usageExceeded_dontShowAgain">不再顯示</string>
-
-    <!-- context.* -->
-    <string name="context_breakdown_title">上下文細分</string>
-    <string name="context_breakdown_system">系統</string>
-    <string name="context_breakdown_user">使用者</string>
-    <string name="context_breakdown_assistant">助理</string>
-    <string name="context_breakdown_tool">工具呼叫</string>
-    <string name="context_breakdown_other">其他</string>
-    <string name="context_systemPrompt_title">系統提示詞</string>
-    <string name="context_rawMessages_title">原始訊息</string>
-    <string name="context_export_session">匯出工作階段</string>
-    <string name="context_stats_session">工作階段</string>
-    <string name="context_stats_messages">訊息數</string>
-    <string name="context_stats_provider">提供者</string>
-    <string name="context_stats_model">模型</string>
-    <string name="context_stats_limit">上下文限制</string>
-    <string name="context_stats_totalTokens">總 token</string>
-    <string name="context_stats_usage">使用量</string>
-    <string name="context_stats_inputTokens">輸入 token</string>
-    <string name="context_stats_outputTokens">輸出 token</string>
-    <string name="context_stats_reasoningTokens">推理 token</string>
-    <string name="context_stats_cacheTokens">快取 token（讀/寫）</string>
-    <string name="context_stats_userMessages">使用者訊息</string>
-    <string name="context_stats_assistantMessages">助理訊息</string>
-    <string name="context_stats_totalCost">總成本</string>
-    <string name="context_stats_sessionCreated">建立時間</string>
-    <string name="context_stats_lastActivity">最後活動</string>
-    <string name="context_usage_tokens">Token</string>
-    <string name="context_usage_usage">使用量</string>
-    <string name="context_usage_cost">成本</string>
-    <string name="context_usage_clickToView">按一下以檢視上下文</string>
-    <string name="context_usage_view">檢視上下文用量</string>
-
-    <!-- language.* -->
-    <string name="language_en">English</string>
-    <string name="language_zh">简体中文</string>
-    <string name="language_zht">繁體中文</string>
-    <string name="language_ko">한국어</string>
-    <string name="language_de">Deutsch</string>
-    <string name="language_es">Español</string>
-    <string name="language_fr">Français</string>
-    <string name="language_da">Dansk</string>
-    <string name="language_ja">日本語</string>
-    <string name="language_pl">Polski</string>
-    <string name="language_ru">Русский</string>
-    <string name="language_ar">العربية</string>
-    <string name="language_no">Norsk</string>
-    <string name="language_br">Português (Brasil)</string>
-    <string name="language_bs">Bosanski</string>
-    <string name="language_uk">Українська</string>
-    <string name="language_th">ไทย</string>
-    <string name="language_tr">Türkçe</string>
-
-    <!-- toast.* -->
-    <string name="toast_language_title">語言</string>
-    <string name="toast_language_description">已切換到 %1$s</string>
-    <string name="toast_theme_title">主題已切換</string>
-    <string name="toast_scheme_title">配色方案</string>
-    <string name="toast_workspace_enabled_title">工作區已啟用</string>
-    <string name="toast_workspace_enabled_description">側邊欄現在顯示多個工作樹</string>
-    <string name="toast_workspace_disabled_title">工作區已停用</string>
-    <string name="toast_workspace_disabled_description">側邊欄只顯示主工作樹</string>
-    <string name="toast_permissions_autoaccept_on_title">正在自動接受權限</string>
-    <string name="toast_permissions_autoaccept_on_description">權限要求將自動獲准</string>
-    <string name="toast_permissions_autoaccept_off_title">已停止自動接受權限</string>
-    <string name="toast_permissions_autoaccept_off_description">權限要求將需要核准</string>
-    <string name="toast_model_none_title">未選擇模型</string>
-    <string name="toast_model_none_description">請先連線提供者以摘要此工作階段</string>
-    <string name="toast_file_loadFailed_title">載入檔案失敗</string>
-    <string name="toast_file_listFailed_title">列出檔案失敗</string>
-    <string name="toast_context_noLineSelection_title">未選取行</string>
-    <string name="toast_context_noLineSelection_description">請先在檔案分頁中選取行範圍。</string>
-    <string name="toast_session_share_copyFailed_title">無法複製連結到剪貼簿</string>
-    <string name="toast_session_share_success_title">工作階段已分享</string>
-    <string name="toast_session_share_success_description">分享連結已複製到剪貼簿</string>
-    <string name="toast_session_share_failed_title">分享工作階段失敗</string>
-    <string name="toast_session_share_failed_description">分享工作階段時發生錯誤</string>
-    <string name="toast_session_unshare_success_title">已取消分享工作階段</string>
-    <string name="toast_session_unshare_success_description">工作階段已成功取消分享</string>
-    <string name="toast_session_unshare_failed_title">取消分享失敗</string>
-    <string name="toast_session_unshare_failed_description">取消分享工作階段時發生錯誤</string>
-    <string name="toast_session_export_success_title">工作階段已匯出</string>
-    <string name="toast_session_export_success_description">已將工作階段儲存至 %1$s</string>
-    <string name="toast_session_export_failed_title">匯出工作階段失敗</string>
-    <string name="toast_session_export_failed_description">匯出工作階段時發生錯誤</string>
-    <string name="toast_session_listFailed_title">無法載入 %1$s 的工作階段</string>
-    <string name="toast_project_reloadFailed_title">無法重新載入 %1$s</string>
-    <string name="toast_update_title">有可用更新</string>
-    <string name="toast_update_description">OpenCode 有新版本 (%1$s) 可安裝。</string>
-    <string name="toast_update_action_installRestart">安裝並重新啟動</string>
-    <string name="toast_update_action_notYet">稍後</string>
-
-    <!-- error.* -->
-    <string name="error_page_title">出了點問題</string>
-    <string name="error_page_description">載入應用程式時發生錯誤。</string>
-    <string name="error_page_description_localServerStartup">啟動本機伺服器時發生錯誤。</string>
-    <string name="error_page_details_label">錯誤詳情</string>
-    <string name="error_page_action_restart">重新啟動</string>
-    <string name="error_page_action_report">回報錯誤</string>
-    <string name="error_page_action_reported">已回報錯誤</string>
-    <string name="error_page_action_exportLogs">匯出記錄檔</string>
-    <string name="error_page_action_checking">檢查中...</string>
-    <string name="error_page_action_checkUpdates">檢查更新</string>
-    <string name="error_page_action_updateTo">更新到 %1$s</string>
-    <string name="error_page_circular">[循環]</string>
-    <string name="error_page_report_prefix">請將此錯誤回報給 OpenCode 團隊</string>
-    <string name="error_page_report_discord">在 Discord 上</string>
-    <string name="error_page_version">版本: %1$s</string>
-    <string name="error_dev_rootNotFound">找不到根元素。你是不是忘了把它新增到 index.html？或者 id 屬性拼錯了？</string>
-    <string name="error_serverSync_connectFailed">無法連線到伺服器。是否有伺服器正在 `%1$s` 執行？</string>
-    <string name="error_serverSDK_noServerAvailable">無可用的伺服器</string>
-    <string name="error_serverSDK_serverNotAvailable">伺服器無法使用</string>
-    <string name="error_childStore_persistedCacheCreateFailed">建立持續性快取失敗</string>
-    <string name="error_childStore_persistedProjectMetadataCreateFailed">建立持續性專案中繼資料失敗</string>
-    <string name="error_childStore_persistedProjectIconCreateFailed">建立持續性專案圖示失敗</string>
-    <string name="error_childStore_storeCreateFailed">建立儲存區失敗</string>
-
-    <!-- directory.* -->
-    <string name="directory_error_invalidUrl">URL 中的目錄無效。</string>
-
-    <!-- error.* -->
-    <string name="error_chain_unknown">未知錯誤</string>
-    <string name="error_server_invalidConfiguration">無效的設定</string>
-    <string name="error_chain_causedBy">原因:</string>
-    <string name="error_chain_apiError">API 錯誤</string>
-    <string name="error_chain_status">狀態: %1$s</string>
-    <string name="error_chain_retryable">可重試: %1$s</string>
-    <string name="error_chain_didYouMean">你是不是想輸入: %1$s</string>
-    <string name="error_chain_modelNotFound">找不到模型: %1$s/%2$s</string>
-    <string name="error_chain_checkConfig">請檢查你的設定 (opencode.json) 中的 provider/model 名稱</string>
-    <string name="error_chain_providerAuthFailed">提供者驗證失敗（%1$s）：%2$s</string>
-    <string name="error_chain_configJsonInvalid">設定檔 %1$s 不是有效的 JSON(C)</string>
-    <string name="error_chain_configJsonInvalidWithMessage">設定檔 %1$s 不是有效的 JSON(C): %2$s</string>
-    <string name="error_chain_configInvalid">設定檔 %1$s 無效</string>
-    <string name="error_chain_configInvalidWithMessage">設定檔 %1$s 無效: %2$s</string>
-
-    <!-- notification.* -->
-    <string name="notification_permission_title">需要權限</string>
-    <string name="notification_permission_description">%1$s（%2$s）需要權限</string>
-    <string name="notification_question_title">問題</string>
-    <string name="notification_question_description">%1$s（%2$s）有一個問題</string>
-    <string name="notification_action_goToSession">前往工作階段</string>
-    <string name="notification_session_responseReady_title">回覆已就緒</string>
-    <string name="notification_session_error_title">工作階段錯誤</string>
-    <string name="notification_session_error_fallbackDescription">發生錯誤</string>
-
-    <!-- home.* -->
-    <string name="home_recentProjects">最近專案</string>
-    <string name="home_empty_title">沒有最近專案</string>
-    <string name="home_empty_description">開啟本機專案以開始使用</string>
-    <string name="home_title">首頁</string>
-    <string name="home_projects">專案</string>
-    <string name="home_project_add">新增專案</string>
-    <string name="home_recentlyClosed">最近關閉</string>
-    <string name="home_server_collapse">收合伺服器專案</string>
-    <string name="home_server_expand">展開伺服器專案</string>
-    <string name="home_sessions_search_placeholder">搜尋工作階段</string>
-    <string name="home_sessions_search_placeholder_scoped">在 %1$s 中搜尋工作階段</string>
-    <string name="home_sessions_search_sessions">工作階段</string>
-    <string name="home_sessions_search_noResults">找不到符合 %1$s 的工作階段</string>
-    <string name="home_sessions_empty">這裡還沒有內容</string>
-    <string name="home_sessions_empty_description">建立工作階段以開始使用</string>
-    <string name="home_sessions_group_today">今天</string>
-    <string name="home_sessions_group_yesterday">昨天</string>
-    <string name="home_sessions_group_older">更早</string>
-    <string name="home_providerTip">連線 75 個以上的提供者，使用 Claude、GPT、Gemini 等其他模型</string>
+    <!-- provider.* -->
+    <string name="provider_connect_apiKey_description">輸入你的 %1$s API 金鑰以連線帳戶，並在 OpenCode 中使用 %1$s 模型。</string>
+    <string name="provider_connect_apiKey_label">%1$s API 金鑰</string>
+    <string name="provider_connect_apiKey_placeholder">API 金鑰</string>
+    <string name="provider_connect_apiKey_required">API 金鑰為必填</string>
+    <string name="provider_connect_method_apiKey">API 金鑰</string>
+    <string name="provider_connect_method_browser">瀏覽器</string>
+    <string name="provider_connect_method_headless">無頭模式</string>
+    <string name="provider_connect_oauth_auto_confirmationCode">確認碼</string>
+    <string name="provider_connect_oauth_auto_visit_link">此連結</string>
+    <string name="provider_connect_oauth_auto_visit_prefix">"造訪 "</string>
+    <string name="provider_connect_oauth_auto_visit_suffix">" 並輸入以下程式碼，以連線你的帳戶並在 OpenCode 中使用 %1$s 模型。"</string>
+    <string name="provider_connect_oauth_code_invalid">授權碼無效</string>
+    <string name="provider_connect_oauth_code_label">%1$s 授權碼</string>
+    <string name="provider_connect_oauth_code_placeholder">授權碼</string>
+    <string name="provider_connect_oauth_code_required">授權碼為必填</string>
+    <string name="provider_connect_oauth_code_visit_link">此連結</string>
+    <string name="provider_connect_oauth_code_visit_prefix">"造訪 "</string>
+    <string name="provider_connect_oauth_code_visit_suffix">" 取得授權碼，以連線你的帳戶並在 OpenCode 中使用 %1$s 模型。"</string>
+    <string name="provider_connect_opencodeZen_line1">OpenCode Zen 為你提供一組精選的可靠最佳化模型，用於程式碼代理程式。</string>
+    <string name="provider_connect_opencodeZen_line2">只需一個 API 金鑰，你就能使用 Claude、GPT、Gemini、GLM 等模型。</string>
+    <string name="provider_connect_opencodeZen_visit_link">opencode.ai/zen</string>
+    <string name="provider_connect_opencodeZen_visit_prefix">"造訪 "</string>
+    <string name="provider_connect_opencodeZen_visit_suffix">" 取得你的 API 金鑰。"</string>
+    <string name="provider_connect_selectMethod">選擇 %1$s 的登入方式。</string>
+    <string name="provider_connect_status_failed">授權失敗: %1$s</string>
+    <string name="provider_connect_status_inProgress">正在授權…</string>
+    <string name="provider_connect_status_waiting">等待授權…</string>
+    <string name="provider_connect_title">連線 %1$s</string>
+    <string name="provider_connect_toast_connected_description">現在可以使用 %1$s 模型了。</string>
+    <string name="provider_connect_toast_connected_title">%1$s 已連線</string>
+    <string name="provider_custom_description_link">提供者設定文件</string>
+    <string name="provider_custom_description_prefix">設定與 OpenAI 相容的提供者。請參閱</string>
+    <string name="provider_custom_description_suffix">。</string>
+    <string name="provider_custom_error_baseURL_format">必須以 http:// 或 https:// 開頭</string>
+    <string name="provider_custom_error_baseURL_required">基底 URL 為必填</string>
+    <string name="provider_custom_error_duplicate">重複</string>
+    <string name="provider_custom_error_name_required">顯示名稱為必填</string>
+    <string name="provider_custom_error_providerID_exists">該提供者 ID 已存在</string>
+    <string name="provider_custom_error_providerID_format">請使用小寫字母、數字、連字號或底線</string>
+    <string name="provider_custom_error_providerID_required">提供者 ID 為必填</string>
+    <string name="provider_custom_error_required">必填</string>
+    <string name="provider_custom_field_apiKey_description">選填。若您透過標頭管理驗證，可留空。</string>
+    <string name="provider_custom_field_apiKey_label">API 金鑰</string>
+    <string name="provider_custom_field_apiKey_placeholder">API 金鑰</string>
+    <string name="provider_custom_field_baseURL_label">基底 URL</string>
+    <string name="provider_custom_field_baseURL_placeholder">https://api.myprovider.com/v1</string>
+    <string name="provider_custom_field_name_label">顯示名稱</string>
+    <string name="provider_custom_field_name_placeholder">我的 AI 提供者</string>
+    <string name="provider_custom_field_providerID_description">使用小寫字母、數字、連字號或底線</string>
+    <string name="provider_custom_field_providerID_label">提供者 ID</string>
+    <string name="provider_custom_field_providerID_placeholder">myprovider</string>
+    <string name="provider_custom_headers_add">新增標頭</string>
+    <string name="provider_custom_headers_key_label">標頭</string>
+    <string name="provider_custom_headers_key_placeholder">Header-Name</string>
+    <string name="provider_custom_headers_label">標頭（選填）</string>
+    <string name="provider_custom_headers_remove">移除標頭</string>
+    <string name="provider_custom_headers_value_label">值</string>
+    <string name="provider_custom_headers_value_placeholder">value</string>
+    <string name="provider_custom_models_add">新增模型</string>
+    <string name="provider_custom_models_id_label">ID</string>
+    <string name="provider_custom_models_id_placeholder">model-id</string>
+    <string name="provider_custom_models_label">模型</string>
+    <string name="provider_custom_models_name_label">名稱</string>
+    <string name="provider_custom_models_name_placeholder">顯示名稱</string>
+    <string name="provider_custom_models_remove">移除模型</string>
+    <string name="provider_custom_title">自訂提供者</string>
+    <string name="provider_custom_unavailable">此伺服器無法使用自訂提供者</string>
+    <string name="provider_disconnect_toast_disconnected_description">%1$s 模型已不再可用。</string>
+    <string name="provider_disconnect_toast_disconnected_title">%1$s 已中斷連線</string>
 
     <!-- session.* -->
-    <string name="session_tab_session">工作階段</string>
-    <string name="session_tab_review">檢閱</string>
-    <string name="session_tab_context">上下文</string>
-    <string name="session_tab_unknown">未知的工作階段</string>
-    <string name="session_panel_reviewAndFiles">檢閱與檔案</string>
+    <string name="session_child_backToParent">返回主要工作階段。</string>
+    <string name="session_child_promptDisabled">無法在子代理程式工作階段中輸入提示詞。</string>
+    <string name="session_context_addToContext">將 %1$s 新增到上下文</string>
+    <string name="session_delete_button">刪除工作階段</string>
+    <string name="session_delete_confirm">要刪除工作階段「%1$s」嗎？</string>
+    <string name="session_delete_failed_title">刪除工作階段失敗</string>
+    <string name="session_delete_title">刪除工作階段</string>
     <string name="session_error_notFound">找不到此工作階段</string>
-    <string name="session_error_notFound_description">此分頁指向的工作階段已不存在於此伺服器。</string>
     <string name="session_error_notFound_closeTab">關閉分頁</string>
+    <string name="session_error_notFound_description">此分頁指向的工作階段已不存在於此伺服器。</string>
     <string name="session_error_serverConnection">無法連線至此伺服器</string>
-    <string name="session_review_filesChanged">%1$s 個檔案變更</string>
+    <string name="session_files_all">所有檔案</string>
+    <string name="session_files_binaryContent">二進位檔案（無法顯示內容）</string>
+    <string name="session_files_empty">沒有檔案</string>
+    <string name="session_files_selectToOpen">選取要開啟的檔案</string>
+    <string name="session_header_open_action">開啟 %1$s</string>
+    <string name="session_header_open_app_androidStudio">Android Studio</string>
+    <string name="session_header_open_app_antigravity">Antigravity</string>
+    <string name="session_header_open_app_cursor">Cursor</string>
+    <string name="session_header_open_app_ghostty">Ghostty</string>
+    <string name="session_header_open_app_iterm2">iTerm2</string>
+    <string name="session_header_open_app_powershell">PowerShell</string>
+    <string name="session_header_open_app_sublimeText">Sublime Text</string>
+    <string name="session_header_open_app_terminal">終端機</string>
+    <string name="session_header_open_app_textmate">TextMate</string>
+    <string name="session_header_open_app_vscode">VS Code</string>
+    <string name="session_header_open_app_warp">Warp</string>
+    <string name="session_header_open_app_xcode">Xcode</string>
+    <string name="session_header_open_app_zed">Zed</string>
+    <string name="session_header_open_ariaLabel">在 %1$s 中開啟</string>
+    <string name="session_header_open_copyPath">複製路徑</string>
+    <string name="session_header_open_fileExplorer">檔案總管</string>
+    <string name="session_header_open_fileManager">檔案管理員</string>
+    <string name="session_header_open_finder">Finder</string>
+    <string name="session_header_open_menu">開啟選項</string>
+    <string name="session_header_openIn">開啟於</string>
+    <string name="session_header_reveal_containingFolder">開啟所在的檔案夾</string>
+    <string name="session_header_reveal_fileExplorer">在檔案總管中顯示</string>
+    <string name="session_header_reveal_finder">在 Finder 中顯示</string>
+    <string name="session_header_search_placeholder">搜尋 %1$s</string>
+    <string name="session_header_searchFiles">搜尋檔案</string>
+    <string name="session_messages_jumpToLatest">跳到最新</string>
+    <string name="session_messages_loadEarlier">載入更早的訊息</string>
+    <string name="session_messages_loading">正在載入訊息…</string>
+    <string name="session_messages_loadingEarlier">正在載入更早的訊息…</string>
+    <string name="session_messages_renderEarlier">顯示更早的訊息</string>
+    <string name="session_new_git_none">無 Git</string>
+    <string name="session_new_lastModified">最後修改</string>
+    <string name="session_new_project_add">新增專案</string>
+    <string name="session_new_project_new">新專案</string>
+    <string name="session_new_project_search">搜尋專案</string>
+    <string name="session_new_title">實現任何想法</string>
+    <string name="session_new_workspace_existing">工作區…</string>
+    <string name="session_new_workspace_local">本機儲存庫</string>
+    <string name="session_new_workspace_runIn">工作階段執行位置</string>
+    <string name="session_new_workspace_triggerLocal">本機</string>
+    <string name="session_new_worktree_create">建立新的 worktree</string>
+    <string name="session_new_worktree_main">主分支</string>
+    <string name="session_new_worktree_mainWithBranch">主分支 (%1$s)</string>
+    <string name="session_panel_reviewAndFiles">檢閱與檔案</string>
+    <string name="session_question_minimize">最小化問題</string>
+    <string name="session_question_pending_one">%1$s 個待處理問題</string>
+    <string name="session_question_pending_other">%1$s 個待處理問題</string>
+    <string name="session_question_progress">%1$s/%2$s 個問題</string>
+    <string name="session_question_restore">還原問題</string>
     <string name="session_review_change_one">變更</string>
     <string name="session_review_change_other">變更</string>
-    <string name="session_review_loadingChanges">正在載入變更...</string>
     <string name="session_review_empty">此工作階段尚無變更</string>
-    <string name="session_review_noVcs">未偵測到 Git 版本控制系統，無法顯示變更</string>
-    <string name="session_review_noVcs_createGit_title">建立 Git 儲存庫</string>
-    <string name="session_review_noVcs_createGit_description">追蹤、檢閱及復原此專案中的變更</string>
-    <string name="session_review_noVcs_createGit_actionLoading">正在建立 Git 儲存庫...</string>
-    <string name="session_review_noVcs_createGit_action">建立 Git 儲存庫</string>
-    <string name="session_review_noSnapshot">設定中已停用快照追蹤，因此無法使用工作階段變更</string>
-    <string name="session_review_noChanges">沒有變更</string>
-    <string name="session_review_noUncommittedChanges">尚無未提交的變更</string>
+    <string name="session_review_filesChanged">%1$s 個檔案變更</string>
+    <string name="session_review_loadingChanges">正在載入變更…</string>
     <string name="session_review_noBranchChanges">尚無分支變更</string>
-    <string name="session_files_selectToOpen">選取要開啟的檔案</string>
-    <string name="session_files_all">所有檔案</string>
-    <string name="session_files_empty">沒有檔案</string>
-    <string name="session_files_binaryContent">二進位檔案（無法顯示內容）</string>
-    <string name="session_messages_renderEarlier">顯示更早的訊息</string>
-    <string name="session_messages_loadingEarlier">正在載入更早的訊息...</string>
-    <string name="session_messages_loadEarlier">載入更早的訊息</string>
-    <string name="session_messages_loading">正在載入訊息...</string>
-    <string name="session_messages_jumpToLatest">跳到最新</string>
-    <string name="session_context_addToContext">將 %1$s 新增到上下文</string>
-    <string name="session_todo_title">待辦事項</string>
+    <string name="session_review_noChanges">沒有變更</string>
+    <string name="session_review_noSnapshot">設定中已停用快照追蹤，因此無法使用工作階段變更</string>
+    <string name="session_review_noUncommittedChanges">尚無未提交的變更</string>
+    <string name="session_review_noVcs">未偵測到 Git 版本控制系統，無法顯示變更</string>
+    <string name="session_review_noVcs_createGit_action">建立 Git 儲存庫</string>
+    <string name="session_review_noVcs_createGit_actionLoading">正在建立 Git 儲存庫…</string>
+    <string name="session_review_noVcs_createGit_description">追蹤、檢閱及復原此專案中的變更</string>
+    <string name="session_review_noVcs_createGit_title">建立 Git 儲存庫</string>
+    <string name="session_tab_context">上下文</string>
+    <string name="session_tab_review">檢閱</string>
+    <string name="session_tab_session">工作階段</string>
+    <string name="session_tab_unknown">未知的工作階段</string>
     <string name="session_todo_collapse">收合</string>
     <string name="session_todo_expand">展開</string>
     <string name="session_todo_progress">已完成 %1$s 個待辦事項（共 %2$s 個）</string>
-    <string name="session_question_progress">%1$s/%2$s 個問題</string>
-    <string name="session_question_minimize">最小化問題</string>
-    <string name="session_question_restore">還原問題</string>
-    <string name="session_question_pending_one">%1$s 個待處理問題</string>
-    <string name="session_question_pending_other">%1$s 個待處理問題</string>
-    <string name="session_followupDock_summary_one">%1$s 則佇列訊息</string>
-    <string name="session_followupDock_summary_other">%1$s 則佇列訊息</string>
-    <string name="session_followupDock_sendNow">立即傳送</string>
-    <string name="session_followupDock_edit">編輯</string>
-    <string name="session_followupDock_collapse">收合佇列訊息</string>
-    <string name="session_followupDock_expand">展開佇列訊息</string>
-    <string name="session_revertDock_summary_one">%1$s 則已還原的訊息</string>
-    <string name="session_revertDock_summary_other">%1$s 則已還原的訊息</string>
-    <string name="session_revertDock_collapse">收合已還原的訊息</string>
-    <string name="session_revertDock_expand">展開已還原的訊息</string>
-    <string name="session_revertDock_restore">還原訊息</string>
-    <string name="session_new_title">實現任何想法</string>
-    <string name="session_new_project_new">新專案</string>
-    <string name="session_new_project_search">搜尋專案</string>
-    <string name="session_new_project_add">新增專案</string>
-    <string name="session_new_worktree_main">主分支</string>
-    <string name="session_new_worktree_mainWithBranch">主分支 (%1$s)</string>
-    <string name="session_new_worktree_create">建立新的 worktree</string>
-    <string name="session_new_workspace_runIn">工作階段執行位置</string>
-    <string name="session_new_workspace_triggerLocal">本機</string>
-    <string name="session_new_workspace_local">本機儲存庫</string>
-    <string name="session_new_workspace_existing">工作區…</string>
-    <string name="session_new_git_none">無 Git</string>
-    <string name="session_new_lastModified">最後修改</string>
-    <string name="session_header_search_placeholder">搜尋 %1$s</string>
-    <string name="session_header_searchFiles">搜尋檔案</string>
-    <string name="session_header_openIn">開啟於</string>
-    <string name="session_header_open_action">開啟 %1$s</string>
-    <string name="session_header_open_ariaLabel">在 %1$s 中開啟</string>
-    <string name="session_header_open_menu">開啟選項</string>
-    <string name="session_header_open_copyPath">複製路徑</string>
-    <string name="session_header_open_finder">Finder</string>
-    <string name="session_header_open_fileExplorer">檔案總管</string>
-    <string name="session_header_open_fileManager">檔案管理員</string>
-    <string name="session_header_reveal_finder">在 Finder 中顯示</string>
-    <string name="session_header_reveal_fileExplorer">在檔案總管中顯示</string>
-    <string name="session_header_reveal_containingFolder">開啟所在的檔案夾</string>
-    <string name="session_header_open_app_vscode">VS Code</string>
-    <string name="session_header_open_app_cursor">Cursor</string>
-    <string name="session_header_open_app_zed">Zed</string>
-    <string name="session_header_open_app_textmate">TextMate</string>
-    <string name="session_header_open_app_antigravity">Antigravity</string>
-    <string name="session_header_open_app_terminal">終端機</string>
-    <string name="session_header_open_app_iterm2">iTerm2</string>
-    <string name="session_header_open_app_ghostty">Ghostty</string>
-    <string name="session_header_open_app_warp">Warp</string>
-    <string name="session_header_open_app_xcode">Xcode</string>
-    <string name="session_header_open_app_androidStudio">Android Studio</string>
-    <string name="session_header_open_app_powershell">PowerShell</string>
-    <string name="session_header_open_app_sublimeText">Sublime Text</string>
+    <string name="session_todo_title">待辦事項</string>
+
+    <!-- settings.* -->
+    <string name="settings_agents_description">代理程式設定將在此處可設定。</string>
+    <string name="settings_agents_title">代理程式</string>
+    <string name="settings_commands_description">命令設定將在此處可設定。</string>
+    <string name="settings_commands_title">命令</string>
+    <string name="settings_desktop_section_wsl">WSL</string>
+    <string name="settings_desktop_wsl_description">在 Windows 上的 WSL 中執行 OpenCode 伺服器。</string>
+    <string name="settings_desktop_wsl_title">WSL 整合</string>
+    <string name="settings_general_notifications_agent_description">當代理程式完成或需要注意時顯示系統通知</string>
+    <string name="settings_general_notifications_agent_title">代理程式</string>
+    <string name="settings_general_notifications_errors_description">發生錯誤時顯示系統通知</string>
+    <string name="settings_general_notifications_errors_title">錯誤</string>
+    <string name="settings_general_notifications_permissions_description">當需要權限時顯示系統通知</string>
+    <string name="settings_general_notifications_permissions_title">權限</string>
+    <string name="settings_general_row_appearance_description">自訂 OpenCode 在你的裝置上的外觀</string>
+    <string name="settings_general_row_appearance_title">外觀</string>
+    <string name="settings_general_row_colorScheme_description">選擇 OpenCode 要跟隨系統、淺色或深色主題</string>
+    <string name="settings_general_row_colorScheme_title">配色方案</string>
+    <string name="settings_general_row_editToolPartsExpanded_description">在時間軸中預設展開 edit、write 和 patch 工具區塊</string>
+    <string name="settings_general_row_editToolPartsExpanded_title">展開 edit 工具區塊</string>
+    <string name="settings_general_row_font_description">自訂程式碼區塊使用的字型</string>
+    <string name="settings_general_row_font_title">程式碼字型</string>
+    <string name="settings_general_row_language_description">變更 OpenCode 的顯示語言</string>
+    <string name="settings_general_row_language_title">語言</string>
+    <string name="settings_general_row_mobileTitlebarBottom_description">在行動裝置上將標題列和工作階段分頁置於畫面底部</string>
+    <string name="settings_general_row_mobileTitlebarBottom_title">底部導覽</string>
+    <string name="settings_general_row_pinchZoom_description">允許使用觸控板雙指開合和 Ctrl-捲動手勢縮放</string>
+    <string name="settings_general_row_pinchZoom_title">雙指縮放</string>
+    <string name="settings_general_row_reasoningSummaries_description">在時間軸中顯示模型推理摘要</string>
+    <string name="settings_general_row_reasoningSummaries_title">顯示推理摘要</string>
+    <string name="settings_general_row_releaseNotes_description">更新後顯示「新功能」彈出視窗</string>
+    <string name="settings_general_row_releaseNotes_title">發行說明</string>
+    <string name="settings_general_row_shell_autoDefault">自動（預設）</string>
+    <string name="settings_general_row_shell_description">選擇終端機使用的 Shell。相容的 Shell 也會用於代理程式工具呼叫。</string>
+    <string name="settings_general_row_shell_terminalOnly">僅限終端機</string>
+    <string name="settings_general_row_shell_title">終端機 Shell</string>
+    <string name="settings_general_row_shellToolPartsExpanded_description">在時間軸中預設展開 shell 工具區塊</string>
+    <string name="settings_general_row_shellToolPartsExpanded_title">展開 shell 工具區塊</string>
+    <string name="settings_general_row_showCustomAgents_description">在輸入區顯示代理程式選擇器</string>
+    <string name="settings_general_row_showCustomAgents_title">自訂代理程式</string>
+    <string name="settings_general_row_showFileTree_description">在工作階段中顯示檔案樹面板</string>
+    <string name="settings_general_row_showFileTree_title">檔案樹</string>
+    <string name="settings_general_row_showNavigation_description">在桌面標題列中顯示上一頁和下一頁按鈕</string>
+    <string name="settings_general_row_showNavigation_title">導覽控制項</string>
+    <string name="settings_general_row_showSearch_description">在標題列中顯示搜尋和命令面板按鈕</string>
+    <string name="settings_general_row_showSearch_title">命令面板</string>
+    <string name="settings_general_row_showStatus_description">在標題列中顯示伺服器狀態按鈕</string>
+    <string name="settings_general_row_showStatus_title">伺服器狀態</string>
+    <string name="settings_general_row_showTerminal_description">在桌面標題列中顯示終端機按鈕</string>
+    <string name="settings_general_row_showTerminal_title">終端機</string>
+    <string name="settings_general_row_terminalFont_description">自訂終端機使用的字型</string>
+    <string name="settings_general_row_terminalFont_title">終端機字型</string>
+    <string name="settings_general_row_theme_description">自訂 OpenCode 的主題。</string>
+    <string name="settings_general_row_theme_title">主題</string>
+    <string name="settings_general_row_uiFont_description">自訂整個介面使用的字型</string>
+    <string name="settings_general_row_uiFont_title">介面字型</string>
+    <string name="settings_general_row_wayland_description">在 Wayland 上停用 X11 後備模式。需要重新啟動。</string>
+    <string name="settings_general_row_wayland_title">使用原生 Wayland</string>
+    <string name="settings_general_row_wayland_tooltip">在混合更新率螢幕的 Linux 系統上，原生 Wayland 可能更穩定。</string>
+    <string name="settings_general_section_advanced">進階</string>
+    <string name="settings_general_section_appearance">外觀</string>
+    <string name="settings_general_section_display">顯示</string>
+    <string name="settings_general_section_feed">資訊流</string>
+    <string name="settings_general_section_notifications">系統通知</string>
+    <string name="settings_general_section_sounds">音效</string>
+    <string name="settings_general_section_updates">更新</string>
+    <string name="settings_general_sounds_agent_description">當代理程式完成或需要注意時播放聲音</string>
+    <string name="settings_general_sounds_agent_title">代理程式</string>
+    <string name="settings_general_sounds_errors_description">發生錯誤時播放聲音</string>
+    <string name="settings_general_sounds_errors_title">錯誤</string>
+    <string name="settings_general_sounds_permissions_description">當需要權限時播放聲音</string>
+    <string name="settings_general_sounds_permissions_title">權限</string>
+    <string name="settings_mcp_description">MCP 設定將在此處可設定。</string>
+    <string name="settings_mcp_title">MCP</string>
+    <string name="settings_models_description">模型設定將在此處可設定。</string>
+    <string name="settings_models_title">模型</string>
+    <string name="settings_permissions_action_allow">允許</string>
+    <string name="settings_permissions_action_ask">詢問</string>
+    <string name="settings_permissions_action_deny">拒絕</string>
+    <string name="settings_permissions_description">控制伺服器預設可以使用哪些工具。</string>
+    <string name="settings_permissions_section_tools">工具</string>
+    <string name="settings_permissions_title">權限</string>
+    <string name="settings_permissions_toast_updateFailed_title">更新權限失敗</string>
+    <string name="settings_permissions_tool_bash_description">執行 shell 命令</string>
+    <string name="settings_permissions_tool_bash_title">Bash</string>
+    <string name="settings_permissions_tool_doom_loop_description">偵測具有相同輸入的重複工具呼叫</string>
+    <string name="settings_permissions_tool_doom_loop_title">Doom Loop</string>
+    <string name="settings_permissions_tool_edit_description">修改檔案，包括編輯、寫入、修補和多重編輯</string>
+    <string name="settings_permissions_tool_edit_title">編輯</string>
+    <string name="settings_permissions_tool_external_directory_description">存取專案目錄之外的檔案</string>
+    <string name="settings_permissions_tool_external_directory_title">外部目錄</string>
+    <string name="settings_permissions_tool_glob_description">使用 glob 模式符合檔案</string>
+    <string name="settings_permissions_tool_glob_title">Glob</string>
+    <string name="settings_permissions_tool_grep_description">使用正規表示式搜尋檔案內容</string>
+    <string name="settings_permissions_tool_grep_title">Grep</string>
+    <string name="settings_permissions_tool_list_description">列出目錄中的檔案</string>
+    <string name="settings_permissions_tool_list_title">清單</string>
+    <string name="settings_permissions_tool_lsp_description">執行語言伺服器查詢</string>
+    <string name="settings_permissions_tool_lsp_title">LSP</string>
+    <string name="settings_permissions_tool_read_description">讀取檔案（符合檔案路徑）</string>
+    <string name="settings_permissions_tool_read_title">讀取</string>
+    <string name="settings_permissions_tool_skill_description">按名稱載入技能</string>
+    <string name="settings_permissions_tool_skill_title">Skill</string>
+    <string name="settings_permissions_tool_task_description">啟動子代理程式</string>
+    <string name="settings_permissions_tool_task_title">Task</string>
+    <string name="settings_permissions_tool_todowrite_description">更新待辦清單</string>
+    <string name="settings_permissions_tool_todowrite_title">更新待辦</string>
+    <string name="settings_permissions_tool_webfetch_description">從 URL 取得內容</string>
+    <string name="settings_permissions_tool_webfetch_title">Web Fetch</string>
+    <string name="settings_permissions_tool_websearch_description">搜尋網頁</string>
+    <string name="settings_permissions_tool_websearch_title">Web Search</string>
+    <string name="settings_providers_connected_empty">沒有已連線的提供者</string>
+    <string name="settings_providers_connected_environmentDescription">已從環境變數連線</string>
+    <string name="settings_providers_custom_description">透過基底 URL 新增與 OpenAI 相容的提供者。</string>
+    <string name="settings_providers_description">提供者設定將在此處可設定。</string>
+    <string name="settings_providers_section_connected">已連線的提供者</string>
+    <string name="settings_providers_section_popular">熱門提供者</string>
+    <string name="settings_providers_tag_config">設定</string>
+    <string name="settings_providers_tag_custom">自訂</string>
+    <string name="settings_providers_tag_environment">環境</string>
+    <string name="settings_providers_tag_other">其他</string>
+    <string name="settings_providers_title">提供者</string>
+    <string name="settings_section_desktop">桌面</string>
+    <string name="settings_section_server">伺服器</string>
+    <string name="settings_shortcuts_conflict_description">%1$s 已分配給 %2$s。</string>
+    <string name="settings_shortcuts_conflict_title">快速鍵已被占用</string>
+    <string name="settings_shortcuts_group_general">一般</string>
+    <string name="settings_shortcuts_group_modelAndAgent">模型與代理程式</string>
+    <string name="settings_shortcuts_group_navigation">導覽</string>
+    <string name="settings_shortcuts_group_prompt">提示</string>
+    <string name="settings_shortcuts_group_session">工作階段</string>
+    <string name="settings_shortcuts_group_terminal">終端機</string>
+    <string name="settings_shortcuts_pressKeys">按下按鍵</string>
+    <string name="settings_shortcuts_reset_button">重設為預設值</string>
+    <string name="settings_shortcuts_reset_toast_description">鍵盤快速鍵已重設為預設設定。</string>
+    <string name="settings_shortcuts_reset_toast_title">快速鍵已重設</string>
+    <string name="settings_shortcuts_search_empty">找不到快速鍵</string>
+    <string name="settings_shortcuts_search_placeholder">搜尋快速鍵</string>
+    <string name="settings_shortcuts_title">鍵盤快速鍵</string>
+    <string name="settings_shortcuts_unassigned">未設定</string>
+    <string name="settings_tab_general">一般</string>
+    <string name="settings_tab_shortcuts">快速鍵</string>
+    <string name="settings_updates_action_checkNow">立即檢查</string>
+    <string name="settings_updates_action_checking">檢查中…</string>
+    <string name="settings_updates_action_downloading">下載中…</string>
+    <string name="settings_updates_action_installing">安裝中…</string>
+    <string name="settings_updates_row_check_description">手動檢查更新並在有更新時安裝</string>
+    <string name="settings_updates_row_check_title">檢查更新</string>
+    <string name="settings_updates_row_startup_description">在 OpenCode 啟動時自動檢查更新</string>
+    <string name="settings_updates_row_startup_title">啟動時檢查更新</string>
+    <string name="settings_updates_toast_latest_description">你正在使用最新版本的 OpenCode。</string>
+    <string name="settings_updates_toast_latest_title">已是最新版本</string>
+
+    <!-- sidebar.* -->
+    <string name="sidebar_empty_description">開啟專案以開始使用</string>
+    <string name="sidebar_empty_title">未開啟任何專案</string>
+    <string name="sidebar_gettingStarted_line1">OpenCode 提供免費模型，你可以立即開始使用。</string>
+    <string name="sidebar_gettingStarted_line2">連線任意提供者即可使用更多模型，如 Claude、GPT、Gemini 等。</string>
+    <string name="sidebar_gettingStarted_title">開始使用</string>
+    <string name="sidebar_help">說明</string>
+    <string name="sidebar_menu_toggle">切換選單</string>
+    <string name="sidebar_nav_projectsAndSessions">專案與工作階段</string>
+    <string name="sidebar_project_clearNotifications">清除通知</string>
+    <string name="sidebar_project_recentSessions">最近工作階段</string>
+    <string name="sidebar_project_viewAllSessions">查看全部工作階段</string>
+    <string name="sidebar_settings">設定</string>
+    <string name="sidebar_workspaces_disable">停用工作區</string>
+    <string name="sidebar_workspaces_enable">啟用工作區</string>
+
+    <!-- sound.* -->
+    <string name="sound_option_alert01">警報 01</string>
+    <string name="sound_option_alert02">警報 02</string>
+    <string name="sound_option_alert03">警報 03</string>
+    <string name="sound_option_alert04">警報 04</string>
+    <string name="sound_option_alert05">警報 05</string>
+    <string name="sound_option_alert06">警報 06</string>
+    <string name="sound_option_alert07">警報 07</string>
+    <string name="sound_option_alert08">警報 08</string>
+    <string name="sound_option_alert09">警報 09</string>
+    <string name="sound_option_alert10">警報 10</string>
+    <string name="sound_option_bipbop01">Bip-bop 01</string>
+    <string name="sound_option_bipbop02">Bip-bop 02</string>
+    <string name="sound_option_bipbop03">Bip-bop 03</string>
+    <string name="sound_option_bipbop04">Bip-bop 04</string>
+    <string name="sound_option_bipbop05">Bip-bop 05</string>
+    <string name="sound_option_bipbop06">Bip-bop 06</string>
+    <string name="sound_option_bipbop07">Bip-bop 07</string>
+    <string name="sound_option_bipbop08">Bip-bop 08</string>
+    <string name="sound_option_bipbop09">Bip-bop 09</string>
+    <string name="sound_option_bipbop10">Bip-bop 10</string>
+    <string name="sound_option_none">無</string>
+    <string name="sound_option_nope01">Nope 01</string>
+    <string name="sound_option_nope02">Nope 02</string>
+    <string name="sound_option_nope03">Nope 03</string>
+    <string name="sound_option_nope04">Nope 04</string>
+    <string name="sound_option_nope05">Nope 05</string>
+    <string name="sound_option_nope06">Nope 06</string>
+    <string name="sound_option_nope07">Nope 07</string>
+    <string name="sound_option_nope08">Nope 08</string>
+    <string name="sound_option_nope09">Nope 09</string>
+    <string name="sound_option_nope10">Nope 10</string>
+    <string name="sound_option_nope11">Nope 11</string>
+    <string name="sound_option_nope12">Nope 12</string>
+    <string name="sound_option_staplebops01">Staplebops 01</string>
+    <string name="sound_option_staplebops02">Staplebops 02</string>
+    <string name="sound_option_staplebops03">Staplebops 03</string>
+    <string name="sound_option_staplebops04">Staplebops 04</string>
+    <string name="sound_option_staplebops05">Staplebops 05</string>
+    <string name="sound_option_staplebops06">Staplebops 06</string>
+    <string name="sound_option_staplebops07">Staplebops 07</string>
+    <string name="sound_option_yup01">Yup 01</string>
+    <string name="sound_option_yup02">Yup 02</string>
+    <string name="sound_option_yup03">Yup 03</string>
+    <string name="sound_option_yup04">Yup 04</string>
+    <string name="sound_option_yup05">Yup 05</string>
+    <string name="sound_option_yup06">Yup 06</string>
 
     <!-- status.* -->
-    <string name="status_popover_trigger">狀態</string>
-    <string name="status_popover_ariaLabel">伺服器設定</string>
-    <string name="status_popover_tab_servers">伺服器</string>
-    <string name="status_popover_tab_mcp">MCP</string>
-    <string name="status_popover_tab_lsp">LSP</string>
-    <string name="status_popover_tab_plugins">外掛程式</string>
     <string name="status_popover_action_manageServers">管理伺服器</string>
-
-    <!-- session.* -->
-    <string name="session_share_popover_title">發佈到網頁</string>
-    <string name="session_share_popover_description_shared">此工作階段已在網頁上公開。任何擁有連結的人都可以存取。</string>
-    <string name="session_share_popover_description_unshared">在網頁上公開分享此工作階段。任何擁有連結的人都可以存取。</string>
-    <string name="session_share_action_share">分享</string>
-    <string name="session_share_action_publish">發佈</string>
-    <string name="session_share_action_publishing">正在發佈...</string>
-    <string name="session_share_action_unpublish">取消發佈</string>
-    <string name="session_share_action_unpublishing">正在取消發佈...</string>
-    <string name="session_share_action_view">檢視</string>
-    <string name="session_share_copy_copied">已複製</string>
-    <string name="session_share_copy_copyLink">複製連結</string>
-
-    <!-- lsp.* -->
-    <string name="lsp_tooltip_none">沒有 LSP 伺服器</string>
-    <string name="lsp_label_connected">%1$s LSP</string>
-
-    <!-- prompt.* -->
-    <string name="prompt_loading">正在載入提示...</string>
+    <string name="status_popover_ariaLabel">伺服器設定</string>
+    <string name="status_popover_tab_lsp">LSP</string>
+    <string name="status_popover_tab_mcp">MCP</string>
+    <string name="status_popover_tab_plugins">外掛程式</string>
+    <string name="status_popover_tab_servers">伺服器</string>
+    <string name="status_popover_trigger">狀態</string>
 
     <!-- terminal.* -->
-    <string name="terminal_loading">正在載入終端機...</string>
-    <string name="terminal_title">終端機</string>
-    <string name="terminal_title_numbered">終端機 %1$s</string>
     <string name="terminal_close">關閉終端機</string>
-    <string name="terminal_connectionLost_title">連線中斷</string>
-    <string name="terminal_connectionLost_abnormalClose">WebSocket 異常關閉：%1$s</string>
-    <string name="terminal_connectionLost_description">終端機連線已中斷。這可能會在伺服器重新啟動時發生。</string>
     <string name="terminal_connectTicket_csrfError">PTY 連線票證因來源或 CSRF 檢查而遭拒。請檢查伺服器 CORS 設定。</string>
     <string name="terminal_connectTicket_statusError">PTY 連線票證失敗，狀態為 %1$s</string>
+    <string name="terminal_connectionLost_abnormalClose">WebSocket 異常關閉：%1$s</string>
+    <string name="terminal_connectionLost_description">終端機連線已中斷。這可能會在伺服器重新啟動時發生。</string>
+    <string name="terminal_connectionLost_title">連線中斷</string>
+    <string name="terminal_loading">正在載入終端機…</string>
+    <string name="terminal_title">終端機</string>
+    <string name="terminal_title_numbered">終端機 %1$s</string>
+
+    <!-- theme.* -->
+    <string name="theme_scheme_dark">深色</string>
+    <string name="theme_scheme_light">淺色</string>
+    <string name="theme_scheme_system">系統</string>
 
     <!-- titlebar.* -->
     <string name="titlebar_update">更新</string>
     <string name="titlebar_updateVersion">更新 %1$s</string>
 
-    <!-- common.* -->
-    <string name="common_closeTab">關閉分頁</string>
-    <string name="common_dismiss">忽略</string>
-    <string name="common_moreCountSuffix">" (還有 %1$s 個)"</string>
-    <string name="common_requestFailed">要求失敗</string>
-    <string name="common_moreOptions">更多選項</string>
-    <string name="common_learnMore">深入了解</string>
-    <string name="common_rename">重新命名</string>
-    <string name="common_export">匯出</string>
-    <string name="common_reset">重設</string>
-    <string name="common_archive">封存</string>
-    <string name="common_delete">刪除</string>
-    <string name="common_close">關閉</string>
-    <string name="common_edit">編輯</string>
-    <string name="common_loadMore">載入更多</string>
-    <string name="common_key_esc">ESC</string>
-    <string name="common_key_ctrl">Ctrl</string>
-    <string name="common_key_alt">Alt</string>
-    <string name="common_key_shift">Shift</string>
-    <string name="common_key_meta">Meta</string>
-    <string name="common_key_space">空白鍵</string>
-    <string name="common_key_backspace">退格鍵</string>
-    <string name="common_key_enter">Enter</string>
-    <string name="common_key_tab">Tab</string>
-    <string name="common_key_delete">Delete</string>
-    <string name="common_key_home">Home</string>
-    <string name="common_key_end">End</string>
-    <string name="common_key_pageUp">Page Up</string>
-    <string name="common_key_pageDown">Page Down</string>
-    <string name="common_key_insert">Insert</string>
-    <string name="common_unknown">未知</string>
-    <string name="common_time_justNow">剛剛</string>
-    <string name="common_time_minutesAgo_short">%1$s分鐘前</string>
-    <string name="common_time_hoursAgo_short">%1$s小時前</string>
-    <string name="common_time_daysAgo_short">%1$s天前</string>
+    <!-- toast.* -->
+    <string name="toast_context_noLineSelection_description">請先在檔案分頁中選取行範圍。</string>
+    <string name="toast_context_noLineSelection_title">未選取行</string>
+    <string name="toast_file_listFailed_title">列出檔案失敗</string>
+    <string name="toast_file_loadFailed_title">載入檔案失敗</string>
+    <string name="toast_language_description">已切換到 %1$s</string>
+    <string name="toast_language_title">語言</string>
+    <string name="toast_model_none_description">請先連線提供者以摘要此工作階段</string>
+    <string name="toast_model_none_title">未選擇模型</string>
+    <string name="toast_permissions_autoaccept_off_description">權限要求將需要核准</string>
+    <string name="toast_permissions_autoaccept_off_title">已停止自動接受權限</string>
+    <string name="toast_permissions_autoaccept_on_description">權限要求將自動獲准</string>
+    <string name="toast_permissions_autoaccept_on_title">正在自動接受權限</string>
+    <string name="toast_project_reloadFailed_title">無法重新載入 %1$s</string>
+    <string name="toast_scheme_title">配色方案</string>
+    <string name="toast_session_export_failed_description">匯出工作階段時發生錯誤</string>
+    <string name="toast_session_export_failed_title">匯出工作階段失敗</string>
+    <string name="toast_session_export_success_description">已將工作階段儲存至 %1$s</string>
+    <string name="toast_session_export_success_title">工作階段已匯出</string>
+    <string name="toast_session_listFailed_title">無法載入 %1$s 的工作階段</string>
+    <string name="toast_session_unshare_failed_description">取消分享工作階段時發生錯誤</string>
+    <string name="toast_session_unshare_failed_title">取消分享失敗</string>
+    <string name="toast_session_unshare_success_description">工作階段已成功取消分享</string>
+    <string name="toast_session_unshare_success_title">已取消分享工作階段</string>
+    <string name="toast_theme_title">主題已切換</string>
+    <string name="toast_update_action_installRestart">安裝並重新啟動</string>
+    <string name="toast_update_action_notYet">稍後</string>
+    <string name="toast_update_description">OpenCode 有新版本 (%1$s) 可安裝。</string>
+    <string name="toast_update_title">有可用更新</string>
+    <string name="toast_workspace_disabled_description">側邊欄只顯示主工作樹</string>
+    <string name="toast_workspace_disabled_title">工作區已停用</string>
+    <string name="toast_workspace_enabled_description">側邊欄現在顯示多個工作樹</string>
+    <string name="toast_workspace_enabled_title">工作區已啟用</string>
 
-    <!-- sidebar.* -->
-    <string name="sidebar_menu_toggle">切換選單</string>
-    <string name="sidebar_nav_projectsAndSessions">專案與工作階段</string>
-    <string name="sidebar_settings">設定</string>
-    <string name="sidebar_help">說明</string>
-    <string name="sidebar_workspaces_enable">啟用工作區</string>
-    <string name="sidebar_workspaces_disable">停用工作區</string>
-    <string name="sidebar_gettingStarted_title">開始使用</string>
-    <string name="sidebar_gettingStarted_line1">OpenCode 提供免費模型，你可以立即開始使用。</string>
-    <string name="sidebar_gettingStarted_line2">連線任意提供者即可使用更多模型，如 Claude、GPT、Gemini 等。</string>
-    <string name="sidebar_project_recentSessions">最近工作階段</string>
-    <string name="sidebar_project_viewAllSessions">查看全部工作階段</string>
-    <string name="sidebar_project_clearNotifications">清除通知</string>
-    <string name="sidebar_empty_title">未開啟任何專案</string>
-    <string name="sidebar_empty_description">開啟專案以開始使用</string>
-
-    <!-- app.* -->
-    <string name="app_name_desktop">OpenCode Desktop</string>
-
-    <!-- settings.* -->
-    <string name="settings_section_desktop">桌面</string>
-    <string name="settings_section_server">伺服器</string>
-    <string name="settings_tab_general">一般</string>
-    <string name="settings_tab_shortcuts">快速鍵</string>
-    <string name="settings_desktop_section_wsl">WSL</string>
-    <string name="settings_desktop_wsl_title">WSL 整合</string>
-    <string name="settings_desktop_wsl_description">在 Windows 上的 WSL 中執行 OpenCode 伺服器。</string>
-    <string name="settings_general_section_appearance">外觀</string>
-    <string name="settings_general_section_advanced">進階</string>
-    <string name="settings_general_section_notifications">系統通知</string>
-    <string name="settings_general_section_updates">更新</string>
-    <string name="settings_general_section_sounds">音效</string>
-    <string name="settings_general_section_feed">資訊流</string>
-    <string name="settings_general_section_display">顯示</string>
-    <string name="settings_general_row_language_title">語言</string>
-    <string name="settings_general_row_language_description">變更 OpenCode 的顯示語言</string>
-    <string name="settings_general_row_shell_title">終端機 Shell</string>
-    <string name="settings_general_row_shell_description">選擇終端機使用的 Shell。相容的 Shell 也會用於代理程式工具呼叫。</string>
-    <string name="settings_general_row_shell_autoDefault">自動（預設）</string>
-    <string name="settings_general_row_shell_terminalOnly">僅限終端機</string>
-    <string name="settings_general_row_appearance_title">外觀</string>
-    <string name="settings_general_row_appearance_description">自訂 OpenCode 在你的裝置上的外觀</string>
-    <string name="settings_general_row_colorScheme_title">配色方案</string>
-    <string name="settings_general_row_colorScheme_description">選擇 OpenCode 要跟隨系統、淺色或深色主題</string>
-    <string name="settings_general_row_theme_title">主題</string>
-    <string name="settings_general_row_theme_description">自訂 OpenCode 的主題。</string>
-    <string name="settings_general_row_font_title">程式碼字型</string>
-    <string name="settings_general_row_font_description">自訂程式碼區塊使用的字型</string>
-    <string name="settings_general_row_terminalFont_title">終端機字型</string>
-    <string name="settings_general_row_terminalFont_description">自訂終端機使用的字型</string>
-    <string name="settings_general_row_uiFont_title">介面字型</string>
-    <string name="settings_general_row_uiFont_description">自訂整個介面使用的字型</string>
-    <string name="settings_general_row_followup_title">後續追問行為</string>
-    <string name="settings_general_row_followup_description">選擇後續追問提示是立即引導還是進入佇列等待</string>
-    <string name="settings_general_row_followup_option_queue">佇列</string>
-    <string name="settings_general_row_followup_option_steer">引導</string>
-    <string name="settings_general_row_showFileTree_title">檔案樹</string>
-    <string name="settings_general_row_showFileTree_description">在工作階段中顯示檔案樹面板</string>
-    <string name="settings_general_row_showNavigation_title">導覽控制項</string>
-    <string name="settings_general_row_showNavigation_description">在桌面標題列中顯示上一頁和下一頁按鈕</string>
-    <string name="settings_general_row_showSearch_title">命令面板</string>
-    <string name="settings_general_row_showSearch_description">在標題列中顯示搜尋和命令面板按鈕</string>
-    <string name="settings_general_row_showTerminal_title">終端機</string>
-    <string name="settings_general_row_showTerminal_description">在桌面標題列中顯示終端機按鈕</string>
-    <string name="settings_general_row_showStatus_title">伺服器狀態</string>
-    <string name="settings_general_row_showStatus_description">在標題列中顯示伺服器狀態按鈕</string>
-    <string name="settings_general_row_mobileTitlebarBottom_title">底部導覽</string>
-    <string name="settings_general_row_mobileTitlebarBottom_description">在行動裝置上將標題列和工作階段分頁置於畫面底部</string>
-    <string name="settings_general_row_showCustomAgents_title">自訂代理程式</string>
-    <string name="settings_general_row_showCustomAgents_description">在輸入區顯示代理程式選擇器</string>
-    <string name="settings_general_row_reasoningSummaries_title">顯示推理摘要</string>
-    <string name="settings_general_row_reasoningSummaries_description">在時間軸中顯示模型推理摘要</string>
-    <string name="settings_general_row_shellToolPartsExpanded_title">展開 shell 工具區塊</string>
-    <string name="settings_general_row_shellToolPartsExpanded_description">在時間軸中預設展開 shell 工具區塊</string>
-    <string name="settings_general_row_editToolPartsExpanded_title">展開 edit 工具區塊</string>
-    <string name="settings_general_row_editToolPartsExpanded_description">在時間軸中預設展開 edit、write 和 patch 工具區塊</string>
-    <string name="settings_general_row_newInterface_title">新版面</string>
-    <string name="settings_general_row_newInterface_badge">新</string>
-    <string name="settings_general_row_newInterface_description">使用新的分頁和首頁版面。在限定時間內可切換版面。</string>
-    <string name="settings_general_row_newInterfaceNotice_title">你現在使用的是新版面</string>
-    <string name="settings_general_row_newInterfaceNotice_description">先前的版面已無法使用</string>
-    <string name="settings_general_row_newInterfaceNotice_dismiss">忽略</string>
-    <string name="settings_general_row_pinchZoom_title">雙指縮放</string>
-    <string name="settings_general_row_pinchZoom_description">允許使用觸控板雙指開合和 Ctrl-捲動手勢縮放</string>
-    <string name="settings_general_row_wayland_title">使用原生 Wayland</string>
-    <string name="settings_general_row_wayland_description">在 Wayland 上停用 X11 後備模式。需要重新啟動。</string>
-    <string name="settings_general_row_wayland_tooltip">在混合更新率螢幕的 Linux 系統上，原生 Wayland 可能更穩定。</string>
-    <string name="settings_general_row_releaseNotes_title">發行說明</string>
-    <string name="settings_general_row_releaseNotes_description">更新後顯示「新功能」彈出視窗</string>
-    <string name="settings_updates_row_startup_title">啟動時檢查更新</string>
-    <string name="settings_updates_row_startup_description">在 OpenCode 啟動時自動檢查更新</string>
-    <string name="settings_updates_row_check_title">檢查更新</string>
-    <string name="settings_updates_row_check_description">手動檢查更新並在有更新時安裝</string>
-    <string name="settings_updates_action_checkNow">立即檢查</string>
-    <string name="settings_updates_action_checking">檢查中...</string>
-    <string name="settings_updates_action_downloading">下載中...</string>
-    <string name="settings_updates_action_installing">安裝中...</string>
-    <string name="settings_updates_toast_latest_title">已是最新版本</string>
-    <string name="settings_updates_toast_latest_description">你正在使用最新版本的 OpenCode。</string>
-    <string name="settings_general_notifications_agent_title">代理程式</string>
-    <string name="settings_general_notifications_agent_description">當代理程式完成或需要注意時顯示系統通知</string>
-    <string name="settings_general_notifications_permissions_title">權限</string>
-    <string name="settings_general_notifications_permissions_description">當需要權限時顯示系統通知</string>
-    <string name="settings_general_notifications_errors_title">錯誤</string>
-    <string name="settings_general_notifications_errors_description">發生錯誤時顯示系統通知</string>
-    <string name="settings_general_sounds_agent_title">代理程式</string>
-    <string name="settings_general_sounds_agent_description">當代理程式完成或需要注意時播放聲音</string>
-    <string name="settings_general_sounds_permissions_title">權限</string>
-    <string name="settings_general_sounds_permissions_description">當需要權限時播放聲音</string>
-    <string name="settings_general_sounds_errors_title">錯誤</string>
-    <string name="settings_general_sounds_errors_description">發生錯誤時播放聲音</string>
-    <string name="settings_shortcuts_title">鍵盤快速鍵</string>
-    <string name="settings_shortcuts_reset_button">重設為預設值</string>
-    <string name="settings_shortcuts_reset_toast_title">快速鍵已重設</string>
-    <string name="settings_shortcuts_reset_toast_description">鍵盤快速鍵已重設為預設設定。</string>
-    <string name="settings_shortcuts_conflict_title">快速鍵已被占用</string>
-    <string name="settings_shortcuts_conflict_description">%1$s 已分配給 %2$s。</string>
-    <string name="settings_shortcuts_unassigned">未設定</string>
-    <string name="settings_shortcuts_pressKeys">按下按鍵</string>
-    <string name="settings_shortcuts_search_placeholder">搜尋快速鍵</string>
-    <string name="settings_shortcuts_search_empty">找不到快速鍵</string>
-    <string name="settings_shortcuts_group_general">一般</string>
-    <string name="settings_shortcuts_group_session">工作階段</string>
-    <string name="settings_shortcuts_group_navigation">導覽</string>
-    <string name="settings_shortcuts_group_modelAndAgent">模型與代理程式</string>
-    <string name="settings_shortcuts_group_terminal">終端機</string>
-    <string name="settings_shortcuts_group_prompt">提示</string>
-    <string name="settings_providers_title">提供者</string>
-    <string name="settings_providers_description">提供者設定將在此處可設定。</string>
-    <string name="settings_providers_section_connected">已連線的提供者</string>
-    <string name="settings_providers_connected_empty">沒有已連線的提供者</string>
-    <string name="settings_providers_connected_environmentDescription">已從環境變數連線</string>
-    <string name="settings_providers_section_popular">熱門提供者</string>
-    <string name="settings_providers_custom_description">透過基底 URL 新增與 OpenAI 相容的提供者。</string>
-    <string name="settings_providers_tag_environment">環境</string>
-    <string name="settings_providers_tag_config">設定</string>
-    <string name="settings_providers_tag_custom">自訂</string>
-    <string name="settings_providers_tag_other">其他</string>
-    <string name="settings_models_title">模型</string>
-    <string name="settings_models_description">模型設定將在此處可設定。</string>
-    <string name="settings_agents_title">代理程式</string>
-    <string name="settings_agents_description">代理程式設定將在此處可設定。</string>
-    <string name="settings_commands_title">命令</string>
-    <string name="settings_commands_description">命令設定將在此處可設定。</string>
-    <string name="settings_mcp_title">MCP</string>
-    <string name="settings_mcp_description">MCP 設定將在此處可設定。</string>
-    <string name="settings_permissions_title">權限</string>
-    <string name="settings_permissions_description">控制伺服器預設可以使用哪些工具。</string>
-    <string name="settings_permissions_section_tools">工具</string>
-    <string name="settings_permissions_toast_updateFailed_title">更新權限失敗</string>
-    <string name="settings_permissions_action_allow">允許</string>
-    <string name="settings_permissions_action_ask">詢問</string>
-    <string name="settings_permissions_action_deny">拒絕</string>
-    <string name="settings_permissions_tool_read_title">讀取</string>
-    <string name="settings_permissions_tool_read_description">讀取檔案（符合檔案路徑）</string>
-    <string name="settings_permissions_tool_edit_title">編輯</string>
-    <string name="settings_permissions_tool_edit_description">修改檔案，包括編輯、寫入、修補和多重編輯</string>
-    <string name="settings_permissions_tool_glob_title">Glob</string>
-    <string name="settings_permissions_tool_glob_description">使用 glob 模式符合檔案</string>
-    <string name="settings_permissions_tool_grep_title">Grep</string>
-    <string name="settings_permissions_tool_grep_description">使用正規表示式搜尋檔案內容</string>
-    <string name="settings_permissions_tool_list_title">清單</string>
-    <string name="settings_permissions_tool_list_description">列出目錄中的檔案</string>
-    <string name="settings_permissions_tool_bash_title">Bash</string>
-    <string name="settings_permissions_tool_bash_description">執行 shell 命令</string>
-    <string name="settings_permissions_tool_task_title">Task</string>
-    <string name="settings_permissions_tool_task_description">啟動子代理程式</string>
-    <string name="settings_permissions_tool_skill_title">Skill</string>
-    <string name="settings_permissions_tool_skill_description">按名稱載入技能</string>
-    <string name="settings_permissions_tool_lsp_title">LSP</string>
-    <string name="settings_permissions_tool_lsp_description">執行語言伺服器查詢</string>
-    <string name="settings_permissions_tool_todowrite_title">更新待辦</string>
-    <string name="settings_permissions_tool_todowrite_description">更新待辦清單</string>
-    <string name="settings_permissions_tool_webfetch_title">Web Fetch</string>
-    <string name="settings_permissions_tool_webfetch_description">從 URL 取得內容</string>
-    <string name="settings_permissions_tool_websearch_title">Web Search</string>
-    <string name="settings_permissions_tool_websearch_description">搜尋網頁</string>
-    <string name="settings_permissions_tool_external_directory_title">外部目錄</string>
-    <string name="settings_permissions_tool_external_directory_description">存取專案目錄之外的檔案</string>
-    <string name="settings_permissions_tool_doom_loop_title">Doom Loop</string>
-    <string name="settings_permissions_tool_doom_loop_description">偵測具有相同輸入的重複工具呼叫</string>
-
-    <!-- session.* -->
-    <string name="session_delete_failed_title">刪除工作階段失敗</string>
-    <string name="session_delete_title">刪除工作階段</string>
-    <string name="session_delete_button">刪除工作階段</string>
+    <!-- ui.* -->
+    <string name="ui_basicTool_called">呼叫了 `%1$s`</string>
+    <string name="ui_common_add">新增</string>
+    <string name="ui_common_back">返回</string>
+    <string name="ui_common_cancel">取消</string>
+    <string name="ui_common_clear">清除</string>
+    <string name="ui_common_close">關閉</string>
+    <string name="ui_common_confirm">確認</string>
+    <string name="ui_common_dismiss">忽略</string>
+    <string name="ui_common_file">檔案</string>
+    <string name="ui_common_file_one">個檔案</string>
+    <string name="ui_common_file_other">個檔案</string>
+    <string name="ui_common_next">下一步</string>
+    <string name="ui_common_question_one">個問題</string>
+    <string name="ui_common_question_other">個問題</string>
+    <string name="ui_common_showMore">顯示更多</string>
+    <string name="ui_common_submit">提交</string>
+    <string name="ui_fileMedia_binary_description_default">無法顯示此檔案，因為它是二進位檔案。</string>
+    <string name="ui_fileMedia_binary_description_path">無法顯示 %1$s，因為它是二進位檔案。</string>
+    <string name="ui_fileMedia_binary_title">二進位檔案</string>
+    <string name="ui_fileMedia_kind_audio">音訊</string>
+    <string name="ui_fileMedia_kind_image">圖片</string>
+    <string name="ui_fileMedia_state_error">載入%1$s失敗</string>
+    <string name="ui_fileMedia_state_loading">正在載入%1$s…</string>
+    <string name="ui_fileMedia_state_removed">%1$s已移除</string>
+    <string name="ui_fileMedia_state_unavailable">%1$s無法預覽</string>
+    <string name="ui_fileSearch_close">關閉搜尋</string>
+    <string name="ui_fileSearch_nextMatch">下一個</string>
+    <string name="ui_fileSearch_placeholder">搜尋</string>
+    <string name="ui_fileSearch_previousMatch">上一個</string>
+    <string name="ui_imagePreview_alt">圖片預覽</string>
+    <string name="ui_lineComment_cancel">取消</string>
+    <string name="ui_lineComment_contextPlaceholder">新增此變更的相關資訊</string>
+    <string name="ui_lineComment_editorLabel_prefix">"正在留言於 "</string>
+    <string name="ui_lineComment_editorLabel_suffix" />
+    <string name="ui_lineComment_label_prefix">"留言於 "</string>
+    <string name="ui_lineComment_label_suffix" />
+    <string name="ui_lineComment_placeholder">新增留言</string>
+    <string name="ui_lineComment_submit">留言</string>
+    <string name="ui_list_clearFilter">清除篩選</string>
+    <string name="ui_list_empty">無結果</string>
+    <string name="ui_list_emptyWithFilter_prefix">沒有關於</string>
+    <string name="ui_list_emptyWithFilter_suffix">的結果</string>
+    <string name="ui_list_loading">載入中</string>
+    <string name="ui_message_attachment_alt">附件</string>
+    <string name="ui_message_collapse">收合訊息</string>
+    <string name="ui_message_copied">已複製！</string>
+    <string name="ui_message_copy">複製</string>
+    <string name="ui_message_copyMessage">複製訊息</string>
+    <string name="ui_message_copyResponse">複製回覆</string>
+    <string name="ui_message_duration_minutesSeconds">%1$s分 %2$s秒</string>
+    <string name="ui_message_duration_seconds">%1$s秒</string>
+    <string name="ui_message_expand">展開訊息</string>
+    <string name="ui_message_forkMessage">分支到新工作階段</string>
+    <string name="ui_message_interrupted">已中斷</string>
+    <string name="ui_message_queued">已加入佇列</string>
+    <string name="ui_message_revertMessage">重設至此點</string>
+    <string name="ui_messageNav_newMessage">新訊息</string>
+    <string name="ui_messagePart_compaction">工作階段已壓縮</string>
+    <string name="ui_messagePart_context_list_one">列出 %1$s 次</string>
+    <string name="ui_messagePart_context_list_other">列出 %1$s 次</string>
+    <string name="ui_messagePart_context_read_one">%1$s 次讀取</string>
+    <string name="ui_messagePart_context_read_other">%1$s 次讀取</string>
+    <string name="ui_messagePart_context_search_one">%1$s 次搜尋</string>
+    <string name="ui_messagePart_context_search_other">%1$s 次搜尋</string>
+    <string name="ui_messagePart_diagnostic_error">錯誤</string>
+    <string name="ui_messagePart_option_typeOwnAnswer">輸入自己的答案</string>
+    <string name="ui_messagePart_questions_dismissed">問題已略過</string>
+    <string name="ui_messagePart_review_title">檢閱你的答案</string>
+    <string name="ui_messagePart_title_edit">編輯</string>
+    <string name="ui_messagePart_title_write">寫入</string>
+    <string name="ui_patch_action_created">已建立</string>
+    <string name="ui_patch_action_deleted">已刪除</string>
+    <string name="ui_patch_action_moved">已移動</string>
+    <string name="ui_patch_action_patched">已套用修補</string>
+    <string name="ui_permission_allowAlways">永遠允許</string>
+    <string name="ui_permission_allowOnce">允許一次</string>
+    <string name="ui_permission_deny">拒絕</string>
+    <string name="ui_promptInput_add">新增圖片和檔案</string>
+    <string name="ui_promptInput_attachments">圖片和檔案</string>
+    <string name="ui_promptInput_chooseAgent">選擇代理程式</string>
+    <string name="ui_promptInput_chooseModel">選擇模型</string>
+    <string name="ui_promptInput_chooseVariant">選擇模型變體</string>
+    <string name="ui_promptInput_commands">命令</string>
+    <string name="ui_promptInput_context">上下文</string>
+    <string name="ui_promptInput_dropFiles">拖放檔案以附加</string>
+    <string name="ui_promptInput_label">提示詞</string>
+    <string name="ui_promptInput_noMatchingItems">沒有符合的項目</string>
+    <string name="ui_promptInput_placeholder_normal">想問什麼都可以， / 可使用命令， @ 可加入上下文…</string>
+    <string name="ui_promptInput_placeholder_shell">輸入 shell 命令…</string>
+    <string name="ui_promptInput_removeAttachment">移除附件</string>
+    <string name="ui_promptInput_send">傳送</string>
+    <string name="ui_promptInput_shell">shell 命令</string>
+    <string name="ui_promptInput_stop">停止</string>
+    <string name="ui_question_answer_none">（無答案）</string>
+    <string name="ui_question_custom_placeholder">輸入你的答案…</string>
+    <string name="ui_question_multiHint">可多選</string>
+    <string name="ui_question_review_notAnswered">（未回答）</string>
+    <string name="ui_question_singleHint">選擇一個答案</string>
+    <string name="ui_question_subtitle_answered">已回答 %1$s 題</string>
+    <string name="ui_scrollView_ariaLabel">可捲動內容</string>
+    <string name="ui_sessionReview_change_added">已新增</string>
+    <string name="ui_sessionReview_change_modified">已修改</string>
+    <string name="ui_sessionReview_change_removed">已移除</string>
+    <string name="ui_sessionReview_collapseAll">全部收合</string>
+    <string name="ui_sessionReview_diffStyle_split">並排</string>
+    <string name="ui_sessionReview_diffStyle_unified">統一</string>
+    <string name="ui_sessionReview_expandAll">全部展開</string>
+    <string name="ui_sessionReview_image_loading">載入中…</string>
+    <string name="ui_sessionReview_image_placeholder">圖片</string>
+    <string name="ui_sessionReview_largeDiff_meta">限制：%1$s 行變更。目前：%2$s 行變更。</string>
+    <string name="ui_sessionReview_largeDiff_renderAnyway">仍要顯示</string>
+    <string name="ui_sessionReview_largeDiff_title">差異過大，無法顯示</string>
+    <string name="ui_sessionReview_openFile">開啟檔案</string>
+    <string name="ui_sessionReview_selection_line">第 %1$s 行</string>
+    <string name="ui_sessionReview_selection_lines">第 %1$s-%2$s 行</string>
+    <string name="ui_sessionReview_title">工作階段變更</string>
+    <string name="ui_sessionReview_title_branch">分支變更</string>
+    <string name="ui_sessionReview_title_git">Git 變更</string>
+    <string name="ui_sessionReview_title_lastTurn">上一輪變更</string>
+    <string name="ui_sessionReviewV2_diffView">差異檢視</string>
+    <string name="ui_sessionReviewV2_empty_changes_description">專案變更會顯示在這裡</string>
+    <string name="ui_sessionReviewV2_empty_changes_title">尚無檔案變更</string>
+    <string name="ui_sessionReviewV2_empty_noGit_action">建立 Git 儲存庫</string>
+    <string name="ui_sessionReviewV2_empty_noGit_actionLoading">正在建立 Git 儲存庫…</string>
+    <string name="ui_sessionReviewV2_empty_noGit_description">追蹤、檢閱及復原此專案中的變更</string>
+    <string name="ui_sessionReviewV2_empty_noGit_title">沒有追蹤的變更</string>
+    <string name="ui_sessionReviewV2_expandMode">展開或收合差異</string>
+    <string name="ui_sessionReviewV2_filterFiles">篩選檔案</string>
+    <string name="ui_sessionReviewV2_hideNonDiffLines">隱藏無差異的行</string>
+    <string name="ui_sessionReviewV2_nextFile">下一個檔案</string>
+    <string name="ui_sessionReviewV2_previousFile">上一個檔案</string>
+    <string name="ui_sessionReviewV2_showAllLines">顯示所有行</string>
+    <string name="ui_sessionReviewV2_splitDiff">並排差異</string>
+    <string name="ui_sessionReviewV2_toggleSidebar">切換檔案樹</string>
+    <string name="ui_sessionReviewV2_unifiedDiff">統一格式差異</string>
+    <string name="ui_sessionTurn_diff_showMore">顯示更多變更（%1$s）</string>
+    <string name="ui_sessionTurn_diffs_changed_one">已變更檔案：%1$s 個</string>
+    <string name="ui_sessionTurn_diffs_changed_other">已變更檔案：%1$s 個</string>
+    <string name="ui_sessionTurn_diffs_more">+%1$s 個檔案</string>
+    <string name="ui_sessionTurn_diffs_showAll">全部顯示</string>
+    <string name="ui_sessionTurn_diffs_showLess">顯示較少</string>
+    <string name="ui_sessionTurn_error_addCredits">新增點數</string>
+    <string name="ui_sessionTurn_error_freeUsageExceeded">免費使用額度已用完</string>
+    <string name="ui_sessionTurn_retry_attempt">第 %1$s 次</string>
+    <string name="ui_sessionTurn_retry_attemptLine">%1$s - 第 %2$s 次</string>
+    <string name="ui_sessionTurn_retry_geminiHot">Gemini 目前負載過高</string>
+    <string name="ui_sessionTurn_retry_inSeconds">%1$s 秒後</string>
+    <string name="ui_sessionTurn_retry_retrying">重試中</string>
+    <string name="ui_sessionTurn_status_consideringNextSteps">正在考慮下一步</string>
+    <string name="ui_sessionTurn_status_delegating">正在委派工作</string>
+    <string name="ui_sessionTurn_status_gatheredContext">已探索</string>
+    <string name="ui_sessionTurn_status_gatheringContext">正在探索</string>
+    <string name="ui_sessionTurn_status_gatheringThoughts">正在整理思緒</string>
+    <string name="ui_sessionTurn_status_makingEdits">正在修改</string>
+    <string name="ui_sessionTurn_status_planning">正在規劃下一步</string>
+    <string name="ui_sessionTurn_status_runningCommands">正在執行命令</string>
+    <string name="ui_sessionTurn_status_searchingCodebase">正在搜尋程式碼庫</string>
+    <string name="ui_sessionTurn_status_searchingWeb">正在搜尋網頁</string>
+    <string name="ui_sessionTurn_status_thinking">思考中</string>
+    <string name="ui_sessionTurn_status_thinkingWithTopic">思考 - %1$s</string>
+    <string name="ui_sessionTurn_steps_hide">隱藏步驟</string>
+    <string name="ui_sessionTurn_steps_show">顯示步驟</string>
+    <string name="ui_sessionTurn_summary_response">回覆</string>
+    <string name="ui_tabs_close">關閉分頁</string>
+    <string name="ui_textField_copied">已複製</string>
+    <string name="ui_textField_copyLink">複製連結</string>
+    <string name="ui_textField_copyToClipboard">複製到剪貼簿</string>
+    <string name="ui_tool_agent">%1$s 代理程式</string>
+    <string name="ui_tool_agent_default">代理程式</string>
+    <string name="ui_tool_glob">Glob</string>
+    <string name="ui_tool_grep">Grep</string>
+    <string name="ui_tool_list">列出</string>
+    <string name="ui_tool_loaded">已載入</string>
+    <string name="ui_tool_patch">修補</string>
+    <string name="ui_tool_questions">問題</string>
+    <string name="ui_tool_questions_numbered">問題 %1$s</string>
+    <string name="ui_tool_read">讀取</string>
+    <string name="ui_tool_shell">Shell</string>
+    <string name="ui_tool_skill">技能</string>
+    <string name="ui_tool_task">任務</string>
+    <string name="ui_tool_webfetch">Webfetch</string>
+    <string name="ui_tool_websearch">網頁搜尋</string>
+    <string name="ui_tool_websearch_provider">%1$s 網頁搜尋</string>
+    <string name="ui_toolErrorCard_copyError">複製錯誤</string>
+    <string name="ui_toolErrorCard_failed">失敗</string>
 
     <!-- workspace.* -->
-    <string name="workspace_new">新增工作區</string>
-    <string name="workspace_type_local">本機</string>
-    <string name="workspace_type_sandbox">沙盒</string>
     <string name="workspace_create_failed_title">建立工作區失敗</string>
-    <string name="workspace_delete_failed_title">刪除工作區失敗</string>
-    <string name="workspace_resetting_title">正在重設工作區</string>
-    <string name="workspace_resetting_description">這可能需要一點時間。</string>
-    <string name="workspace_reset_failed_title">重設工作區失敗</string>
-    <string name="workspace_reset_success_title">工作區已重設</string>
-    <string name="workspace_reset_success_description">工作區現在與預設分支一致。</string>
-    <string name="workspace_error_stillPreparing">工作區仍在準備中</string>
-    <string name="workspace_status_checking">正在檢查未合併的變更...</string>
-    <string name="workspace_status_error">無法驗證 Git 狀態。</string>
-    <string name="workspace_status_clean">未偵測到未合併的變更。</string>
-    <string name="workspace_status_dirty">偵測到未合併的變更。</string>
-    <string name="workspace_delete_title">刪除工作區</string>
     <string name="workspace_delete_button">刪除工作區</string>
-    <string name="workspace_reset_title">重設工作區</string>
-    <string name="workspace_reset_button">重設工作區</string>
+    <string name="workspace_delete_confirm">要刪除工作區「%1$s」嗎？</string>
+    <string name="workspace_delete_failed_title">刪除工作區失敗</string>
+    <string name="workspace_delete_title">刪除工作區</string>
+    <string name="workspace_error_stillPreparing">工作區仍在準備中</string>
+    <string name="workspace_new">新增工作區</string>
+    <string name="workspace_reset_archived_many">將封存 %1$s 個工作階段。</string>
     <string name="workspace_reset_archived_none">不會封存任何作用中工作階段。</string>
     <string name="workspace_reset_archived_one">將封存 1 個工作階段。</string>
-    <string name="workspace_reset_archived_many">將封存 %1$s 個工作階段。</string>
+    <string name="workspace_reset_button">重設工作區</string>
+    <string name="workspace_reset_confirm">要重設工作區「%1$s」嗎？</string>
+    <string name="workspace_reset_failed_title">重設工作區失敗</string>
     <string name="workspace_reset_note">這將把工作區重設為與預設分支一致。</string>
+    <string name="workspace_reset_success_description">工作區現在與預設分支一致。</string>
+    <string name="workspace_reset_success_title">工作區已重設</string>
+    <string name="workspace_reset_title">重設工作區</string>
+    <string name="workspace_resetting_description">這可能需要一點時間。</string>
+    <string name="workspace_resetting_title">正在重設工作區</string>
+    <string name="workspace_status_checking">正在檢查未合併的變更…</string>
+    <string name="workspace_status_clean">未偵測到未合併的變更。</string>
+    <string name="workspace_status_dirty">偵測到未合併的變更。</string>
+    <string name="workspace_status_error">無法驗證 Git 狀態。</string>
+    <string name="workspace_type_local">本機</string>
+    <string name="workspace_type_sandbox">沙盒</string>
+
+    <!-- wsl.* -->
+    <string name="wsl_onboarding_adding">新增中…</string>
+    <string name="wsl_onboarding_allDistrosAdded">所有已安裝的發行版都已新增。</string>
+    <string name="wsl_onboarding_checkAgain">再次檢查</string>
+    <string name="wsl_onboarding_checkingDistro">正在檢查 %1$s…</string>
+    <string name="wsl_onboarding_checkingDistros">正在檢查發行版…</string>
+    <string name="wsl_onboarding_checkingOpencode">正在檢查 OpenCode…</string>
+    <string name="wsl_onboarding_checkingOpencodeIn">正在檢查 %1$s 中的 OpenCode…</string>
+    <string name="wsl_onboarding_checkingRuntime">正在檢查 WSL…</string>
+    <string name="wsl_onboarding_chooseDistroFirst">請先選擇發行版。</string>
+    <string name="wsl_onboarding_desktopVersion">桌面版 %1$s</string>
+    <string name="wsl_onboarding_distroNotInstalled">尚未安裝 %1$s。</string>
+    <string name="wsl_onboarding_distroReady">%1$s 已就緒。</string>
+    <string name="wsl_onboarding_distroStatus_checking">檢查中…</string>
+    <string name="wsl_onboarding_distroStatus_missingTools">缺少 bash、curl</string>
+    <string name="wsl_onboarding_distroStatus_opencodeMissing">未安裝 OpenCode</string>
+    <string name="wsl_onboarding_distroStatus_ready">就緒</string>
+    <string name="wsl_onboarding_distroStatus_unsupported">不支援 · 請使用 WSL 2</string>
+    <string name="wsl_onboarding_finishingDistro">正在完成 %1$s 的設定。</string>
+    <string name="wsl_onboarding_install">安裝</string>
+    <string name="wsl_onboarding_installDistro">安裝發行版</string>
+    <string name="wsl_onboarding_installOpencode">安裝 OpenCode</string>
+    <string name="wsl_onboarding_installOpencodeIn">在 %1$s 中安裝 OpenCode。</string>
+    <string name="wsl_onboarding_installWsl">安裝 WSL</string>
+    <string name="wsl_onboarding_installedDistros">已安裝的發行版</string>
+    <string name="wsl_onboarding_installing">安裝中…</string>
+    <string name="wsl_onboarding_installingDistro">正在安裝 %1$s…</string>
+    <string name="wsl_onboarding_listingDistros">正在列出發行版…</string>
+    <string name="wsl_onboarding_loadFailed">無法載入 WSL 狀態。</string>
+    <string name="wsl_onboarding_loading">載入中…</string>
+    <string name="wsl_onboarding_needAnotherDistro">需要其他發行版？</string>
+    <string name="wsl_onboarding_needAnotherDistroHint">從 WSL 目錄安裝 Linux 發行版</string>
+    <string name="wsl_onboarding_next">下一步</string>
+    <string name="wsl_onboarding_noDistros">尚未偵測到發行版。</string>
+    <string name="wsl_onboarding_notFound">找不到</string>
+    <string name="wsl_onboarding_openDistroOnce">開啟 %1$s 一次以完成設定。</string>
+    <string name="wsl_onboarding_openTerminal">開啟終端機</string>
+    <string name="wsl_onboarding_opencodeReady">OpenCode 已就緒。</string>
+    <string name="wsl_onboarding_opencodeReadyIn">%1$s 中的 OpenCode 已就緒。</string>
+    <string name="wsl_onboarding_path">路徑: %1$s</string>
+    <string name="wsl_onboarding_pickDistro">選擇發行版，或在下方安裝。</string>
+    <string name="wsl_onboarding_ready">WSL 已就緒。</string>
+    <string name="wsl_onboarding_refresh">重新整理</string>
+    <string name="wsl_onboarding_required">需要 WSL 才能繼續。</string>
+    <string name="wsl_onboarding_restartRequired">Windows 需要重新啟動，才能完成 WSL 安裝。</string>
+    <string name="wsl_onboarding_searchDistros">搜尋發行版</string>
+    <string name="wsl_onboarding_step_distro">選擇發行版</string>
+    <string name="wsl_onboarding_step_opencode">OpenCode</string>
+    <string name="wsl_onboarding_toolsRequired">此發行版需要 bash 和 curl。</string>
+    <string name="wsl_onboarding_unknown">未知</string>
+    <string name="wsl_onboarding_updateOpencode">更新 OpenCode</string>
+    <string name="wsl_onboarding_updateOpencodeIn">更新 %1$s 中的 OpenCode。</string>
+    <string name="wsl_onboarding_updatingOpencode">正在更新 OpenCode…</string>
+    <string name="wsl_onboarding_updatingOpencodeIn">正在更新 %1$s 中的 OpenCode…</string>
+    <string name="wsl_onboarding_version">版本: %1$s</string>
+    <string name="wsl_onboarding_versionMismatch">已安裝版本與桌面應用程式版本不符。</string>
+    <string name="wsl_onboarding_windowsRestartRequired">重新啟動 Windows 以完成 WSL 安裝，然後重新開啟 OpenCode。</string>
+    <string name="wsl_onboarding_wsl2Required">需要 WSL 2。</string>
+    <string name="wsl_onboarding_wslNotInstalled_description">新增 WSL 伺服器前，必須先安裝 WSL（Windows Subsystem for Linux）</string>
+    <string name="wsl_onboarding_wslNotInstalled_title">未安裝 WSL</string>
+    <string name="wsl_onboarding_wslUnavailable_description">OpenCode 無法確認此電腦上的 WSL。</string>
+    <string name="wsl_onboarding_wslUnavailable_title">WSL 無法使用</string>
+    <string name="wsl_server_add">新增 WSL 伺服器</string>
+    <string name="wsl_server_addShort">新增 WSL</string>
+    <string name="wsl_server_label">WSL</string>
+    <string name="wsl_server_menu_label">WSL 伺服器</string>
+    <string name="wsl_server_retryStart">重試啟動</string>
+    <string name="wsl_server_updating">更新中…</string>
+
+    <!-- legacy-carryover (removed upstream; kept for existing Kotlin refs) -->
+    <!-- legacy-carryover: upstream key 'ui.tool.todos' no longer exists -->
+    <string name="ui_tool_todos">待辦</string>
+    <!-- legacy-carryover: upstream key 'ui.tool.todos.read' no longer exists -->
+    <string name="ui_tool_todos_read">讀取待辦</string>
+    <!-- legacy-carryover: upstream key 'component.html' no longer exists -->
+    <string name="component_html">angular-html</string>
+    <!-- legacy-carryover: upstream key 'component.ts' no longer exists -->
+    <string name="component_ts">angular-ts</string>
+    <!-- legacy-carryover: upstream key 'blade.php' no longer exists -->
+    <string name="blade_php">blade</string>
+    <!-- legacy-carryover: upstream key 'CMakeLists.txt' no longer exists -->
+    <string name="CMakeLists_txt">cmake</string>
+    <!-- legacy-carryover: upstream key 'vine.ts' no longer exists -->
+    <string name="vine_ts">vue-vine</string>
+    <!-- legacy-carryover: upstream key 'editor.background' no longer exists -->
+    <string name="editor_background">var(--color-background-stronger)</string>
+    <!-- legacy-carryover: upstream key 'editor.foreground' no longer exists -->
+    <string name="editor_foreground">var(--text-base)</string>
+    <!-- legacy-carryover: upstream key 'gitDecoration.addedResourceForeground' no longer exists -->
+    <string name="gitDecoration_addedResourceForeground">var(--syntax-diff-add)</string>
+    <!-- legacy-carryover: upstream key 'gitDecoration.deletedResourceForeground' no longer exists -->
+    <string name="gitDecoration_deletedResourceForeground">var(--syntax-diff-delete)</string>
+    <!-- legacy-carryover: upstream key 'gitDecoration.modifiedResourceForeground' no longer exists -->
+    <string name="gitDecoration_modifiedResourceForeground">var(--syntax-diff-unknown)</string>
+    <!-- legacy-carryover: upstream key 'variable.constant' no longer exists -->
+    <string name="variable_constant">var(--syntax-constant)</string>
+    <!-- legacy-carryover: upstream key 'variable.defaultLibrary' no longer exists -->
+    <string name="variable_defaultLibrary">var(--syntax-unknown)</string>
+    <!-- legacy-carryover: upstream key 'command.session.share' no longer exists -->
+    <string name="command_session_share">分享工作階段</string>
+    <!-- legacy-carryover: upstream key 'command.session.share.description' no longer exists -->
+    <string name="command_session_share_description">分享此工作階段並將連結複製到剪貼簿</string>
+    <!-- legacy-carryover: upstream key 'command.session.unshare' no longer exists -->
+    <string name="command_session_unshare">取消分享工作階段</string>
+    <!-- legacy-carryover: upstream key 'command.session.unshare.description' no longer exists -->
+    <string name="command_session_unshare_description">停止分享此工作階段</string>
+    <!-- legacy-carryover: upstream key 'prompt.toast.pasteUnsupported.title' no longer exists -->
+    <string name="prompt_toast_pasteUnsupported_title">不支援的附件</string>
+    <!-- legacy-carryover: upstream key 'prompt.toast.pasteUnsupported.description' no longer exists -->
+    <string name="prompt_toast_pasteUnsupported_description">此處僅能附加圖片、PDF 或文字檔案。</string>
+    <!-- legacy-carryover: upstream key 'prompt.toast.promptSendFailed.retry' no longer exists -->
+    <string name="prompt_toast_promptSendFailed_retry">重試</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.add.errorCors' no longer exists -->
+    <string name="dialog_server_add_errorCors">Could not connect. If the URL is reachable in a browser, check username/password. The Android shell proxies API calls natively and does not require server CORS.</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.add.errorAuth' no longer exists -->
+    <string name="dialog_server_add_errorAuth">Server requires authentication. Enter username and password.</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.add.corsHint' no longer exists -->
+    <string name="dialog_server_add_corsHint">Enter the real backend URL (for example https://backend.example.com). This Android shell reverse-proxies API/SSE natively — you do not need --cors for the WebView origin.</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.add.username' no longer exists -->
+    <string name="dialog_server_add_username">使用者名稱（選填）</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.add.usernamePlaceholder' no longer exists -->
+    <string name="dialog_server_add_usernamePlaceholder">使用者名稱</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.status.current' no longer exists -->
+    <string name="dialog_server_status_current">Current</string>
+    <!-- legacy-carryover: upstream key 'dialog.server.apply' no longer exists -->
+    <string name="dialog_server_apply">Use this server</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.toast.ariaLabel' no longer exists -->
+    <string name="help_tabs_toast_ariaLabel">分頁功能介紹。使用分頁整理工作和進行中的工作階段</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.toast.dismiss' no longer exists -->
+    <string name="help_tabs_toast_dismiss">關閉分頁功能資訊</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.title' no longer exists -->
+    <string name="help_tabs_title">分頁功能介紹</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.description' no longer exists -->
+    <string name="help_tabs_description">使用分頁整理工作和進行中的工作階段</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.date' no longer exists -->
+    <string name="help_tabs_date">7 月 14 日</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.introduction' no longer exists -->
+    <string name="help_tabs_introduction">OpenCode Desktop 現在以分頁為核心。</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.sessions' no longer exists -->
+    <string name="help_tabs_sessions">在分頁中開始新的工作階段，或從任一專案開啟現有的工作階段。開始新工作時請開啟新分頁，完成後再將其關閉。</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.organize' no longer exists -->
+    <string name="help_tabs_organize">同時開啟幾個分頁，可讓進行中的工作階段更容易整理。如果打算保留分頁，請將其重新命名為容易記住的名稱。</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.home' no longer exists -->
+    <string name="help_tabs_home">你可以在新的首頁找到所有工作階段和專案。選取工作階段即可在分頁中開啟。</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.persistence' no longer exists -->
+    <string name="help_tabs_persistence">重新開啟應用程式時，分頁仍會保持開啟。</string>
+    <!-- legacy-carryover: upstream key 'help.tabs.worktrees' no longer exists -->
+    <string name="help_tabs_worktrees">新版設計尚未支援 Git Worktrees，此功能即將推出。如果你偏好繼續使用先前的版面，可以在設定中切換版面。請留意，新版面將在幾週後成為永久版面。</string>
+    <!-- legacy-carryover: upstream key 'server.row.noUsername' no longer exists -->
+    <string name="server_row_noUsername">無使用者名稱</string>
+    <!-- legacy-carryover: upstream key 'toast.session.share.copyFailed.title' no longer exists -->
+    <string name="toast_session_share_copyFailed_title">無法複製連結到剪貼簿</string>
+    <!-- legacy-carryover: upstream key 'toast.session.share.success.title' no longer exists -->
+    <string name="toast_session_share_success_title">工作階段已分享</string>
+    <!-- legacy-carryover: upstream key 'toast.session.share.success.description' no longer exists -->
+    <string name="toast_session_share_success_description">分享連結已複製到剪貼簿</string>
+    <!-- legacy-carryover: upstream key 'toast.session.share.failed.title' no longer exists -->
+    <string name="toast_session_share_failed_title">分享工作階段失敗</string>
+    <!-- legacy-carryover: upstream key 'toast.session.share.failed.description' no longer exists -->
+    <string name="toast_session_share_failed_description">分享工作階段時發生錯誤</string>
+    <!-- legacy-carryover: upstream key 'session.followupDock.summary.one' no longer exists -->
+    <string name="session_followupDock_summary_one">%1$s 則佇列訊息</string>
+    <!-- legacy-carryover: upstream key 'session.followupDock.summary.other' no longer exists -->
+    <string name="session_followupDock_summary_other">%1$s 則佇列訊息</string>
+    <!-- legacy-carryover: upstream key 'session.followupDock.sendNow' no longer exists -->
+    <string name="session_followupDock_sendNow">立即傳送</string>
+    <!-- legacy-carryover: upstream key 'session.followupDock.edit' no longer exists -->
+    <string name="session_followupDock_edit">編輯</string>
+    <!-- legacy-carryover: upstream key 'session.followupDock.collapse' no longer exists -->
+    <string name="session_followupDock_collapse">收合佇列訊息</string>
+    <!-- legacy-carryover: upstream key 'session.followupDock.expand' no longer exists -->
+    <string name="session_followupDock_expand">展開佇列訊息</string>
+    <!-- legacy-carryover: upstream key 'session.revertDock.summary.one' no longer exists -->
+    <string name="session_revertDock_summary_one">%1$s 則已還原的訊息</string>
+    <!-- legacy-carryover: upstream key 'session.revertDock.summary.other' no longer exists -->
+    <string name="session_revertDock_summary_other">%1$s 則已還原的訊息</string>
+    <!-- legacy-carryover: upstream key 'session.revertDock.collapse' no longer exists -->
+    <string name="session_revertDock_collapse">收合已還原的訊息</string>
+    <!-- legacy-carryover: upstream key 'session.revertDock.expand' no longer exists -->
+    <string name="session_revertDock_expand">展開已還原的訊息</string>
+    <!-- legacy-carryover: upstream key 'session.revertDock.restore' no longer exists -->
+    <string name="session_revertDock_restore">還原訊息</string>
+    <!-- legacy-carryover: upstream key 'session.share.popover.title' no longer exists -->
+    <string name="session_share_popover_title">發佈到網頁</string>
+    <!-- legacy-carryover: upstream key 'session.share.popover.description.shared' no longer exists -->
+    <string name="session_share_popover_description_shared">此工作階段已在網頁上公開。任何擁有連結的人都可以存取。</string>
+    <!-- legacy-carryover: upstream key 'session.share.popover.description.unshared' no longer exists -->
+    <string name="session_share_popover_description_unshared">在網頁上公開分享此工作階段。任何擁有連結的人都可以存取。</string>
+    <!-- legacy-carryover: upstream key 'session.share.action.share' no longer exists -->
+    <string name="session_share_action_share">分享</string>
+    <!-- legacy-carryover: upstream key 'session.share.action.publish' no longer exists -->
+    <string name="session_share_action_publish">發佈</string>
+    <!-- legacy-carryover: upstream key 'session.share.action.publishing' no longer exists -->
+    <string name="session_share_action_publishing">正在發佈...</string>
+    <!-- legacy-carryover: upstream key 'session.share.action.unpublish' no longer exists -->
+    <string name="session_share_action_unpublish">取消發佈</string>
+    <!-- legacy-carryover: upstream key 'session.share.action.unpublishing' no longer exists -->
+    <string name="session_share_action_unpublishing">正在取消發佈...</string>
+    <!-- legacy-carryover: upstream key 'session.share.action.view' no longer exists -->
+    <string name="session_share_action_view">檢視</string>
+    <!-- legacy-carryover: upstream key 'session.share.copy.copied' no longer exists -->
+    <string name="session_share_copy_copied">已複製</string>
+    <!-- legacy-carryover: upstream key 'session.share.copy.copyLink' no longer exists -->
+    <string name="session_share_copy_copyLink">複製連結</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.followup.title' no longer exists -->
+    <string name="settings_general_row_followup_title">後續追問行為</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.followup.description' no longer exists -->
+    <string name="settings_general_row_followup_description">選擇後續追問提示是立即引導還是進入佇列等待</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.followup.option.queue' no longer exists -->
+    <string name="settings_general_row_followup_option_queue">佇列</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.followup.option.steer' no longer exists -->
+    <string name="settings_general_row_followup_option_steer">引導</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.tabPlusCreatesSession.title' no longer exists -->
+    <string name="settings_general_row_tabPlusCreatesSession_title">Plus button creates a new session</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.tabPlusCreatesSession.description' no longer exists -->
+    <string name="settings_general_row_tabPlusCreatesSession_description">When off, the tab bar + opens the command palette (Ctrl+P). Turn on to restore Desktop behavior: + creates a new session.</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.newInterface.title' no longer exists -->
+    <string name="settings_general_row_newInterface_title">新版面</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.newInterface.badge' no longer exists -->
+    <string name="settings_general_row_newInterface_badge">新</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.newInterface.description' no longer exists -->
+    <string name="settings_general_row_newInterface_description">使用新的分頁和首頁版面。在限定時間內可切換版面。</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.newInterfaceNotice.title' no longer exists -->
+    <string name="settings_general_row_newInterfaceNotice_title">你現在使用的是新版面</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.newInterfaceNotice.description' no longer exists -->
+    <string name="settings_general_row_newInterfaceNotice_description">先前的版面已無法使用</string>
+    <!-- legacy-carryover: upstream key 'settings.general.row.newInterfaceNotice.dismiss' no longer exists -->
+    <string name="settings_general_row_newInterfaceNotice_dismiss">忽略</string>
+    <!-- legacy-carryover: upstream key 'readme.md' no longer exists -->
+    <string name="readme_md">Readme</string>
+    <!-- legacy-carryover: upstream key 'changelog.md' no longer exists -->
+    <string name="changelog_md">Changelog</string>
+    <!-- legacy-carryover: upstream key 'contributing.md' no longer exists -->
+    <string name="contributing_md">Contributing</string>
+    <!-- legacy-carryover: upstream key 'conduct.md' no longer exists -->
+    <string name="conduct_md">Conduct</string>
+    <!-- legacy-carryover: upstream key 'package.json' no longer exists -->
+    <string name="package_json">Nodejs</string>
+    <!-- legacy-carryover: upstream key 'yarn.lock' no longer exists -->
+    <string name="yarn_lock">Yarn</string>
+    <!-- legacy-carryover: upstream key 'bun.lock' no longer exists -->
+    <string name="bun_lock">Bun</string>
+    <!-- legacy-carryover: upstream key 'bun.lockb' no longer exists -->
+    <string name="bun_lockb">Bun</string>
+    <!-- legacy-carryover: upstream key 'bunfig.toml' no longer exists -->
+    <string name="bunfig_toml">Bun</string>
+    <!-- legacy-carryover: upstream key 'jest.config.js' no longer exists -->
+    <string name="jest_config_js">Jest</string>
+    <!-- legacy-carryover: upstream key 'jest.config.ts' no longer exists -->
+    <string name="jest_config_ts">Jest</string>
+    <!-- legacy-carryover: upstream key 'jest.config.mjs' no longer exists -->
+    <string name="jest_config_mjs">Jest</string>
+    <!-- legacy-carryover: upstream key 'vitest.config.js' no longer exists -->
+    <string name="vitest_config_js">Vitest</string>
+    <!-- legacy-carryover: upstream key 'vitest.config.ts' no longer exists -->
+    <string name="vitest_config_ts">Vitest</string>
+    <!-- legacy-carryover: upstream key 'tailwind.config.js' no longer exists -->
+    <string name="tailwind_config_js">Tailwindcss</string>
+    <!-- legacy-carryover: upstream key 'tailwind.config.ts' no longer exists -->
+    <string name="tailwind_config_ts">Tailwindcss</string>
+    <!-- legacy-carryover: upstream key 'turbo.json' no longer exists -->
+    <string name="turbo_json">Turborepo</string>
+    <!-- legacy-carryover: upstream key 'tsconfig.json' no longer exists -->
+    <string name="tsconfig_json">Tsconfig</string>
+    <!-- legacy-carryover: upstream key 'jsconfig.json' no longer exists -->
+    <string name="jsconfig_json">Jsconfig</string>
+    <!-- legacy-carryover: upstream key 'vite.config.js' no longer exists -->
+    <string name="vite_config_js">Vite</string>
+    <!-- legacy-carryover: upstream key 'vite.config.ts' no longer exists -->
+    <string name="vite_config_ts">Vite</string>
+    <!-- legacy-carryover: upstream key 'webpack.config.js' no longer exists -->
+    <string name="webpack_config_js">Webpack</string>
+    <!-- legacy-carryover: upstream key 'rollup.config.js' no longer exists -->
+    <string name="rollup_config_js">Rollup</string>
+    <!-- legacy-carryover: upstream key 'astro.config.mjs' no longer exists -->
+    <string name="astro_config_mjs">AstroConfig</string>
+    <!-- legacy-carryover: upstream key 'astro.config.js' no longer exists -->
+    <string name="astro_config_js">AstroConfig</string>
+    <!-- legacy-carryover: upstream key 'next.config.js' no longer exists -->
+    <string name="next_config_js">Next</string>
+    <!-- legacy-carryover: upstream key 'next.config.mjs' no longer exists -->
+    <string name="next_config_mjs">Next</string>
+    <!-- legacy-carryover: upstream key 'nuxt.config.js' no longer exists -->
+    <string name="nuxt_config_js">Nuxt</string>
+    <!-- legacy-carryover: upstream key 'nuxt.config.ts' no longer exists -->
+    <string name="nuxt_config_ts">Nuxt</string>
+    <!-- legacy-carryover: upstream key 'svelte.config.js' no longer exists -->
+    <string name="svelte_config_js">Svelte</string>
+    <!-- legacy-carryover: upstream key 'remix.config.js' no longer exists -->
+    <string name="remix_config_js">Remix</string>
+    <!-- legacy-carryover: upstream key 'prisma.schema' no longer exists -->
+    <string name="prisma_schema">Prisma</string>
+    <!-- legacy-carryover: upstream key 'cargo.toml' no longer exists -->
+    <string name="cargo_toml">Rust</string>
+    <!-- legacy-carryover: upstream key 'go.mod' no longer exists -->
+    <string name="go_mod">GoMod</string>
+    <!-- legacy-carryover: upstream key 'go.sum' no longer exists -->
+    <string name="go_sum">GoMod</string>
+    <!-- legacy-carryover: upstream key 'requirements.txt' no longer exists -->
+    <string name="requirements_txt">Python</string>
+    <!-- legacy-carryover: upstream key 'pyproject.toml' no longer exists -->
+    <string name="pyproject_toml">Python</string>
+    <!-- legacy-carryover: upstream key 'poetry.lock' no longer exists -->
+    <string name="poetry_lock">Poetry</string>
+    <!-- legacy-carryover: upstream key 'composer.json' no longer exists -->
+    <string name="composer_json">Php</string>
+    <!-- legacy-carryover: upstream key 'build.gradle' no longer exists -->
+    <string name="build_gradle">Gradle</string>
+    <!-- legacy-carryover: upstream key 'pom.xml' no longer exists -->
+    <string name="pom_xml">Maven</string>
+    <!-- legacy-carryover: upstream key 'deno.json' no longer exists -->
+    <string name="deno_json">Deno</string>
+    <!-- legacy-carryover: upstream key 'deno.jsonc' no longer exists -->
+    <string name="deno_jsonc">Deno</string>
+    <!-- legacy-carryover: upstream key 'vercel.json' no longer exists -->
+    <string name="vercel_json">Vercel</string>
+    <!-- legacy-carryover: upstream key 'netlify.toml' no longer exists -->
+    <string name="netlify_toml">Netlify</string>
+    <!-- legacy-carryover: upstream key 'robots.txt' no longer exists -->
+    <string name="robots_txt">Robots</string>
+    <!-- legacy-carryover: upstream key 'favicon.ico' no longer exists -->
+    <string name="favicon_ico">Favicon</string>
+    <!-- legacy-carryover: upstream key 'babel.config.js' no longer exists -->
+    <string name="babel_config_js">Babel</string>
+    <!-- legacy-carryover: upstream key 'gulpfile.js' no longer exists -->
+    <string name="gulpfile_js">Gulp</string>
+    <!-- legacy-carryover: upstream key 'gruntfile.js' no longer exists -->
+    <string name="gruntfile_js">Grunt</string>
+    <!-- legacy-carryover: upstream key 'capacitor.config.json' no longer exists -->
+    <string name="capacitor_config_json">Capacitor</string>
+    <!-- legacy-carryover: upstream key 'ionic.config.json' no longer exists -->
+    <string name="ionic_config_json">Ionic</string>
+    <!-- legacy-carryover: upstream key 'angular.json' no longer exists -->
+    <string name="angular_json">Angular</string>
+    <!-- legacy-carryover: upstream key 'storybook.config.js' no longer exists -->
+    <string name="storybook_config_js">Storybook</string>
+    <!-- legacy-carryover: upstream key 'cypress.config.js' no longer exists -->
+    <string name="cypress_config_js">Cypress</string>
+    <!-- legacy-carryover: upstream key 'playwright.config.js' no longer exists -->
+    <string name="playwright_config_js">Playwright</string>
+    <!-- legacy-carryover: upstream key 'puppeteer.config.js' no longer exists -->
+    <string name="puppeteer_config_js">Puppeteer</string>
+    <!-- legacy-carryover: upstream key 'wrangler.toml' no longer exists -->
+    <string name="wrangler_toml">Wrangler</string>
+    <!-- legacy-carryover: upstream key 'firebase.json' no longer exists -->
+    <string name="firebase_json">Firebase</string>
+    <!-- legacy-carryover: upstream key 'travis.yml' no longer exists -->
+    <string name="travis_yml">Travis</string>
+    <!-- legacy-carryover: upstream key 'appveyor.yml' no longer exists -->
+    <string name="appveyor_yml">Appveyor</string>
+    <!-- legacy-carryover: upstream key 'renovate.json' no longer exists -->
+    <string name="renovate_json">Renovate</string>
+    <!-- legacy-carryover: upstream key 'dependabot.yml' no longer exists -->
+    <string name="dependabot_yml">Dependabot</string>
+    <!-- legacy-carryover: upstream key 'lerna.json' no longer exists -->
+    <string name="lerna_json">Lerna</string>
+    <!-- legacy-carryover: upstream key 'nx.json' no longer exists -->
+    <string name="nx_json">Nx</string>
+    <!-- legacy-carryover: upstream key 'spec.ts' no longer exists -->
+    <string name="spec_ts">TestTs</string>
+    <!-- legacy-carryover: upstream key 'test.ts' no longer exists -->
+    <string name="test_ts">TestTs</string>
+    <!-- legacy-carryover: upstream key 'spec.tsx' no longer exists -->
+    <string name="spec_tsx">TestJsx</string>
+    <!-- legacy-carryover: upstream key 'test.tsx' no longer exists -->
+    <string name="test_tsx">TestJsx</string>
+    <!-- legacy-carryover: upstream key 'spec.js' no longer exists -->
+    <string name="spec_js">TestJs</string>
+    <!-- legacy-carryover: upstream key 'test.js' no longer exists -->
+    <string name="test_js">TestJs</string>
+    <!-- legacy-carryover: upstream key 'spec.jsx' no longer exists -->
+    <string name="spec_jsx">TestJsx</string>
+    <!-- legacy-carryover: upstream key 'test.jsx' no longer exists -->
+    <string name="test_jsx">TestJsx</string>
+    <!-- legacy-carryover: upstream key 'js.map' no longer exists -->
+    <string name="js_map">JavascriptMap</string>
+    <!-- legacy-carryover: upstream key 'd.ts' no longer exists -->
+    <string name="d_ts">TypescriptDef</string>
+    <!-- legacy-carryover: upstream key 'drag.enter' no longer exists -->
+    <string name="drag_enter">drag.leave</string>
+    <!-- legacy-carryover: upstream key 'mode.shell' no longer exists -->
+    <string name="mode_shell">mode.normal</string>
 </resources>

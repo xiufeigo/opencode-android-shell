@@ -1,6 +1,5 @@
 package com.xiufeigo.opencodeshell.ui.components
 
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -75,7 +74,7 @@ private fun progressPhase(): Float {
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = OcMotion.SessionProgress.DURATION_MS,
-                easing = LinearEasing,
+                easing = OcMotion.enterEasing,
             ),
             repeatMode = RepeatMode.Restart,
         ),

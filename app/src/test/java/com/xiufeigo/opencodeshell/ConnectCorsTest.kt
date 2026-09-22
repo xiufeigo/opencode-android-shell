@@ -84,8 +84,12 @@ class ConnectCorsTest {
     @Test
     fun readmeDocumentsNativeProxyDefault() {
     val readme =
-        listOf(File("../README.md"), File("README.md"), File("../../README.md")).firstOrNull { it.isFile }
-            ?: error("README.md not found")
+        listOf(
+            File("../README-webview-legacy.md"),
+            File("README-webview-legacy.md"),
+            File("../../README-webview-legacy.md"),
+        ).firstOrNull { it.isFile }
+            ?: error("README-webview-legacy.md not found")
     val text = readme.readText()
     assertTrue(text.contains("opencode-proxy") || text.contains("reverse-prox"))
     assertTrue(text.contains("127.0.0.1"))

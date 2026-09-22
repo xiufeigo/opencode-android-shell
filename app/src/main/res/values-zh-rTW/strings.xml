@@ -1,0 +1,625 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCode</string>
+    <string name="retry">重試</string>
+    <string name="error_load_failed">無法載入 OpenCode：%1$s</string>
+    <string name="error_auth_failed">HTTP Basic 驗證失敗。請在 設定 → 伺服器 中新增使用者名稱與密碼。</string>
+
+    <!-- composer -->
+    <string name="oc_composer_hint">規劃、建構並修復一切</string>
+    <string name="chat_attach">新增檔案或圖片</string>
+    <string name="chat_send">傳送</string>
+    <string name="chat_abort">停止</string>
+    <string name="oc_model_label">模型</string>
+    <string name="oc_model_picker_soon">模型選擇器將在後續版本推出</string>
+    <!-- 模型選擇器（對應上游 zht.ts 的 `dialog.model.*`；use_default/unavailable 為 Android 新增） -->
+    <string name="oc_model_picker_title">選擇模型</string>
+    <string name="oc_model_picker_search">搜尋模型</string>
+    <string name="oc_model_picker_empty">找不到模型</string>
+    <string name="oc_model_picker_use_default">使用伺服器預設</string>
+    <string name="oc_model_picker_unavailable">模型清單不可用，請檢查伺服器連線</string>
+    <string name="oc_remove_attachment">移除附件</string>
+
+    <!-- header -->
+    <string name="oc_open_sessions">開啟工作階段</string>
+    <string name="oc_new_session">新增工作階段</string>
+    <string name="oc_context_usage">上下文用量</string>
+
+    <!-- timeline -->
+    <string name="oc_thought">思考</string>
+    <string name="oc_error_title">發生錯誤</string>
+    <string name="oc_tool_shell">Shell</string>
+    <string name="oc_tool_edit">編輯</string>
+    <string name="oc_tool_write">寫入</string>
+    <string name="oc_tool_read">讀取</string>
+    <string name="oc_tool_find">檔案搜尋</string>
+    <string name="oc_tool_search">內容搜尋</string>
+    <string name="oc_tool_task">任務</string>
+    <string name="oc_tool_fetch">網頁擷取</string>
+    <string name="oc_tool_todos">待辦</string>
+    <string name="oc_tool_error">錯誤</string>
+    <string name="oc_tool_generic">工具</string>
+    <string name="oc_attachment_file">檔案</string>
+    <string name="oc_toggle_tool">切換工具詳情</string>
+    <string name="oc_cursor">▍</string>
+    <string name="oc_compaction">工作階段已壓縮</string>
+    <string name="oc_composer_placeholder">隨便問點什麼，/ 檢視命令，@ 新增上下文…</string>
+    <string name="oc_timeline_empty">實現任何想法</string>
+    <string name="oc_back">返回</string>
+
+    <!-- M2: session header -->
+    <string name="oc_more_options">更多選項</string>
+    <string name="oc_rename_session">重新命名</string>
+    <string name="oc_delete_session">刪除</string>
+    <!--
+      W6：⋮ 選單的工作階段操作。項目與提示沿用 `strings_oc_i18n.xml` 中既有的
+      上游 key（`command_session_undo` / `_redo` / `_fork` / `_share` /
+      `_unshare` / `_archive`、`session_share_popover_*`、
+      `session_share_action_*`、`common_archive`、`toast_session_*`），此處不重複
+      宣告。以下是 Android 新增的兩條。
+    -->
+    <string name="oc_archive_session_message">從工作階段清單中隱藏此工作階段？工作階段不會被刪除，仍保留在伺服器上。</string>
+    <string name="oc_toast_session_archive_success">工作階段已封存</string>
+    <!-- ⋮ 中「分支工作階段」一列。上游 key `command_session_fork`（從訊息分支）
+         在 120px 寬的 MenuV2 中會被截斷，故選單使用短標籤；對話框標題仍用上游 key。 -->
+    <string name="oc_fork_session">分支工作階段</string>
+
+    <!-- M2: session drawer -->
+    <string name="oc_sessions_empty">尚無工作階段</string>
+    <string name="oc_time_just_now">剛剛</string>
+    <plurals name="oc_time_minutes_ago">
+        <item quantity="other">%d 分鐘前</item>
+    </plurals>
+    <plurals name="oc_time_hours_ago">
+        <item quantity="other">%d 小時前</item>
+    </plurals>
+    <plurals name="oc_time_days_ago">
+        <item quantity="other">%d 天前</item>
+    </plurals>
+
+    <!-- M2: grouped context tools -->
+    <string name="oc_context_exploring">正在探索</string>
+    <string name="oc_context_explored">已探索</string>
+    <plurals name="oc_context_read">
+        <item quantity="other">%d 次讀取</item>
+    </plurals>
+    <plurals name="oc_context_search">
+        <item quantity="other">%d 次搜尋</item>
+    </plurals>
+    <plurals name="oc_context_list">
+        <item quantity="other">%d 次列目錄</item>
+    </plurals>
+
+    <!-- M2: session error card -->
+    <string name="oc_error_details">顯示詳情</string>
+
+    <!-- legacy chat keys -->
+    <string name="chat_need_config">尚未設定伺服器。請在 設定 → 伺服器 中新增。</string>
+    <string name="chat_attach_too_large">附件過大：%1$s</string>
+    <string name="chat_attach_limit">每則訊息最多 %1$d 個附件</string>
+    <string name="tab_chat">聊天</string>
+    <string name="tab_terminal">終端</string>
+    <string name="oc_setup_hint">尚未設定伺服器。請在 設定 → 伺服器 中新增。</string>
+
+    <!-- Settings dialog -->
+    <string name="oc_settings_title">設定</string>
+    <string name="oc_settings_close">關閉</string>
+    <string name="oc_settings_app_name">OpenCode 桌面版</string>
+    <string name="oc_setting_section_desktop">桌面</string>
+    <string name="oc_setting_section_server">伺服器</string>
+    <string name="oc_setting_tab_general">一般</string>
+    <string name="oc_setting_tab_shortcuts">快速鍵</string>
+    <string name="oc_setting_tab_servers">伺服器</string>
+    <string name="oc_setting_tab_providers">提供者</string>
+    <string name="oc_setting_tab_models">模型</string>
+
+    <!-- General panel -->
+    <string name="oc_setting_section_appearance">外觀</string>
+    <string name="oc_setting_section_notifications">系統通知</string>
+    <string name="oc_setting_section_sounds">音效</string>
+    <string name="oc_setting_section_advanced">進階</string>
+    <string name="oc_setting_language">語言</string>
+    <string name="oc_setting_language_description">變更 OpenCode 的顯示語言</string>
+    <string name="oc_setting_language_en">English</string>
+    <string name="oc_setting_language_zh">简体中文</string>
+    <string name="oc_setting_language_zht">繁體中文</string>
+    <string name="oc_setting_auto_accept_permissions">自動接受權限</string>
+    <!-- B3：終端位置（上游無中文在地化，依 settings.general.row.terminalPlacement.* 直譯） -->
+    <string name="oc_setting_terminal_placement">終端位置</string>
+    <string name="oc_setting_terminal_placement_description">選擇工作階段中終端的開啟位置</string>
+    <string name="oc_setting_terminal_placement_side">側邊</string>
+    <string name="oc_setting_terminal_placement_bottom">底部</string>
+    <string name="oc_setting_shell">終端 Shell</string>
+    <string name="oc_setting_shell_description">終端與代理工具使用的 Shell</string>
+    <string name="oc_setting_shell_auto">自動（預設）</string>
+    <string name="oc_setting_shell_sh">sh</string>
+    <string name="oc_setting_shell_bash">bash</string>
+    <string name="oc_setting_shell_zsh">zsh</string>
+    <string name="oc_setting_reasoning_summaries">顯示推理摘要</string>
+    <string name="oc_setting_reasoning_summaries_description">在時間軸中顯示模型推理摘要</string>
+    <string name="oc_setting_shell_expand">展開 Shell 工具部分</string>
+    <string name="oc_setting_shell_expand_description">在時間軸中預設展開 Shell 工具部分</string>
+    <string name="oc_setting_edit_expand">展開編輯工具部分</string>
+    <string name="oc_setting_edit_expand_description">在時間軸中預設展開編輯、寫入與修補工具部分</string>
+    <string name="oc_setting_color_scheme">色彩配置</string>
+    <string name="oc_setting_color_scheme_description">選擇 OpenCode 跟隨系統、淺色或深色主題</string>
+    <string name="oc_setting_scheme_system">跟隨系統</string>
+    <string name="oc_setting_scheme_light">淺色</string>
+    <string name="oc_setting_scheme_dark">深色</string>
+    <string name="oc_setting_theme">主題</string>
+    <string name="oc_setting_theme_description">自訂 OpenCode 的主題。</string>
+    <string name="oc_setting_theme_oc2">OC-2</string>
+    <string name="oc_setting_ui_font">介面字型</string>
+    <string name="oc_setting_ui_font_description">自訂介面使用的字型</string>
+    <string name="oc_setting_code_font">程式碼字型</string>
+    <string name="oc_setting_code_font_description">自訂程式碼區塊使用的字型</string>
+    <string name="oc_setting_terminal_font">終端字型</string>
+    <string name="oc_setting_terminal_font_description">自訂終端使用的字型</string>
+    <string name="oc_setting_notify_agent">代理</string>
+    <string name="oc_setting_notify_agent_description">代理完成或需要注意時顯示系統通知</string>
+    <string name="oc_setting_notify_permissions">權限</string>
+    <string name="oc_setting_notify_permissions_description">需要權限時顯示系統通知</string>
+    <string name="oc_setting_notify_errors">錯誤</string>
+    <string name="oc_setting_notify_errors_description">發生錯誤時顯示系統通知</string>
+    <string name="oc_setting_sound_none">無</string>
+    <string name="oc_setting_sound_default">預設</string>
+    <string name="oc_setting_show_file_tree">檔案樹</string>
+    <string name="oc_setting_show_file_tree_description">在工作階段中顯示檔案樹面板</string>
+    <string name="oc_setting_show_search">命令面板</string>
+    <string name="oc_setting_show_search_description">在標題列顯示搜尋與命令面板按鈕</string>
+    <string name="oc_setting_show_status">伺服器狀態</string>
+    <string name="oc_setting_show_status_description">在標題列顯示伺服器狀態按鈕</string>
+    <string name="oc_setting_show_custom_agents">顯示代理</string>
+    <string name="oc_setting_show_custom_agents_description">在輸入框中切換代理。隱藏時預設使用 Build 代理。</string>
+    <string name="oc_setting_font_default">預設</string>
+    <string name="oc_setting_value_on">開</string>
+    <string name="oc_setting_value_off">關</string>
+
+    <!-- Servers tab -->
+    <string name="oc_servers_add">新增伺服器</string>
+    <string name="oc_servers_edit">編輯伺服器</string>
+    <string name="oc_servers_search">搜尋伺服器</string>
+    <string name="oc_servers_empty">尚無伺服器</string>
+    <string name="oc_servers_no_results">找不到結果</string>
+    <string name="oc_servers_default_tag">預設</string>
+    <string name="oc_servers_no_username">無使用者名稱</string>
+    <string name="oc_servers_more">伺服器操作</string>
+    <string name="oc_servers_menu_edit">編輯</string>
+    <string name="oc_servers_menu_default">設為預設</string>
+    <string name="oc_servers_menu_delete">刪除</string>
+    <string name="oc_server_address">伺服器位址</string>
+    <string name="oc_server_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_server_name">伺服器名稱（選填）</string>
+    <string name="oc_server_name_placeholder">本機伺服器</string>
+    <string name="oc_server_username">使用者名稱（選填）</string>
+    <string name="oc_server_password">密碼（選填）</string>
+    <string name="oc_server_add_button">新增伺服器</string>
+    <string name="oc_server_save_button">儲存</string>
+    <string name="oc_server_checking">檢查中…</string>
+    <string name="oc_server_error_connect">無法連線伺服器</string>
+    <string name="oc_server_error_auth">伺服器需要驗證，請輸入使用者名稱與密碼。</string>
+    <string name="oc_server_error_cors">無法連線。如果該位址在瀏覽器中可存取，請檢查使用者名稱/密碼。Android 原生代理 API 請求，不需要伺服器設定 CORS。</string>
+    <string name="oc_server_cors_hint">請輸入真實後端位址（例如 https://backend.example.com）。模擬器連接主機可用 10.0.2.2；若不通，執行 adb reverse tcp:4096 tcp:4096 後改用 http://127.0.0.1:4096（USB 裝置同樣適用）；Wi-Fi 裝置請使用電腦區域網路 IP。Android 原生代理 API/SSE，不需要 CORS。</string>
+    <string name="oc_common_cancel">取消</string>
+    <string name="oc_common_save">儲存</string>
+    <string name="oc_common_loading">載入中</string>
+    <string name="oc_common_close">關閉</string>
+
+    <!-- Shortcuts tab -->
+    <string name="oc_setting_shortcuts_title">鍵盤快速鍵</string>
+    <string name="oc_shortcut_group_general">一般</string>
+    <string name="oc_shortcut_group_session">工作階段</string>
+    <string name="oc_shortcut_group_navigation">導覽</string>
+    <string name="oc_shortcut_group_model">模型與代理</string>
+    <string name="oc_shortcut_group_terminal">終端</string>
+    <string name="oc_shortcut_group_prompt">提示詞</string>
+    <string name="oc_shortcut_palette">命令面板</string>
+    <string name="oc_shortcut_settings_open">開啟設定</string>
+    <string name="oc_shortcut_file_open">開啟檔案</string>
+    <string name="oc_shortcut_session_new">新增工作階段</string>
+    <string name="oc_shortcut_terminal_toggle">切換終端</string>
+    <string name="oc_shortcut_prompt_submit">傳送提示詞</string>
+    <string name="oc_shortcut_unassigned">未指派</string>
+    <string name="oc_shortcut_press_keys">按下按鍵</string>
+    <string name="oc_shortcut_recording_soon">錄製功能將在後續版本推出</string>
+
+    <!-- Providers / Models tabs -->
+    <string name="oc_providers_empty">沒有已連線的提供者</string>
+    <string name="oc_providers_section_connected">已連線的提供者</string>
+    <string name="oc_providers_section_popular">熱門提供者</string>
+    <string name="oc_models_empty">沒有可用模型</string>
+
+    <!-- Command palette -->
+    <string name="oc_palette_placeholder">搜尋檔案、命令與工作階段</string>
+    <string name="oc_palette_placeholder_home">搜尋命令與工作階段</string>
+    <string name="oc_palette_empty">找不到結果</string>
+    <string name="oc_palette_group_commands">命令</string>
+    <string name="oc_palette_group_files">檔案</string>
+    <string name="oc_palette_group_session">工作階段</string>
+    <string name="oc_palette_title">命令面板</string>
+    <string name="oc_command_settings_open">開啟設定</string>
+    <string name="oc_command_session_new">新增工作階段</string>
+    <string name="oc_command_workspace_new">新增工作區</string>
+    <string name="oc_command_session_previous">上一個工作階段</string>
+    <string name="oc_command_session_next">下一個工作階段</string>
+    <string name="oc_command_terminal_toggle">切換終端</string>
+    <string name="oc_command_review_toggle">切換審查面板</string>
+    <string name="oc_command_file_open">開啟檔案</string>
+    <string name="oc_command_category_settings">設定</string>
+    <string name="oc_command_category_session">工作階段</string>
+    <string name="oc_command_category_file">檔案</string>
+
+    <!-- Home -->
+    <string name="oc_home_title">首頁</string>
+    <string name="oc_home_projects">專案</string>
+    <string name="oc_home_add_project">新增專案</string>
+    <string name="oc_home_recently_closed">最近關閉</string>
+    <!-- command.project.open（zht.ts:128）、common.close（zht.ts:806）。 -->
+    <string name="oc_command_project_open">開啟專案</string>
+    <string name="oc_home_project_close">關閉</string>
+    <string name="oc_home_sessions">最近工作階段</string>
+    <string name="oc_home_search">搜尋工作階段</string>
+    <!-- `home.sessions.search.placeholder.scoped` (`runtime/i18n/zht.ts:700`). -->
+    <string name="oc_home_search_scoped">在 %1$s 中搜尋工作階段</string>
+    <string name="oc_home_search_group">工作階段</string>
+    <string name="oc_home_search_no_results">找不到與 %1$s 相符的工作階段</string>
+    <string name="oc_home_clear_search">清除搜尋</string>
+    <string name="oc_home_group_today">今天</string>
+    <string name="oc_home_group_yesterday">昨天</string>
+    <string name="oc_home_group_older">更早</string>
+    <string name="oc_home_empty">這裡還沒有內容</string>
+    <string name="oc_home_empty_description">建立一個工作階段以開始</string>
+    <string name="oc_home_settings">設定</string>
+    <string name="oc_home_help">說明</string>
+    <string name="oc_home_tab_close">關閉分頁</string>
+    <!-- W7 桌面分頁列：上游 session.tab.session（zht.ts:710）。 -->
+    <string name="oc_tab_session">工作階段</string>
+    <string name="oc_home_creating">正在建立工作階段…</string>
+    <string name="oc_home_add_project_soon">新增專案功能將在後續版本推出</string>
+    <string name="oc_home_help_soon">說明功能將在後續版本推出</string>
+
+    <!-- 新建工作階段 draft 頁 + Home 專案欄（GET /project）。對應上游 session.new.* / home.project.* 文案。 -->
+    <string name="oc_newsession_project_add">新增專案</string>
+    <string name="oc_newsession_project_new">新專案</string>
+    <string name="oc_newsession_default_directory">預設目錄（伺服器工作目錄）</string>
+    <string name="oc_newsession_create_failed">建立工作階段失敗</string>
+    <string name="oc_home_projects_choose_title">選擇專案目錄</string>
+    <string name="oc_home_projects_select_directory">選擇此目錄</string>
+    <string name="oc_home_projects_parent">上層目錄</string>
+    <string name="oc_home_projects_empty_dir">此目錄下沒有子目錄</string>
+    <string name="oc_home_projects_loading">載入中…</string>
+
+    <!-- Terminal -->
+    <string name="oc_terminal_title">終端</string>
+    <string name="oc_terminal_title_numbered">終端 %1$d</string>
+    <string name="oc_terminal_new">新增終端</string>
+    <string name="oc_terminal_close">關閉終端</string>
+    <string name="oc_terminal_loading">正在載入終端…</string>
+    <string name="oc_terminal_connection_lost">連線已中斷</string>
+    <string name="oc_terminal_abnormal_close">WebSocket 異常關閉：%1$d</string>
+    <string name="oc_terminal_csrf_error">PTY 連線票據被 Origin/CSRF 檢查拒絕，請檢查伺服器 CORS 設定。</string>
+    <string name="oc_terminal_close_panel">關閉終端面板</string>
+    <string name="oc_terminal_resize_handle">拖曳可調整終端面板大小，連點兩下恢復預設</string>
+    <string name="oc_terminal_open">開啟終端</string>
+    <string name="oc_terminal_empty">沒有開啟的終端</string>
+    <string name="oc_terminal_full">最多 %1$d 個終端</string>
+    <string name="oc_terminal_create_failed">無法建立終端工作階段。</string>
+    <string name="oc_terminal_server_missing">尚未設定伺服器。請在 設定 → 伺服器 中新增。</string>
+    <string name="oc_terminal_kernel_pending">VT 核心尚未接線，此槽位顯示原始 PTY 資料鏈路。</string>
+    <string name="oc_terminal_raw_output">原始 PTY 輸出（尾部）</string>
+
+    <!-- 權限確認 dock（`SessionPermissionDock`）：上游 `notification.permission.title` / `ui.permission.*` / `settings.permissions.tool.*.description` -->
+    <string name="oc_permission_title">需要權限</string>
+    <string name="oc_permission_reject">拒絕</string>
+    <string name="oc_permission_allow_once">允許一次</string>
+    <string name="oc_permission_always_hint">「始終允許」將記住：</string>
+    <string name="oc_permission_allow_always">永遠允許</string>
+    <string name="oc_permission_tool_read">讀取檔案（符合檔案路徑）</string>
+    <string name="oc_permission_tool_edit">修改檔案，包括編輯、寫入、修補和多重編輯</string>
+    <string name="oc_permission_tool_glob">使用 glob 模式符合檔案</string>
+    <string name="oc_permission_tool_grep">使用正規表示式搜尋檔案內容</string>
+    <string name="oc_permission_tool_list">列出目錄中的檔案</string>
+    <string name="oc_permission_tool_bash">執行 shell 命令</string>
+    <string name="oc_permission_tool_task">啟動子代理程式</string>
+    <string name="oc_permission_tool_skill">按名稱載入技能</string>
+    <string name="oc_permission_tool_lsp">執行語言伺服器查詢</string>
+    <string name="oc_permission_tool_todowrite">更新待辦清單</string>
+    <string name="oc_permission_tool_webfetch">從 URL 取得內容</string>
+    <string name="oc_permission_tool_websearch">搜尋網頁</string>
+    <string name="oc_permission_tool_external_directory">存取專案目錄之外的檔案</string>
+    <string name="oc_permission_tool_doom_loop">偵測具有相同輸入的重複工具呼叫</string>
+    <!-- 提問確認 dock（`SessionQuestionDock`）：上游 `notification.question.title` / `ui.common.dismiss|submit` / `ui.question.*` -->
+    <string name="oc_question_title">提問</string>
+    <string name="oc_question_submit">提交</string>
+    <string name="oc_question_dismiss">拒絕</string>
+    <string name="oc_question_custom">自訂…</string>
+    <string name="oc_question_custom_placeholder">輸入你的回答</string>
+    <string name="oc_question_hint_single">選擇一項</string>
+    <string name="oc_question_hint_multi">可選擇多項</string>
+    <string name="oc_md_copy_code">複製程式碼</string>
+    <string name="oc_md_copied">已複製</string>
+    <string name="oc_review_title">評審</string>
+    <string name="oc_review_tab_changes">變更</string>
+    <string name="oc_review_tab_context">上下文</string>
+    <string name="oc_review_tab_files">檔案</string>
+    <string name="oc_review_changes_empty">尚無變更</string>
+    <string name="oc_review_no_patch">無可用文字差異</string>
+    <string name="oc_review_files_empty">沒有檔案</string>
+    <string name="oc_review_files_error">無法載入檔案</string>
+    <string name="oc_review_file_error">無法載入檔案內容</string>
+    <string name="oc_review_binary">二進位檔案——無法預覽</string>
+    <string name="oc_review_copy">複製</string>
+    <string name="oc_review_truncated">…（已截斷）</string>
+
+    <!-- W5-R 評審面板（只追加）。上游文案：`packages/ui/src/i18n/zht.ts`、`packages/app/src/runtime/i18n/zht.ts`。 -->
+    <string name="oc_review_filter_files">篩選檔案</string>
+    <string name="oc_review_filter_empty">沒有符合的檔案</string>
+    <string name="oc_review_filter_clear">清除篩選</string>
+    <string name="oc_review_expand_all">顯示所有行</string>
+    <string name="oc_review_collapse_all">隱藏無差異的行</string>
+    <string name="oc_review_diff_unified">統一格式差異</string>
+    <string name="oc_review_diff_split">並排差異</string>
+    <string name="oc_review_scope_git">Git 變更</string>
+    <string name="oc_review_scope_branch">分支變更</string>
+    <string name="oc_review_scope_turn">上一輪變更</string>
+    <string name="oc_review_changes_empty_git">尚無未提交的變更</string>
+    <string name="oc_review_changes_empty_branch">尚無分支變更</string>
+    <string name="oc_review_no_git_title">建立 Git 儲存庫</string>
+    <string name="oc_review_no_git_description">追蹤、檢閱及復原此專案中的變更</string>
+    <string name="oc_review_no_git_action">建立 Git 儲存庫</string>
+    <string name="oc_review_no_git_pending">正在建立 Git 儲存庫…</string>
+    <string name="oc_review_resize_handle">拖曳可調整評審面板寬度，按兩下還原預設</string>
+    <string name="oc_review_truncated_rows">… 已顯示 %1$d / %2$d 行差異</string>
+
+    <!-- B2 工作階段內容分頁（`ui/session/context`）：上游 `SessionContextTab` 的 16 項 `context.stats.*`、系統提示詞與原始訊息。 -->
+    <string name="oc_context_stats_session">工作階段</string>
+    <string name="oc_context_stats_messages">訊息數</string>
+    <string name="oc_context_stats_provider">提供者</string>
+    <string name="oc_context_stats_model">模型</string>
+    <string name="oc_context_stats_limit">上下文限制</string>
+    <string name="oc_context_stats_total_tokens">總 token</string>
+    <string name="oc_context_stats_usage">使用量</string>
+    <string name="oc_context_stats_input_tokens">輸入 token</string>
+    <string name="oc_context_stats_output_tokens">輸出 token</string>
+    <string name="oc_context_stats_reasoning_tokens">推理 token</string>
+    <string name="oc_context_stats_cache_tokens">快取 token（讀/寫）</string>
+    <string name="oc_context_stats_user_messages">使用者訊息</string>
+    <string name="oc_context_stats_assistant_messages">助理訊息</string>
+    <string name="oc_context_stats_total_cost">總成本</string>
+    <string name="oc_context_stats_session_created">建立時間</string>
+    <string name="oc_context_stats_last_activity">最後活動</string>
+    <string name="oc_context_system_prompt_title">系統提示詞</string>
+    <string name="oc_context_raw_messages_title">原始訊息</string>
+    <string name="oc_context_export_session">匯出工作階段</string>
+    <string name="oc_context_raw_truncated">…（已截斷）</string>
+
+    <!-- W4-B 工作階段介面保真（工具分組列 / 訊息中繼資訊 / Working / 跳轉） -->
+    <string name="oc_meta_used">使用了 %1$d %2$s</string>
+    <plurals name="oc_meta_thought">
+        <item quantity="other">思考</item>
+    </plurals>
+    <string name="oc_meta_updates">更新</string>
+    <string name="oc_meta_interrupted">已中斷</string>
+    <string name="oc_meta_copy_message">複製訊息</string>
+    <string name="oc_meta_copy_response">複製回覆</string>
+    <string name="oc_meta_copied">已複製！</string>
+    <string name="oc_meta_duration_seconds">%1$d秒</string>
+    <string name="oc_meta_duration_minutes">%1$d分 %2$d秒</string>
+    <string name="oc_meta_context_cost">費用</string>
+    <string name="oc_meta_context_usage">上下文</string>
+    <string name="oc_meta_context_tokens">Token</string>
+    <string name="oc_working_label">工作中</string>
+    <string name="oc_jump_to_latest">跳到最新</string>
+    <string name="oc_step_patch">修補</string>
+    <string name="oc_step_thinking">思考中</string>
+    <plurals name="oc_step_files">
+        <item quantity="other">%1$d 個檔案</item>
+    </plurals>
+    <string name="oc_step_agent">代理程式</string>
+    <string name="oc_step_agent_changed">代理程式已切換</string>
+    <string name="oc_step_retrying">重試中</string>
+    <string name="oc_step_retry_attempt">第 %1$d 次</string>
+
+    <!-- W4-D 外殼接線：缺少根 tab、設定搜尋、供應商/模型面板、新命令與快速鍵 -->
+    <string name="oc_setting_tab_appearance">外觀</string>
+    <string name="oc_setting_tab_notifications">通知</string>
+    <string name="oc_setting_tab_projects">專案</string>
+    <string name="oc_setting_tab_workspaces">工作區</string>
+    <string name="oc_setting_tab_extensions">擴充功能</string>
+    <string name="oc_setting_tab_experimental">實驗性功能</string>
+    <string name="oc_setting_tab_about">關於</string>
+    <string name="oc_settings_tab_unavailable">未提供</string>
+    <string name="oc_settings_search">搜尋設定</string>
+    <string name="oc_settings_search_empty">沒有符合的設定</string>
+    <string name="oc_settings_providers_connected">已連線的供應商：%1$d</string>
+    <string name="oc_settings_providers_total">全部供應商：%1$d</string>
+    <string name="oc_settings_provider_connected_tag">已連線</string>
+    <string name="oc_settings_provider_models">%1$d 個模型</string>
+    <string name="oc_settings_models_count">可用模型：%1$d</string>
+    <string name="oc_settings_models_current">目前</string>
+    <string name="oc_settings_models_default">伺服器預設</string>
+    <string name="oc_settings_model_context">上下文 %1$s</string>
+    <string name="oc_settings_models_provider">供應商：%1$s</string>
+    <string name="oc_settings_providers_unavailable">連線伺服器後才能載入供應商目錄</string>
+    <string name="oc_settings_models_search">搜尋模型</string>
+    <string name="oc_shortcut_tab_new">新增工作階段分頁</string>
+    <string name="oc_shortcut_review_toggle">顯示/隱藏評審面板</string>
+    <string name="oc_shortcut_file_tree_toggle">顯示/隱藏檔案樹</string>
+    <string name="oc_command_file_tree_toggle">顯示/隱藏檔案樹</string>
+    <string name="oc_palette_placeholder_files">搜尋檔案</string>
+
+    <!--
+      W4-C 行動端形態（`ui/session/drawer`、`ui/session/review`、
+      `ui/session/dock`）：底部 sheet 抽屜、四個整寬工作階段檢視 tab、提問 dock 分頁。
+      復用的既有 key：`oc_rename_session` / `oc_delete_session` /
+      `oc_common_cancel` / `oc_common_save` / `oc_terminal_title` /
+      `oc_review_tab_changes` / `oc_review_tab_files`。
+    -->
+    <string name="oc_mobile_tab_session">工作階段</string>
+    <string name="oc_mobile_view_select">工作階段檢視</string>
+    <string name="oc_mobile_session_rename_title">重新命名工作階段</string>
+    <string name="oc_mobile_session_delete_title">刪除工作階段？</string>
+    <string name="oc_mobile_session_delete_message">將刪除「%1$s」及其所有訊息，且無法復原。</string>
+    <string name="oc_mobile_question_progress">第 %1$d / %2$d 個問題</string>
+    <string name="oc_mobile_question_next">下一個</string>
+    <string name="oc_mobile_question_back">返回</string>
+    <string name="oc_mobile_question_numbered">問題 %1$d</string>
+    <string name="oc_form_yes">是</string>
+    <string name="oc_form_no">否</string>
+    <string name="oc_mobile_usage">用量</string>
+    <string name="oc_mobile_summary">工作階段詳情</string>
+
+    <!--
+      Wave 5-T 工作階段時間軸（A2 搜尋列 / A3 分隔線 / A5 訊息導覽軌 / A6 本輪變更）。
+      文案對齊上游 `ui/i18n/zht.ts`：`ui.messageNav.newMessage`「新訊息」、
+      `ui.fileSearch.*`「上一個/下一個/關閉搜尋」、`ui.sessionTurn.diffs.*`
+      「全部顯示 / 顯示較少 / +N 個檔案」。`ui.messagePart.compaction.started`
+      上游 zh-TW 未翻譯（回落英文），此處依 `oc_compaction`「工作階段已壓縮」補譯。
+    -->
+    <string name="oc_search_open">搜尋工作階段</string>
+    <string name="oc_search_placeholder">搜尋…</string>
+    <string name="oc_search_no_results">沒有相符結果</string>
+    <string name="oc_search_previous">上一個</string>
+    <string name="oc_search_next">下一個</string>
+    <string name="oc_search_close">關閉搜尋</string>
+    <string name="oc_nav_new_message">新訊息</string>
+    <plurals name="oc_turn_changed_files">
+        <item quantity="other">已變更檔案：%1$d 個</item>
+    </plurals>
+    <string name="oc_turn_show_all">全部顯示</string>
+    <string name="oc_turn_show_less">顯示較少</string>
+    <plurals name="oc_turn_more_files">
+        <item quantity="other">+%1$d 個檔案</item>
+    </plurals>
+    <string name="oc_sep_compaction_started">工作階段開始壓縮</string>
+
+    <!--
+      Wave 5-C 輸入區（`ui/session/composer`）。上游錨點：`composer/placeholder.ts:6`
+      （shell 佔位）、`composer/editor/editor.tsx:613-671`（「+」選單四項）、
+      `composer/commands.tsx:49-82`（內建 `/model`、`/agent`）、
+      `providers/models/variant.ts`（模型變體）以及 `@` 候選的類別標籤。
+      術語沿用既有 key：agent = 「代理」（`oc_step_agent`）、預設 = 「伺服器預設」。
+    -->
+    <string name="oc_composer_placeholder_shell">輸入 shell 指令，例如 git status</string>
+    <string name="oc_composer_add">新增</string>
+    <string name="oc_composer_add_attachments">附件</string>
+    <string name="oc_composer_add_commands">指令</string>
+    <string name="oc_composer_add_context">上下文</string>
+    <string name="oc_composer_add_shell">Shell</string>
+    <string name="oc_composer_add_paste">貼上</string>
+    <string name="oc_composer_shell_mode">Shell</string>
+    <string name="oc_composer_agent">代理</string>
+    <string name="oc_composer_agent_default">伺服器預設</string>
+    <string name="oc_composer_choose_agent">選擇代理</string>
+    <string name="oc_composer_variant_group">變體</string>
+    <string name="oc_composer_variant_default">預設</string>
+    <string name="oc_composer_mention_agent">代理</string>
+    <string name="oc_composer_mention_command">指令</string>
+    <string name="oc_composer_mention_skill">技能</string>
+    <string name="oc_composer_mention_file">檔案</string>
+    <string name="oc_slash_model">選擇模型</string>
+    <string name="oc_slash_agent">切換代理</string>
+    <string name="oc_attach_preview_close">關閉預覽</string>
+    <string name="oc_attach_uploading">正在讀取附件…</string>
+    <string name="oc_attach_cancel">取消</string>
+
+    <!--
+      Wave 5-E1 首次啟動連線頁 + W5-D3 伺服器健康三態。
+      上游錨點：`servers/connect/screen.tsx:18-137`、`runtime/i18n/en.ts:415-431`
+      （`server.connect.*`、`dialog.server.add.url|password`）。
+      `opencode` 字標與 `opencode pair` 指令不翻譯。
+    -->
+    <string name="oc_connect_title">連線到伺服器</string>
+    <string name="oc_connect_description">輸入伺服器位址與密碼即可開始使用。</string>
+    <string name="oc_connect_url_label">伺服器位址</string>
+    <string name="oc_connect_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_connect_password_label">密碼</string>
+    <string name="oc_connect_button">連線</string>
+    <string name="oc_connect_checking">檢查中…</string>
+    <string name="oc_connect_pair_description">在電腦上執行以下指令即可取得連線資訊。</string>
+    <string name="oc_connect_address_invalid">請輸入有效的 HTTP 或 HTTPS 伺服器位址。</string>
+    <string name="oc_connect_failed">無法連線。請檢查伺服器位址與密碼，然後重試。</string>
+    <string name="oc_connect_error_timeout">伺服器未在時限內回應。請確認伺服器已啟動，且本機能連上。</string>
+    <string name="oc_connect_error_auth">伺服器拒絕了這個密碼。請檢查密碼，或重新執行 opencode pair。</string>
+    <string name="oc_connect_error_unhealthy">伺服器有回應，但回報狀態不健康。</string>
+    <string name="oc_connect_error_invalid_response">有服務回應，但它不是 OpenCode 伺服器。</string>
+    <string name="oc_connect_error_status">伺服器回應 HTTP %1$s。</string>
+    <string name="oc_health_healthy">伺服器正常</string>
+    <string name="oc_health_unhealthy">伺服器無法連線</string>
+    <string name="oc_health_unknown">伺服器健康狀態未知</string>
+    <string name="oc_health_save_anyway">仍要儲存</string>
+
+    <!-- W5-E5 應用程式內通知（`notify/AppNotifier.kt`），每個 kind 一個標題。 -->
+    <string name="oc_notify_title_agent">回覆已完成</string>
+    <string name="oc_notify_title_permission">需要授權</string>
+    <string name="oc_notify_title_question">有待回答的問題</string>
+    <string name="oc_notify_title_error">發生錯誤</string>
+    <string name="oc_notify_dismiss">忽略</string>
+    <string name="oc_notify_dismiss_all">全部忽略</string>
+
+    <!-- W5-S 設定補完（D1/D4/D5）。 -->
+
+    <!-- 外觀頁 / 工作樹 -->
+    <string name="oc_settings_appearance_description">自訂主題與字型</string>
+    <string name="oc_settings_tab_worktrees">工作樹</string>
+
+    <!-- 通知頁 -->
+    <string name="oc_settings_notifications_description">選擇何時接收通知與音效</string>
+
+    <!-- 時間軸詳情預設（D5） -->
+    <string name="oc_settings_timeline_title">時間軸</string>
+    <string name="oc_settings_timeline_detail">時間軸詳情</string>
+    <string name="oc_settings_timeline_description">選擇工作階段時間軸中顯示的詳細程度。</string>
+    <string name="oc_settings_timeline_preset_everything">全部</string>
+    <string name="oc_settings_timeline_preset_compact">精簡</string>
+    <string name="oc_settings_timeline_preset_quiet">極簡</string>
+    <string name="oc_settings_timeline_custom">自訂</string>
+
+    <!-- 快速鍵錄製（D4） -->
+    <string name="oc_settings_shortcuts_reset">回復預設值</string>
+    <string name="oc_settings_shortcuts_search">搜尋快速鍵</string>
+    <string name="oc_settings_shortcuts_empty">沒有符合的快速鍵</string>
+    <string name="oc_settings_shortcuts_conflict">%1$s 已被 %2$s 使用。</string>
+
+    <!-- 專案頁（D1） -->
+    <string name="oc_settings_projects_description">管理此伺服器上的專案</string>
+    <string name="oc_settings_projects_section">專案</string>
+    <string name="oc_settings_projects_empty">此伺服器上沒有專案</string>
+
+    <!-- 工作樹頁（D1） -->
+    <string name="oc_settings_workspaces_description">檢視工作樹並管理磁碟用量</string>
+    <string name="oc_settings_worktrees_section">工作樹</string>
+    <string name="oc_settings_worktrees_empty">此伺服器上沒有工作樹</string>
+
+    <!-- 擴充功能頁（D1） -->
+    <string name="oc_settings_extensions_description">管理此伺服器上可用的擴充功能</string>
+    <string name="oc_settings_mcp_section">MCP 伺服器</string>
+    <string name="oc_settings_mcp_empty">未設定 MCP 伺服器</string>
+    <string name="oc_settings_skills_section">技能</string>
+    <string name="oc_settings_skills_empty">沒有可用的技能</string>
+
+    <!-- 唯讀頁面狀態 -->
+    <string name="oc_settings_page_reload">重新載入</string>
+    <string name="oc_settings_page_no_server">連線伺服器後才能載入此頁面</string>
+    <string name="oc_settings_page_failed">無法從伺服器載入此頁面（%1$s）</string>
+
+    <!-- 關於頁（D1） -->
+    <string name="oc_about_version">版本 %1$s</string>
+    <string name="oc_about_license">依 MIT 授權條款發布</string>
+    <string name="oc_about_description">OpenCode，開放原始碼的程式開發代理</string>
+    <string name="oc_about_website">www.opencode.ai</string>
+    <string name="oc_about_copyright">© Anomaly Innovations, Inc.</string>
+    <string name="oc_summary_server_title">伺服器</string>
+    <string name="oc_summary_changes">變更</string>
+    <string name="oc_summary_close">關閉</string>
+    <string name="oc_summary_empty">此工作階段尚無摘要資訊</string>
+    <string name="oc_summary_server">伺服器</string>
+    <string name="oc_summary_workspace">工作區</string>
+    <string name="oc_summary_branch">分支</string>
+    <string name="oc_summary_project_title">專案</string>
+
+    <!-- W5-INT: A1 摘要命令入口（面板 + 命令面板）與 A8 匯出提示。 -->
+    <string name="oc_command_summary_toggle">工作階段摘要</string>
+    <string name="oc_export_success">工作階段已匯出至 %1$s</string>
+    <string name="oc_export_failed">匯出工作階段失敗</string>
+</resources>

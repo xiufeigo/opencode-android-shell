@@ -80,30 +80,29 @@ class MarkdownStreamTest {
 
     @Test
     fun theBodyIsCoalescedInsteadOfReparsedPerRecomposition() {
+        // The renderer moved to the Compose-native `OcMarkdown` (ui/markdown)
+        // with the timeline fidelity pass; the coalescing contract moved with it.
         val renderer = source(RENDERER)
         assertTrue("the streaming text must be throttled", renderer.contains(".coalesceLatest()"))
         assertTrue(
-            "the throttled value must be what AndroidView applies",
-            renderer.contains("val renderText = rendered"),
+            "the throttled value must be what gets parsed",
+            renderer.contains("remember(rendered)"),
         )
         assertFalse(
-            "no raw per-frame setMarkdown of the streaming parameter",
-            renderer.contains("markwon.setMarkdown(view, markdown)"),
+            "no raw per-frame parse of the streaming parameter",
+            renderer.contains("MarkdownParser.parse(markdown)"),
         )
     }
 
     @Test
-    fun theMarkwonInstanceIsRebuiltWhenTheThemeChanges() {
+    fun theRendererIsComposeNativeAndFollowsTheTheme() {
+        // Replaces the Markwon-era "instance rebuilt on uiMode" guard: a
+        // Compose-native body reads `OcTheme.colors` in composition, so a
+        // dark⇄light switch recolours without any baked-palette cache.
         val renderer = source(RENDERER)
-        assertTrue(
-            "the uiMode must key the instance",
-            renderer.contains("isNightUiMode(LocalConfiguration.current.uiMode)"),
-        )
-        assertTrue(renderer.contains("remember(context, isDark)"))
-        assertTrue(
-            "a new palette must invalidate the applied-text memo",
-            renderer.contains("val applied = remember(markwon)"),
-        )
+        assertTrue(renderer.contains("OcTheme.colors"))
+        assertFalse("no interop TextView", renderer.contains("AndroidView"))
+        assertFalse("no Markwon dependency", renderer.contains("io.noties"))
     }
 
     private fun source(relative: String): String =
@@ -114,6 +113,6 @@ class MarkdownStreamTest {
 
     private companion object {
         const val RENDERER =
-            "src/main/java/com/xiufeigo/opencodeshell/ui/session/timeline/PartRenderer.kt"
+            "src/main/java/com/xiufeigo/opencodeshell/ui/markdown/MarkdownRenderer.kt"
     }
 }

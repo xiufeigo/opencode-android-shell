@@ -2,6 +2,7 @@ package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.timeline.ToolPresentation
 import com.xiufeigo.opencodeshell.ui.session.timeline.ToolPresentation.LineKind
+import com.xiufeigo.opencodeshell.ui.session.timeline.ToolText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -125,14 +126,20 @@ class ToolPresentationTest {
     }
 
     @Test
-    fun subtitleShowsTheErrorSummaryOnFailure() {
+    fun subtitleShowsTheCommandOnShellFailure() {
+        // Wave 2.2b: failed rows read like their non-error counterparts
+        // (upstream `toolErrorSubtitle`, `tool-renderer.tsx:1265-1289`) — the
+        // shell subtitle is the command; the error summary moves to the
+        // `ToolErrorCard` head/detail (`ToolText.errorHeadDetail`).
         val part = toolPart(
             "bash",
             status = "error",
             input = """{"command":"ls"}""",
             error = "\nboom: no such file\nsecond line",
         )
-        assertEquals("boom: no such file", ToolPresentation.subtitle(part))
+        assertEquals("ls", ToolPresentation.subtitle(part))
+        val (_, detail) = ToolText.errorHeadDetail(part.toolError.orEmpty().trim(), part.toolName)
+        assertTrue(detail.contains("no such file"))
     }
 
     @Test
@@ -180,8 +187,12 @@ class ToolPresentationTest {
                 input = """{"filePath":"a.kt","oldString":"old line","newString":"new line\nsecond"}""",
             ),
         )
+        // Wave 2.2b: the edit card renders a real hunk diff (upstream
+        // `tool-renderer.tsx:1877-1963` `mode="diff"`), not the flat pair —
+        // the `- old`/`+ new` lines are grouped under an `@@` hunk header.
         assertEquals(
             listOf(
+                Touch(LineKind.HUNK, "@@ -1,1 +1,2 @@"),
                 Touch(LineKind.DELETE, "- old line"),
                 Touch(LineKind.ADD, "+ new line"),
                 Touch(LineKind.ADD, "+ second"),
@@ -203,7 +214,9 @@ class ToolPresentationTest {
         val lines = ToolPresentation.bodyLines(
             toolPart("write", input = """{"filePath":"a.kt","content":"line one"}"""),
         )
-        assertEquals(listOf(Touch(LineKind.ADD, "+ line one")), lines.map { Touch(it.kind, it.text) })
+        // Wave 2.2b: upstream renders write as a text file view
+        // (`tool-renderer.tsx:1986` `mode="text"`), not a diff.
+        assertEquals(listOf(Touch(LineKind.TEXT, "line one")), lines.map { Touch(it.kind, it.text) })
     }
 
     @Test

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain folder — directory rows of the add-project browser (`dialog-select-directory`). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:pathData="M3.5,18.5v-12h5.2l2,2.2h9.8v9.8z"
+        android:strokeColor="@color/oc_icon_muted"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round" />
+</vector>

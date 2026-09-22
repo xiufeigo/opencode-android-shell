@@ -22,18 +22,35 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.R
+import com.xiufeigo.opencodeshell.ui.servers.HealthMessage
+import com.xiufeigo.opencodeshell.ui.servers.HealthResult
+import com.xiufeigo.opencodeshell.ui.servers.HealthTarget
+import com.xiufeigo.opencodeshell.ui.servers.ServerHealthProbe
+import com.xiufeigo.opencodeshell.ui.servers.ServerHealthSource
+import com.xiufeigo.opencodeshell.ui.servers.healthFailureMessage
+import com.xiufeigo.opencodeshell.ui.servers.withHealth
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * `SettingsServersV2` (`settings-v2/servers.tsx`, `research/02` §5.4) plus the
@@ -42,16 +59,41 @@ import com.xiufeigo.opencodeshell.ui.theme.OcTheme
  * The list is **state driven** from [ServerBridge] (which reads
  * `ServerConfigStore`, i.e. the same DataStore/prefs the WebView mirrors), so an
  * edit round-trips and the row re-renders without a manual refresh.
+ *
+ * **W5-D3:** opening the panel probes every configured server once
+ * (`GET /global/health`, ≤3 s, off the main thread) and folds the result into
+ * the row's indicator — the same three states as upstream
+ * `ServerHealthIndicator` (`servers/registry/row.tsx:107-134`): green for a
+ * healthy answer, red for an answer that is not healthy, weak/faint for "not
+ * probed yet". Failures are silent here by design (no dialog, no snackbar); the
+ * only place a probe failure is spoken is the connect page and the add-server
+ * warning.
  */
 @Composable
 fun ServersPanel(bridge: ServerBridge?) {
-    // `revision` makes the list state-driven: every mutation bumps it, so the
-    // row list re-reads the store instead of showing a stale snapshot.
-    var revision by remember { mutableStateOf(0) }
-    val servers = remember(bridge, revision) { bridge?.servers.orEmpty() }
+    // Observe the store revision so external WebView/native updates also refresh
+    // the list; local writes still trigger the same StateFlow emission.
+    val revisionFlow = remember(bridge) { bridge?.revision ?: MutableStateFlow(0) }
+    val bridgeRevision by revisionFlow.collectAsState()
+    val rows = remember(bridge, bridgeRevision) { bridge?.servers.orEmpty() }
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<ServerListItem?>(null) }
     var adding by remember { mutableStateOf(false) }
+
+    // The probe is re-run for every revision (an add/edit/delete changes the
+    // list, and a URL edit must not keep the previous address's verdict).
+    val source = bridge as? ServerHealthSource
+    val probe = remember { ServerHealthProbe() }
+    var health by remember(bridge) { mutableStateOf<Map<String, HealthResult>>(emptyMap()) }
+    LaunchedEffect(bridge, bridgeRevision) {
+        val targets = source?.healthTargets().orEmpty()
+        if (targets.isEmpty()) {
+            health = emptyMap()
+            return@LaunchedEffect
+        }
+        health = withContext(Dispatchers.IO) { probe.checkAll(targets) }
+    }
+    val servers = remember(rows, health) { rows.map { it.withHealth(health[it.url]) } }
 
     val filtered = filterServers(servers, query)
     val sorted = sortServers(filtered)
@@ -92,11 +134,11 @@ fun ServersPanel(bridge: ServerBridge?) {
                             onEdit = { editing = server },
                             onDelete = {
                                 bridge?.delete(server.url)
-                                revision++
+                                // Store revision updates reactively
                             },
                             onMakeDefault = {
                                 bridge?.setDefault(server.url)
-                                revision++
+                                // Store revision updates reactively
                             },
                         )
                     }
@@ -108,13 +150,16 @@ fun ServersPanel(bridge: ServerBridge?) {
     if (adding || editing != null) {
         AddEditServerDialog(
             initial = editing,
+            probe = probe,
             onDismiss = {
                 adding = false
                 editing = null
             },
             onSave = { item, password ->
-                bridge?.upsert(item, password)
-                revision++
+                // `replace` carries the edited row's original URL so a URL edit
+                // replaces (and keeps default) instead of duplicating the row.
+                bridge?.replace(editing?.url, item, password)
+                // Store revision updates reactively
                 adding = false
                 editing = null
             },
@@ -137,6 +182,10 @@ private fun ServerRow(
 ) {
     val c = OcTheme.colors
     var menu by remember { mutableStateOf(false) }
+    // The dot carries its state as a content description: upstream's indicator
+    // is a bare `div` with no label, which leaves the state invisible to a
+    // screen reader (and to a QA pass reading the accessibility tree).
+    val healthState = stringResourceHealthLabel(server.health)
     Column(
         Modifier
             .fillMaxWidth()
@@ -147,7 +196,8 @@ private fun ServerRow(
                 Box(
                     Modifier
                         .size(8.dp)
-                        .background(healthColor(server.health), RoundedCornerShape(4.dp)),
+                        .background(healthColor(server.health), RoundedCornerShape(4.dp))
+                        .semantics { contentDescription = healthState },
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -221,6 +271,37 @@ private fun healthColor(health: ServerHealth) = when (health) {
     ServerHealth.UNHEALTHY -> OcTheme.colors.stateDangerFg
 }
 
+/** The `oc_health_*` label behind the indicator dot (accessibility + QA anchor). */
+@Composable
+private fun stringResourceHealthLabel(health: ServerHealth): String = stringResource(
+    when (health) {
+        ServerHealth.HEALTHY -> R.string.oc_health_healthy
+        ServerHealth.UNKNOWN -> R.string.oc_health_unknown
+        ServerHealth.UNHEALTHY -> R.string.oc_health_unhealthy
+    },
+)
+
+/**
+ * Defends the URL field against CJK IMEs: in pinyin mode Gboard commits
+ * full-width variants of `:`, `/`, `.` and digits (and `。` for `.`), which
+ * would otherwise be stored verbatim and produce unreachable addresses.
+ * Maps full-width ASCII (U+FF01–U+FF5E) back to ASCII and `。`/`・` to `.`,
+ * and drops whitespace entirely (URLs cannot contain it).
+ */
+internal fun normalizeUrlInput(raw: String): String = buildString(raw.length) {
+    for (ch in raw) {
+        when (ch) {
+            '。', '・' -> append('.')
+            '　' -> Unit
+            else -> when {
+                ch in '！'..'～' -> append(ch - 0xFEE0)
+                ch.isWhitespace() -> Unit
+                else -> append(ch)
+            }
+        }
+    }
+}
+
 /**
  * `dialog-server-v2` (`research/02` §5.5): width 480 (capped to
  * `100vw-32`), radius 8, header `24px 24px 16px`, footer `24px`.
@@ -229,14 +310,23 @@ private fun healthColor(health: ServerHealth) = when (health) {
  * `http://localhost:4096`) → name → username (default `opencode`) / password.
  * Enter submits; the error line is `11px` in `--v2-state-fg-danger`, and the
  * Android-only CORS hint/error copy is preserved.
+ *
+ * **W5-D3 (optional item, documented deviation):** the save path probes the
+ * address first. Upstream's add dialog *refuses* to save an unhealthy server;
+ * here the probe failure is shown as a readable sentence and the primary button
+ * turns into 「%s」, so a second press saves anyway. A phone user whose server has
+ * no health endpoint (or is momentarily unreachable) must not be locked out of
+ * configuring it — that escape hatch is the deliberate difference.
  */
 @Composable
 private fun AddEditServerDialog(
     initial: ServerListItem?,
+    probe: ServerHealthProbe,
     onDismiss: () -> Unit,
     onSave: (ServerListItem, String?) -> Unit,
 ) {
     val c = OcTheme.colors
+    val scope = rememberCoroutineScope()
     val config = androidx.compose.ui.platform.LocalConfiguration.current
     val width = minOf(config.screenWidthDp.dp - 32.dp, 480.dp)
 
@@ -249,14 +339,17 @@ private fun AddEditServerDialog(
     }
     var password by remember(initial) { mutableStateOf("") }
     var error by remember { mutableStateOf<Int?>(null) }
+    var warning by remember { mutableStateOf<HealthMessage?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    // Set once the warning has been shown: the next press saves regardless.
+    var warned by remember { mutableStateOf(false) }
 
-    fun submit() {
-        val trimmed = url.trim()
-        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-            error = R.string.oc_server_error_connect
-            return
-        }
-        error = null
+    fun resetWarning() {
+        warning = null
+        warned = false
+    }
+
+    fun save(trimmed: String) {
         val resolvedName = name.trim().ifEmpty { trimmed.removePrefix("http://").removePrefix("https://") }
         onSave(
             ServerListItem(
@@ -269,6 +362,40 @@ private fun AddEditServerDialog(
             ),
             password.takeIf { it.isNotEmpty() },
         )
+    }
+
+    fun submit() {
+        if (checking) return
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            error = R.string.oc_server_error_connect
+            return
+        }
+        error = null
+        // The user already saw why this address is unhealthy and pressed again.
+        if (warned) {
+            save(trimmed)
+            return
+        }
+        checking = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                probe.check(
+                    HealthTarget(
+                        url = trimmed,
+                        username = username.trim().ifEmpty { null },
+                        password = password.takeIf { it.isNotEmpty() },
+                    ),
+                )
+            }
+            checking = false
+            if (!result.healthy) {
+                warning = healthFailureMessage(result.failure)
+                warned = true
+                return@launch
+            }
+            save(trimmed)
+        }
     }
 
     Column(
@@ -295,11 +422,15 @@ private fun AddEditServerDialog(
         OcTextField(
             value = url,
             onValueChange = {
-                url = it
+                url = normalizeUrlInput(it)
                 error = null
+                resetWarning()
             },
-            placeholder = DEFAULT_SERVER_URL_PLACEHOLDER,
+            placeholder = androidx.compose.ui.res.stringResource(R.string.oc_server_url_placeholder),
             imeAction = ImeAction.Next,
+            // URL fields must not let a CJK IME full-width `:`, `/` and `.`
+            // (Gboard zh does exactly that), which would silently corrupt the address.
+            keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
         )
         OcBodyText(androidx.compose.ui.res.stringResource(R.string.oc_server_name), muted = true)
         OcTextField(
@@ -313,7 +444,10 @@ private fun AddEditServerDialog(
                 OcBodyText(androidx.compose.ui.res.stringResource(R.string.oc_server_username), muted = true)
                 OcTextField(
                     value = username,
-                    onValueChange = { username = it },
+                    onValueChange = {
+                        username = it
+                        resetWarning()
+                    },
                     imeAction = ImeAction.Next,
                 )
             }
@@ -321,7 +455,10 @@ private fun AddEditServerDialog(
                 OcBodyText(androidx.compose.ui.res.stringResource(R.string.oc_server_password), muted = true)
                 OcTextField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = {
+                        password = it
+                        resetWarning()
+                    },
                     password = true,
                     onImeAction = { submit() },
                 )
@@ -343,6 +480,18 @@ private fun AddEditServerDialog(
                 fontWeight = FontWeight(440),
             )
         }
+        // W5-D3: the probe's readable reason. A warning, not a blocker — the
+        // button below only changes its label.
+        warning?.let { message ->
+            Text(
+                text = message.formatArg
+                    ?.let { stringResource(message.resId, it) }
+                    ?: stringResource(message.resId),
+                color = c.stateDangerFg,
+                fontSize = 11.sp,
+                fontWeight = FontWeight(440),
+            )
+        }
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
@@ -354,8 +503,14 @@ private fun AddEditServerDialog(
             )
             OcButton(
                 label = androidx.compose.ui.res.stringResource(
-                    if (initial == null) R.string.oc_server_add_button else R.string.oc_server_save_button,
+                    when {
+                        checking -> R.string.oc_server_checking
+                        warned -> R.string.oc_health_save_anyway
+                        initial == null -> R.string.oc_server_add_button
+                        else -> R.string.oc_server_save_button
+                    },
                 ),
+                enabled = !checking,
                 onClick = { submit() },
             )
         }

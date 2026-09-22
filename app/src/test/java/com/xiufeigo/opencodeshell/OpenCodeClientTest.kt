@@ -183,4 +183,42 @@ class OpenCodeClientTest {
             c.close()
         }
     }
+
+    /** Assistant messages expose `info.providerID`/`info.modelID` (chip fallback). */
+    @Test
+    fun messageFromJsonReadsAssistantModelFields() {
+        val assistant = OpenCodeClient.Message.fromJson(
+            JSONObject(
+                """{"info":{"id":"m1","sessionID":"ses_1","role":"assistant","providerID":"openai","modelID":"gpt-5.6-sol-fast","time":{"created":1}},"parts":[]}""",
+            ),
+        )
+        assertEquals("openai", assistant.providerID)
+        assertEquals("gpt-5.6-sol-fast", assistant.modelID)
+
+        val user = OpenCodeClient.Message.fromJson(
+            JSONObject(
+                """{"info":{"id":"m2","sessionID":"ses_1","role":"user","time":{"created":2}},"parts":[]}""",
+            ),
+        )
+        assertNull(user.providerID)
+        assertNull(user.modelID)
+    }
+
+    /** `GET /session/:id` single-session read (title refresh on snapshot). */
+    @Test
+    fun sessionReadsSingleSessionInfo() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"id":"ses_9","title":"DRAFT_OK","directory":"D:\\w","time":{"updated":7}}""",
+                ),
+            )
+            val c = client(server)
+            val s = c.session("ses_9")
+            assertEquals("DRAFT_OK", s.title)
+            assertEquals("D:\\w", s.directory)
+            assertEquals("/session/ses_9", server.takeRequest().path)
+            c.close()
+        }
+    }
 }

@@ -10,6 +10,8 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import com.xiufeigo.opencodeshell.ChatViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
@@ -43,13 +45,27 @@ internal object AttachmentReader {
         val failed: Int,
     )
 
-    /** Reads every picked document, skipping (and reporting) the ones that fail. */
-    suspend fun readAll(context: Context, uris: List<Uri>): Result = withContext(Dispatchers.IO) {
+    /**
+     * Reads every picked document, skipping (and reporting) the ones that fail.
+     *
+     * W5-C B6: [onProgress] is invoked once per URI (before it is read) with the
+     * 1-based index, the total count and a display hint — the composer's upload
+     * row renders it and offers cancel. Cancelling the calling coroutine stops the
+     * round at the next document (the check is per iteration, so a huge single
+     * file still has to finish decoding).
+     */
+    suspend fun readAll(
+        context: Context,
+        uris: List<Uri>,
+        onProgress: (index: Int, total: Int, label: String?) -> Unit = { _, _, _ -> },
+    ): Result = withContext(Dispatchers.IO) {
         val appContext = context.applicationContext
         val attachments = mutableListOf<ChatViewModel.Attachment>()
         val tooLarge = mutableListOf<String>()
         var failed = 0
-        for (uri in uris) {
+        for ((position, uri) in uris.withIndex()) {
+            currentCoroutineContext().ensureActive()
+            onProgress(position + 1, uris.size, uri.lastPathSegment)
             when (val read = read(appContext, uri)) {
                 is Read.Ok -> attachments += read.attachment
                 is Read.TooLarge -> tooLarge += read.filename

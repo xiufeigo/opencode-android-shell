@@ -32,8 +32,16 @@ object ToolCardPolicy {
     /** `settings.general.row.shellToolPartsExpanded` default — M4 wires the switch. */
     const val DEFAULT_SHELL_EXPANDED = false
 
-    /** `settings.general.row.editToolPartsExpanded` default. */
-    const val DEFAULT_EDIT_EXPANDED = true
+    /**
+     * `settings.general.row.editToolPartsExpanded` default.
+     *
+     * W4-B: **false**, matching the upstream default preset. Upstream ships
+     * `compact` (`_upstream/packages/app/src/settings/model.tsx:248` →
+     * `session-ui/src/timeline/detail.ts:41-49`) where `edit` is
+     * `grouped + collapsed`, so an edit body never starts expanded. The M2
+     * default of `true` predates the preset port.
+     */
+    const val DEFAULT_EDIT_EXPANDED = false
 
     fun stateOf(part: ChatStore.UiPart): State = when (part.toolStatus) {
         "pending" -> State.PENDING

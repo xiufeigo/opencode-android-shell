@@ -363,3 +363,17 @@ ui/
 4. 以 M1 时间线+composer 作为首个「可与官方逐屏对比」的 vertical slice。
 
 > 注：本计划基于 max-推理四路调研，凡标注「未确证」处都明确不臆造，留 P2 取证。
+
+---
+
+## 附录：基线重锚定与双协议决策（2026-09-22）
+
+本节为状态追记，不改动上文计划正文。
+
+- **UI 基线重锚定**：像素基线与行为规格已统一重锚到上游 **`v2` 分支 @ `@opencode/app` 2.0.11**。`_upstream/` 现为该分支的 sparse checkout（已扩到全 `packages/` + `patches/`），只读引用，不直接改动。§1.1 中「vendored 产物 vs dev 源码」的旧裁决被此替代：以 v2 分支源码与 2.0.11 实测为准。
+- **双协议决策**：同一 App 同时支持 **v1 serve（1.x）** 与 **v2 serve（2.x）**，但**每台服务器非此即彼**（hard either/or），由连接时探针判定并按 server key 持久化 generation：
+  - v2 信号：`GET /api/info` 返回 JSON 且 `version` 以 `"2."` 开头（另用 `GET /api/location` 确认目录）；
+  - v1 信号：`GET /global/health` 返回带 `version` 的 JSON；
+  - 任一方向 miss（SPA HTML / 非 JSON / 无 version / 网络失败）⇒ UNKNOWN，保持既有行为，下次连接重探。
+  - 传输缝：`v2/SessionTransport.kt` 接口，`V1Transport`（走既有 `OpenCodeClient`，字节级兼容）/ `V2Transport`（`V2Api` + `V2EventAdapter` + `V2SeqTracker`）。v1-only：question dock、分享/归档、todo；v2-only：inbox queue/steer、form dock。§9-c「坚守 v1 面」已 supersede：v2 面为主线之一，不再是后续 roadmap。
+- **Wave 审计文档位置**：`research/v2_audit/`（A0–A5 五路审计 + `wave1-notes.md` 双协议传输层 + `wave2.*-notes.md` 各 UI 波次 + `PROGRESS.md` 流水账）；v1/v2 能力覆盖表的人读镜像为 `research/v2_coverage.md`（代码权威表为 `V2Capability.COVERAGE`）；实机验收证据见 `research/wave4_*_report.md`（Wave 4 E2E 在 flight 中，本计划不预断其结论）。

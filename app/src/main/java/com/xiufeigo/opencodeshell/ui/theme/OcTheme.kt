@@ -29,6 +29,8 @@ data class OcColors(
     val inverse: Color,         // --v2-background-bg-inverse
     val contrast: Color,        // --v2-background-bg-contrast
     val accent: Color,          // --v2-background-bg-accent (solid primary)
+    val bgCodePath: Color,      // --v2-background-bg-code-path
+    val bgIconButtonContrast: Color, // --v2-background-bg-icon-button-contrast
     /**
      * `--v2-background-bg-button-neutral` (M3 additive token): the surface of
      * `ButtonV2 variant="neutral"` — light `#fff`, dark `#ffffff0f`
@@ -42,18 +44,24 @@ data class OcColors(
     val textMuted: Color,       // --v2-text-text-muted
     val textFaint: Color,       // --v2-text-text-faint
     val textInverse: Color,     // --v2-text-text-inverse
+    val textContrast: Color,    // --v2-text-text-contrast
     val textAccent: Color,      // --v2-text-text-accent
     val textAccentHover: Color, // --v2-text-text-accent-hover
     val textCodeAccent: Color,  // --v2-text-text-code-accent
+    val textCodePath: Color,    // --v2-text-text-code-path
     // Icons
     val iconBase: Color,        // --v2-icon-icon-base
     val iconMuted: Color,       // --v2-icon-icon-muted
+    val iconFaint: Color,       // --v2-icon-icon-faint
     val iconInverse: Color,     // --v2-icon-icon-inverse
+    val iconContrast: Color,    // --v2-icon-icon-contrast
     val iconAccent: Color,      // --v2-icon-icon-accent
+    val iconAccentHover: Color, // --v2-icon-icon-accent-hover
     // Borders
     val borderBase: Color,      // --v2-border-border-base
     val borderMuted: Color,     // --v2-border-border-muted
     val borderStrong: Color,    // --v2-border-border-strong
+    val borderInverse: Color,   // --v2-border-border-inverse
     val borderFocus: Color,     // --v2-border-border-focus
     // Overlays (hover/pressed/scrim)
     val overlayHover: Color,    // --v2-overlay-simple-overlay-hover
@@ -87,9 +95,30 @@ data class OcColors(
     val syntaxPrimitive: Color,
     val syntaxComment: Color,
     val syntaxWeak: Color,
+    val shimmerBase: Color,     // --text-weak (`text-shimmer.css:10`)
+    val shimmerPeak: Color,     // --text-strong (`text-shimmer.css:11`)
 ) {
     companion object {
-        private fun c(hex: String) = Color(android.graphics.Color.parseColor(hex))
+        /**
+         * Parses a token literal.
+         *
+         * Eight-digit tokens are authored in **CSS order** (`#RRGGBBAA`) because
+         * they are transcribed from the upstream token sheet; Android's
+         * `Color.parseColor` only understands `#AARRGGBB`, so the two halves are
+         * swapped here.
+         *
+         * Without this the whole palette drifted: `borderBase` in the light
+         * scheme (`#0000001a`) parsed to *alpha 0* — invisible borders and a
+         * scrim that never dimmed — while dark values like `#ffffff1a` parsed to
+         * an opaque yellow-white. Every eight-digit token in this file uses the
+         * CSS order (the `00`/`ff` halves are always the RGB prefix, the trailing
+         * pair is always `0a/0f/14/1a/33/99`), so the conversion is unambiguous.
+         */
+        private fun c(hex: String): Color {
+            val body = hex.removePrefix("#")
+            val argb = if (body.length == 8) "#" + body.substring(6, 8) + body.substring(0, 6) else hex
+            return Color(android.graphics.Color.parseColor(argb))
+        }
 
         /** [data-color-scheme="dark"] semantic values. */
         val Dark = OcColors(
@@ -100,23 +129,31 @@ data class OcColors(
             layer03 = c("#3a3a3a"),
             layer04 = c("#5c5c5c"),
             inverse = c("#ffffff"),
-            contrast = c("#242424"),
+            contrast = c("#5c5c5c"),
             accent = c("#3b5cf6"),
+            bgCodePath = c("#00353f"),
+            bgIconButtonContrast = c("#dbdbdb"),
             buttonNeutral = c("#ffffff0f"),
             textBase = c("#fafafa"),
             textMuted = c("#aeaeae"),
             textFaint = c("#808080"),
             textInverse = c("#161616"),
+            textContrast = c("#ffffffff"),
             textAccent = c("#a2bcff"),
             textAccentHover = c("#c3d4fd"),
             textCodeAccent = c("#a2bcff"),
+            textCodePath = c("#c3d4fd"),
             iconBase = c("#dbdbdb"),
             iconMuted = c("#808080"),
+            iconFaint = c("#5c5c5c"),
             iconInverse = c("#161616"),
+            iconContrast = c("#fafafa"),
             iconAccent = c("#a2bcff"),
+            iconAccentHover = c("#c3d4fd"),
             borderBase = c("#ffffff1a"),
             borderMuted = c("#ffffff14"),
             borderStrong = c("#ffffff33"),
+            borderInverse = c("#fafafa"),
             borderFocus = c("#7698fd"),
             overlayHover = c("#ffffff0f"),
             overlayPressed = c("#ffffff1a"),
@@ -130,7 +167,7 @@ data class OcColors(
             stateDangerBg = c("#461516"),
             stateDangerFg = c("#f17471"),
             stateDangerBorder = c("#97252b"),
-            stateInfoBg = c("#1b2852"),
+            stateInfoBg = c("#021945"),
             stateInfoFg = c("#7698fd"),
             stateInfoBorder = c("#2c47c8"),
             agentPlan = c("#f799c6"),
@@ -138,14 +175,16 @@ data class OcColors(
             agentExplore = c("#f7e5b5"),
             agentReview = c("#b8e9c1"),
             agentWriter = c("#9e99f7"),
-            syntaxKeyword = c("#edb2f1"),
-            syntaxProperty = c("#fab283"),
-            syntaxType = c("#fcd53a"),
-            syntaxString = c("#00ceb9"),
+            syntaxKeyword = c("#f799c6"),
+            syntaxProperty = c("#ffc1a4"),
+            syntaxType = c("#9e99f7"),
+            syntaxString = c("#96e3a6"),
             syntaxConstant = c("#93e9f6"),
-            syntaxPrimitive = c("#8cb0ff"),
-            syntaxComment = c("#8f8f8f"),
-            syntaxWeak = c("#8f8f8f"),
+            syntaxPrimitive = c("#f799c6"),
+            syntaxComment = c("#aeaeae"),
+            syntaxWeak = c("#aeaeae"),
+            shimmerBase = c("#6b6b6b"),
+            shimmerPeak = c("#efefef"),
         )
 
         /** [data-color-scheme="light"] semantic values. */
@@ -159,25 +198,33 @@ data class OcColors(
             inverse = c("#161616"),
             contrast = c("#242424"),
             accent = c("#3b5cf6"),
+            bgCodePath = c("#e2f7fb"),
+            bgIconButtonContrast = c("#242424"),
             buttonNeutral = c("#ffffff"),
             textBase = c("#161616"),
             textMuted = c("#5c5c5c"),
             textFaint = c("#808080"),
             textInverse = c("#ffffff"),
+            textContrast = c("#ffffffff"),
             textAccent = c("#3b5cf6"),
-            textAccentHover = c("#3250df"),
-            textCodeAccent = c("#263fa9"),
+            textAccentHover = c("#0b34f4"),
+            textCodeAccent = c("#2c47c8"),
+            textCodePath = c("#2c47c8"),
             iconBase = c("#3a3a3a"),
             iconMuted = c("#808080"),
+            iconFaint = c("#aeaeae"),
             iconInverse = c("#ffffff"),
+            iconContrast = c("#fafafa"),
             iconAccent = c("#3b5cf6"),
+            iconAccentHover = c("#0b34f4"),
             borderBase = c("#0000001a"),
             borderMuted = c("#00000014"),
             borderStrong = c("#00000033"),
+            borderInverse = c("#242424"),
             borderFocus = c("#7698fd"),
             overlayHover = c("#0000000a"),
             overlayPressed = c("#00000014"),
-            overlayScrim = c("#00000099"),
+            overlayScrim = c("#00000066"),
             stateSuccessBg = c("#e7f9ea"),
             stateSuccessFg = c("#198b43"),
             stateSuccessBorder = c("#b8e9c1"),
@@ -191,18 +238,20 @@ data class OcColors(
             stateInfoFg = c("#2c47c8"),
             stateInfoBorder = c("#c3d4fd"),
             agentPlan = c("#c83d8b"),
-            agentBuild = c("#2c47c8"),
+            agentBuild = c("#3250df"),
             agentExplore = c("#ac8833"),
             agentReview = c("#198b43"),
             agentWriter = c("#623be2"),
-            syntaxKeyword = c("#a753ae"),
-            syntaxProperty = c("#ed6dc8"),
-            syntaxType = c("#596600"),
-            syntaxString = c("#006656"),
+            syntaxKeyword = c("#c83d8b"),
+            syntaxProperty = c("#d16427"),
+            syntaxType = c("#5230c2"),
+            syntaxString = c("#198b43"),
             syntaxConstant = c("#007b80"),
-            syntaxPrimitive = c("#fb4804"),
+            syntaxPrimitive = c("#c83d8b"),
             syntaxComment = c("#5c5c5c"),
             syntaxWeak = c("#5c5c5c"),
+            shimmerBase = c("#8f8f8f"),
+            shimmerPeak = c("#171717"),
         )
     }
 }
@@ -213,18 +262,32 @@ data class OcElevation(
     val raised: OcShadow,
     val floating: OcShadow,
     val overlay: OcShadow,
+    val buttonNeutral: OcShadow,
+    val buttonContrast: OcShadow,
+    val elements: OcShadow,
+    val switchOff: OcShadow,
+    val switchOn: OcShadow,
 ) {
     companion object {
-        // light/dark values from 02 §0.5; alpha scaled to the base elevation color.
         val Dark = OcElevation(
-            raised = OcShadow(2f, 4f, Color(0x1E000000)),
-            floating = OcShadow(8f, 16f, Color(0x1E000000)),
-            overlay = OcShadow(16f, 32f, Color(0x1E000000)),
+            raised = OcShadow(2f, 4f, Color(0x4D000000), ring = Color(0x29FFFFFF)),
+            floating = OcShadow(8f, 16f, Color(0x4D000000), ring = Color(0x29FFFFFF)),
+            overlay = OcShadow(16f, 32f, Color(0x4D000000), ring = Color(0x29FFFFFF)),
+            buttonNeutral = OcShadow(1f, 2f, Color(0x66000000), ring = Color(0x33FFFFFF)),
+            buttonContrast = OcShadow(1f, 2f, Color(0x66000000), ring = Color(0x66FFFFFF)),
+            elements = OcShadow(0.5f, 0.5f, Color(0x66000000)),
+            switchOff = OcShadow(0f, 0f, Color.Transparent, ring = Color(0x29FFFFFF)),
+            switchOn = OcShadow(0f, 0f, Color.Transparent, ring = Color(0x29FFFFFF)),
         )
         val Light = OcElevation(
-            raised = OcShadow(2f, 4f, Color(0x0A000000)),
-            floating = OcShadow(8f, 16f, Color(0x0A000000)),
-            overlay = OcShadow(16f, 32f, Color(0x0A000000)),
+            raised = OcShadow(2f, 4f, Color(0x0A000000), ring = Color(0x1F000000)),
+            floating = OcShadow(8f, 16f, Color(0x0A000000), ring = Color(0x1F000000)),
+            overlay = OcShadow(16f, 32f, Color(0x0A000000), ring = Color(0x1F000000)),
+            buttonNeutral = OcShadow(1f, 1.5f, Color(0x1A000000), ring = Color(0x24000000)),
+            buttonContrast = OcShadow(1f, 1.5f, Color(0x33000000), ring = Color(0xFF3A3A3A)),
+            elements = OcShadow(0.5f, 0.5f, Color(0x66000000)),
+            switchOff = OcShadow(0f, 0f, Color.Transparent, ring = Color(0x1A000000)),
+            switchOn = OcShadow(0f, 0f, Color.Transparent, ring = Color(0x33000000)),
         )
     }
 }
@@ -234,6 +297,7 @@ data class OcShadow(
     val yOffset: Float,
     val blur: Float,
     val color: Color,
+    val ring: Color = Color.Transparent,
 )
 
 /**
@@ -257,6 +321,7 @@ data class OcType(
     val xl4: androidx.compose.ui.unit.TextUnit, // 20px
     val lineHeightCompact: androidx.compose.ui.unit.TextUnit, // 16px (leading-4)
     val lineHeightBase: androidx.compose.ui.unit.TextUnit, // 20px (leading-5)
+    val lineHeightTight: androidx.compose.ui.unit.TextUnit = 12f.sp, // 12px (leading tight)
     val fontFamily: androidx.compose.ui.text.font.FontFamily = OcFonts.default,
     val monoFontFamily: androidx.compose.ui.text.font.FontFamily = OcFonts.mono,
 ) {
@@ -269,6 +334,7 @@ data class OcType(
             xl = 15f.sp,
             xl2 = 16f.sp,
             xl4 = 20f.sp,
+            lineHeightTight = 12f.sp,
             lineHeightCompact = 16f.sp,
             lineHeightBase = 20f.sp,
         )

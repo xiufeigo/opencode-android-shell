@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,11 +18,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.ui.theme.LocalOcReducedMotion
 import com.xiufeigo.opencodeshell.ui.theme.OcMotion
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
@@ -59,11 +58,11 @@ fun TextShimmer(
     active: Boolean,
     modifier: Modifier = Modifier,
     /** `--text-shimmer-base-color: var(--text-weak)`. */
-    baseColor: Color = OcTheme.colors.textMuted,
+    baseColor: Color = OcTheme.colors.shimmerBase,
     /** `--text-shimmer-peak-color: var(--text-strong)`. */
-    peakColor: Color = OcTheme.colors.textBase,
-    fontSize: TextUnit = 14.sp,
-    fontWeight: FontWeight = FontWeight.W500,
+    peakColor: Color = OcTheme.colors.shimmerPeak,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
     lineHeight: TextUnit = TextUnit.Unspecified,
     maxLines: Int = 1,
     overflow: TextOverflow = TextOverflow.Ellipsis,
@@ -81,18 +80,20 @@ fun TextShimmer(
         label = "text-shimmer-swap",
     )
 
-    val style = TextStyle(
-        color = baseColor,
-        fontSize = fontSize,
-        fontWeight = fontWeight,
-        lineHeight = lineHeight,
+    val textStyle = LocalTextStyle.current.merge(
+        androidx.compose.ui.text.TextStyle(
+            color = baseColor,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            lineHeight = lineHeight,
+        ),
     )
 
     Box(modifier = modifier) {
         // char-base: the static glyphs the sweep resolves back to.
         Text(
             text = text,
-            style = style,
+            style = textStyle,
             maxLines = maxLines,
             overflow = overflow,
             softWrap = false,
@@ -101,7 +102,7 @@ fun TextShimmer(
             val cycle = shimmerCycle()
             Text(
                 text = text,
-                style = style.copy(brush = shimmerBrush(text.length, cycle, baseColor, peakColor)),
+                style = textStyle.copy(brush = shimmerBrush(text.length, cycle, baseColor, peakColor)),
                 maxLines = maxLines,
                 overflow = overflow,
                 softWrap = false,

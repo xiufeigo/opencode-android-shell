@@ -2,10 +2,14 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <!-- Three round dots (`IconV2 name="outline-dots"`), drawn as zero-length
-         round-capped strokes so the cap radius alone forms each dot. -->
+    <!-- Three round dots (`IconV2 name="outline-dots"`, `icons/icon/icon.tsx:139-142`),
+         drawn as zero-length round-capped strokes so the cap radius alone forms
+         each dot. The upstream icon is a 16-unit box with 1x1 squares (stroked
+         at 1 -> a 2 px dot) centred at x = 3 / 8 / 13, i.e. a **horizontal** ⋯;
+         scaled to this 24-unit viewport that is x = 4.5 / 12 / 19.5 at y = 12,
+         with a 3.2 stroke (= 2.13 px at a 16 dp render size). -->
     <path
-        android:pathData="M12,5.5v0.01M12,12v0.01M12,18.5v0.01"
+        android:pathData="M4.5,12h0.01M12,12h0.01M19.5,12h0.01"
         android:strokeColor="@color/oc_icon_base"
         android:strokeWidth="3.2"
         android:strokeLineCap="round" />

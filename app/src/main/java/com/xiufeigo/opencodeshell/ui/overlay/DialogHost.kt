@@ -51,6 +51,13 @@ import kotlinx.coroutines.launch
  * content, so Home / session / new-session all open the *same* instances without
  * a route change (PLAN §4.3/§4.4).
  *
+ * **Not every overlay is a dialog upstream**: `/settings` is a real route with
+ * its own full-screen surface (`shell/routes/routes.tsx:38` →
+ * `settings/shell.tsx:70`, `settings.css:8-27`). The native shell keeps the route
+ * as a deep-link entry and renders the surface through this stack, which is the
+ * same layer the palette and the server dialogs use — a structural deviation
+ * recorded in `audit_routes.md` 表 A, not an upstream fact.
+ *
  * **M6** adds the layer transition (`research/03` §3.4): the content fades and
  * scales `contentShow`/`contentHide`-style (`DIALOG`: `.15s ease-out` in,
  * `.1s ease-in` out, scale `.98 → 1`) while the scrim only fades
@@ -91,14 +98,28 @@ class DialogController internal constructor(
     /** True when any layer is open — the global keybind hook must stand down. */
     val isActive: Boolean get() = stack.isNotEmpty()
 
+    /**
+     * Upstream `dialog.show` **replaces** the whole stack before mounting the new
+     * layer (`packages/ui/src/context/dialog.tsx:140-149`: it clears the layers
+     * and pushes one); `dialog.push` (`:131-138`) is what stacks. The earlier
+     * Android `show` behaved like `push`, so any upstream chain that relies on
+     * replacing the current dialog (e.g. `usage-exceeded-dialogs.tsx:86`) stacked
+     * instead of switching. Layers are closed the same way [close] does — marked
+     * closing so their exit animation plays — and the new one is appended after
+     * them, so it is on top from the first frame.
+     */
     fun show(size: DialogSize = DialogSize.FIT, content: @Composable (DialogController) -> Unit) {
+        for (entry in stack.toList()) {
+            if (entry.closing) continue
+            entry.closing = true
+            beginClose(entry)
+        }
         stack.add(DialogEntry(nextId(), size, content))
     }
 
     /** Closes the topmost layer, playing its exit transition first. */
     fun close() {
-        val top = stack.lastOrNull() ?: return
-        if (top.closing) return
+        val top = stack.lastOrNull { !it.closing } ?: return
         top.closing = true
         beginClose(top)
     }

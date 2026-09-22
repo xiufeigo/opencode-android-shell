@@ -1,134 +1,62 @@
 # OpenCode (Android)
 
-Android wrapper that **embeds** the official OpenCode V2 frontend (`@opencode-ai/app`, SolidJS + Vite) and talks to backends you add in the official **Settings → Server** UI — the same flow as OpenCode Desktop.
+Native **Jetpack Compose** reimplementation of the official OpenCode web frontend
+(`@opencode/app`, `v2` branch of `github.com/anomalyco/opencode`), aiming for
+**1:1 UI / feature / interaction parity**. Baseline: **2.0.11**
+(see `_upstream/packages/app/package.json`).
 
 Installed name: **OpenCode**  
 Package id: `com.xiufeigo.opencodeshell` (unchanged)  
-Min SDK: 26 (Android 8.0)
+Min SDK: 26 (Android 8.0) · target/compile SDK: 35
 
-Pinned frontend: see [`frontend/OPENCODE_APP_VERSION`](frontend/OPENCODE_APP_VERSION) (currently **v1.18.31**).  
-Launcher icon: official OpenCode mark — see [`frontend/branding/SOURCE.md`](frontend/branding/SOURCE.md).
-If a previous build left a white square on Xiaomi/HyperOS, **uninstall + reinstall** (the launcher caches icons by package).
+> History note: before 1.4.0 this app embedded the official frontend in a
+> WebView; that shell is retired. The launcher is now the native Compose
+> `OcActivity`; the old `MainActivity` WebView stays only as a non-launcher
+> fallback until the WebView is fully removed (with it, `LocalGateway`,
+> `frontend/patches`, and the vendored bundle under
+> `app/src/main/assets/opencode-app/`). The retired shell's own documentation
+> lives in [`README-webview-legacy.md`](README-webview-legacy.md).
 
-## Architecture
+## Features
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  Android WebView                                         │
-│  origin: https://appassets.androidplatform.net           │
-│  static assets: WebViewAssetLoader → @opencode-ai/app    │
-│  Cold start: official home UI                            │
-│  Servers: Settings → Server (stores the REAL backend URL)│
-└────────────────────────┬─────────────────────────────────┘
-                         │ fetch / SSE / WebSocket
-                         │ dedicated: http://127.0.0.1:<per-backend-port>/api|/global|/event|/file|/find|/path|/pty|/mcp|...
-                         │ mux fallback: /opencode-proxy/<token>/<encoded-real-url>/...
-                         │ PTY: browser WebSocket (or native OkHttp polyfill) → gateway Upgrade tunnel
-                         ▼
-┌──────────────────────────────────────────────────────────┐
-│  In-app LocalGateway (loopback, OkHttp)                  │
-│  origin-only port per backend (v1 `new URL('/api', base)`│
-│  keeps the proxy) + path-encoded mux; strips Origin;     │
-│  forwards method/path/query/body/auth **with no path     │
-│  allowlist**; streams SSE; tunnels WebSocket Upgrade     │
-│  for remote PTY `/pty/{id}/connect`                      │
-└────────────────────────┬─────────────────────────────────┘
-                         │ HTTPS (Basic Auth, redirects)
-                         ▼
-┌──────────────────────────────────────────────────────────┐
-│  Your OpenCode server                                    │
-│  e.g. https://backend.opencode.xiufeigo.xyz              │
-│  CORS for the WebView origin is NOT required             │
-└──────────────────────────────────────────────────────────┘
-```
+- **Sessions**: list with Today/Yesterday/Older groups + search, new session,
+  rename, delete, fork, revert, session tabs, back-stack restores last page.
+- **Streaming chat**: SSE-driven timeline, paced reveal, stop button,
+  tool cards (icon-tinted, no side bar), grouped context tools, error cards,
+  true hunk diffs.
+- **Markdown**: Markwon rendering with tables (`TableLayout`), Prism4j syntax
+  highlighting in the `OcTheme` dual-scheme palette, code-block chrome.
+- **Docks**: permission + question docks (v1), **v2 form dock** (all six field
+  types, `when` linkage, external-link pages).
+- **Composer**: inbox **queue + steer** (`delivery`), structured **@mentions**
+  (file/agent/skill/command), attachments, model/agent pickers, shell `!` and
+  command `/` prefixes.
+- **Command palette** (Ctrl+K style entry points), **Settings** (General /
+  Shortcuts / Servers / Providers / Models), **terminal** (vendored Termux VT
+  kernel driving the remote PTY protocol — font/colors/grid parity, no
+  Ghostty-only features).
+- **i18n**: English + 简体中文 + 繁體中文 (re-collected from v2,
+  `research/_i18n_v2/`). **Theme**: dark + light (`OcTheme`, OC-2 tokens).
 
-- Launch goes **directly** into the official home (sidebar: 项目 / 添加项目 / 设置 / 帮助). There is no native “Connect server” screen.
-- With zero servers, the official empty state is shown. Add a backend via **设置 → 服务器** (same list + 「添加服务器」 dialog as Desktop). Enter the **real** backend URL (and optional Basic Auth). The shell keeps that URL in the official server list and rewrites only the SDK `baseUrl` onto the loopback reverse-proxy.
-- **Proxy mode is the default.** The remote server does **not** need `--cors https://appassets.androidplatform.net`. OkHttp performs the real HTTPS; the WebView never relies on `Access-Control-Allow-Origin` from the backend.
-- The WebView asset origin is **not** treated as an HTTP server (see `frontend/patches/android-webview-no-origin-server.patch`).
-- With zero servers, server-scoped providers use an **offline SDK stub** (never fetches `http://127.0.0.1:0`) so Layout/ServerSDK can init (`frontend/patches/android-webview-disconnected-sdk.patch`).
-- Touch: native overlays do not sit above the WebView; zoom-control overlays are disabled; Kobalte tooltips are skipped on coarse pointers (`frontend/patches/android-webview-touchable-home.patch`).
-- Safe area: `MainActivity` pads the **root** with `statusBars | navigationBars | displayCutout` (WebView view-padding is ignored on HyperOS). App chrome stays below the status bar. **1.3.15** paints those bars **transparent** and matches icon appearance to the WebView `data-color-scheme` (dark UI → light icons, light UI → dark icons). API 29+ contrast scrims are off so the nav gesture pill is not a white strip.
-- Session header **context ring** (top-right circle): official Desktop opens the session **Context** tab in the review panel. Below 768px that panel is hidden, so the Android shell opens a full-screen context overlay (`frontend/patches/android-webview-z-session-context.patch`).
-- Tab bar **+**: default opens the official command palette (same as Ctrl+P / `file.open`). Settings → 通用 → **「+」新建会话** restores Desktop behavior (new session). Preference is Android-only `localStorage`.
-- Portrait Settings: **phones** (below 640px) stack to a single-column accordion; category title is not sticky. General subsections are collapsible `<details>` rows styled like the settings nav (icon + label, **collapsed by default**). **Tablet landscape** matches official web: centered two-column Settings card. Shortcuts title stays on one line; keybinds use keycaps (`frontend/patches/android-webview-portrait-settings.patch`, `frontend/patches/android-webview-settings-accordion.patch`, `frontend/patches/android-webview-z-settings-polish.patch`, `frontend/patches/android-webview-z-tablet-dialog.patch`).
-- Command palette: centered in the viewport like official web (not IME-docked to the bottom). Compact dialogs such as 「添加服务器」 still sit at the bottom on phones so fields stay above the keyboard.
-- Keyboard / IME: edge-to-edge makes `adjustResize` a no-op, so the root also pads `max(navigationBars, ime)`. Focused fields `scrollIntoView` when the keyboard opens.
-- **Android Back** is forwarded into the page first (close Settings / dialogs / popovers, then in-app back). The Activity finishes only at true home with nothing to dismiss. Physical **ESC is not a shell shortcut** — it goes to the WebView (Vim / xterm / OpenCode keybinds) and never exits the app.
-- Routing: Android uses the same **MemoryRouter** pattern as OpenCode Desktop so `.../opencode-app/index.html` is not treated as a Solid route (that paints titlebar-only / white home).
-- The agent **does not** run inside the APK.
+## Server support: dual protocol (v1 serve vs v2 serve)
 
-## Run the backend (PC)
+Each server is **hard either/or** — one generation drives the store. The
+generation is probed on connect and persisted per server key
+(`generation:<url>`); unknown results keep existing behavior and re-probe next
+time. Normative table: `V2Capability.COVERAGE` in code; human mirror:
+[`research/v2_coverage.md`](research/v2_coverage.md); transport notes:
+[`research/v2_audit/wave1-notes.md`](research/v2_audit/wave1-notes.md).
 
-The embedded UI origin stays `https://appassets.androidplatform.net`. API calls from the page go to the in-app reverse-proxy on `127.0.0.1`, so **you do not need to allow that origin on the server**.
+| | v1 serve (1.x, e.g. 1.18.31) | v2 serve (2.x, e.g. 2.0.11) |
+|---|---|---|
+| Probe | `GET /global/health` → JSON with `version` | `GET /api/info` → JSON `version` starting `"2."` (+ `GET /api/location` confirms directory) |
+| Auth | none required | Basic auth supported |
+| Transport | `V1Transport` over `OpenCodeClient` | `V2Transport` over `V2Api` + `V2EventAdapter` + `V2SeqTracker` |
+| Streams | v1 `/event` SSE | `GET /api/event` + per-session experimental log (`?after=&follow=true`) |
+| Only here | question dock, share/unshare/archive, todo, legacy `prompt_async`/shell/command bodies, abort | inbox queue/steer, form dock (replaces questions), fork `{before}`, `DELETE …/revert`, `POST …/interrupt` flag |
 
-```bash
-opencode serve --hostname 0.0.0.0 --port 4096
-```
-
-`opencode web` also works with `--hostname 0.0.0.0`. Binding `127.0.0.1` is not reachable from the tablet.
-
-Optional Basic Auth (enter the same username/password in **Settings → Server** — the Android shell does not pop a system login dialog):
-
-```bash
-OPENCODE_SERVER_USERNAME=opencode OPENCODE_SERVER_PASSWORD=secret \
-  opencode serve --hostname 0.0.0.0 --port 4096
-```
-
-Phone/tablet and PC must share Wi-Fi (or the server must be a public HTTPS URL). Allow TCP **4096** on the PC firewall for LAN.
-
-If you already pass `--cors https://appassets.androidplatform.net`, it is unused by this app (the gateway does not forward `Origin`). CORS remains optional for browser tabs that open the UI from a different origin.
-
-### Reverse proxy (nginx / Caddy)
-
-TLS in front of `opencode serve` (e.g. `https://backend.example.com` → `127.0.0.1:4096`) does **not** need `Access-Control-Allow-Origin` for Android. Forward `Authorization`, HTTP/1.1, and WebSockets; for SSE avoid buffering the event stream:
-
-```nginx
-proxy_http_version 1.1;
-proxy_set_header Authorization $http_authorization;
-proxy_set_header Upgrade $http_upgrade;
-proxy_set_header Connection $connection_upgrade;
-proxy_buffering off;
-proxy_read_timeout 24h;
-```
-
-Health paths match official OpenCode clients: `GET /api/health`, then `GET /global/health`.
-
-## Point the app at the backend
-
-1. Install **OpenCode** and open it. You should see the official home immediately.
-2. Open **设置 → 服务器** (Settings → Server).
-3. Tap **添加服务器** and enter a **real** URL such as `http://192.168.1.10:4096` or `https://backend.opencode.xiufeigo.xyz`. Optional Basic Auth is on that same form. Do not paste the loopback `opencode-proxy` URL.
-4. The add-server dialog notes that the shell reverse-proxies natively. If connect fails, the error distinguishes authentication vs generic network when possible. `adb logcat -s OpenCodeShell` prints gateway/TLS/health details.
-5. After add, the new server is **applied immediately** (active connection + launch default). The card shows **当前** (Current) and **默认** (Default).
-6. To switch later: **tap the server name/row** (勾选/应用) or **⋮ → 设为默认**. Both call `setActive` and persist the default. Providers, Models, and new sessions use that server. The green health dot alone does **not** mean “selected”.
-
-Desktop’s Settings v2 list is management-only (no row click; `设为默认` is launch-default only). Switching the live SDK there happens from the session status popover / home sidebar. Android stays on Settings after add and has no home status popover, so this shell adds the tap-to-apply path.
-
-## Operation-logic review (1.3.18)
-
-Compared to official OpenCode web against local `opencode serve` with a real workspace directory. Remote **file tree** and **PTY** are in scope (the same HTTP/SSE/WebSocket APIs the official `@opencode-ai/app` uses). Out of scope only: Desktop/Electron OS integrations the web UI never offers (Android-local document picker, device-host PTY).
-
-| Issue | Outcome |
-| --- | --- |
-| Settings v2 row is not selectable; after add you stay on the list with no 勾选 | **Fixed (1.3.13).** Row tap → `setActive` + `setDefault`. **当前** / **默认** tags. |
-| `设为默认` only wrote `defaultServerUrl`, did not activate | **Fixed (1.3.13).** Menu item also `setActive`. |
-| Providers / Models empty after native proxy | **Fixed (1.3.12).** Dedicated origin-only port + `keepProxyPrefix`. |
-| Remote file tree / open / find / diff after apply marked N/A | **Fixed.** Gateway has no path allowlist (`/path`, `/file`, `/file/content`, `/find`, `/project`, `/vcs`, `/session/{id}/diff`). Add project uses official **server** directory dialog (`platform === "web"`). |
-| Remote PTY / terminal WebSocket | **Fixed.** HTTP `POST /pty` plus WebSocket Upgrade `/pty/{id}/connect` (and `/api/pty/...`). HTTPS WebView origin uses a native OkHttp WebSocket polyfill so mixed-content `ws://127.0.0.1` cannot silently no-op. |
-| MCP / permissions / search / command palette | **Fixed / tested.** HTTP `/mcp` `/api/mcp` `/permission` `/api/permission/request` `/find` `/api/fs/find`; E2E also dispatches the official web keybinds (`mod+k` palette, `mod+p` open file, `mod+;` MCP, `ctrl+\`` terminal, `mod+\\` file tree) and toggles Settings → Advanced → file tree / search. |
-| Dark UI with a solid **white** status bar | **Fixed (1.3.15).** Transparent system bars; root/window follow `#080808` / `#fafafa`; `WindowInsetsController` light/dark icons follow `data-color-scheme`. Safe-area padding unchanged. |
-| Session header context ring click does nothing | **Fixed (1.3.15 / 1.3.17).** Official control opens **Context**. Phone-width uses the 会话/更改/上下文 strip (web right-rail tabs) instead of a disconnected overlay. |
-| Tab bar **+** always created a new session | **Changed (1.3.16).** Default: **+** opens the Ctrl+P command palette (`file.open` / 「搜索文件、命令和会话」). Settings → 通用 → 「+」新建会话 restores official new-session. |
-| Portrait Settings accordion looked unlike the nav; shortcuts title wrapped | **Fixed (1.3.16).** Collapsed 通用/外观/系统通知/音效/高级 rows use the same icon+label trigger style as 桌面/服务器. Sections start collapsed. 「键盘快捷键」 stays one line; keycaps render. |
-| After IME, terminal left a black gap above the nav bar | **Fixed (1.3.17).** IME padding applies only while the keyboard is visible; hide animation / window-focus re-applies insets. `#root` fills the WebView (`100%`, not stuck `dvh`). |
-| Terminal sat under chat instead of the 更改/上下文 column | **Fixed (1.3.17).** Portrait keeps official 会话/更改 and adds 上下文 in that strip; the PTY dock is a sibling in the same column and yields `flex-1` so it sits on the safe area. |
-| Tablet landscape Settings card crushed to ~480px; Chinese labels wrap one char per line | **Fixed (1.3.18).** IME `width:480px` / `align-items:flex-end` no longer apply to Settings or the command palette. Tablet landscape uses the official centered 980px two-column card. Accordion/stack only below 640px (phones). |
-| Command palette stuck to the bottom of the WebView | **Fixed (1.3.18).** Palette uses official `flex-start` + `margin-top` centering. |
-| Desktop session status popover | **N/A.** Web UI on Android applies the server from Settings → Server. |
-| Android-device folder picker / device PTY | **Out of scope.** The web UI never offers those. |
-
-No open blockers for web-UI feature parity through the shell.
+Probe order is always `/api/info` first, then `/global/health` — a v1 server
+answers the info probe with SPA HTML (never selected as v2) and vice versa.
 
 ## Build a debug APK
 
@@ -147,75 +75,92 @@ sdk.dir=/path/to/Android/sdk
 ```
 
 ```bash
-chmod +x gradlew
 ./gradlew assembleDebug
 ```
 
 Windows: `gradlew.bat assembleDebug`.
 
-## Bump the OpenCode frontend
+`JAVA_HOME` note: use Android Studio's JBR (e.g. `/c/Program Files/Android/Android
+Studio/jbr`) — a newer system JDK can crash the Kotlin daemon
+(see `research/v2_audit/PROGRESS.md`, environment note).
 
-Needs [bun](https://bun.sh) and git.
+## Point the app at the backend
+
+1. Start a server on a machine the phone can reach:
+   ```bash
+   opencode serve --hostname 0.0.0.0 --port 4096        # v1
+   OPENCODE_SERVER_USERNAME=opencode OPENCODE_SERVER_PASSWORD=secret \
+     opencode serve --hostname 0.0.0.0 --port 4095      # v2, Basic auth
+   ```
+2. In the app, open server settings and add the server URL plus the Basic-auth
+   username/password when the server requires it.
+3. Emulator reaching a host-loopback server: forward the port, then add
+   `http://127.0.0.1:<port>` in the app:
+   ```bash
+   adb reverse tcp:4095 tcp:4095   # and/or: adb reverse tcp:4096 tcp:4096
+   ```
+
+## Testing
 
 ```bash
-chmod +x scripts/sync-opencode-app.sh
-OPENCODE_REF=v1.18.31 ./scripts/sync-opencode-app.sh
+./gradlew :app:testDebugUnitTest
 ```
 
-That clones `anomalyco/opencode` at the tag, applies `frontend/patches/*.patch`, runs `vite build --base ./ --sourcemap false` in `packages/app`, copies `dist/` into `app/src/main/assets/opencode-app/`, and updates `frontend/OPENCODE_APP_VERSION`.
+JVM unit suite (≈1,250 tests; 1,249 green — see
+`research/v2_audit/wave2.4a-notes.md` / `wave2.4b-notes.md`). CI runs the same
+task plus `assembleDebug` (`.github/workflows/build.yml`).
 
-Then `./gradlew assembleDebug`. Commit the vendored assets with the pin file.
+Device verification is not claimed here: Wave 4 E2E is still in flight — see
+`research/wave4_*_report.md` as the acceptance evidence location.
 
-Do not hand-edit files under `app/src/main/assets/opencode-app/`.
+## Repo layout
 
-## Keyboard, mouse, right-click (Xiaomi Pad)
+- `app/` — the native app (Kotlin + Compose). Top level: `ChatViewModel`,
+  `ChatStore`, `OpenCodeClient`, `EventStream`, `ServerConfigStore`,
+  `BasicAuth`, `OcActivity` (launcher) / `MainActivity` (legacy fallback).
+  `app/.../ui/` holds `theme/`, `components/`, `session/`, `home/`, `nav/`,
+  `settings/`, `palette/`, `terminal/`, `markdown/`, `overlay/`, `servers/`;
+  `app/.../v2/` holds the dual-protocol layer (`SessionTransport`,
+  `V1Transport`, `V2Transport`, `V2Api`, `V2Capability`, `V2EventAdapter`,
+  `V2SeqTracker`). Termux VT sources are vendored under
+  `app/src/thirdparty/termux/` (`:terminal-view`, `:terminal-emulator`).
+- `_upstream/` — **read-only** sparse checkout of `anomalyco/opencode` (`v2`
+  branch) used as the UI/behavior reference. Do not edit; its own `AGENTS.md`
+  applies inside.
+- `research/` — audits and verification docs: `research/v2_audit/` (waves
+  A0–A5 + `wave1-notes.md`, `wave2.*-notes.md`, `PROGRESS.md`),
+  `research/v2_coverage.md`, `research/wave4_*.md` + `research/wave4_shots/`.
+- `scripts/` — still relevant: `generate-launcher-icons.py`,
+  `check-apk-launcher-icon.py`. WebView-era (`sync-opencode-app.sh`,
+  `extract-i18n.mjs`, `selftest-embedded-ui.mjs`) no longer drives the build.
+- `frontend/` — `OPENCODE_APP_VERSION` (legacy bundle pin), `branding/`
+  (icon provenance), `patches/` (legacy WebView patches).
 
-The page is Chromium WebView, not OpenCode Desktop / Electron. The shell does **not** implement its own shortcut map; letter keys and Ctrl/Cmd chords go to the Solid app (same keybinds as Desktop).
+## Launcher icon / branding
 
-| Input | What to expect |
-| --- | --- |
-| Android Back | First forwarded into the page as **Escape** (closes Settings / dialogs / popovers, one layer). Then in-app back/home if present. Then `WebView.goBack()` if the asset history allows it. **Only at true home with nothing to dismiss** does Back finish the Activity. Separate from the physical Esc key. |
-| Escape / ESC | **Pass-through to the WebView.** The shell does not hijack editor/terminal keys and has no app-wide ESC shortcut. Focused xterm/Vim get normal Esc (leave insert mode, etc.). OpenCode’s own UI layer may close a dialog if one is open. ESC **never** `finish()`es the Activity. |
-| USB / Bluetooth keyboard | Character keys and many Ctrl/Cmd shortcuts reach the Solid app when the WebView has focus. |
-| Ctrl+C / Ctrl+V | Usually work. Some OEM shortcuts are swallowed by HyperOS. |
-| Function keys, Alt+Tab | Often captured by the system, not the page. |
-| Mouse left click / scroll | Works. |
-| Mouse right-click | OpenCode’s own `contextmenu` handlers can fire on recent Android System WebView. There is **no** desktop browser chrome menu (Inspect, Open in new tab, etc.). Long-press is still the touch equivalent. |
-| Hover tooltips | Depend on the pointer stack; not as complete as Desktop. |
+Official OpenCode mark (favicon-v3) drawn full-bleed opaque on `#131010`;
+**legacy-only** bitmaps (no adaptive XML) because HyperOS composed the adaptive
+layers into a white plate with a tiny glyph. Source and regeneration — see
+[`frontend/branding/SOURCE.md`](frontend/branding/SOURCE.md):
 
-Keep the WebView focused (tap the UI once after attaching a keyboard).
+```bash
+python3 scripts/generate-launcher-icons.py
+python3 scripts/check-apk-launcher-icon.py app/build/outputs/apk/debug/app-debug.apk
+```
 
-## HyperOS / Xiaomi notes
-
-- **Settings → Apps → OpenCode → Battery** → Unrestricted if the session dies in the background.
-- Allow **LAN / local network** if a privacy toggle appears.
-- Install unknown sources to sideload the debug APK.
-- Autostart is not required; the agent stays on the PC.
-- **Icon still white / tiny glyph after upgrade:** uninstall the app, then install the new APK. HyperOS caches the previous adaptive icon until the package is removed. `versionCode` 12+ ships **legacy-only** full-bleed PNGs (no `adaptive-icon` XML).
-- **Title bar under the status bar:** `versionCode` 6+ pads the activity root with system-bar insets. If an older build is still installed, upgrade to 1.3.3+.
-- **Settings squished in portrait:** `versionCode` 8+ stacks the Settings dialog to a single column on phones (below 640px CSS width as of **1.3.18**).
-- **Settings「通用」stuck while scrolling:** `versionCode` 9+ hides the sticky category title; each section is a collapsible panel whose own title sticks.
-- **Settings accordion stretched / blank scroll in portrait:** `versionCode` 10+ tightens collapsed section gaps and stops the panel from being `height: 100%` of the full dialog under the stacked nav.
-- **Empty home still scrolls:** `versionCode` 11+ drops the stacked `min-h: 100cqh` on the sessions column (that plus 项目 and 设置/帮助 overflowed the card) and zeros CSS safe-area padding because the Activity already insets the WebView.
-- **「添加服务器」fields hidden behind the keyboard:** `versionCode` 13 / **1.3.8** pads IME insets and scrolls the focused input into view.
-- **「无法连接到服务器」while browser/Desktop work:** `versionCode` 14 / **1.3.9** reverse-proxies API/SSE in-app. The backend no longer needs CORS for `https://appassets.androidplatform.net`. Uninstall then reinstall if you are sideloading over an older debug APK.
-- **Back from Settings exits to the launcher:** `versionCode` 15 / **1.3.10** forwards Android Back into the page (closes Settings). `versionCode` 16 / **1.3.11** does **not** consume ESC in the shell — Vim/terminal Esc pass through; only Back closes overlays / may exit at root.
-- **Providers / Models empty after selecting a server (1.3.9–1.3.11):** official v1 `OpenCode.make` joins with `new URL('/api/...', baseUrl)`, which dropped `/opencode-proxy/<token>/<enc>`. Health still worked because it falls back to the v2 SDK (string concat) and `/global/health`. **1.3.12** binds a dedicated loopback origin per backend so `/api/provider`, `/api/model`, `/api/session`, `/global/*`, `/event`, and `/pty` stay on the proxy; fetch also restores a lost mux prefix. Protocol probes go through the proxy (not the real URL, so CORS is still unused).
-- **Added a server but it was not applied (1.3.12):** official Settings v2 has no row-select; `设为默认` is launch-default only. **1.3.13** / `versionCode` 18: tap the card or 设为默认 to make that server the active connection (**当前** + **默认**). Uninstall then reinstall if you are sideloading over an older debug APK.
-- **Remote files / remote PTY missing after apply:** **1.3.14** / `versionCode` 19. The gateway reverse-proxies every HTTP path and tunnels WebSocket Upgrade for `/pty/{id}/connect`. HTTPS WebView uses a native OkHttp WebSocket polyfill. E2E against `opencode serve` in a real workspace: **56 PASS / 0 FAIL / 1 N/A** (Desktop-only status popover). Checklist covers sessions, chat prompt, providers/models/config, remote file list/open/find/v2 fs, remote PTY WebSocket, MCP, permissions, VCS, command palette, and SSE. Debug APK sha256 `55657542db5d436bf6460d7015664ae8f1e4ac33e322d714316210834aa28f5d` — https://filebin.net/oc1314-1789555532/OpenCode-1.3.14-debug.zip (expires ~2026-09-23). Uninstall then reinstall if you are sideloading over an older debug APK.
-- **White status bar in dark OpenCode / context ring does not open Context:** **1.3.15** / `versionCode` 20. Transparent immersive bars follow the WebView color-scheme (keep existing inset padding). Tapping the session header context ring opens the official Context panel (phone-width overlay). Uninstall then reinstall if you are sideloading over an older debug APK.
-- **Tab + / Settings polish:** **1.3.16** / `versionCode` 21. Tab bar + opens the command palette by default (toggle in 通用 restores new-session). Portrait Settings subsection headers match the nav (icon + label, collapsed by default). Shortcuts title no longer wraps to 键盘快 / 捷键. E2E **63 PASS / 0 FAIL / 1 N/A** (Desktop-only status popover). Debug APK sha256 `d4d86528f082fb2c5692885f33a36ac8ced6c37ddfc7fbec7ae6501410dbd0fb` — https://filebin.net/oc1316-1789559877/OpenCode-1.3.16-debug.zip (expires ~2026-09-23). Uninstall then reinstall if you are sideloading over an older debug APK.
-- **IME leaves a black gap under the terminal / 上下文 not in the 更改 column:** **1.3.17** / `versionCode` 22. Keyboard hide clears IME padding (`ime` only while visible) and `#root` fills the WebView again. Portrait session uses 会话/更改/上下文 like the web right-rail; the terminal docks in that column flush to the safe area. Overlay-install over 1.3.16 is OK (`versionCode` 22). Uninstall only if the launcher icon is stuck from an older adaptive-icon build.
-- **Tablet Settings unreadable / command palette glued to the bottom:** **1.3.18** / `versionCode` 23. Landscape Settings is the official centered two-column card (not a 480px IME dialog). Command palette is viewport-centered. Phone accordion and IME add-server docking unchanged. E2E **67 PASS / 0 FAIL / 1 N/A**. Debug APK sha256 `b961f2a74887037d1ac1630c34e427e43bf07137fbab52bfac5532cc68530a3b` — https://filebin.net/oc1318-1789565929/OpenCode-1.3.18-debug.zip (expires ~2026-09-23). Overlay-install over 1.3.17 is OK (`versionCode` 23).
+If a previous build left a white square on Xiaomi/HyperOS, **uninstall +
+reinstall** (the launcher caches icons by package).
 
 ## Security
 
-- Server URLs and Basic Auth live in the official WebView `localStorage` server list (same place Desktop’s web entry uses). The stored URL is the real backend; only runtime fetches use `127.0.0.1/opencode-proxy/...`.
-- The loopback gateway binds `127.0.0.1` only. The mux URL still requires a per-process path token; each selected backend also gets a dedicated ephemeral port (still loopback-only) so SDK absolute paths cannot skip the proxy.
-- Cleartext HTTP is enabled for LAN (`network_security_config.xml`) and mixed content is allowed because the UI origin is HTTPS while the proxy and many LAN APIs are `http://127.0.0.1` / `http://192.168.x.x`.
-- HTTPS backends use the **system** certificate store plus **user**-installed CAs (Settings → Security → Encryption & credentials). Custom private CAs work after the user installs the cert; the WebView does not bypass TLS errors. OkHttp uses the same system/user trust store.
-- Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS + Basic Auth.
+- Server URLs and Basic Auth live in the app's `ServerConfigStore`, never in a
+  WebView.
+- HTTPS backends use the **system** certificate store plus **user**-installed
+  CAs. Cleartext HTTP stays enabled for LAN (`network_security_config.xml`).
+- Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS +
+  Basic Auth.
 
 ## License
 
-MIT. Vendored OpenCode frontend remains under OpenCode’s own license (MIT in `@opencode-ai/app`).
+MIT. The `_upstream/` reference copy of OpenCode remains under OpenCode's own
+license.

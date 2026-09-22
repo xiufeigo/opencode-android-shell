@@ -1,10 +1,5 @@
 package com.xiufeigo.opencodeshell.ui.session.timeline
 
-import android.content.Context
-import android.graphics.Typeface
-import android.util.TypedValue
-import android.view.ViewGroup
-import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -19,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,24 +25,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
@@ -56,32 +47,39 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.xiufeigo.opencodeshell.ChatStore
-import com.xiufeigo.opencodeshell.OcGrammarLocator
-import com.xiufeigo.opencodeshell.OcPrismTheme
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.components.SpinnerDots
 import com.xiufeigo.opencodeshell.ui.components.TextShimmer
+import com.xiufeigo.opencodeshell.ui.markdown.OcMarkdown
 import com.xiufeigo.opencodeshell.ui.theme.OcMotion
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
-import io.noties.markwon.AbstractMarkwonPlugin
-import io.noties.markwon.Markwon
-import io.noties.markwon.core.CorePlugin
-import io.noties.markwon.core.MarkwonTheme
-import io.noties.markwon.syntax.SyntaxHighlightPlugin
-import io.noties.prism4j.Prism4j
-import kotlinx.coroutines.flow.collect
 
 /**
  * Renders one [ChatStore.UiPart] inside the timeline. Dispatch mirrors the
- * View-era adapter (`ChatView.MessagesAdapter.AssistantHolder.bind`, L1000):
- * `text` → markdown, `tool` → tool card (todowrite hidden, its own dock lands
- * later), `reasoning` → collapsible thought, `compaction` → one-line notice,
- * `file` → attachment chip. Unknown part types render nothing.
+ * upstream `ToolDisplay` / content switch (`_upstream/packages/session-ui/src/
+ * tools/tool-renderer.tsx:1189-1261`, `message/message-content.tsx`):
+ *
+ * | part | rendering |
+ * |---|---|
+ * | `text` | markdown body (`OcMarkdown`) |
+ * | `tool` | chrome-less collapsible card (see [ToolCard]) |
+ * | `reasoning` | chrome-less "Thought" collapsible |
+ * | `compaction` | one-line notice |
+ * | `file` | attachment chip |
+ * | `patch` | `Patch` + `{n} files` row, file list on expand |
+ * | `subtask` | agent + description row |
+ * | `agent` | `Agent changed` notice row |
+ * | `retry` | retry notice row (`session-retry.tsx`) |
+ * | `step-start` / `step-finish` / `snapshot` | **no row** (see below) |
+ *
+ * W4-B (item 5): the last four raw-JSON types used to be dropped silently.
+ * `step-start` / `step-finish` / `snapshot` are handled **explicitly** as
+ * "render nothing" so they can never fall through to an "unknown part type"
+ * branch; upstream folds them into the normalised content model
+ * (`schema/src/v1/session.ts:233-257`).
  *
  * M1.5: the readable bodies (`text`, `reasoning`) are wrapped in a
  * [SelectionContainer] so the body text is selectable; the tool card is
@@ -107,25 +105,42 @@ fun PartRenderer(
      * `partDefaultOpen` (a default-open card must collapse on the first tap).
      */
     onToggleTool: (String, Boolean) -> Unit = { _, _ -> },
-    /** `settings.general.row.shellToolPartsExpanded` (M4 switch, M2 default false). */
+    /** `settings.general.row.shellToolPartsExpanded` (M4 switch, compact default false). */
     shellExpanded: Boolean = ToolCardPolicy.DEFAULT_SHELL_EXPANDED,
-    /** `settings.general.row.editToolPartsExpanded` (M2 default true). */
+    /** `settings.general.row.editToolPartsExpanded` (compact default false). */
     editExpanded: Boolean = ToolCardPolicy.DEFAULT_EDIT_EXPANDED,
+    /** `settings.general.row.reasoningSummaries` — false hides reasoning parts. */
+    reasoningSummaries: Boolean = true,
 ) {
     when (part.type) {
         "text" -> if (part.text.isNotBlank()) {
             SelectableBody {
-                MarkdownText(
+                OcMarkdown(
                     markdown = part.text,
                     modifier = modifier,
                     color = OcTheme.colors.textBase,
-                    fontSize = 14.sp,
-                    lineSpacingMultiplier = 1.5f,
                 )
             }
         }
 
         "tool" -> if (part.toolName != null && part.toolName !in TimelineGrouping.HIDDEN_TOOLS) {
+            // `question` hides while streaming/running (`ToolDisplay`'s
+            // `hideQuestion`, `tool-renderer.tsx:1195`).
+            if (toolRendererKind(part) == ToolRendererKind.HIDDEN) return@PartRenderer
+            // The subagent streaming pill and the read-image / skill rows are
+            // headline-only: they render at row level instead of behind the
+            // generic card trigger (upstream renders its own `BasicTool`).
+            when (toolRendererKind(part)) {
+                ToolRendererKind.SUBAGENT -> if (part.toolStatus == "streaming") {
+                    SubagentCard(part = part, modifier = modifier)
+                    return@PartRenderer
+                }
+                ToolRendererKind.SKILL, ToolRendererKind.READ_IMAGE -> {
+                    DedicatedHeadlineRow(part = part, modifier = modifier, shimmer = isTrailing)
+                    return@PartRenderer
+                }
+                else -> Unit
+            }
             ToolCard(
                 part = part,
                 modifier = modifier,
@@ -137,27 +152,36 @@ fun PartRenderer(
             )
         }
 
-        "reasoning" -> if (part.text.isNotBlank()) {
+        "reasoning" -> if (reasoningSummaries && part.text.isNotBlank()) {
             ReasoningCard(part = part, modifier = modifier, shimmer = isTrailing)
         }
 
-        "compaction" -> CompactionRow(modifier)
+        "compaction" -> CompactionBlock(part = part, modifier = modifier)
 
         "file" -> AttachmentChip(part = part, modifier = modifier)
+
+        // W4-B item 5: part types that only carry `UiPart.rawJson`.
+        "patch" -> PatchRow(part = part, modifier = modifier)
+        "subtask" -> SubtaskRow(part = part, modifier = modifier)
+        "agent" -> AgentNoticeRow(part = part, modifier = modifier)
+        "retry" -> RetryNoticeRow(part = part, modifier = modifier)
+
+        // Explicit no-ops (never an "unknown type"): upstream `step-start` /
+        // `step-finish` / `snapshot` have no timeline representation of their
+        // own — the first two only ride inside a tool group
+        // (`TimelineGrouping.GROUP_FILLER_TYPES`).
+        "step-start", "step-finish", "snapshot" -> Unit
     }
 }
 
 /**
  * Wraps a message body in a [SelectionContainer] (`PLAN` §4.2 "正文可选中").
  *
- * Caveat worth knowing before touching this: selection only works for text
- * rendered by Compose. The markdown body is an `AndroidView` (Markwon), and
- * Compose's selection pipeline does not see interop children — making that
- * `TextView` `textIsSelectable` instead would swallow vertical drags and break
- * LazyColumn scrolling (the M1 finding this replaced). The wrapper is therefore
- * the correct *structure* (and already covers every Compose-rendered body, e.g.
- * the user bubble); real markdown selection waits for the Compose-native
- * markdown renderer.
+ * Since the markdown body is now Compose-native ([OcMarkdown] in
+ * `ui/markdown`), selection reaches every span — the Markwon `AndroidView`
+ * caveat that used to live here is gone (an interop `TextView` could not join
+ * Compose's selection pipeline; a selectable one would have swallowed the
+ * LazyColumn's vertical drags).
  */
 @Composable
 private fun SelectableBody(content: @Composable () -> Unit) {
@@ -165,163 +189,30 @@ private fun SelectableBody(content: @Composable () -> Unit) {
 }
 
 // --------------------------------------------------------------------- text
-
-/**
- * Markwon markdown in Compose: a shared [Markwon] instance driving a plain
- * `TextView` through `AndroidView` (the exact pipeline the View timeline uses,
- * `ChatView.buildMarkwon()` L734), with the View-era 80 ms render coalescing
- * restored on the Compose side.
- *
- * Two M1-review findings are handled here:
- * - **no per-frame re-parse**: the streaming text is funnelled through
- *   [coalesceLatest], so `setMarkdown` runs at most once per [COL_CHUNK_MS] with
- *   the newest value (the previous code re-ran `parse()+render()+Prism4j` on
- *   every recomposition, i.e. potentially every frame of a streamed answer);
- * - **palette follows the theme**: the Markwon instance is keyed by
- *   [isNightUiMode] of `LocalConfiguration`, because the palette (link, inline
- *   code, code-block background) is baked in when the builder runs and
- *   `OcActivity` is *not* recreated on a `uiMode` change.
- *
- * Deliberate M1 simplification (see `research/_M1_session_status.md`):
- * - `setTextIsSelectable(false)`: a selectable `TextView` swallows the vertical
- *   drag, which would break LazyColumn scrolling (View-era had its own gesture
- *   pipeline, so it could afford it). M1.5 keeps it off: the body is wrapped in
- *   a `SelectableBody`, which cannot reach into an interop `TextView` — see the
- *   caveat documented on `SelectableBody`.
- */
-@Composable
-internal fun MarkdownText(
-    markdown: String,
-    modifier: Modifier = Modifier,
-    color: Color = OcTheme.colors.textBase,
-    fontSize: TextUnit = 14.sp,
-    lineSpacingMultiplier: Float = 1.5f,
-) {
-    val context = LocalContext.current
-    val isDark = isNightUiMode(LocalConfiguration.current.uiMode)
-    val markwon = remember(context, isDark) { MarkwonHolder.get(context, isDark) }
-    // A different Markwon means the spans already in the TextView were coloured
-    // by the old palette: drop the applied-text memo so the next update re-renders.
-    val applied = remember(markwon) { AppliedText() }
-    val argb = color.toArgb()
-
-    // Throttled mirror of the streaming text. Initialised with the current value
-    // so history (a session switch / a completed answer) renders on the first
-    // update, never one window later.
-    var rendered by remember(markwon) { mutableStateOf(markdown) }
-    val latest by rememberUpdatedState(markdown)
-    LaunchedEffect(markwon) {
-        snapshotFlow { latest }.coalesceLatest().collect { rendered = it }
-    }
-    // Read in composition scope (not inside `update`) so a throttled change is
-    // guaranteed to recompose and therefore to reach `AndroidView.update`.
-    val renderText = rendered
-
-    AndroidView(
-        modifier = modifier.fillMaxWidth(),
-        factory = { ctx ->
-            // A recreated view has no text yet: force the next update to apply.
-            applied.value = null
-            TextView(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-                includeFontPadding = false
-                isFocusable = false
-                isFocusableInTouchMode = false
-                isClickable = false
-                movementMethod = null
-                setTextIsSelectable(false)
-                setTextColor(argb)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize.value)
-                setLineSpacing(0f, lineSpacingMultiplier)
-            }
-        },
-        update = { view ->
-            if (view.currentTextColor != argb) view.setTextColor(argb)
-            if (applied.value != renderText) {
-                applied.value = renderText
-                markwon.setMarkdown(view, renderText)
-            }
-        },
-    )
-}
-
-/** Mutable holder so the `AndroidView.update` lambda can skip unchanged text. */
-private class AppliedText {
-    var value: String? = null
-}
-
-/**
- * Process-wide [Markwon] cache, **one instance per theme**: the colour set
- * (`oc_accent` links, `oc_code_inline_fg/bg`, `oc_layer_02` code blocks) is baked
- * into the builder, so a single frozen instance would keep rendering the old
- * palette after a dark⇄light switch. The colours themselves come from
- * `values` / `values-night`, which resolve against the process Configuration at
- * build time — hence the `isDark` key and the two cache slots.
- *
- * Built from the *application* context so the static reference can never leak an
- * Activity; identical configuration to `ChatView.buildMarkwon()` (same plugins,
- * same res colours, same theme knobs).
- *
- * Threading: Markwon is not documented as thread-safe and this cache is not
- * per-thread — call [get] from the main thread only (composition /
- * `AndroidView.update`, i.e. every call site today).
- */
-internal object MarkwonHolder {
-
-    private val instances = HashMap<Boolean, Markwon>()
-
-    fun get(context: Context, isDark: Boolean): Markwon = synchronized(this) {
-        instances.getOrPut(isDark) { build(context.applicationContext) }
-    }
-
-    private fun build(context: Context): Markwon {
-        val density = context.resources.displayMetrics.density
-        fun px(dp: Int) = (dp * density + 0.5f).toInt()
-        return Markwon.builder(context)
-            .usePlugin(CorePlugin.create())
-            .usePlugin(SyntaxHighlightPlugin.create(Prism4j(OcGrammarLocator()), OcPrismTheme(context)))
-            .usePlugin(object : AbstractMarkwonPlugin() {
-                override fun configureTheme(builder: MarkwonTheme.Builder) {
-                    builder
-                        .linkColor(context.getColor(R.color.oc_accent))
-                        .isLinkUnderlined(true)
-                        .blockMargin(px(32))
-                        .blockQuoteWidth(1)
-                        .blockQuoteColor(context.getColor(R.color.oc_border_strong))
-                        .codeTextColor(context.getColor(R.color.oc_code_inline_fg))
-                        .codeBackgroundColor(context.getColor(R.color.oc_code_inline_bg))
-                        .codeBlockTextColor(context.getColor(R.color.oc_text_base))
-                        .codeBlockBackgroundColor(context.getColor(R.color.oc_layer_02))
-                        .codeBlockMargin(px(8))
-                        .codeTypeface(Typeface.MONOSPACE)
-                        .codeBlockTypeface(Typeface.MONOSPACE)
-                        .codeTextSize(px(12))
-                        .codeBlockTextSize(px(12))
-                        .headingBreakHeight(0)
-                        .headingTextSizeMultipliers(
-                            floatArrayOf(17f / 14f, 15f / 14f, 13f / 14f, 1f, 1f, 1f),
-                        )
-                }
-            })
-            .build()
-    }
-}
+//
+// The assistant body renders through `OcMarkdown` (`ui/markdown/`), the
+// Compose-native block/inline parser aligned with upstream `markdown.css`.
+// The Markwon `AndroidView` pipeline that used to live here (and its
+// `MarkwonHolder` cache) was retired with the timeline fidelity pass: a
+// Compose-native body joins `SelectionContainer`, follows `OcTheme` without a
+// baked palette, and needs no interop `TextView`. Markwon itself stays on the
+// classpath for the View-era `ChatView`.
 
 // --------------------------------------------------------------- tool card
 
 /**
- * Tool card: `layer01` surface, radius 6, 0.5 dp `borderBase`, icon + 14sp/500
- * title + 14sp muted one-line subtitle + chevron. Per `research/02` §3.1 the
- * accent is carried by the **icon colour**, not a left bar (the View-era bar was
- * a fidelity bug): running → `accent`, error → `stateDangerFg`, done → muted.
+ * Tool card: **no surface, no border** — the upstream collapsible body is
+ * `background-color: transparent; border: none`
+ * (`_upstream/packages/ui/src/components/collapsible.css:1-14`) and only the
+ * expanded content is indented by a 12 px rail
+ * (`session-ui/src/components/basic-tool.css:314-318`). W4-B item 1 removed the
+ * `layer01` fill + 0.5 dp `borderBase` + radius 6 shell that made every card a
+ * solid tile.
  *
- * Title and subtitle are the **same size** — §3.1
- * `[data-slot="basic-tool-tool-info"] { font-size:14px }` covers both
- * (`-tool-title` medium, `-tool-subtitle` regular + muted + single-line ellipsis),
- * which is the M1-review ruling for the earlier 14sp/13sp mismatch.
+ * Compact metrics (`basic-tool.css:173-200`, the group/compact variant): 28 dp
+ * trigger, 13 sp/530 title, 13 sp/440 muted single-line subtitle, 6 dp gaps.
+ * The accent is carried by the **icon colour** (running → `accent`, error →
+ * `stateDangerFg`, done → muted).
  *
  * M2 (§3.1 / §3.2 / §3.2b): the open state is resolved by [ToolCardPolicy]
  * (user toggle > `partDefaultOpen`), `pending`/`running` cards are locked shut
@@ -343,7 +234,6 @@ private fun ToolCard(
     editExpanded: Boolean,
 ) {
     val c = OcTheme.colors
-    val shapes = OcTheme.shapes
     val state = ToolCardPolicy.stateOf(part)
     val tint = when (state) {
         ToolCardPolicy.State.RUNNING -> c.accent
@@ -353,20 +243,16 @@ private fun ToolCard(
     }
     val expandable = ToolCardPolicy.canExpand(part)
     val expanded = ToolCardPolicy.resolveOpen(part, userOpen, shellExpanded, editExpanded)
-    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "tool-chevron")
+    // Upstream collapsible arrow: closed = pointing right (-90°), open = down
+    // (`collapsible.css` `rotate(-90deg)` → `rotate(0deg)` on aria-expanded).
+    val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "tool-chevron")
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shapes.md)
-            .background(c.layer01)
-            .border(0.5.dp, c.borderBase, shapes.md),
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = expandable, role = Role.Button) { onToggle(expanded) }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .height(TRIGGER_HEIGHT)
+                .clickable(enabled = expandable, role = Role.Button) { onToggle(expanded) },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -375,24 +261,32 @@ private fun ToolCard(
                 tint = tint,
                 modifier = Modifier.size(16.dp),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(GAP))
             // M6: the running title is the web's `TextShimmer` (sweep across the
             // glyphs), replacing M1's 1 s alpha pulse — `research/03` §2.3.
+            // Error state: title in `stateDangerFg` (fidelity pass — the failed
+            // card reads red end to end: icon, title, error summary, body).
+            // `websearch` titles through the provider label (`ui.tool.websearch`
+            // / `ui.tool.websearch.provider`); everything else uses the generic
+            // `titleRes`/`title` path.
             TextShimmer(
-                text = ToolPresentation.titleRes(part.toolName)?.let { stringResource(it) }
+                text = dedicatedCardTitle(part.toolName)
+                    ?: ToolPresentation.titleRes(part.toolName)?.let { stringResource(it) }
                     ?: ToolPresentation.title(part.toolName),
                 active = shimmer && state == ToolCardPolicy.State.RUNNING,
-                baseColor = c.textBase,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.W500,
+                baseColor = if (state == ToolCardPolicy.State.ERROR) c.stateDangerFg else c.textBase,
+                fontSize = 13.sp,
+                fontWeight = FontWeight(530),
             )
             val subtitle = ToolPresentation.subtitle(part, stringResource(R.string.oc_tool_error))
             if (!subtitle.isNullOrEmpty()) {
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(GAP))
                 Text(
                     text = subtitle,
-                    color = c.textMuted,
-                    fontSize = 14.sp,
+                    // On failure the subtitle IS the error summary
+                    // (`tool-error-card.css` `tool-error-card-summary` = state-fg-danger).
+                    color = if (state == ToolCardPolicy.State.ERROR) c.stateDangerFg else c.textMuted,
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -403,11 +297,11 @@ private fun ToolCard(
             if (state == ToolCardPolicy.State.RUNNING) {
                 // The tool card's 16×16 spinner (`research/03` §2.4/§3.5), not a
                 // rotating ring: the 4×4 dot matrix breathing in place.
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(GAP))
                 SpinnerDots(size = 16.dp, color = c.textFaint)
             }
             if (expandable) {
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(GAP))
                 Icon(
                     painter = painterResource(R.drawable.ic_oc_chevron_down),
                     contentDescription = stringResource(R.string.oc_toggle_tool),
@@ -427,12 +321,175 @@ private fun ToolCard(
     }
 }
 
-/** Expanded body: coloured monospace lines, capped at 220 dp with inner scroll. */
+/**
+ * Expanded body (`bash-output` / `tool-output`, `message-part.css:323-464`):
+ * `bg-base` surface, 0.5 px `border-base` hairline, radius 6, 12 px inner
+ * padding, mono 13 px/20 px, capped at 240 px with an inner scroll.
+ *
+ * The 12 dp `padding-inline-start` is the upstream "rail"
+ * (`basic-tool.css:314-318`) that carries the collapsed→expanded indent now
+ * that the card itself has no surface.
+ */
 @Composable
-private fun ToolBody(part: ChatStore.UiPart) {
+internal fun ToolBody(part: ChatStore.UiPart) {
     val c = OcTheme.colors
-    val lines = remember(part.id, part.toolInput, part.toolOutput, part.toolName) {
+    // Dedicated renderers first (`ToolDisplay`'s `Switch`: error + registry
+    // branches before `GenericTool`, `tool-renderer.tsx:1218-1261`). The
+    // trigger row above stays the generic one; only the expanded content is
+    // specialised, which keeps grouping/policy untouched.
+    when (toolRendererKind(part)) {
+        ToolRendererKind.HIDDEN -> return
+        ToolRendererKind.ERROR -> {
+            ToolErrorCard(part = part)
+            return
+        }
+        ToolRendererKind.SHELL -> {
+            ShellBody(part = part)
+            return
+        }
+        ToolRendererKind.SUBAGENT -> {
+            Column(Modifier.fillMaxWidth()) {
+                SubagentCard(part = part)
+                // A subagent with output keeps the generic JSON/output body
+                // below the card (upstream `BasicTool` children).
+                GenericBody(part = part)
+            }
+            return
+        }
+        ToolRendererKind.QUESTION -> {
+            QuestionCard(part = part)
+            return
+        }
+        ToolRendererKind.SKILL -> {
+            SkillRow(part = part)
+            return
+        }
+        ToolRendererKind.READ_IMAGE -> {
+            Column(Modifier.fillMaxWidth()) {
+                ReadImageRow(part = part)
+                GenericBody(part = part)
+            }
+            return
+        }
+        ToolRendererKind.READ_LOADED -> {
+            // `metadata.loaded` never reaches the store, so the hook stays
+            // empty: the row hides and only the generic body shows.
+            Column(Modifier.fillMaxWidth()) {
+                LoadedFilesRow(loadedPaths = emptyList())
+                GenericBody(part = part)
+            }
+            return
+        }
+        ToolRendererKind.WEBSEARCH -> {
+            Column(Modifier.fillMaxWidth()) {
+                WebLinksBlock(part = part)
+                GenericBody(part = part)
+            }
+            return
+        }
+        ToolRendererKind.GENERIC -> Unit
+    }
+    val lines = remember(part.id, part.toolInput, part.toolOutput, part.toolName, part.toolStatus, part.toolError) {
         ToolPresentation.bodyLines(part)
+    }
+    if (lines.isEmpty()) return
+    // Diff lines are tinted by **background**, matching upstream's diff renderer
+    // (`--diffs-*` backgrounds, foreground untouched) and the review panel's
+    // `DiffLineKind.ADDITION -> textBase to stateSuccessBg` mapping. A single
+    // `Text` can only paint a span behind the glyphs, so a body that actually
+    // contains diff lines is rendered line-per-row where the tint spans the full
+    // width; everything else stays on the cheap single-`Text` path.
+    val hasDiff = lines.any { ToolPresentation.isDiffKind(it.kind) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+            .heightIn(max = TOOL_BODY_MAX_HEIGHT)
+            .clip(OcTheme.shapes.md)
+            .background(c.bgBase)
+            .border(0.5.dp, c.borderBase, OcTheme.shapes.md)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        if (hasDiff) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                val additionBg = c.stateSuccessBg
+                val deletionBg = c.stateDangerBg
+                val hunkBg = c.layer01
+                lines.forEach { line ->
+                    val bg = when (line.kind) {
+                        ToolPresentation.LineKind.ADD -> additionBg
+                        ToolPresentation.LineKind.DELETE -> deletionBg
+                        // `@@` headers sit on the layered surface, like the
+                        // review panel's `DiffLineKind.HUNK -> layer01`.
+                        ToolPresentation.LineKind.HUNK -> hunkBg
+                        else -> androidx.compose.ui.graphics.Color.Transparent
+                    }
+                    Text(
+                        text = if (line.kind == ToolPresentation.LineKind.JSON) {
+                            toolBodyAnnotated(listOf(line))
+                        } else {
+                            androidx.compose.ui.text.AnnotatedString(line.text)
+                        },
+                        color = when (line.kind) {
+                            ToolPresentation.LineKind.ERROR -> c.stateDangerFg
+                            // Hunk headers + unchanged context read faint, the
+                            // review panel's `HUNK/META -> textFaint`,
+                            // `CONTEXT -> textMuted` mapping.
+                            ToolPresentation.LineKind.HUNK -> c.textFaint
+                            ToolPresentation.LineKind.CONTEXT -> c.textMuted
+                            else -> c.textBase
+                        },
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        // `--line-height-compact`: 16px for 13px tool text.
+                        lineHeight = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(bg)
+                            .padding(horizontal = 12.dp),
+                    )
+                }
+            }
+        } else {
+            Box(Modifier.padding(12.dp)) {
+                Text(
+                    text = toolBodyAnnotated(lines),
+                    color = c.textBase,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Generic JSON/output body shared by the dedicated cards that keep upstream
+ * `BasicTool` children below their headline (subagent/read/websearch). Empty —
+ * renders nothing — when there is no input/output, so the card never gains a
+ * stray surface.
+ */
+@Composable
+private fun GenericBody(part: ChatStore.UiPart) {
+    val input = part.toolInput?.takeIf { it.isNotBlank() }
+    val output = part.toolOutput?.takeIf { it.isNotBlank() }
+    if (input == null && output == null) return
+    val c = OcTheme.colors
+    val lines = remember(part.id, input, output) {
+        buildList {
+            input?.let { raw ->
+                ToolPresentation.splitLines(ToolPresentation.pretty(raw)).forEach {
+                    add(ToolPresentation.BodyLine(ToolPresentation.LineKind.JSON, it))
+                }
+            }
+            output?.let { text ->
+                if (isNotEmpty()) add(ToolPresentation.BodyLine(ToolPresentation.LineKind.PLAIN, ""))
+                ToolPresentation.splitLines(text.replace("\r\n", "\n").replace('\r', '\n')).forEach {
+                    add(ToolPresentation.BodyLine(ToolPresentation.LineKind.PLAIN, it))
+                }
+            }
+        }
     }
     if (lines.isEmpty()) return
     Box(
@@ -441,15 +498,16 @@ private fun ToolBody(part: ChatStore.UiPart) {
             .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
             .heightIn(max = TOOL_BODY_MAX_HEIGHT)
             .clip(OcTheme.shapes.md)
-            .background(c.layer02)
+            .background(c.bgBase)
+            .border(0.5.dp, c.borderBase, OcTheme.shapes.md)
             .verticalScroll(rememberScrollState())
-            .padding(8.dp),
+            .padding(12.dp),
     ) {
         Text(
             text = toolBodyAnnotated(lines),
             color = c.textBase,
             fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             lineHeight = 16.sp,
         )
     }
@@ -468,6 +526,9 @@ private fun toolBodyAnnotated(lines: List<ToolPresentation.BodyLine>): Annotated
                     ToolPresentation.LineKind.ADD -> colored(line.text, addColor)
                     ToolPresentation.LineKind.DELETE -> colored(line.text, delColor)
                     ToolPresentation.LineKind.ERROR -> colored(line.text, c.stateDangerFg)
+                    ToolPresentation.LineKind.HUNK -> colored(line.text, c.textFaint)
+                    ToolPresentation.LineKind.CONTEXT -> colored(line.text, c.textMuted)
+                    ToolPresentation.LineKind.TEXT -> colored(line.text, c.textBase)
                     ToolPresentation.LineKind.JSON ->
                         appendJsonHighlighted(line.text, c.textMuted, c.syntaxString, c.textBase)
 
@@ -503,46 +564,68 @@ private fun AnnotatedString.Builder.appendJsonHighlighted(
     if (cursor < text.length) colored(text.substring(cursor), baseColor)
 }
 
+/**
+ * Headline-only rows (skill / read-image): upstream renders its own `BasicTool`
+ * trigger with no expandable children, so they bypass the generic card. The
+ * `shimmer` flag marks the trailing row of a running turn (matches upstream's
+ * `TextShimmer active` on streaming/running statuses).
+ */
+@Composable
+private fun DedicatedHeadlineRow(
+    part: ChatStore.UiPart,
+    modifier: Modifier = Modifier,
+    shimmer: Boolean = false,
+) {
+    when (toolRendererKind(part)) {
+        ToolRendererKind.SKILL -> SkillRow(part = part, modifier = modifier)
+        ToolRendererKind.READ_IMAGE -> ReadImageRow(part = part, modifier = modifier)
+        else -> SkillRow(part = part, modifier = modifier)
+    }
+}
+
 // ---------------------------------------------------------- reasoning card
 
 /**
- * Reasoning part: same collapsible shell as the tool card but with the thought
- * label and a 13sp muted markdown body (upstream renders `ui.tool.thought` —
- * the same string as the existing `oc_thought` resource).
+ * Reasoning part: the same chrome-less collapsible shell as the tool card
+ * (W4-B item 1 — `collapsible.css:1-14`), with the thought label and a 13 sp
+ * muted markdown body on the 12 dp rail.
+ *
+ * Fidelity checked against upstream `AssistantReasoningContent`
+ * (`message-content.tsx:584-627`): default state is **collapsed**
+ * (`open ?? state.open ?? defaultOpen ?? false`) and the chevron runs the
+ * shared collapsible rotation (right when closed, down when open). The title is
+ * `Thinking` while the turn still streams and `Thought` once it settles
+ * (`message-content.tsx:603-607`, keys `ui.sessionTurn.status.thinking` /
+ * `ui.tool.thought`). The body matches `reasoning-part` markdown: 13 sp,
+ * `line-height-base` (20 sp), muted, headings/strong inheriting
+ * (`OcMarkdown(muted = true)`).
  */
 @Composable
-private fun ReasoningCard(
+internal fun ReasoningCard(
     part: ChatStore.UiPart,
     modifier: Modifier = Modifier,
     shimmer: Boolean,
 ) {
     val c = OcTheme.colors
-    val shapes = OcTheme.shapes
     var expanded by rememberSaveable(part.id) { mutableStateOf(false) }
-    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "reasoning-chevron")
+    val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "reasoning-chevron")
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shapes.md)
-            .background(c.layer01)
-            .border(0.5.dp, c.borderBase, shapes.md),
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .height(TRIGGER_HEIGHT)
+                .clickable { expanded = !expanded },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // `ui.tool.thought` is a shimmering title while the model is still
             // thinking (`research/03` §2.3); the spin-off pulse of M1 is gone.
             TextShimmer(
-                text = stringResource(R.string.oc_thought),
+                text = stringResource(if (shimmer) R.string.oc_step_thinking else R.string.oc_thought),
                 active = shimmer,
                 baseColor = c.textBase,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.W500,
+                fontSize = 13.sp,
+                fontWeight = FontWeight(530),
             )
             Spacer(Modifier.weight(1f))
             Icon(
@@ -558,15 +641,15 @@ private fun ReasoningCard(
                     .fillMaxWidth()
                     .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
                     .heightIn(max = TOOL_BODY_MAX_HEIGHT)
-                    .verticalScroll(rememberScrollState())
-                    .padding(8.dp),
+                    .verticalScroll(rememberScrollState()),
             ) {
                 SelectableBody {
-                    MarkdownText(
+                    OcMarkdown(
                         markdown = part.text,
                         color = c.textMuted,
                         fontSize = 13.sp,
-                        lineSpacingMultiplier = 1.4f,
+                        lineHeight = 20.sp,
+                        muted = true,
                     )
                 }
             }
@@ -575,6 +658,11 @@ private fun ReasoningCard(
 }
 
 // -------------------------------------------------------------- compaction
+//
+// The `ui.messagePart.compaction` static line is now the empty-summary
+// fallback inside [CompactionBlock] (`ToolRenderers.kt`); this alias keeps the
+// old name resolvable for any out-of-tree caller while the dispatch uses the
+// block directly.
 
 /** `ui.messagePart.compaction` — a single muted separator line. */
 @Composable
@@ -621,6 +709,222 @@ internal fun AttachmentChip(part: ChatStore.UiPart, modifier: Modifier = Modifie
     }
 }
 
+// ------------------------------------------------- raw-JSON part renderers
+
+/**
+ * `patch` part (`schema/src/v1/session.ts:94-100` `{ hash, files[] }`) — the
+ * upstream `patch` **tool** card semantics (`tool-renderer.tsx:375-383`: title
+ * `ui.tool.patch`, subtitle `{n} {files}`), not a diff: the payload carries the
+ * touched paths only. Expanding lists them (mono, on the 12 dp rail).
+ */
+@Composable
+private fun PatchRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
+    val c = OcTheme.colors
+    val patch = remember(part.rawJson) { RawParts.patch(part.rawJson) } ?: return
+    var expanded by rememberSaveable(part.id) { mutableStateOf(false) }
+    val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "patch-chevron")
+    val expandable = patch.files.isNotEmpty()
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(TRIGGER_HEIGHT)
+                .clickable(enabled = expandable, role = Role.Button) { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_oc_code),
+                contentDescription = null,
+                tint = c.iconMuted,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(GAP))
+            Text(
+                text = stringResource(R.string.oc_step_patch),
+                color = c.textBase,
+                fontSize = 13.sp,
+                fontWeight = FontWeight(530),
+            )
+            if (expandable) {
+                Spacer(Modifier.width(GAP))
+                Text(
+                    text = pluralStringResource(
+                        R.plurals.oc_step_files,
+                        patch.files.size,
+                        patch.files.size,
+                    ),
+                    color = c.textMuted,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(GAP))
+                Icon(
+                    painter = painterResource(R.drawable.ic_oc_chevron_down),
+                    contentDescription = stringResource(R.string.oc_toggle_tool),
+                    tint = c.textFaint,
+                    modifier = Modifier.size(16.dp).rotate(rotation),
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = OcMotion.expand) + fadeIn(OcMotion.fade),
+            exit = shrinkVertically(animationSpec = OcMotion.expand) + fadeOut(OcMotion.fade),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, bottom = 4.dp)
+                    .heightIn(max = TOOL_BODY_MAX_HEIGHT)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                patch.files.forEach { path ->
+                    Text(
+                        text = path,
+                        color = c.textMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `subtask` part (`schema/src/v1/session.ts:204-218`) — the parent's delegation
+ * record: agent + description line, the same information the upstream
+ * `task-tool-card` headline carries (`basic-tool.css:320-389`).
+ */
+@Composable
+private fun SubtaskRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
+    val c = OcTheme.colors
+    val subtask = remember(part.rawJson) { RawParts.subtask(part.rawJson) } ?: return
+    val title = RawParts.capitalize(subtask.agent) ?: stringResource(R.string.oc_step_agent)
+    val subtitle = subtask.description?.takeIf { it.isNotBlank() }
+        ?: subtask.prompt?.takeIf { it.isNotBlank() }
+
+    Row(
+        modifier = modifier.fillMaxWidth().height(TRIGGER_HEIGHT),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_oc_task),
+            contentDescription = null,
+            tint = c.iconMuted,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(GAP))
+        Text(
+            text = title,
+            color = c.textBase,
+            fontSize = 13.sp,
+            fontWeight = FontWeight(530),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!subtitle.isNullOrBlank()) {
+            Spacer(Modifier.width(GAP))
+            Text(
+                text = subtitle,
+                color = c.textMuted,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/**
+ * `agent` part (`schema/src/v1/session.ts:181-193`) — the upstream agent-switch
+ * notice (`session-timeline-row.tsx:308-315` + `:450-481`): the label is 530
+ * `text-faint` and the value follows with an 8 px gap, no separator.
+ */
+@Composable
+private fun AgentNoticeRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
+    val c = OcTheme.colors
+    val agent = remember(part.rawJson) { RawParts.agent(part.rawJson) } ?: return
+    val name = RawParts.capitalize(agent.name)
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.oc_step_agent_changed),
+            color = c.textFaint,
+            fontSize = 13.sp,
+            fontWeight = FontWeight(530),
+        )
+        if (!name.isNullOrBlank()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = name,
+                color = c.textMuted,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * `retry` part (`schema/src/v1/session.ts:220-231`) — the upstream retry card
+ * (`components/session-retry.tsx`): danger warning icon, the provider error
+ * truncated to 80 chars, and a shimmering `Retrying … attempt #k` line.
+ */
+@Composable
+private fun RetryNoticeRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
+    val c = OcTheme.colors
+    val retry = remember(part.rawJson) { RawParts.retry(part.rawJson) } ?: return
+    val message = RawParts.retryMessage(retry.message)
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_oc_alert),
+            contentDescription = null,
+            tint = c.stateDangerFg,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(GAP))
+        Column(modifier = Modifier.weight(1f)) {
+            if (message != null) {
+                Text(
+                    text = message,
+                    color = c.stateDangerFg,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            TextShimmer(
+                text = retryInfo(retry.attempt),
+                active = true,
+                baseColor = c.textMuted,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.W400,
+            )
+        }
+    }
+}
+
+/** `Retrying in {s}s - attempt #{k}` (`ui.sessionTurn.retry.*`). */
+@Composable
+private fun retryInfo(attempt: Int): String {
+    val retrying = stringResource(R.string.oc_step_retrying)
+    val label = stringResource(R.string.oc_step_retry_attempt, attempt)
+    return if (attempt > 0) "$retrying - $label" else retrying
+}
+
 // ------------------------------------------------------------------ shared
 
 /** Drawable for a [ToolPresentation.Icon] slot (shared with the group rows). */
@@ -637,5 +941,11 @@ internal fun toolIconRes(icon: ToolPresentation.Icon): Int = when (icon) {
 
 private val JSON_STRING_REGEX = Regex("\"(?:\\\\.|[^\"\\\\])*\"")
 
-/** `ChatView.TOOL_BODY_MAX_HEIGHT_DP`. */
-private val TOOL_BODY_MAX_HEIGHT = 220.dp
+/** `bash-output` / `tool-output` `max-height: 240px` (`message-part.css:351-365`). */
+internal val TOOL_BODY_MAX_HEIGHT = 240.dp
+
+/** Collapsed trigger: `collapsible-trigger` 32 px / compact 28 px → 28 dp. */
+private val TRIGGER_HEIGHT = 28.dp
+
+/** Compact `tool-trigger` gap (`basic-tool.css:180-183`). */
+private val GAP = 6.dp

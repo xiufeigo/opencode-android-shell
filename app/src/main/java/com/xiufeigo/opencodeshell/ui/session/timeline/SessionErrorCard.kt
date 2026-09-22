@@ -71,10 +71,12 @@ fun SessionErrorCard(
     val c = OcTheme.colors
     var expanded by rememberSaveable { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "error-chevron")
-    // Failure text can be a wall of JSON; the header stays a single line and the
-    // full body lives behind the chevron.
-    val summary = remember(message) {
-        message.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: message.trim()
+    // Failure text can be a wall of JSON: unwrap it first (`unwrapErrorMessage`,
+    // `timeline/projection.ts:726-759`), so the header shows `{type: message}`
+    // instead of the raw payload. The full raw body stays behind the chevron.
+    val unwrapped = remember(message) { ToolText.unwrapErrorMessage(message) }
+    val summary = remember(unwrapped) {
+        unwrapped.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: unwrapped.trim()
     }
     val hasBody = message.trim().isNotEmpty()
 
