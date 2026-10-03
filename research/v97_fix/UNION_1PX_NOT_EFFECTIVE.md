@@ -461,3 +461,59 @@ theV137DeviceReadingsAreTheRegisterAndTheModelStillDisagreesWithThem   ← 新�
 `_upstream/`、`app/build.gradle.kts`、`ChatViewModel.kt`、`ui/servers/**`、`ui/home/**`、
 `ui/terminal/**`、`ui/nav/**`、`ui/App.kt`、`OcActivity.kt`。
 **行尾**：全程只用编辑/写入工具，未用 `git checkout` / `git restore`。
+
+---
+
+## 11. 【v141 订正节】归因改写：**生产代码是对的**
+
+> 本节**不改动**上面 §1–§10 的任何结论与数据，只**订正归因**。
+> 订正依据：v140 在 emulator-5554 上抓到的 `BandUnion` 探针（跨两个 pid 逐字节复现），
+> 报告 `research/v97_verify/5554_md/REPORT_PROBE_AND_ROLES.md` §2.2/§2.3。
+> 完整裁定与算式见 `research/v97_fix/SEMANTIC_INFLATION_RULING.md`。
+
+### 11.1 探针原文（逐字）
+
+```
+10-03 23:36:34.202 27592 27592 I BandUnion: minimal=true bandPx=48 editorTop=14 editorH=20 toolRowTop=0 toolRowH=48 unionBottomPx=48
+10-03 23:42:23.570 31108 31108 I BandUnion: minimal=true bandPx=48 editorTop=14 editorH=20 toolRowTop=0 toolRowH=48 unionBottomPx=48
+```
+
+自洽性：`max(editorTop+editorH, toolRowTop+toolRowH) = max(14+20, 0+48) = 48` ✅
+⇒ 探针打出的 `unionBottomPx` 确实是 `composerBandUnionBottomPx(48, 20, 48)` 的求值结果。
+
+### 11.2 三条订正
+
+| # | v136/v138 框架下的表述 | v141 裁定 |
+|---|---|---|
+| 1 | 「生产代码多算了 1px」／「v136 的生产函数在设备上没有生效」 | **作废。** 生产求值 = **48**，探针**从未打出 49**。生产代码算的就是布局并集底沿 `0..48`，**没有多算**。 |
+| 2 | 「那 1px 是生产代码的缺陷」 | **作废。** 真源是**语义框为满足 48dp 触摸靶而扩张**：material3 的 `minimumInteractiveComponentSize` 把 21 高的**布局**框（`228..249`）**居中**撑到 48dp，撑开量 `27 = 48 − 21`，按 `13 上 / 14 下` 拆 ⇒ 语义框 `215..263` ⇒ dump 侧读到 `unionPx 49`。 |
+| 3 | 「v139 的 0 vs 14 说明**产生该帧的不是树里这份代码**」 | **作废。** 探针就打在树里这份 `Composer.kt:2391` 上、跨两个 pid 稳定复现 ⇒ **跑的就是树里这份**。模型算出 0 的真因是**输入被编造**：`editorPx` 真值 **20**，模型喂了 **48**。`Composer.kt:2210` **不必动**。 |
+
+### 11.3 「语义 ≠ 布局」：两个量的定义
+
+| 量 | 空间 | 定义 | 本帧值 |
+|---|---|---|---|
+| **生产求值** | 布局（layout） | `max(editorTop+editorH, toolRowTop+toolRowH)` | `unionPx = 48`（绝对 262） |
+| **dump 读数** | 语义（semantics / a11y） | 48dp 触摸靶框的并集 | `unionPx = 49`（绝对 263） |
+
+两者**不是同一个量**，探针按定义看不到语义扩张。
+`unionPx 49` 与 `① = +2` 这个观测**依然成立**（观测是真的），
+但它的**成因**从「生产多算」改为「语义框比布局框大 27px、居中后下沿多吃 1px」。
+
+### 11.4 v139 那 3 项不符，在新框架下各是什么
+
+| v139 项 | v139 结论 | **新框架下的解释** |
+|---|---|---|
+| **48 vs 49**（`unionPx`） | 模型乐观 1px，是缺陷 | **不是模型缺陷。** 生产侧 48 是**正确答案**；49 是**语义框**读数。多出的 1px = `expansion(27)` 的奇数余数落在下沿（`14 下 − 13 上 = 1`）。**真源：48dp 触摸靶扩张。** |
+| **0 vs 1**（`topDelta`） | 模型乐观 1px | **两个都不是布局量。** 布局空间的真实差是 **14**（`editorTop 14 − toolRowTop 0`，探针直给）；dump 的 **1** 是**语义顶沿**（`228 − 13 = 215` 相对 `214`），即 `14 − 13(上扩) = 1`。与底沿那 1px **同源**：同一个 27px 扩张，`13/14` 拆分。模型原来的 **0** 来自编造输入 `editorPx=48`，**本身已被证伪**。 |
+| **0 vs 14**（控件自身布局顶沿） | **树 ≠ 帧**，跑的是别的代码 | **树 = 帧。** `composerBandChildTopPx(48, 20) = (48−20)/2 = 14` —— **树里这个函数自己的求值**就是 14。探针证明树里这份代码在跑。⇒ 归因改为「**模型输入错**」，修法从「动 `Alignment`」改为「**修模型的 `editor.height` 输入**」。 |
+
+### 11.5 缺陷的账，实际归属
+
+| 项 | 状态 |
+|---|---|
+| 生产代码 `composerBandUnionBottomPx` / `composerBandChildTopPx` | ✅ **无缺陷**（探针自洽复现） |
+| `Composer.kt:2210` 的 `Alignment` 分支 | ✅ **不必动**（v139 的「树 ≠ 帧」已推翻） |
+| 「模型对 `editor.height` 取值编造成 48」 | ⚠️ **已由 v141 在 pin 里改正**（改喂探针值 20） |
+| 「语义框 48dp 触摸靶居中扩张」 | ℹ️ **客观事实，非本仓缺陷**；material3 强制，**不应改、也改不了** |
+| 48dp 触摸靶的可达性/可用性 | ❌ **未评估**（本轮只做几何归因，未做 a11y 评审） |
