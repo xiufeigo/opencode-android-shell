@@ -1,40 +1,58 @@
-param([string]$Tag = "d")
+# Dump + parse helper for OpenCode Android Shell queue verification
+# Usage: pwsh -File dump.ps1 <tag> [filterRegex]
+param(
+  [string]$Tag = "dump",
+  [string]$Filter = ""
+)
 $ErrorActionPreference = 'Continue'
 $adb = "C:\Users\xiufe\AppData\Local\Android\Sdk\platform-tools\adb.exe"
-$dir = "C:\sensorsdata\main\program\opencode-android-shell\research\v97_verify\5554_md"
-$pkg = "com.xiufeigo.opencodeshell"
+$d   = "emulator-5554"
+$ev  = "C:\sensorsdata\main\program\opencode-android-shell\research\v97_verify\5554_md\evidence"
+$out = "$ev\$Tag.xml"
 
-& $adb -s emulator-5554 shell uiautomator dump --compressed /sdcard/u_$Tag.xml 2>&1 | Out-Null
-& $adb -s emulator-5554 pull /sdcard/u_$Tag.xml "$dir\u_$Tag.xml" 2>&1 | Out-Null
+& $adb -s $d shell uiautomator dump --compressed /sdcard/$Tag.xml 2>&1 | Out-Null
+& $adb -s $d pull /sdcard/$Tag.xml $out 2>&1 | Out-Null
 
-$xml = Get-Content "$dir\u_$Tag.xml" -Raw
-# match both text="..." and text='...' styles
-$pat = '<node[^>]*>'
-$nodes = [regex]::Matches($xml, $pat)
+[xml]$x = Get-Content $out -Raw -Encoding UTF8
+$nodes = $x.SelectNodes("//node")
+
+# Parse bounds -> center
+function Get-Center($b) {
+  if ($b -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+    $l=[int]$matches[1]; $t=[int]$matches[2]; $r=[int]$matches[3]; $bo=[int]$matches[4]
+    return [pscustomobject]@{ cx=[int](($l+$r)/2); cy=[int](($t+$bo)/2);
+                              l=$l; t=$t; r=$r; b=$bo; w=($r-$l); h=($bo-$t) }
+  }
+  return $null
+}
+
 $rows = @()
 foreach ($n in $nodes) {
-    $s = $n.Value
-    $cls = ''
-    if ($s -match 'class="([^"]*)"') { $cls = $Matches[1] }
-    $tx = ''
-    if ($s -match 'text="([^"]*)"') { $tx = $Matches[1] }
-    if ($tx -eq '' -and $s -match "text='([^']*)'") { $tx = $Matches[1] }
-    $ds = ''
-    if ($s -match 'content-desc="([^"]*)"') { $ds = $Matches[1] }
-    if ($ds -eq '' -and $s -match "content-desc='([^']*)'") { $ds = $Matches[1] }
-    $b = ''
-    if ($s -match 'bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"') { $b = $Matches[1] + "," + $Matches[2] + "," + $Matches[3] + "," + $Matches[4] }
-    elseif ($s -match "bounds='\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'") { $b = $Matches[1] + "," + $Matches[2] + "," + $Matches[3] + "," + $Matches[4] }
-    $clk = ''
-    if ($s -match 'clickable="([^"]*)"') { $clk = $Matches[1] }
-    if ($b -eq '') { continue }
-    $lbl = $tx
-    if ($lbl -eq '' -or $lbl -eq $null) { $lbl = $ds }
-    if ($null -eq $lbl) { $lbl = '' }
-    $rows += [pscustomobject]@{
-        Label = $lbl; Desc = $ds; Bounds = $b
-        Short = ($cls -split '\.')[-1]; Clickable = $clk
-    }
+  $t  = $n.GetAttribute("text")
+  $cd = $n.GetAttribute("content-desc")
+  $cl = $n.GetAttribute("class")
+  $bd = $n.GetAttribute("bounds")
+  if ([string]::IsNullOrWhiteSpace($t) -and [string]::IsNullOrWhiteSpace($cd)) { continue }
+  $c = Get-Center $bd
+  if ($null -eq $c) { continue }
+  $rows += [pscustomobject]@{
+    text  = $t
+    desc  = $cd
+    cls   = ($cl -replace '.*\.','')
+    click = $n.GetAttribute("clickable")
+    focus = $n.GetAttribute("focused")
+    sel   = $n.GetAttribute("selected")
+    b     = $bd
+    cx    = $c.cx; cy = $c.cy
+    x=$c.l; y=$c.t; w=$c.w; h=$c.h
+  }
 }
-"=== NODES ($($rows.Count)) ==="
-$rows | ForEach-Object { "{0,-30} | {1,-24} | {2,-24} | clk={3}" -f $_.Label, $_.Short, $_.Bounds, $_.Clickable }
+
+if ($Filter -ne "") { $rows = $rows | Where-Object { ($_.text + "|" + $_.desc) -match $Filter } }
+
+$rows | Sort-Object { [int]$_.y }, { [int]$_.x } | Format-Table `
+  @{n='text';e={ if($_.text.Length -gt 46){$_.text.Substring(0,46)+'..'}else{$_.text} }},
+  @{n='desc';e={ if($_.desc.Length -gt 30){$_.desc.Substring(0,30)}else{$_.desc} }},
+  cls, click, focus, cx, cy, b -AutoSize
+
+"--- total nodes with text/desc: $($rows.Count) ---"
