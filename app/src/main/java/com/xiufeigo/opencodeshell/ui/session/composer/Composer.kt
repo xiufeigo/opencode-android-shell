@@ -621,10 +621,20 @@ fun Composer(
     // WAVE 2.4b (P0-7): the Steer/Queue hint offer. Same visibility rule as
     // upstream editor.tsx ComposerEditorAlternateDelivery: while the turn runs
     // and the composer holds a value, null hides the chip. Generation-gated.
-    // `queueEditOpen` is read here (not the state itself) so the declaration
-    // order stays valid — the loan state is declared with the other editor
-    // state below.
-    var queueEditOpen by remember { mutableStateOf(false) }
+    //
+    // v131: the queue-edit loan is ONE state and the chip flag is **derived**
+    // from it. They used to be two — the row (`queueEdit`) plus a `queueEditOpen`
+    // latch that only `editQueued` / `cancelQueueEdit` moved — and the confirm
+    // path closed the row while leaving the latch on, so
+    // `ComposerDelivery.alternate`'s first line (`if (editingQueued) return
+    // STEER`) answered `Steer` for the rest of the composer's life and the
+    // `Queue` entry never came back; Esc could not save it either, because the
+    // IME swallows the key while the keyboard is up (v130, emulator-5554).
+    // One state cannot diverge, so the loan is declared here, above its first
+    // read, and `queueEditOpen` is a `val` over it. Upstream has the same single
+    // source (`state.editing` in `queue.ts`, read by `editing()`/`alternate()`).
+    var queueEdit by remember { mutableStateOf<ComposerQueue.Row?>(null) }
+    val queueEditOpen = queueEdit != null
     // One-shot: the Steer/Queue toggle arms the *next* submit with the offered
     // delivery (upstream `submit({alternate:true})`); plain Enter stays on the
     // default. A flag (not a parameter) keeps the composable submit shape.
@@ -919,10 +929,10 @@ fun Composer(
     var tokens by remember { mutableStateOf<List<MentionTokens.Token>>(emptyList()) }
 
     // WAVE 2.4b (P0-7): the one-shot queue-edit loan — the queued prompt
-    // loaded in the composer (`queue.ts` edit/cancelEdit). Local to
-    // the composer: the VM never sees it, only the confirm (re-admit plus
-    // cancel-original) via onQueueConfirm.
-    var queueEdit by remember { mutableStateOf<ComposerQueue.Row?>(null) }
+    // loaded in the composer (`queue.ts` edit/cancelEdit) — is declared with the
+    // delivery hint above, because the chip flag is derived from it (v131). It
+    // stays composer-local: the VM never sees it, only the confirm (re-admit
+    // plus cancel-original) via onQueueConfirm.
     // Queue-row callbacks, latest-bridge style like the other bridges above.
     val queueConfirm by rememberUpdatedState(onQueueConfirm)
     val queueSteerBy by rememberUpdatedState(onQueueSteer)
@@ -964,8 +974,10 @@ fun Composer(
 
     /** Loads a queued row into the editor for editing; Esc cancels. */
     fun editQueued(row: ComposerQueue.Row) {
+        // Upstream opens at most one loan and supersedes any previous one
+        // (`queue.ts:152` `if (state.editing) cancelEdit()`), so assigning the
+        // new row *is* the close of the old one.
         queueEdit = row
-        queueEditOpen = true
         val text = row.text
         setText(TextFieldValue(text, TextRange(text.length)))
         tokens = emptyList()
@@ -973,8 +985,24 @@ fun Composer(
     }
 
     fun cancelQueueEdit() {
-        queueEdit = null
-        queueEditOpen = false
+        queueEdit = ComposerQueue.endEditLoan(queueEdit, ComposerQueue.EditLoanEvent.CANCEL)
+    }
+
+    // v131: upstream converges the loan against the queue instead of trusting a
+    // run of discrete exits (`queue.ts:93-97`): any read that finds the edited
+    // row gone from `queued()` drops the loan. This is the exit the native port
+    // never had, and it is the one that keeps the surface honest when the *VM*
+    // ends the edit rather than the composer — a row consumed by the running
+    // turn, removed, steered, or drained when the turn settles all shrink
+    // `queuedRows` and take the loan (hence the `Steer` chip, hence the missing
+    // `Queue` entry) with them. `queueBusy` is upstream's `mutation.isPending`:
+    // it delays the close while a mutation is in flight, never blocks it.
+    LaunchedEffect(queuedRows, queueBusy) {
+        val current = queueEdit ?: return@LaunchedEffect
+        val kept = ComposerQueue.convergeEditLoan(current, queuedRows.map { it.id }, queueBusy)
+        if (kept == null) {
+            queueEdit = ComposerQueue.endEditLoan(current, ComposerQueue.EditLoanEvent.CANCEL)
+        }
     }
 
     // v67 B2: the editor's satellites — accepted mention tokens, an open queue
@@ -1268,7 +1296,12 @@ fun Composer(
         // is what the hand-over means.
         ComposerDrafts.clear(draftKey)
         if (editing != null) {
-            queueEdit = null
+            // v131: a confirm is an **exit** — the replacement is re-admitted
+            // and the original cancelled (`queue.ts:65-74`), so the loan ends
+            // here. This is the exit the native port never had: the row was
+            // cleared on this line before v131 while the chip's own latch stayed
+            // on, which is what pinned the hint to `Steer` for good.
+            queueEdit = ComposerQueue.endEditLoan(editing, ComposerQueue.EditLoanEvent.CONFIRM)
             queueConfirm(editing.id, model)
         } else {
             val structured = submitStructured
@@ -1379,8 +1412,18 @@ fun Composer(
                 // (`queue-panel.tsx:101,156` `busy()` disables drag + actions).
                 busy = queueBusy,
                 editingId = queueEdit?.id,
-                onSteer = queueSteerBy,
-                onRemove = queueRemoveBy,
+                // v131: upstream closes the loan *first* when the edited row
+                // itself is promoted or cancelled (`queue.ts:133`, `queue.ts:139`),
+                // so the hint recovers without waiting for the VM round-trip.
+                // Aimed at another row it is not an exit for this loan.
+                onSteer = { id ->
+                    queueEdit = ComposerQueue.endEditLoan(queueEdit, ComposerQueue.EditLoanEvent.STEER, id)
+                    queueSteerBy(id)
+                },
+                onRemove = { id ->
+                    queueEdit = ComposerQueue.endEditLoan(queueEdit, ComposerQueue.EditLoanEvent.REMOVE, id)
+                    queueRemoveBy(id)
+                },
                 onEdit = { id ->
                     queuedRows.find { it.id == id }?.let(::editQueued)
                 },

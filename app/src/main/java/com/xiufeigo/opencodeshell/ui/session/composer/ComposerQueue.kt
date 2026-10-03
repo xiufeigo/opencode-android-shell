@@ -236,4 +236,66 @@ object ComposerQueue {
         actions = if (editing) listOf(RowAction.REMOVE) else listOf(RowAction.STEER, RowAction.REMOVE),
         steerLabel = if (running) SteerLabel.STEER else SteerLabel.SEND,
     )
+
+    // ──────────────────────────────────────────────────────────────────────
+    // v131: the edit loan's exit table. Upstream keeps ONE loan (`state.editing`
+    // in `queue.ts`) and **converges** it against `queued()` on every read
+    // (`queue.ts:93-97`), so a loan can never outlive its row. The native port
+    // had two copies of the fact (the row + a separate `queueEditOpen` latch)
+    // maintained by *discrete events only*, so the confirm path closed one and
+    // left the other stuck on — and `ComposerDelivery.alternate`'s first line
+    // (`if (editingQueued) return STEER`) then pinned the chip to `Steer` for
+    // the rest of the composer's life (v130, emulator-5554). These two pure
+    // functions are the whole loan state machine: the composer derives the chip
+    // from the loan and drives the loan through them, so "只能进不能出" is not
+    // expressible.
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Why a queued prompt's loan is being given up.
+     *
+     * - [CONFIRM] — Enter on an open edit re-admits the replacement and cancels
+     *   the original (`queue.ts:65-74` `confirmEdit`; a pristine value with
+     *   `delivery=queue` is a no-op cancel upstream, `queue.ts:197`).
+     * - [CANCEL] — Esc abandons the edit, the row untouched (`queue.ts:172-182`;
+     *   upstream guards with `if (!editing) return`, so it is idempotent).
+     * - [SESSION_SWITCH] — the loan is composer-local state, so it must not
+     *   survive a draft-key change (v67 B2, the same reset for `tokens`).
+     * - [STEER] / [REMOVE] — promoting or cancelling **the edited row itself**
+     *   closes its loan (`queue.ts:133`, `queue.ts:139`); either action on some
+     *   *other* row is not an exit for this loan and leaves it open.
+     */
+    enum class EditLoanEvent { CONFIRM, CANCEL, SESSION_SWITCH, STEER, REMOVE }
+
+    /**
+     * The loan that survives [event], applied to [row] — total and idempotent:
+     * defined for every (loan, event) pair, and a terminal event on an
+     * already-closed loan stays closed instead of throwing or reviving it.
+     *
+     * @param targetId the row the [EditLoanEvent.STEER] / [EditLoanEvent.REMOVE]
+     * was aimed at; `null` (or a different id) means "not this loan's row".
+     */
+    fun endEditLoan(row: Row?, event: EditLoanEvent, targetId: String? = null): Row? = when (event) {
+        EditLoanEvent.CONFIRM,
+        EditLoanEvent.CANCEL,
+        EditLoanEvent.SESSION_SWITCH,
+        -> null
+        EditLoanEvent.STEER,
+        EditLoanEvent.REMOVE,
+        -> if (row != null && row.id == targetId) null else row
+    }
+
+    /**
+     * Upstream's convergence effect (`queue.ts:93-97`): a loan whose row is no
+     * longer in the queue is dropped, so a row consumed by the running turn,
+     * removed, or drained when the turn settles takes the loan with it.
+     *
+     * The [busy] guard is upstream's `mutation.isPending`: while a queue
+     * mutation is in flight the loan is left alone, because the mutation's own
+     * outcome (a steer/remove of this row) is what closes it — a second,
+     * premature close would strand the in-flight re-admit. It is a *delay*,
+     * never a lock: the very next converged read with `busy = false` closes it.
+     */
+    fun convergeEditLoan(row: Row?, queuedIds: Collection<String>, busy: Boolean): Row? =
+        if (row == null || busy) row else row.takeIf { it.id in queuedIds }
 }
