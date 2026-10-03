@@ -1,7 +1,9 @@
 package com.xiufeigo.opencodeshell.ui.theme
 
+import android.graphics.Typeface
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.DeviceFontFamilyName
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +39,11 @@ import com.xiufeigo.opencodeshell.R
  *
  * `opsz` is left at its default 14 (≈ our 13–15sp body sizes); Compose has no
  * per-Text optical-size axis without a hand-built `Typeface`.
+ *
+ * Both roles are user-overridable — `settings-ui-font` → [uiFontFamily],
+ * `settings-code-font` → [codeFontFamily], wired in `ui/App.kt` through
+ * `OcTheme(uiFont, codeFont)`. The stops behind those rows (and the gap vs
+ * upstream's free-text family fields) are [OcSystemFonts].
  */
 object OcFontWeight {
     /** `text-[13px] font-[440]` — body text (38 sites in the vendored build). */
@@ -165,4 +172,211 @@ object OcFonts {
         fontSize = size,
         lineHeight = lineHeight,
     )
+}
+
+/**
+ * Stored `opencode-ui-font` stop for the system sans stack
+ * (`settings-ui-font`, upstream `settings.appearance.uiFont`).
+ */
+const val UI_FONT_SYSTEM: String = "system"
+
+/**
+ * Stored `opencode-code-font` stop that follows the UI font
+ * (`settings-code-font`, upstream `settings.appearance.font`).
+ */
+const val CODE_FONT_FOLLOW_UI: String = "ui"
+
+/**
+ * Android's system font catalog, as far as a picker can honestly use it.
+ *
+ * Upstream's Appearance rows are **free-text** family inputs
+ * (`settings/appearance/appearance.tsx:36-60` renders an `Input`; the value is
+ * spliced into `sansFontFamily`/`monoFontFamily` as `"<name>", <base stack>`,
+ * `settings/model.tsx:20-65`), so the browser resolves any installed family and
+ * walks down the CSS stack when it does not exist. Android can do neither half
+ * for an arbitrary name: a family that is not in the platform font config is
+ * silently replaced by the **default sans** (`Typeface.create`; the terminal
+ * panel probes exactly that, `ui/terminal/TerminalPanel.kt:1250-1265`), and
+ * nothing can be downloaded without a font provider + certificates
+ * (`FontsContract` = a new dependency, out of scope). The shell therefore offers
+ * a list instead of a text field, in two tiers:
+ *
+ * * [SANS_ALIASES] / [MONO_ALIASES] — the generic family names AOSP's
+ *   `fonts.xml` has declared since API 21. Every device resolves them, so they
+ *   are always offered and always mapped.
+ * * [SANS_CANDIDATES] / [MONO_CANDIDATES] — real family names (the common mono
+ *   faces plus a few sans/serif families). A device has only some of them, so
+ *   they are offered **only when [resolves] says the platform really has that
+ *   family**: the picker never lists a name that would silently render as the
+ *   default sans, which for a code font means proportional text.
+ *
+ * Remaining gap vs upstream, by design: a family the device does not have cannot
+ * be named (no download), and enumeration is a fixed candidate list rather than
+ * `SystemFonts.getAvailableFonts()` (API 29+, still only the *default* families
+ * on most builds). Values are stored verbatim as the Android family name, so a
+ * hand-written value resolves on a device that has that family.
+ */
+object OcSystemFonts {
+
+    /** Always-resolvable sans stops, in picker order (labels in `SettingsModel`). */
+    val SANS_ALIASES: List<String> = listOf(
+        "serif",
+        "sans-serif-light",
+        "sans-serif-medium",
+        "sans-serif-condensed",
+        "sans-serif-black",
+        "sans-serif-smallcaps",
+    )
+
+    /** Always-resolvable mono stop (Cutive Mono through the AOSP alias). */
+    val MONO_ALIASES: List<String> = listOf("serif-monospace")
+
+    /** Named sans/serif families, offered only when the device has them. */
+    val SANS_CANDIDATES: List<String> = listOf(
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Sans Display",
+        "Roboto Condensed",
+        "Roboto Slab",
+        "Open Sans",
+        "Lato",
+        "Montserrat",
+        "Source Sans Pro",
+        "Fira Sans",
+        "Ubuntu",
+        "Cantarell",
+        "DejaVu Sans",
+        "Liberation Sans",
+        "Arial",
+        "Helvetica",
+    )
+
+    /**
+     * Named mono families, offered only when the device has them. `IBM Plex Mono`
+     * leads because it is upstream's own `monoDefault` (`model.tsx:19`) — a user
+     * who installed it gets upstream's default exactly.
+     */
+    val MONO_CANDIDATES: List<String> = listOf(
+        "IBM Plex Mono",
+        "Roboto Mono",
+        "Droid Sans Mono",
+        "Noto Sans Mono",
+        "Noto Mono",
+        "Cutive Mono",
+        "JetBrains Mono",
+        "Fira Code",
+        "Source Code Pro",
+        "Cascadia Mono",
+        "Ubuntu Mono",
+        "Space Mono",
+        "Inconsolata",
+        "Hack",
+        "DejaVu Sans Mono",
+        "Liberation Mono",
+        "Courier New",
+        "Consolas",
+        "Menlo",
+        "Monaco",
+    )
+
+    /** Families whose resolution to the default face is genuinely intended. */
+    private val DEFAULT_FAMILY_NAMES = setOf("default", "sans-serif", "sans", "serif", "normal")
+
+    private val probes = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private val resolvedFamilies = java.util.concurrent.ConcurrentHashMap<String, FontFamily>()
+
+    /**
+     * Whether the platform font config really has [family]. `Typeface.create`
+     * answers with the **default** family for an unknown name, so a name that
+     * resolves to the default (and is not one of the generic aliases) is a miss.
+     * Cached — this is called from composition. False off-device: the JVM unit
+     * tests run against the unimplemented framework stubs, so the pickers fall
+     * back to the always-available stops.
+     */
+    fun resolves(family: String): Boolean = probes.getOrPut(family) {
+        runCatching {
+            val resolved = Typeface.create(family, Typeface.NORMAL) ?: return@runCatching false
+            val fallback = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                ?: return@runCatching false
+            resolved != fallback || family.lowercase() in DEFAULT_FAMILY_NAMES
+        }.getOrDefault(false)
+    }
+
+    /** The named sans families this device actually has. */
+    fun availableSans(): List<String> = SANS_CANDIDATES.filter(::resolves)
+
+    /** The named mono families this device actually has. */
+    fun availableMono(): List<String> = MONO_CANDIDATES.filter(::resolves)
+
+    /**
+     * [SANS_ALIASES] + the subset of [available] drawn from [SANS_CANDIDATES],
+     * in candidate order. Pure: the pickers pass [availableSans] on device and
+     * tests pass a synthetic list.
+     */
+    fun sansStops(available: List<String>): List<String> =
+        SANS_ALIASES + SANS_CANDIDATES.filter { it in available }
+
+    /** [MONO_ALIASES] + the subset of [available] drawn from [MONO_CANDIDATES]. */
+    fun monoStops(available: List<String>): List<String> =
+        MONO_ALIASES + MONO_CANDIDATES.filter { it in available }
+
+    /** Is [stored] a family this file can map as a UI font (alias or candidate)? */
+    fun isSansStop(stored: String): Boolean = stored in SANS_ALIASES || stored in SANS_CANDIDATES
+
+    /** Is [stored] a family this file can map as a code font? */
+    fun isMonoStop(stored: String): Boolean = stored in MONO_ALIASES || stored in MONO_CANDIDATES
+
+    /**
+     * [name] as a Compose family, or [fallback] when the device does not have it
+     * (never the other kind of family: a missing code font must stay monospace).
+     * Normal + bold are declared so bold text resolves to the real bold face
+     * instead of being flattened onto 400.
+     */
+    fun family(name: String, fallback: FontFamily): FontFamily {
+        resolvedFamilies[name]?.let { return it }
+        if (!resolves(name)) return fallback
+        val family = runCatching {
+            FontFamily(
+                Font(DeviceFontFamilyName(name)),
+                Font(DeviceFontFamilyName(name), FontWeight.Bold),
+            )
+        }.getOrNull() ?: return fallback
+        resolvedFamilies[name] = family
+        return family
+    }
+}
+
+/**
+ * `settings-ui-font` → family (upstream `sansFontFamily`, `model.tsx:59-65`).
+ *
+ * Blank = the bundled Inter (upstream's `sansDefault`), [UI_FONT_SYSTEM] = the
+ * platform sans, and a family named by [OcSystemFonts] = that system family,
+ * falling back to Inter when the device lacks it — upstream's own behaviour when
+ * a named family is missing, since the CSS stack continues with `"Inter", …`.
+ * Any other stored value (written by a future build, or by the web shell's
+ * free-text field) stays on Inter rather than dropping the UI to the platform
+ * default.
+ */
+fun uiFontFamily(stored: String): FontFamily = when {
+    stored == UI_FONT_SYSTEM -> FontFamily.SansSerif
+    stored.isBlank() -> InterFontFamily
+    OcSystemFonts.isSansStop(stored) -> OcSystemFonts.family(stored, InterFontFamily)
+    else -> InterFontFamily
+}
+
+/**
+ * `settings-code-font` → family (upstream `monoFontFamily`, `model.tsx:55-57`).
+ *
+ * Upstream's default is `IBM Plex Mono`; the shell bundles no mono font, so
+ * blank stays the system mono stack (the faithful port, see [OcMonoFontFamily])
+ * and [CODE_FONT_FOLLOW_UI] renders code in the UI family. A family named by
+ * [OcSystemFonts] (the `serif-monospace` alias, or a named mono the device has)
+ * wins over the stack, falling back to the **system mono** when the device lacks
+ * it — never to the default sans, which would silently un-monospace the code.
+ */
+fun codeFontFamily(code: String, ui: String): FontFamily = when {
+    code == CODE_FONT_FOLLOW_UI -> uiFontFamily(ui)
+    code.isBlank() -> OcMonoFontFamily
+    OcSystemFonts.isMonoStop(code) -> OcSystemFonts.family(code, OcMonoFontFamily)
+    else -> OcMonoFontFamily
 }

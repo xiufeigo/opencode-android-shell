@@ -3,8 +3,57 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Flap recovery (`NetworkRecoveryWatch` → `ChatViewModel.onNetworkAvailable`):
+         observing network availability needs this; normal permission, granted at
+         install with no prompt. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- A-12: the in-app QR scanner (`ui/settings/PairingPanel.kt`
+         `CameraScanOverlay`, `camera2` + `zxing:core`). `required="false"` so a
+         device without a camera still installs: the pairing panel falls back to
+         a photo pick and manual entry (`servers/connect/scanner.tsx` has the
+         same fallbacks). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- B-2: system notifications (`notify/SystemNotifier.kt`). Runtime-requested
+         on 33+ from `OcActivity` (`NotificationPermissionRequest`); pre-33 the
+         permission is granted at install time and the declaration is inert. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 11+ package visibility: let the FileProvider hand-off resolve
+         ACTION_VIEW / ACTION_SEND handlers ("Open in app", share), and let the
+         export fallback probe ACTION_CREATE_DOCUMENT handlers (SAF save). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.CREATE_DOCUMENT" />
+            <category android:name="android.intent.category.OPENABLE" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
+    <!-- v31 BUG-1: `android:enableOnBackInvokedCallback` (API 33+ opt-in; this
+         app targets 35). Measured on the emulator: every launch logged
+         "OnBackInvokedCallback is not enabled for the application", i.e. the
+         platform kept the app on the legacy back path while the whole shell
+         routes BACK through Compose `BackHandler`s (`SessionScreen`'s browser
+         overlay, `DialogHost`'s layers, `NewSessionScreen`) — the browser
+         panel could not be closed with BACK and repeated presses exited the
+         app. Opting in puts back on the activity's `OnBackInvokedDispatcher`,
+         which is where `androidx.activity` registers the callback that drives
+         `OnBackPressedDispatcher` (`ComponentActivity.addObserverForBackInvoker`,
+         API 33+) — the one path every `BackHandler` here is built on. -->
     <application
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -15,15 +64,28 @@
         android:theme="@style/Theme.OpenCodeShell"
         android:usesCleartextTraffic="true">
 
+        <!-- `locale|layoutDirection`: the Language row writes the per-app
+             locale through `LocaleManager` (API 33+, `SettingsStore.applyLanguage`),
+             which is a *configuration* change. Handling it here instead of
+             letting it recreate the Activity keeps the whole composition — the
+             nav graph's current route and the pushed settings dialog with its
+             selected tab — alive across the switch, so the user stays in the
+             settings panel they were editing (v57 `E2ECHK5556-45`). The framework
+             still re-resolves the configuration, so every `stringResource()`
+             reads the new locale. `uiMode` is here for the same reason (theme
+             follow, `SystemBarIconAppearance`). -->
         <activity
             android:name=".OcActivity"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode|locale|layoutDirection"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.OpenCodeShell.Immersive"
             android:windowSoftInputMode="adjustResize">
             <!-- Launcher: the app boots straight into the 1:1 native Compose
-                 frontend (OcApp). -->
+                 frontend (OcApp). The existing `singleTask` launch mode is also
+                 what lets a tapped system notification reuse the running instance
+                 and reach `onNewIntent` (B-2) instead of cold-starting a second
+                 one. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -45,5 +107,19 @@
             android:exported="false"
             android:theme="@style/Theme.OpenCodeShell.Immersive"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- FileProvider: share staged artifact bytes as content:// URIs (grant
+             flags on the intent) so 「Open in app」 covers every MIME — the
+             MediaStore/ACTION_SEND fallback only handled images and text.
+             Roots live in res/xml/file_paths.xml. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

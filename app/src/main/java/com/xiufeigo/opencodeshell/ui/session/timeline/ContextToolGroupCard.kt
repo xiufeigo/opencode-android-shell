@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -27,6 +29,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,13 +85,19 @@ fun ContextToolGroupRow(
     // Shared collapsible arrow: closed = right (-90°), open = down
     // (`collapsible.css` `collapsible-arrow-icon` rotate(-90deg) → 0deg).
     val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "ctx-group-chevron")
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // clickable Row, not the chevron `Icon` inside it.
+    val toggleLabel = stringResource(R.string.oc_toggle_tool)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(TRIGGER_HEIGHT)
-                .clickable(role = Role.Button) { onToggle(expanded) },
+                // Two lines when the P2 multiplicity chips show (`GroupLabelText`
+                // stacks them under the `Used …` line); one line otherwise.
+                .heightIn(min = TRIGGER_HEIGHT)
+                .clickable(role = Role.Button) { onToggle(expanded) }
+                .semantics { contentDescription = toggleLabel },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // `status={pending() ? "running" : "completed"}` (`tool-renderer.tsx:606`):
@@ -108,7 +118,7 @@ fun ContextToolGroupRow(
             Spacer(Modifier.width(GAP))
             Icon(
                 painter = painterResource(R.drawable.ic_oc_chevron_down),
-                contentDescription = stringResource(R.string.oc_toggle_tool),
+                contentDescription = null,
                 tint = c.textFaint,
                 modifier = Modifier.size(16.dp).rotate(rotation),
             )
@@ -128,20 +138,16 @@ fun ContextToolGroupRow(
                     when (part.type) {
                         "reasoning" -> ReasoningCard(part = part, shimmer = false)
                         "tool" -> when (toolRendererKind(part)) {
-                            // Headline-only rows bypass the member card trigger,
-                            // mirroring the standalone path in `PartRenderer`.
+                            // `ToolDisplay`'s Switch **replaces** the whole row
+                            // for the dedicated renderers (same rule as
+                            // `PartRenderer`): a flat trigger around
+                            // `ToolErrorCard`/`QuestionCard`/`SubagentCard`
+                            // stacked two same-named headers and made the
+                            // error detail a two-tap target.
                             ToolRendererKind.HIDDEN -> Unit
-                            ToolRendererKind.SUBAGENT -> if (part.toolStatus == "streaming") {
-                                SubagentCard(part = part)
-                            } else {
-                                GroupToolRow(
-                                    part = part,
-                                    userOpen = toolOpen[part.id],
-                                    onToggle = { open -> onToggleTool(part.id, open) },
-                                    shellExpanded = shellExpanded,
-                                    editExpanded = editExpanded,
-                                )
-                            }
+                            ToolRendererKind.ERROR -> ToolErrorCard(part = part)
+                            ToolRendererKind.QUESTION -> QuestionCard(part = part)
+                            ToolRendererKind.SUBAGENT -> SubagentCard(part = part)
                             ToolRendererKind.SKILL -> SkillRow(part = part)
                             ToolRendererKind.READ_IMAGE -> ReadImageRow(part = part)
                             else -> GroupToolRow(
@@ -193,16 +199,21 @@ private fun GroupLabelText(group: TimelineGrouping.Row.Context) {
         }
         stringResource(R.string.oc_meta_used, label.count, title)
     }
-    TextShimmer(
-        text = text,
-        active = group.busy,
-        baseColor = c.textBase,
-        fontSize = 13.sp,
-        fontWeight = FontWeight(530),
-    )
-    // The P2 chips ride under the `Used …` line when the group mixes titles.
-    if (!label.isUpdatesOnly && chips.size > 1) {
-        ToolCountChips(chips = chips)
+    // The label stacks: the P2 chips ride under the `Used …` line when the
+    // group mixes titles. The two Texts used to be sequential siblings of the
+    // trigger row with no gap and read as one glued line
+    // (`Used 2 Shell, GrepShell . Grep`, 5558 v81).
+    Column {
+        TextShimmer(
+            text = text,
+            active = group.busy,
+            baseColor = c.textBase,
+            fontSize = 13.sp,
+            fontWeight = FontWeight(530),
+        )
+        if (!label.isUpdatesOnly && chips.size > 1) {
+            ToolCountChips(chips = chips)
+        }
     }
 }
 
@@ -220,17 +231,27 @@ private fun GroupToolRow(
     editExpanded: Boolean,
 ) {
     val c = OcTheme.colors
-    val expandable = ToolCardPolicy.canExpand(part)
-    val expanded = ToolCardPolicy.resolveOpen(part, userOpen, shellExpanded, editExpanded)
+    // One `bodyLines` per recomposition: canExpand + resolveOpen→defaultOpen
+    // and ToolBody would otherwise each re-parse the JSON and re-run Myers
+    // (O(n·m)) on every recomposition of a large edit — same rule as ToolCard.
+    val lines = remember(part.id, part.toolInput, part.toolOutput, part.toolName, part.toolStatus, part.toolError) {
+        ToolPresentation.bodyLines(part)
+    }
+    val expandable = ToolCardPolicy.canExpand(part, lines)
+    val expanded = ToolCardPolicy.resolveOpen(part, userOpen, shellExpanded, editExpanded, lines)
     val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "ctx-item-chevron")
-    val subtitle = ToolPresentation.subtitle(part, stringResource(R.string.oc_tool_error))
+    val subtitle = ToolPresentation.subtitle(part)
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // clickable Row, not the chevron `Icon` inside it.
+    val toggleLabel = stringResource(R.string.oc_toggle_tool)
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(TRIGGER_HEIGHT)
-                .clickable(enabled = expandable, role = Role.Button) { onToggle(expanded) },
+                .clickable(enabled = expandable, role = Role.Button) { onToggle(expanded) }
+                .semantics { contentDescription = toggleLabel },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -278,7 +299,7 @@ private fun GroupToolRow(
                 Spacer(Modifier.width(GAP))
                 Icon(
                     painter = painterResource(R.drawable.ic_oc_chevron_down),
-                    contentDescription = stringResource(R.string.oc_toggle_tool),
+                    contentDescription = null,
                     tint = c.textFaint,
                     modifier = Modifier.size(16.dp).rotate(rotation),
                 )
@@ -289,7 +310,7 @@ private fun GroupToolRow(
             enter = expandVertically(animationSpec = OcMotion.expand) + fadeIn(OcMotion.fade),
             exit = shrinkVertically(animationSpec = OcMotion.expand) + fadeOut(OcMotion.fade),
         ) {
-            ToolBody(part)
+            ToolBody(part, lines)
         }
     }
 }

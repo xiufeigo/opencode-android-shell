@@ -1,0 +1,169 @@
+{
+  "info": {
+    "id": "ses_f1534839dffe2roDGDXL89oIny",
+    "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+    "model": {
+      "id": "space-bunny-free",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 7937,
+      "output": 35,
+      "reasoning": 0,
+      "cache": {
+        "read": 8906,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1790645599403,
+      "updated": 1790645777187,
+      "idle": 1790645804114,
+      "viewed": 1790645804114
+    },
+    "title": "E2ECHK5556-base",
+    "location": {
+      "directory": "\/mnt\/c\/sensorsdata\/main\/program\/opencode-android-shell"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_0eacb7d05001uI2LnwWyVm1QZ4",
+      "time": {
+        "created": 1790645599493
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go"
+      }
+    },
+    {
+      "id": "msg_0eacd75da001tHogd6DW5ckJKz",
+      "metadata": {
+        "displayText": "hello A"
+      },
+      "time": {
+        "created": 1790645728810
+      },
+      "text": "hello A",
+      "type": "user"
+    },
+    {
+      "id": "msg_0eacd763a0011Tw9ywn7v9S9op",
+      "time": {
+        "created": 1790645748297,
+        "streamed": 1790645750693,
+        "completed": 1790645762793
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "你好，有什么可以帮你的？"
+        }
+      ],
+      "snapshot": {
+        "start": "8e5886d6e4b51272ec8c12d182b571f8c025b079",
+        "end": "1a683d2a0fa4707e24bb84ee7c173dbc88e874a0",
+        "files": [
+          "app\/src\/main\/java\/com\/xiufeigo\/opencodeshell\/ChatViewModel.kt",
+          "research\/v63_verify\/5554\/17_switch_t3.png",
+          "research\/v63_verify\/5556\/21_msg1done.png",
+          "research\/v63_verify\/5558\/15_attach2.png"
+        ]
+      },
+      "finish": "stop",
+      "rawFinish": "stop",
+      "cost": 0,
+      "tokens": {
+        "input": 7923,
+        "output": 7,
+        "reasoning": 0,
+        "cache": {
+          "read": 489,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_0eacdfaf5001963NuOL27r8g1R",
+      "time": {
+        "created": 1790645762805
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_0eace3321001bsico0asa4WnrX",
+      "metadata": {
+        "displayText": "second B"
+      },
+      "time": {
+        "created": 1790645777219
+      },
+      "text": "second B",
+      "type": "user"
+    },
+    {
+      "id": "msg_0eace3355001TMjVWETxXGCbU1",
+      "time": {
+        "created": 1790645789094,
+        "streamed": 1790645791280,
+        "completed": 1790645804101
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "\"second B\" 我不确定指什么 — 是要我接着上一条继续，还是在测试多轮输入？\n\n直接说要做什么就行。"
+        }
+      ],
+      "snapshot": {
+        "start": "fcf259f39e2edcaa84b734ec87ac7a30ee2b2faa",
+        "end": "497bbef933c8a657db93de4ca9e026a1492fd63b",
+        "files": [
+          "app\/src\/main\/java\/com\/xiufeigo\/opencodeshell\/ChatViewModel.kt",
+          "research\/v63_verify\/5554\/19_scroll.png",
+          "research\/v63_verify\/5558\/17_picker2.png",
+          "research\/v63_verify\/5560\/12_home.png"
+        ]
+      },
+      "finish": "stop",
+      "rawFinish": "stop",
+      "cost": 0,
+      "tokens": {
+        "input": 14,
+        "output": 28,
+        "reasoning": 0,
+        "cache": {
+          "read": 8417,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_0eace9c520016xOAXV5Czb9T2O",
+      "time": {
+        "created": 1790645804114
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

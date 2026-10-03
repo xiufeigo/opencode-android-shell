@@ -1,0 +1,25 @@
+{
+  "info": {
+    "id": "ses_f1d0c3169ffeGPMVssb0aR1RRm",
+    "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+    "cost": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1790514024211,
+      "updated": 1790514024211
+    },
+    "title": "E2ECHK-v38B-C1",
+    "location": {
+      "directory": "\/mnt\/c\/sensorsdata\/main\/program\/opencode-android-shell"
+    }
+  },
+  "messages": []
+}

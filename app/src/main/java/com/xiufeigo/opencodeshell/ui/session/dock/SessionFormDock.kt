@@ -49,7 +49,7 @@ import com.xiufeigo.opencodeshell.ui.session.drawer.QuestionPager
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 
 /**
- * v2 form dock — the v2 counterpart of [SessionQuestionDock], transcribed from
+ * v2 form dock — transcribed from
  * the upstream v2 dock (`_upstream/packages/app/src/session/requests/
  * session-question-dock.tsx`), which renders a pending `FormInfo` (not a v1
  * question request): only `string` / `multiselect` fields become question
@@ -63,8 +63,8 @@ import com.xiufeigo.opencodeshell.ui.theme.OcTheme
  * fields an info page that never enters the answer. `when`-inactive and
  * `hidden` fields are skipped by the pager and dropped from the submit payload.
  *
- * Shell/tray skeleton, marks, buttons and segments reuse the
- * [SessionQuestionDock] transcription verbatim (same radii, overlaps, button-v2
+ * Shell/tray skeleton, marks, buttons and segments reuse the earlier v1
+ * question-dock transcription verbatim (same radii, overlaps, button-v2
  * sizes, option-mark geometry) so the two docks read as one surface.
  */
 @Composable
@@ -74,6 +74,16 @@ fun SessionFormDock(
     onSubmit: (Map<String, Any?>) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The consent form's provider catalog (`GET /api/websearch/provider`).
+     * Request construction belongs to `ChatViewModel`/`V2Api`, so the host
+     * passes the rows in when it has them; empty keeps upstream's
+     * `session.websearch.empty` state instead of a dead picker.
+     */
+    websearchProviders: List<WebSearchOption> = emptyList(),
+    websearchProvidersLoading: Boolean = false,
+    websearchProvidersLoadFailed: Boolean = false,
+    onRetryWebsearchProviders: () -> Unit = {},
 ) {
     val c = OcTheme.colors
     val surfaceShape = RoundedCornerShape(12.dp)
@@ -82,6 +92,28 @@ fun SessionFormDock(
 
     val fields = remember(form.id, form.fieldsJson) {
         SessionFormModel.parseFormFields(form.fieldsJson)
+    }
+
+    // Websearch asks are forms on the wire (`metadata.kind` upstream) but never
+    // the generic wizard: the dedicated dock owns the provider pick + the
+    // disable/retry/submit tray (`session-websearch-dock.tsx`).
+    val websearchKind = remember(form.id, form.fieldsJson) { WebSearchModel.detect(fields) }
+    if (websearchKind != null) {
+        SessionWebSearchDock(
+            kind = websearchKind,
+            formID = form.id,
+            formOptions = remember(form.id, fields) {
+                WebSearchModel.formOptions(websearchKind, fields)
+            },
+            responding = responding,
+            onSubmit = onSubmit,
+            modifier = modifier,
+            providers = websearchProviders,
+            providersLoading = websearchProvidersLoading,
+            providersLoadFailed = websearchProvidersLoadFailed,
+            onRetryProviders = onRetryWebsearchProviders,
+        )
+        return
     }
 
     // Canonical answers by field key: String (Text), List<String> (Multi),
@@ -146,17 +178,10 @@ fun SessionFormDock(
         setValue(field.key, if (value in current) current - value else current + value)
     }
 
-    fun toggleCustom(key: String, multi: Boolean, current: List<String> = emptyList()) {
-        customOn = if (key in customOn) {
-            if (multi) {
-                // Leaving custom mode drops the draft from a multi answer.
-                val draft = customText[key].orEmpty().trim()
-                if (draft.isNotEmpty()) setValue(key, current - draft)
-            }
-            customOn - key
-        } else {
-            customOn + key
-        }
+    fun toggleCustom(key: String, multi: Boolean) {
+        val next = SessionFormModel.toggleCustom(key, multi, customOn, customText, values)
+        customOn = next.customOn
+        values = next.values
     }
 
     Layout(
@@ -275,7 +300,7 @@ fun SessionFormDock(
                                     enabled = !responding,
                                     onSelect = { toggleOption(field, it) },
                                     onToggleCustom = {
-                                        toggleCustom(field.key, multi = true, current = picked)
+                                        toggleCustom(field.key, multi = true)
                                     },
                                     onCustomChange = { draft ->
                                         val previous = customText[field.key].orEmpty().trim()
@@ -309,7 +334,10 @@ fun SessionFormDock(
                                 numeric = true,
                                 onChange = { draft ->
                                     numberDraft = numberDraft + (field.key to draft)
-                                    setValue(field.key, draft.trim().toDoubleOrNull())
+                                    setValue(
+                                        field.key,
+                                        SessionFormModel.parseNumberDraft(draft, field.integer),
+                                    )
                                 },
                             )
 

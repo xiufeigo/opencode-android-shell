@@ -1,7 +1,7 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.v2.RenameResult
 import com.xiufeigo.opencodeshell.v2.ServerGeneration
-import com.xiufeigo.opencodeshell.v2.V1Transport
 import com.xiufeigo.opencodeshell.v2.V2Api
 import com.xiufeigo.opencodeshell.v2.V2Capability
 import com.xiufeigo.opencodeshell.v2.V2EventAdapter
@@ -18,13 +18,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import java.io.IOException
 
 /**
  * Wave 1 dual-protocol transport tests. No test touches a real server:
  * request shapes go through [MockWebServer], event frames through recorded
  * live JSON ([V2ApiFixtures.SSE_V2_TURN]), and the generation rule is pure
- * ([V2Capability.decideInfo]/[decideHealth]).
+ * ([V2Capability.decideInfo]).
  *
  * Existing `ChatStore`/`OpenCodeClient` tests stay green untouched — v1
  * parity is asserted here only as "same bytes as before" on the seam.
@@ -44,28 +46,7 @@ class Wave1TransportTest {
     // ------------------------------------------------------------ probe
 
     @Test
-    fun v2InfoAndV1HealthNeverCrossSelect() {
-        // v2 server: info says V2, health leg says UNKNOWN (SPA HTML there).
-        assertEquals(ServerGeneration.V2, V2Capability.decideInfo(200, "application/json", V2ApiFixtures.INFO_V2).generation)
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideHealth(200, "text/html", V2ApiFixtures.SPA_HTML).generation,
-        )
-        // v1 server: info says UNKNOWN (SPA HTML), health leg says V1.
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideInfo(200, "text/html", V2ApiFixtures.SPA_HTML).generation,
-        )
-        assertEquals(ServerGeneration.V1, V2Capability.decideHealth(200, "application/json", V2ApiFixtures.HEALTH_V1).generation)
-        // A proxy/captive page (HTML on both) is UNKNOWN, never a generation.
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideInfo(200, "text/html", V2ApiFixtures.SPA_HTML).generation,
-        )
-    }
-
-    @Test
-    fun probeHitsInfoFirstThenHealthOnlyWhenNeeded() {
+    fun probeHitsInfoAndThenLocation() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.INFO_V2))
             server.enqueue(MockResponse().setResponseCode(200).setBody("""{"directory":"/w","project":{"id":"g","directory":"/w"}}"""))
@@ -77,62 +58,18 @@ class Wave1TransportTest {
             )
             assertEquals(ServerGeneration.V2, result.generation)
             assertEquals("/api/info", server.takeRequest().requestUrl!!.encodedPath)
-            // V2 confirmation: /api/location, not /global/health.
             assertEquals("/api/location", server.takeRequest().requestUrl!!.encodedPath)
             assertEquals(0, server.requestCount - 2)
         }
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(200).setHeader("Content-Type", "text/html").setBody(V2ApiFixtures.SPA_HTML))
-            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.HEALTH_V1))
             val result = V2Capability.probe(
                 server.url("/").toString().toHttpUrlOrNull()!!,
                 http = V2Api.defaultClient(),
             )
-            assertEquals(ServerGeneration.V1, result.generation)
+            assertEquals(ServerGeneration.UNKNOWN, result.generation)
             assertEquals("/api/info", server.takeRequest().requestUrl!!.encodedPath)
-            assertEquals("/global/health", server.takeRequest().requestUrl!!.encodedPath)
         }
-    }
-
-    // ------------------------------------------------------------ V1 parity
-
-    @Test
-    fun v1TransportSendsByteIdenticalPromptShellAndCommand() {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-            val client = OpenCodeClient(server.url("/").toString().toHttpUrlOrNull()!!, null, null)
-            val transport = V1Transport(client, server.url("/"), directory = "/w")
-
-            transport.sendPrompt("ses_1", "hi", emptyList(), messageID = null, delivery = "steer", resume = false)
-            val prompt = server.takeRequest()
-            assertEquals("/session/ses_1/prompt_async", prompt.requestUrl!!.encodedPath)
-            // v1 has no delivery/resume knobs: parts only.
-            val body = JSONObject(prompt.body.readUtf8())
-            assertTrue(body.has("parts"))
-            assertFalse(body.has("delivery"))
-
-            transport.sendShellAs("ses_1", "echo hi", agent = "build", model = null)
-            val shell = server.takeRequest()
-            assertEquals("/session/ses_1/shell", shell.requestUrl!!.encodedPath)
-            assertEquals("build", JSONObject(shell.body.readUtf8()).getString("agent"))
-
-            transport.sendCommandAs("ses_1", "init", "args", agent = null, model = null, variant = null)
-            val command = server.takeRequest()
-            assertEquals("/session/ses_1/command", command.requestUrl!!.encodedPath)
-            assertEquals("init", JSONObject(command.body.readUtf8()).getString("command"))
-            client.close()
-        }
-    }
-
-    @Test
-    fun v1TransportParsesFramesThroughTheExistingStorePath() {
-        val events = V1Transport(
-            OpenCodeClient("http://127.0.0.1:4096/".toHttpUrlOrNull()!!, null, null),
-            "http://127.0.0.1:4096/".toHttpUrlOrNull()!!,
-        ).parseFrame("session.idle", JSONObject("""{"type":"session.idle","properties":{}}"""))
-        assertEquals(listOf(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.IDLE)), events)
     }
 
     // ------------------------------------------------------------ V2 shapes
@@ -379,6 +316,89 @@ class Wave1TransportTest {
     }
 
     @Test
+    fun v2AForeignAggregateNeverMovesTheSessionWatermark() {
+        val tracker = V2SeqTracker()
+        tracker.onSynced(2L)
+        // The global `/api/event` stream carries every session and each session
+        // counts its own `durable.seq` (research/dupcap: two sessions at seq 15
+        // in the same second). A foreign frame's id is remembered — the same
+        // event can arrive on this session's log — but its seq may not anchor
+        // `?after=`, or the server skips every durable frame this session missed
+        // while the stream was down (the turn-complete notification's own
+        // recovery path).
+        assertTrue(tracker.observe("evt_other", 149L, aggregate = false))
+        assertEquals(2L, tracker.maxSeq)
+        assertEquals(2L, tracker.afterParam())
+        assertFalse("a foreign replay still de-duplicates", tracker.observe("evt_other", 149L, aggregate = false))
+
+        // The tracked aggregate's own frames move it, as before.
+        assertTrue(tracker.observe("evt_own", 3L, aggregate = true))
+        assertEquals(3L, tracker.maxSeq)
+        assertEquals(3L, tracker.afterParam())
+    }
+
+    @Test
+    fun v2SeenIDsAgeOutBelowTheWatermarkWindow() {
+        val tracker = V2SeqTracker()
+        for (i in 1..3000) tracker.observe("evt_$i", i.toLong())
+        assertEquals(3000L, tracker.maxSeq)
+        // Recent ids still dedupe; ids ≤ maxSeq − 1024 can never replay.
+        assertFalse(tracker.observe("evt_3000", 3000L))
+        assertFalse(tracker.observe("evt_2000", 2000L))
+        assertTrue(tracker.observe("evt_1976", 1976L))
+        assertTrue(tracker.observe("evt_1", 1L))
+        assertEquals("an aged-out replay must not rewind the watermark", 3000L, tracker.maxSeq)
+    }
+
+    @Test
+    fun v2SeqlessFramesAreHardCapped() {
+        val tracker = V2SeqTracker()
+        tracker.onSynced(0L)
+        for (i in 1..5000) tracker.observe("evt_d_$i", null)
+        assertTrue(tracker.observe("evt_d_1", null))
+        assertFalse(tracker.observe("evt_d_5000", null))
+        assertEquals(0L, tracker.maxSeq)
+    }
+
+    @Test
+    fun v2StepStartedKeepsOneMarkerPerStep() {
+        var state = ChatStore.ChatState()
+        for (started in listOf(100L, 200L, 300L)) {
+            val envelope = JSONObject(
+                """{"id":"evt_step_$started","type":"session.step.started",
+                   "data":{"assistantMessageID":"msg_a1","agent":"build","model":"m","started":$started}}""",
+            )
+            for (event in V2EventAdapter.adapt("session.step.started", envelope)) {
+                state = ChatStore.reduce(state, event)
+            }
+        }
+        val markers = state.messages.single().parts.filter { it.type == "step-start" }
+        assertEquals(3, markers.size)
+        assertEquals(ChatStore.RunStatus.RUNNING, state.runStatus)
+    }
+
+    @Test
+    fun v2ToolFramesKeepTheNameTheStartedFrameSet() {
+        var state = ChatStore.ChatState()
+        val frames = listOf(
+            "session.tool.input.started" to """{"assistantMessageID":"msg_a1","id":"call_1","name":"shell"}""",
+            "session.tool.input.ended" to """{"assistantMessageID":"msg_a1","id":"call_1","text":"ls"}""",
+            "session.tool.called" to """{"assistantMessageID":"msg_a1","id":"call_1","input":{"command":"ls"}}""",
+            "session.tool.success" to """{"assistantMessageID":"msg_a1","id":"call_1","content":[{"type":"text","text":"files"}]}""",
+        )
+        for ((type, data) in frames) {
+            val envelope = JSONObject("""{"id":"evt_$type","type":"$type","data":$data}""")
+            for (event in V2EventAdapter.adapt(type, envelope)) {
+                state = ChatStore.reduce(state, event)
+            }
+        }
+        val tool = state.messages.single().parts.single()
+        assertEquals("shell", tool.toolName)
+        assertEquals("completed", tool.toolStatus)
+        assertEquals("files", tool.toolOutput)
+    }
+
+    @Test
     fun v2PermissionFieldsRenameToV1DockRow() {
         val parsed = V2EventAdapter.v2Permission(
             JSONObject(
@@ -509,6 +529,27 @@ class Wave1TransportTest {
     }
 
     /**
+     * The snapshot read asks for the newest window and nothing else. Its merge
+     * is an upsert over the whole tagged union, so a `type` filter — which
+     * upstream applies *before* pagination — would shorten the window instead
+     * of narrowing it. `V2Api.messages` takes no such parameter; this pins the
+     * wire shape of the one production caller.
+     */
+    @Test
+    fun v2SnapshotAsksForTheNewestWindowAndNoTypeFilter() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.MESSAGES))
+            V2Transport(v2api(server)).snapshotMessages("ses_1", 50)
+
+            val request = server.takeRequest()
+            assertEquals("/api/session/ses_1/message", request.requestUrl!!.encodedPath)
+            assertEquals("50", request.requestUrl!!.queryParameter("limit"))
+            assertEquals("desc", request.requestUrl!!.queryParameter("order"))
+            assertEquals(setOf("limit", "order"), request.requestUrl!!.queryParameterNames)
+        }
+    }
+
+    /**
      * `GET /api/session/active` → `{"data":{ses_…:{"type":"running"}}}`
      * (measured 2026-09-22 while a foreground `sleep` tool call ran):
      * the snapshot liveness reconcile reads the tracked session's status
@@ -534,6 +575,239 @@ class Wave1TransportTest {
 
             server.enqueue(MockResponse().setResponseCode(500).setBody("boom"))
             assertNull(transport.activeRunStatus("ses_1"))
+        }
+    }
+
+    // -------------------------------------- export / review / home reads (P0)
+
+    /**
+     * v2 file preview: the absolute path must become a location-relative
+     * `fs/read` segment (measured: the route takes no absolute path, and a
+     * path outside the location is a `404 FileNotFoundError` — never a guess
+     * that could show a different file).
+     */
+    @Test
+    fun v2FileContentReadsRelativeBytesThroughFsRead() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(200).setBody("hello v2"))
+            val transport = V2Transport(v2api(server, directory = "/home/me"))
+            val content = transport.fileContent("/home/me/app/build.gradle.kts", directory = "/home/me")
+            assertFalse(content.binary)
+            assertEquals("hello v2", content.content)
+            val recorded = server.takeRequest()
+            assertEquals("/api/fs/read/app/build.gradle.kts", recorded.requestUrl!!.encodedPath)
+            assertEquals("/home/me", recorded.requestUrl!!.queryParameter("location[directory]"))
+
+            // Outside the location: fails BEFORE a request (no doomed 400/404
+            // round-trip, no silent wrong-file read).
+            try {
+                transport.fileContent("/etc/hosts", directory = "/home/me")
+                fail("an outside-location path must not resolve")
+            } catch (_: IOException) {
+                // expected
+            }
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    /** Export frame: raw `{data}` unwraps, pages follow `cursor` ALONE after `order=asc`. */
+    @Test
+    fun v2ExportFramePagesRawRowsCursorAloneAfterOrderAsc() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setHeader("Content-Type", "application/json")
+                    .setBody("""{"data":{"id":"ses_1","title":"T"}}"""),
+            )
+            server.enqueue(
+                MockResponse().setHeader("Content-Type", "application/json")
+                    .setBody("""{"data":[{"id":"msg_1","type":"user"}],"cursor":{"previous":null,"next":"c1"}}"""),
+            )
+            server.enqueue(
+                MockResponse().setHeader("Content-Type", "application/json")
+                    .setBody("""{"data":[{"id":"msg_2","type":"assistant"}],"cursor":{"previous":"c1","next":null}}"""),
+            )
+            val transport = V2Transport(v2api(server))
+            val frame = transport.fetchExportFrame("ses_1", directory = "/home/me")
+            assertEquals("ses_1", frame.info.getString("id"))
+            assertEquals(listOf("msg_1", "msg_2"), frame.messages.map { it.getString("id") })
+
+            assertEquals("/api/session/ses_1", server.takeRequest().requestUrl!!.encodedPath)
+            val page1 = server.takeRequest().requestUrl!!
+            assertEquals("/api/session/ses_1/message", page1.encodedPath)
+            assertEquals("asc", page1.queryParameter("order"))
+            assertNull(page1.queryParameter("cursor"))
+            // Measured: cursor + order together answer 400 — the follow-up is cursor-only.
+            val page2 = server.takeRequest().requestUrl!!
+            assertEquals("c1", page2.queryParameter("cursor"))
+            assertNull(page2.queryParameter("order"))
+            assertEquals(3, server.requestCount)
+        }
+    }
+
+    /** Measured mode gap: v2's `/api/vcs/diff` 400s `git`, so the scope maps to `working`. */
+    @Test
+    fun v2VcsDiffTranslatesGitToWorking() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setHeader("Content-Type", "application/json").setBody("""{"data":[]}"""),
+            )
+            val transport = V2Transport(v2api(server, directory = "/home/me"))
+            assertTrue(transport.vcsDiff("git", directory = "/home/me").isEmpty())
+            val url = server.takeRequest().requestUrl!!
+            assertEquals("/api/vcs/diff", url.encodedPath)
+            assertEquals("working", url.queryParameter("mode"))
+            assertEquals("/home/me", url.queryParameter("location[directory]"))
+        }
+    }
+
+    /** v2 projects: bare `canonical` array → `OpenCodeClient.Project` rows for Home. */
+    @Test
+    fun v2ListProjectsMapsTheBareCanonicalArray() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setHeader("Content-Type", "application/json").setBody(
+                    """[{"id":"p1","canonical":"/w/app","time":{"created":1,"updated":2},""" +
+                        """"sandboxes":[],"vcs":"git"}]""",
+                ),
+            )
+            val transport = V2Transport(v2api(server))
+            val projects = transport.listProjects()
+            assertEquals(1, projects.size)
+            assertEquals("/w/app", projects.single().worktree)
+            assertEquals("git", projects.single().vcs)
+            assertEquals("/api/project", server.takeRequest().requestUrl!!.encodedPath)
+        }
+    }
+
+    // ------------------------------------------------------------------ browse
+    //
+    // Browsing must not boot locations: every new `location[directory]` value
+    // persists one project row server-side (no delete route), so the picker
+    // rides ONE cached anchor (the filesystem root) with `path=` relative to
+    // it across all browses.
+
+    @Test
+    fun listDirectoryReusesOneAnchorAcrossBrowses() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"directory":"/home/me","project":{"id":"g","directory":"/home/me"}}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/"}""" + ""","data":[{"path":"home/me/code/app/","type":"directory"},{"path":"home/me/code/gradlew","type":"file"}]}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/"}""" + ""","data":[{"path":"home/me/other/x/","type":"directory"}]}""",
+                ),
+            )
+            val transport = V2Transport(v2api(server))
+
+            val first = transport.listDirectory("/home/me/code")
+            assertEquals(
+                listOf("/home/me/code/app", "/home/me/code/gradlew"),
+                first.map { it.absolute },
+            )
+            assertEquals(listOf("app", "gradlew"), first.map { it.name })
+            assertEquals(listOf(true, false), first.map { it.isDirectory })
+
+            val second = transport.listDirectory("/home/me/other")
+            assertEquals(listOf("/home/me/other/x"), second.map { it.absolute })
+
+            // One location read (anchor cached), then the same anchor with a
+            // wandering `path=` — never the browsed dir as the location.
+            assertEquals("/api/location", server.takeRequest().requestUrl!!.encodedPath)
+            val browse1 = server.takeRequest().requestUrl!!
+            assertEquals("/api/fs/list", browse1.encodedPath)
+            assertEquals("/", browse1.queryParameter("location[directory]"))
+            assertEquals("home/me/code", browse1.queryParameter("path"))
+            val browse2 = server.takeRequest().requestUrl!!
+            assertEquals("/api/fs/list", browse2.encodedPath)
+            assertEquals("/", browse2.queryParameter("location[directory]"))
+            assertEquals("home/me/other", browse2.queryParameter("path"))
+        }
+    }
+
+    @Test
+    fun listDirectoryAtAnchorListsWithoutPath() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"directory":"/home/me","project":{"id":"g","directory":"/home/me"}}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/"},"data":[{"path":"home/","type":"directory"}]}""",
+                ),
+            )
+            val transport = V2Transport(v2api(server))
+            val rows = transport.listDirectory("/")
+            assertEquals(listOf("/home"), rows.map { it.absolute })
+            server.takeRequest() // /api/location
+            val browse = server.takeRequest().requestUrl!!
+            assertEquals("/api/fs/list", browse.encodedPath)
+            assertEquals("/", browse.queryParameter("location[directory]"))
+            assertNull(browse.queryParameter("path"))
+        }
+    }
+
+    @Test
+    fun listDirectoryOutsideAnchorFallsBackToLocationScope() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"directory":"/home/me","project":{"id":"g","directory":"/home/me"}}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"D:/x"},"data":[{"path":"a/","type":"directory"}]}""",
+                ),
+            )
+            val transport = V2Transport(v2api(server))
+            val rows = transport.listDirectory("D:/x")
+            assertEquals(listOf("D:/x/a"), rows.map { it.absolute })
+            server.takeRequest() // /api/location
+            val browse = server.takeRequest().requestUrl!!
+            assertEquals("D:/x", browse.queryParameter("location[directory]"))
+            assertNull(browse.queryParameter("path"))
+        }
+    }
+
+    // ------------------------------------------------------------------ rename
+    //
+    // `PATCH` answers 204 with no body; the transport re-reads and reports the
+    // title ONLY when the server actually holds the requested one — a foreign
+    // title (regenerate/normalize/race) is "not applied", so the caller surfaces
+    // a visible failure instead of mirroring a wrong title.
+    //
+    // v81: the answer is a `RenameResult` (the five shapes a caller acts on
+    // differently — see `RenameOutcomeV81Test`) and the re-read is a **bounded
+    // window**: acceptance is still an exact match, but the read is repeated, so
+    // a write the server accepted is not called unconfirmed because the first
+    // read was a few milliseconds early.
+
+    @Test
+    fun renameSessionReturnsTitleOnlyOnExactMatch() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(204))
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":{"id":"ses_1","title":"New","time":{"updated":1}}}""",
+                ),
+            )
+            val transport = V2Transport(v2api(server), renameConfirmDelayMs = 0L)
+
+            assertEquals(RenameResult.Renamed("New"), transport.renameSession("ses_1", "New"))
+
+            val patch = server.takeRequest()
+            assertEquals("PATCH", patch.method)
+            assertEquals("/api/session/ses_1", patch.requestUrl!!.encodedPath)
+            assertEquals("GET", server.takeRequest().method)
         }
     }
 

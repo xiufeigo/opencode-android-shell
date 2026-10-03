@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell.ui.session.drawer
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -43,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.OpenCodeClient
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.components.SessionProgressIndicator
+import com.xiufeigo.opencodeshell.ui.nav.SessionTabBadge
+import com.xiufeigo.opencodeshell.ui.nav.SessionTabBadgeSlot
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 
 /**
@@ -62,17 +66,51 @@ import com.xiufeigo.opencodeshell.ui.theme.OcTheme
  * avatar slot in this row, so the indicator sits next to the relative time,
  * where it never collides with the selection bar or the title.
  *
+ * A-2: that same slot now also carries the unread dot — and, as in the tab
+ * strips, the dot wins: `SessionTabIndicator.badge` derives `loading = false`
+ * whenever the session needs attention, so a row that is both working and
+ * waiting on the user shows the dot rather than claiming to be merely busy.
+ * The row's own precedence is **dot first, then marquee**, where the tab slot
+ * renders `loading ? marquee : dot` (upstream's `SessionTabAvatarView`, whose
+ * `loading` counts attention only): a merely-unseen row that is still running
+ * therefore reads as unseen here and as busy in the strip. The row is this
+ * shell's own surface — upstream has no session drawer — so its slot keeps the
+ * "needs the user" reading that made it useful on a phone.
+ *
  * W4-C: the row now also answers the upstream long-press menu
  * (`home/sessions/view.tsx:30,597-610,694-701`, `HOME_SESSION_LONG_PRESS_MS`
  * = 500 ms) with **Rename / Delete**. The actions are hoisted to the caller so
  * this composable stays a pure view (and the confirmations render as
  * screen-level overlays, not inside the sheet).
  *
+ * A-3 (the v27 device run): the rows are ordered by [SessionDrawerOrder] — the
+ * server's `time.updated`, newest first — and their labels are measured against
+ * the caller's [now]. Both halves were stale on the device: the drawer kept the
+ * order of whatever snapshot it was opened with (the list is re-read on
+ * `ChatViewModel.sessionsRevision`, which now also carries the row writes the
+ * server bumps `time.updated` for), and a row whose label was composed while its
+ * session was "just now" kept saying "just now" because Compose skips a row whose
+ * `updatedAt` input never moves. Together they read as 「another old session,
+ * labelled just now, at the top」.
+ *
  * @param sheet mobile bottom-sheet form: no own surface (the sheet provides
  *   `bg-deep` + radius) and shrink-to-content height instead of `fillMaxSize`.
  * @param onRenameSession row menu → Rename; null disables the item.
  * @param onDeleteSession row menu → Delete; null disables the item (used when
  *   the client has no `DELETE /session/:id`).
+ * @param unseen A-2: the row's unread dot — `true` for a session the caller
+ *   counts as waiting on the user (`SessionTabIndicator.unread`: a pending
+ *   permission/form ask, the in-app feed, or the server row's own watermark).
+ *   Defaulted to "nothing unseen" so a host that passes nothing renders the row
+ *   it always did.
+ * @param now A-3: the clock the rows' relative labels are measured against.
+ *   **The host must pass a value that ticks** while this content is on screen
+ *   (`SessionScreen` drives it from a 30 s loop while the drawer is open): a
+ *   row's only input is its `updatedAt`, which does not move as time passes, so
+ *   Compose skips the row and the label composed while a session was "just now"
+ *   stayed "just now" for as long as the row lived — the stale-looking top row
+ *   the v27 device run reported. The default keeps a host without a clock
+ *   rendering the row it always did.
  */
 @Composable
 fun SessionDrawerContent(
@@ -83,11 +121,18 @@ fun SessionDrawerContent(
     modifier: Modifier = Modifier,
     /** The session whose turn is running (`RunStatus.RUNNING`), if any. */
     runningSessionId: String? = null,
+    /** A-2: per-row unread dot (see the class note); the tab strips' same derivation. */
+    unseen: (OpenCodeClient.Session) -> Boolean = { false },
+    /** A-3: wall-clock millis for the relative labels; see the class note. */
+    now: Long = System.currentTimeMillis(),
     sheet: Boolean = false,
     onRenameSession: ((OpenCodeClient.Session) -> Unit)? = null,
     onDeleteSession: ((OpenCodeClient.Session) -> Unit)? = null,
 ) {
     val c = OcTheme.colors
+    // The order is this view's own (see `SessionDrawerOrder`): newest first,
+    // `id` ascending on equal `updatedAt`, an unknown time last.
+    val rows = remember(sessions) { SessionDrawerOrder.rows(sessions) }
     // Which row's long-press menu is open, by session id.
     var menuFor by remember { mutableStateOf<String?>(null) }
     Column(
@@ -149,11 +194,13 @@ fun SessionDrawerContent(
                 contentPadding = PaddingValues(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                items(items = sessions, key = { it.id }) { session ->
+                items(items = rows, key = { it.id }) { session ->
                     SessionRow(
                         session = session,
                         selected = session.id == currentSessionId,
                         running = session.id == runningSessionId,
+                        unseen = unseen(session),
+                        now = now,
                         onClick = { onSelect(session) },
                         // Upstream row menu (500 ms touch / right click).
                         menuOpen = menuFor == session.id,
@@ -182,6 +229,8 @@ private fun SessionRow(
     session: OpenCodeClient.Session,
     selected: Boolean,
     running: Boolean,
+    unseen: Boolean,
+    now: Long,
     onClick: () -> Unit,
     menuOpen: Boolean,
     onLongClick: () -> Unit,
@@ -230,15 +279,38 @@ private fun SessionRow(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            if (running) {
+            // A-2: the same precedence the tab strips carry
+            // (`SessionTabIndicator.badge`: a session that needs attention is
+            // never shown as busy) — the dot when there is something unseen,
+            // the marquee only when there is not.
+            if (unseen) {
+                // The same indicator the strips use (`SessionTabIndicator` → the
+                // 6 dp accent dot), not a second dot implementation.
+                SessionTabBadgeSlot(
+                    SessionTabBadge(unread = true),
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+            } else if (running) {
                 SessionProgressIndicator(modifier = Modifier.padding(end = 6.dp))
             }
-            RelativeTimeText(updatedAt = session.updatedAt)
+            RelativeTimeText(updatedAt = session.updatedAt, now = now)
         }
         // Upstream menu order: Rename / Separator / Delete
         // (`home/sessions/view.tsx:694-701`). A missing handler renders the item
         // disabled instead of hiding it, so the menu shape stays upstream-shaped.
-        DropdownMenu(expanded = menuOpen, onDismissRequest = onDismissMenu) {
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = onDismissMenu,
+            // v11: M3's default menu surface (`surfaceContainer`) is a light
+            // translucent tint the shell's palette never re-themes, so the dark
+            // theme showed the rows on a near-white panel. Opaque layer token +
+            // zero tonal elevation, like the other shell menus
+            // (`ui/session/context/SessionContextPanel.kt:419`).
+            shape = RoundedCornerShape(6.dp),
+            containerColor = c.layer01,
+            tonalElevation = 0.dp,
+            border = BorderStroke(0.5.dp, c.borderMuted),
+        ) {
             SessionMenuItem(
                 label = stringResource(R.string.oc_rename_session),
                 enabled = renameEnabled,
@@ -282,10 +354,17 @@ private fun SessionMenuItem(
     )
 }
 
-/** `common.time.*` label for the row; nothing is rendered for an unknown time. */
+/**
+ * `common.time.*` label for the row; nothing is rendered for an unknown time.
+ *
+ * [now] is a parameter rather than a `System.currentTimeMillis()` read inside
+ * this composable: a clock read here is invisible to Compose, so the row is
+ * skipped once its `updatedAt` stops changing and the label freezes at whatever
+ * bucket it was composed with (see `SessionDrawerContent`'s `@param now`).
+ */
 @Composable
-private fun RelativeTimeText(updatedAt: Long) {
-    val relative = SessionTimeLabel.relative(updatedAt, System.currentTimeMillis()) ?: return
+private fun RelativeTimeText(updatedAt: Long, now: Long) {
+    val relative = SessionTimeLabel.relative(updatedAt, now) ?: return
     Text(
         text = when (relative.unit) {
             SessionTimeLabel.Unit.JUST_NOW -> stringResource(R.string.oc_time_just_now)

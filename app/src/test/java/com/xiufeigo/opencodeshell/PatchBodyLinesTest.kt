@@ -96,4 +96,66 @@ class PatchBodyLinesTest {
         val body = ToolPresentation.bodyLines(part(JSONObject("""{"note":"x"}""").toString()))
         assertTrue(body.any { it.kind == ToolPresentation.LineKind.JSON })
     }
+
+    @Test
+    fun dashDashContentStaysDiffInsideACountedHunk() {
+        // `--x` deleted renders `---x`, `++y` added renders `+++y`: the old
+        // prefix order matched `---`/`+++` first and dropped the tint.
+        val body = ToolPresentation.patchLines("@@ -1,2 +1,2 @@\n---x: 1\n+++y: 2")
+        assertEquals(
+            listOf(
+                ToolPresentation.LineKind.HUNK,
+                ToolPresentation.LineKind.DELETE,
+                ToolPresentation.LineKind.ADD,
+            ),
+            body.map { it.kind },
+        )
+        assertEquals("---x: 1", body[1].text)
+        assertEquals("+++y: 2", body[2].text)
+    }
+
+    @Test
+    fun markdownHorizontalRuleContentKeepsItsDiffKind() {
+        val body = ToolPresentation.patchLines("@@ -1 +1 @@\n----\n++++")
+        assertEquals(
+            listOf(
+                ToolPresentation.LineKind.HUNK,
+                ToolPresentation.LineKind.DELETE,
+                ToolPresentation.LineKind.ADD,
+            ),
+            body.map { it.kind },
+        )
+    }
+
+    @Test
+    fun fileHeadersAreStructureOnlyOutsideHunks() {
+        val body = ToolPresentation.patchLines("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n--- a/y\n+++ b/y")
+        assertEquals(
+            listOf(
+                ToolPresentation.LineKind.COMMAND,
+                ToolPresentation.LineKind.COMMAND,
+                ToolPresentation.LineKind.HUNK,
+                ToolPresentation.LineKind.DELETE,
+                ToolPresentation.LineKind.ADD,
+                ToolPresentation.LineKind.COMMAND,
+                ToolPresentation.LineKind.COMMAND,
+            ),
+            body.map { it.kind },
+        )
+    }
+
+    @Test
+    fun bareAtSectionHeaderOpensAnUncountedHunk() {
+        val body = ToolPresentation.patchLines("@@\n-old\n+new\n context\n*** End Patch")
+        assertEquals(
+            listOf(
+                ToolPresentation.LineKind.HUNK,
+                ToolPresentation.LineKind.DELETE,
+                ToolPresentation.LineKind.ADD,
+                ToolPresentation.LineKind.PLAIN,
+                ToolPresentation.LineKind.COMMAND,
+            ),
+            body.map { it.kind },
+        )
+    }
 }

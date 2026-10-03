@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.v2.V2EventAdapter
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,14 +10,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * W4-A data layer, store side: the `session.error` union, the
- * `session.status` retry detail, the part contract (`rawJson`,
+ * W4-A data layer, store side: the error union (via `session.execution.failed`),
+ * the `session.status` retry detail, the part contract (`rawJson`,
  * `message.part.removed`) and the message meta fields.
  *
- * Anchors: `_upstream/packages/schema/src/v1/session.ts:385-395` (AssistantError
- * union), `_upstream/packages/schema/src/session-status-event.ts:9-32` (status
- * union), `_upstream/packages/session-ui/src/timeline/projection.ts:408-410`
- * (`isInterrupted`).
+ * Anchors: `_upstream/packages/schema/src/session-error.ts` (error union),
+ * `session-status-event.ts:9-32` (status union),
+ * `session-ui/src/timeline/projection.ts:408-410` (`isInterrupted`).
  */
 class ChatStoreWave4EventTest {
 
@@ -25,72 +25,63 @@ class ChatStoreWave4EventTest {
     private fun message(id: String, time: Long, parts: List<ChatStore.UiPart>) =
         ChatStore.UiMessage(id = id, role = "assistant", timeCreated = time, parts = parts)
 
-    private fun statusEvent(type: String, extra: String = ""): ChatStore.Event? = ChatStore.parseEvent(
+    private fun adapt(type: String, data: String): ChatStore.Event? =
+        V2EventAdapter.adapt(
+            type,
+            JSONObject("""{"id":"evt_1","type":"$type","created":1,"data":$data}"""),
+        ).singleOrNull()
+
+    private fun statusEvent(type: String, extra: String = ""): ChatStore.Event? = adapt(
         "session.status",
-        JSONObject(
-            """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"$type"$extra}}}""",
-        ),
+        """{"sessionID":"ses_1","status":{"type":"$type"$extra}}""",
     )
 
-    // ----------------------------------------------- 1. `session.error` union
+    private fun failedEvent(error: String): ChatStore.Event.RunStatusChanged = adapt(
+        "session.execution.failed",
+        """{"sessionID":"ses_1","error":$error}""",
+    ) as ChatStore.Event.RunStatusChanged
+
+    // ----------------------------------------------- 1. error union (v2)
 
     @Test
-    fun sessionErrorObjectYieldsItsDataMessageNotTheRawJson() {
-        val event = ChatStore.parseEvent(
-            "session.error",
-            JSONObject(
-                """{"type":"session.error","properties":{"sessionID":"ses_1",
-                   "error":{"name":"APIError","data":{"message":"Rate limit reached",
-                   "statusCode":429,"isRetryable":true}}}}""",
-            ),
-        ) as ChatStore.Event.RunStatusChanged
+    fun sessionErrorObjectYieldsItsMessageNotTheRawJson() {
+        // v2 `SessionError.Error{type, message, status?}` (`session-error.ts:7-13`).
+        val event = failedEvent("""{"type":"RateLimitError","message":"Rate limit reached","status":429}""")
 
         assertEquals(ChatStore.RunStatus.ERROR, event.status)
-        // The whole point: a readable line, not `{"name":"APIError",…}`.
+        // The whole point: a readable line, not `{"type":"RateLimitError",…}`.
         assertEquals("Rate limit reached", event.error)
         assertFalse(event.error!!.startsWith("{"))
         // …and unwrapping it does not throw the provider detail away.
         val detail = event.errorDetail
         assertNotNull(detail)
-        assertTrue(detail!!.contains("\"statusCode\":429"))
-        assertTrue(detail.contains("\"name\":\"APIError\""))
+        assertTrue(detail!!.contains("\"status\":429"))
+        assertTrue(detail.contains("\"type\":\"RateLimitError\""))
     }
 
     @Test
     fun sessionErrorFallsBackToTheDiscriminatorName() {
-        // `MessageOutputLengthError` has an empty `data` (`v1/session.ts:36`):
-        // the name is the only thing left to show.
-        val length = ChatStore.parseEvent(
-            "session.error",
-            JSONObject("""{"properties":{"error":{"name":"MessageOutputLengthError","data":{}}}}"""),
-        ) as ChatStore.Event.RunStatusChanged
+        // A legacy union member with an empty `data`: the name is all that is
+        // left to show (`errorMessageOf` keeps that fallback for old payloads).
+        val length = failedEvent("""{"name":"MessageOutputLengthError","data":{}}""")
         assertEquals("MessageOutputLengthError", length.error)
 
-        // Auth errors carry a provider-specific message.
-        val auth = ChatStore.parseEvent(
-            "session.error",
-            JSONObject(
-                """{"properties":{"error":{"name":"ProviderAuthError",
-                   "data":{"providerID":"anthropic","message":"Invalid API key"}}}}""",
-            ),
-        ) as ChatStore.Event.RunStatusChanged
+        // Legacy auth errors carry a provider-specific message in `data`.
+        val auth = failedEvent(
+            """{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"Invalid API key"}}""",
+        )
         assertEquals("Invalid API key", auth.error)
     }
 
     @Test
     fun sessionErrorToleratesPlainStringsAndMissingPayloads() {
-        val plain = ChatStore.parseEvent(
-            "session.error",
-            JSONObject("""{"properties":{"error":"boom"}}"""),
-        ) as ChatStore.Event.RunStatusChanged
+        val plain = failedEvent(""""boom"""")
         assertEquals("boom", plain.error)
         // A plain string has no JSON to preserve.
         assertNull(plain.errorDetail)
 
-        val missing = ChatStore.parseEvent(
-            "session.error",
-            JSONObject("""{"properties":{"sessionID":"ses_1"}}"""),
-        ) as ChatStore.Event.RunStatusChanged
+        val missing = adapt("session.execution.failed", """{"sessionID":"ses_1"}""")
+            as ChatStore.Event.RunStatusChanged
         assertEquals(ChatStore.RunStatus.ERROR, missing.status)
         assertEquals("unknown error", missing.error)
         assertNull(missing.errorDetail)
@@ -119,16 +110,13 @@ class ChatStoreWave4EventTest {
 
     @Test
     fun retryStatusCarriesAttemptNextMessageAndAction() {
-        val event = ChatStore.parseEvent(
-            "session.status",
-            JSONObject(
-                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{
-                   "type":"retry","attempt":3,"message":"Provider overloaded",
-                   "next":1700000000000,
-                   "action":{"reason":"free_tier_limit","provider":"opencode",
-                   "title":"Free limit reached","message":"Usage limit reached",
-                   "label":"Upgrade","link":"https://opencode.ai/go"}}}}""",
-            ),
+        val event = statusEvent(
+            "retry",
+            ""","attempt":3,"message":"Provider overloaded",
+               "next":1700000000000,
+               "action":{"reason":"free_tier_limit","provider":"opencode",
+               "title":"Free limit reached","message":"Usage limit reached",
+               "label":"Upgrade","link":"https://opencode.ai/go"}""",
         ) as ChatStore.Event.RunStatusChanged
 
         assertEquals(ChatStore.RunStatus.RUNNING, event.status)
@@ -199,17 +187,17 @@ class ChatStoreWave4EventTest {
             assertNotNull("$type must keep its payload", parsed.rawJson)
             assertTrue(parsed.rawJson!!.contains("marker"))
         }
-        // The set itself is the contract: seven unmodelled part types
+        // The set itself is the contract: eight unmodelled part types
         // (`v1/session.ts:357-383`), no more, no less.
         assertEquals(
-            setOf("subtask", "step-start", "step-finish", "snapshot", "patch", "agent", "retry"),
+            setOf("subtask", "step-start", "step-finish", "snapshot", "patch", "agent", "retry", "compaction"),
             ChatStore.UiPart.RAW_JSON_TYPES,
         )
     }
 
     @Test
     fun rawJsonIsDroppedForModelledTypes() {
-        for (type in listOf("text", "reasoning", "tool", "file", "compaction", "unknown-type")) {
+        for (type in listOf("text", "reasoning", "tool", "file", "unknown-type")) {
             assertNull(
                 "$type has first-class fields; it must not duplicate its payload",
                 ChatStore.parsePart(JSONObject("""{"id":"prt_1","type":"$type","text":"x"}""")).rawJson,
@@ -217,48 +205,8 @@ class ChatStoreWave4EventTest {
         }
     }
 
-    @Test
-    fun rawJsonSurvivesTheStreamedPartEvent() {
-        val event = ChatStore.parseEvent(
-            "message.part.updated",
-            JSONObject(
-                """{"type":"message.part.updated","properties":{"sessionID":"ses_1",
-                   "messageID":"msg_1","part":{"id":"prt_9","type":"snapshot","snapshot":"deadbeef"}}}""",
-            ),
-        ) as ChatStore.Event.PartUpdated
-        assertEquals("prt_9", event.part.id)
-        assertTrue(event.part.rawJson!!.contains("deadbeef"))
-    }
-
-    // ------------------------------------ 6. `message.part.removed` contract
-
-    @Test
-    fun partRemovedParsesAndDropsIncompleteFrames() {
-        val event = ChatStore.parseEvent(
-            "message.part.removed",
-            JSONObject(
-                """{"type":"message.part.removed","properties":
-                   {"sessionID":"ses_1","messageID":"msg_1","partID":"prt_1"}}""",
-            ),
-        )
-        assertEquals(ChatStore.Event.PartRemoved("msg_1", "prt_1"), event)
-
-        // Both ids are required (`v1/session.ts:621-629`): without them there is
-        // nothing to remove, so no event may be produced.
-        assertNull(
-            ChatStore.parseEvent(
-                "message.part.removed",
-                JSONObject("""{"properties":{"partID":"prt_1"}}"""),
-            ),
-        )
-        assertNull(
-            ChatStore.parseEvent(
-                "message.part.removed",
-                JSONObject("""{"properties":{"messageID":"msg_1"}}"""),
-            ),
-        )
-        assertNull(ChatStore.parseEvent("message.part.removed", JSONObject("""{"properties":{}}""")))
-    }
+    // ---------------------------- 6. `PartRemoved` reduce contract (v1 wire
+    // shape is gone; the reducer rule stays for retracting one part)
 
     @Test
     fun partRemovedDeletesThePartAndDropsAnEmptiedMessage() {
@@ -281,26 +229,6 @@ class ChatStoreWave4EventTest {
         val before = state
         assertEquals(before, ChatStore.reduce(state, ChatStore.Event.PartRemoved("msg_2", "nope")))
         assertEquals(before, ChatStore.reduce(state, ChatStore.Event.PartRemoved("msg_none", "p3")))
-    }
-
-    // -------------------------------------------- 6. session id resolution
-
-    @Test
-    fun sessionIdOfReadsEveryRoutingShape() {
-        assertEquals(
-            "ses_a",
-            ChatStore.sessionIdOf(JSONObject("""{"properties":{"sessionID":"ses_a"}}""")),
-        )
-        assertEquals(
-            "ses_b",
-            ChatStore.sessionIdOf(JSONObject("""{"properties":{"info":{"sessionID":"ses_b"}}}""")),
-        )
-        assertEquals(
-            "ses_c",
-            ChatStore.sessionIdOf(JSONObject("""{"properties":{"info":{"id":"ses_c"}}}""")),
-        )
-        assertEquals("ses_d", ChatStore.sessionIdOf(JSONObject("""{"sessionID":"ses_d"}""")))
-        assertNull(ChatStore.sessionIdOf(JSONObject("""{"properties":{"info":{}}}""")))
     }
 
     // ------------------------------------ W4-B request: message meta fields

@@ -216,6 +216,16 @@ class TimelineRowsTest {
     }
 
     @Test
+    fun tickPreviewCapLandsOutsideASurrogatePair() {
+        // The old `take` kept a lone high surrogate (renders as U+FFFD).
+        val long = "x".repeat(TimelineRows.PREVIEW_MAX - 1) + "😀tail"
+        val preview = TimelineRows.preview(message("u1", role = "user", parts = listOf(text("p", long))))
+        assertEquals(TimelineRows.PREVIEW_MAX, preview!!.length)
+        assertTrue(preview.endsWith("…"))
+        assertFalse(Character.isHighSurrogate(preview[preview.length - 2]))
+    }
+
+    @Test
     fun aTurnWithoutTextHasNoPreview() {
         assertNull(TimelineRows.preview(message("u1", role = "user", parts = emptyList())))
     }

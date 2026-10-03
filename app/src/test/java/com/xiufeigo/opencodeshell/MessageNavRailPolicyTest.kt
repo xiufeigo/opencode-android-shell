@@ -52,4 +52,37 @@ class MessageNavRailPolicyTest {
         assertFalse(MessageNavRailPolicy.needsScroll(0, 240f))
         assertFalse(MessageNavRailPolicy.needsScroll(5, 0f))
     }
+
+    /**
+     * v43: a one-turn session drew the rail's active tick and nothing else — the
+     * full-rail `2 dp` `textBase` bar — so the timeline showed a contentless
+     * black dash at the trailing edge
+     * (`research/v43_verify/tE/v43_15_sent.png`, `v43_49_err3.png`).
+     */
+    @Test
+    fun aRailWithNothingToNavigateBetweenStaysHidden() {
+        assertFalse(MessageNavRailPolicy.isVisible(0))
+        assertFalse(MessageNavRailPolicy.isVisible(1))
+    }
+
+    @Test
+    fun twoTicksAreEnoughForTheRailToComeBack() {
+        assertTrue(MessageNavRailPolicy.isVisible(2))
+        assertTrue(MessageNavRailPolicy.isVisible(37))
+    }
+
+    /**
+     * v63: the rail is an overlay on the list's trailing edge, and the timeline
+     * reserves this width (plus the scrollbar strip in front of it) as a gutter
+     * while the rail is visible, so an end-aligned row — the user message's
+     * meta/copy row above all — never slides under the ticks, which read as a
+     * 「≣」 stain pinned on the copy icon
+     * (`research/v63_verify/5554/50_find_closed2.png`). The value is upstream's
+     * `[data-size=compact] width: 24px` (`message-nav.css:14-16`), the column
+     * `share/[shareID].tsx:276-281` gives the rail as a real layout sibling.
+     */
+    @Test
+    fun theRailWidthMatchesTheUpstreamCompactRail() {
+        assertEquals(24f, MessageNavRailPolicy.RAIL_WIDTH_DP, 0.001f)
+    }
 }

@@ -1,9 +1,8 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsMenuItem
 import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsModel
-import com.xiufeigo.opencodeshell.v2.ServerGeneration
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,13 +14,23 @@ import org.junit.Test
  *    the store list below is exactly what the dock receives. (The ViewModel
  *    itself cannot be constructed on the JVM — `Dispatchers.Main` — so the
  *    contract is pinned at the store level, plus the transport reply wire.)
- * 2. Generation gating: the ⋮ menu hides the v1-only share/archive rows on
- *    anything but V1 (`V2Capability`: no v2 share/archive routes).
+ * 2. v2-only: the ⋮ menu carries undo/redo/fork/move only — share/archive hit v1
+ *    routes that 404 on v2, so the rows are removed outright. MOVE (F-4) joined
+ *    later from upstream's workspace menu, which Android does not render.
  */
 class Wave24aFormExposureTest {
 
     private fun form(id: String, sessionID: String = "ses_1") =
         ChatStore.FormAsk(id = id, sessionID = sessionID, title = "t")
+
+    private fun messages(): List<ChatStore.UiMessage> = listOf(
+        ChatStore.UiMessage(
+            id = "msg_1",
+            role = "user",
+            timeCreated = 1_700_000_000_000L,
+            parts = listOf(ChatStore.UiPart(id = "p1", type = "text", text = "hi")),
+        ),
+    )
 
     // ------------------------------------------------- store→VM exposure
 
@@ -64,51 +73,19 @@ class Wave24aFormExposureTest {
         assertEquals("frm_a", state.pendingForms.firstOrNull()?.id)
     }
 
-    // ------------------------------------------------- generation gating
-
-    private fun messages(): List<ChatStore.UiMessage> = listOf(
-        ChatStore.UiMessage(
-            id = "msg_1",
-            role = "user",
-            timeCreated = 1_700_000_000_000L,
-            parts = listOf(ChatStore.UiPart(id = "p1", type = "text", text = "hi")),
-        ),
-    )
+    // ------------------------------------------------- share/archive removed
 
     @Test
-    fun shareAndArchiveRowsShowOnV1() {
-        val state = SessionActionsModel.menu(messages(), null, null, ServerGeneration.V1)
-        assertTrue(state.shareVisible)
-        assertTrue(state.archiveVisible)
-    }
-
-    @Test
-    fun shareAndArchiveRowsHideOnV2() {
-        val state = SessionActionsModel.menu(
-            messages(),
-            null,
-            "https://opncd.ai/share/x",
-            ServerGeneration.V2,
-        )
-        assertFalse(state.shareVisible)
-        assertFalse(state.archiveVisible)
-        // The rest of the menu is generation-agnostic.
+    fun shareAndArchiveRowsAreGoneWithV2Only() {
+        val state = SessionActionsModel.menu(messages(), null)
         assertTrue(state.undoEnabled)
         assertTrue(state.forkEnabled)
-        assertTrue(state.shared)
-    }
-
-    @Test
-    fun shareAndArchiveRowsHideWhenGenerationIsUnknown() {
-        val state = SessionActionsModel.menu(messages(), null, null, ServerGeneration.UNKNOWN)
-        assertFalse(state.shareVisible)
-        assertFalse(state.archiveVisible)
-    }
-
-    @Test
-    fun menuDefaultsToV1ForPreGenerationCallers() {
-        val state = SessionActionsModel.menu(messages(), null, null)
-        assertTrue(state.shareVisible)
-        assertTrue(state.archiveVisible)
+        assertTrue(state.moveEnabled)
+        // v2 has no share/archive routes — the rows and their state flags are
+        // removed outright rather than hidden. F-4 added MOVE to the same menu,
+        // so the pin is four rows; the invariant below is that share/archive
+        // are still absent.
+        assertEquals(listOf("UNDO", "REDO", "FORK", "MOVE"), SessionActionsMenuItem.entries.map { it.name })
+        assertTrue(SessionActionsMenuItem.entries.none { it.name == "SHARE" || it.name == "ARCHIVE" })
     }
 }

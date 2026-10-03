@@ -2,11 +2,14 @@ package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.composer.AttachmentMime
 import com.xiufeigo.opencodeshell.ui.session.composer.AttachmentPolicy
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.util.Base64
 
 /**
@@ -52,6 +55,49 @@ class AttachmentPolicyTest {
         assertFalse(AttachmentPolicy.isTooLarge(AttachmentPolicy.MAX_ATTACHMENT_BYTES))
         assertTrue(AttachmentPolicy.isTooLarge(AttachmentPolicy.MAX_ATTACHMENT_BYTES + 1))
         assertFalse(AttachmentPolicy.isTooLarge(0))
+    }
+
+    @Test
+    fun declaredSizesAreLongAndFollowTheSameCap() {
+        val cap = AttachmentPolicy.MAX_ATTACHMENT_BYTES.toLong()
+        assertFalse(AttachmentPolicy.isTooLarge(cap))
+        assertTrue(AttachmentPolicy.isTooLarge(cap + 1))
+        // SAF sizes can exceed Int; a 3 GB file must not wrap into "small".
+        assertTrue(AttachmentPolicy.isTooLarge(3L * 1024 * 1024 * 1024))
+    }
+
+    @Test
+    fun readCappedKeepsAStreamUpToTheLimit() {
+        val bytes = ByteArray(1024) { it.toByte() }
+        val out = AttachmentPolicy.readCapped(bytes.inputStream())
+        assertArrayEquals(bytes, out)
+        // The cap itself is inclusive, exactly like isTooLarge.
+        val atCap = ByteArray(AttachmentPolicy.MAX_ATTACHMENT_BYTES)
+        assertEquals(AttachmentPolicy.MAX_ATTACHMENT_BYTES, AttachmentPolicy.readCapped(atCap.inputStream())?.size)
+        assertEquals(0, AttachmentPolicy.readCapped(ByteArrayInputStream(ByteArray(0)))?.size)
+    }
+
+    @Test
+    fun readCappedAbortsOnTheFirstBytePastTheLimit() {
+        // The OOM path: an oversized stream must stop at the cap instead of
+        // being slurped whole — null is the "too large" answer.
+        val overCap = ByteArray(AttachmentPolicy.MAX_ATTACHMENT_BYTES + 1)
+        assertNull(AttachmentPolicy.readCapped(overCap.inputStream()))
+        // …and the abort must fire mid-stream, not after EOF: a stream that
+        // keeps yielding past the cap is cut off at the cap.
+        val endless = object : InputStream() {
+            private var served = 0
+            override fun read(): Int = if (served++ > AttachmentPolicy.MAX_ATTACHMENT_BYTES + 8192) -1 else 0
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                val n = minOf(len, 64 * 1024)
+                java.util.Arrays.fill(b, off, off + n, 1)
+                return n
+            }
+        }
+        assertNull(AttachmentPolicy.readCapped(endless))
+        // A smaller custom limit proves the same rule without 8 MB of setup.
+        assertNull(AttachmentPolicy.readCapped(ByteArray(100).inputStream(), limit = 99))
+        assertEquals(99, AttachmentPolicy.readCapped(ByteArray(99).inputStream(), limit = 99)?.size)
     }
 
     @Test
@@ -151,5 +197,47 @@ class AttachmentPolicyTest {
         assertTrue(AttachmentMime.isImage("image/webp"))
         assertFalse(AttachmentMime.isImage("application/pdf"))
         assertFalse(AttachmentMime.isImage(null))
+    }
+
+    @Test
+    fun anImageReadThatYieldedNoBytesPacksAsBinaryInsteadOfAnEmptyImage() {
+        // The SAF pick of a file that exists but was never written: an empty
+        // `data:image/…` URL is neither previewable nor decodable by the server.
+        assertEquals(AttachmentPolicy.OCTET_STREAM, AttachmentPolicy.packedMime("image/png", ByteArray(0)))
+        assertEquals("image/png", AttachmentPolicy.packedMime("image/png", byteArrayOf(2)))
+        // A zero-byte non-image file is a legitimate pick and keeps its mime.
+        assertEquals("text/plain", AttachmentPolicy.packedMime("text/plain", ByteArray(0)))
+        assertEquals(
+            "data:text/plain;base64,",
+            AttachmentPolicy.attachment("text/plain", "new.txt", ByteArray(0)).dataUrl,
+        )
+        // …and the degraded pick is a plain file chip, never a blank image frame.
+        val empty = AttachmentPolicy.attachment(
+            AttachmentPolicy.packedMime("image/png", ByteArray(0)),
+            "new.png",
+            ByteArray(0),
+        )
+        assertNull(AttachmentPolicy.imagePayload(empty.mime, empty.dataUrl))
+        assertEquals(AttachmentPolicy.Chip.FILE, AttachmentPolicy.chip(empty.mime, empty.dataUrl))
+    }
+
+    @Test
+    fun chipFallsBackToTheFileChipWithoutADecodablePayload() {
+        assertEquals(
+            AttachmentPolicy.Chip.IMAGE,
+            AttachmentPolicy.chip("image/png", "data:image/png;base64,Ag=="),
+        )
+        // Empty read / payload-less draft: no payload means no thumbnail cache key.
+        assertEquals(AttachmentPolicy.Chip.FILE, AttachmentPolicy.chip("image/png", "data:image/png;base64,"))
+        assertEquals(AttachmentPolicy.Chip.FILE, AttachmentPolicy.chip("image/png", ""))
+        assertEquals(AttachmentPolicy.Chip.FILE, AttachmentPolicy.chip("image/png", null))
+        // Non-image mimes never render a thumbnail, decoded or not.
+        assertEquals(AttachmentPolicy.Chip.FILE, AttachmentPolicy.chip("application/pdf", "data:application/pdf;base64,Ag=="))
+        assertEquals(AttachmentPolicy.Chip.FILE, AttachmentPolicy.chip(null, null))
+        // A decode Android refuses overrides an otherwise usable payload.
+        assertEquals(
+            AttachmentPolicy.Chip.FILE,
+            AttachmentPolicy.chip("image/png", "data:image/png;base64,Ag==", decodeFailed = true),
+        )
     }
 }

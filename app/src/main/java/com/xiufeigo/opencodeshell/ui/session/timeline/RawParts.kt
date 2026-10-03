@@ -50,6 +50,12 @@ object RawParts {
     /** `step-finish` part — the per-step usage record. */
     data class StepFinish(val reason: String?, val cost: Double?, val tokens: Long?)
 
+    /**
+     * `agent-switched` / `model-switched` / `location-switched` notice payload
+     * (`schema/src/session-message.ts:40-75`): the announced value only.
+     */
+    data class Switch(val value: String?)
+
     fun patch(rawJson: String?): Patch? {
         val obj = obj(rawJson) ?: return null
         return Patch(
@@ -78,6 +84,38 @@ object RawParts {
         val name = obj.optStringOrNull("name") ?: return null
         return Agent(name = name)
     }
+
+    /**
+     * `agent-switched` / `model-switched` / `location-switched` notices
+     * (`V2EventAdapter.notice`, payload = the source event): the announced
+     * value, most specific field first. `null` when the payload carries none.
+     *
+     * v46 tD: a `session.moved` payload always nests the directory under
+     * `location` (`MovePayload`, `schema/src/session-inbox.ts:31-35`), but a
+     * hand-built submit shape may carry it top-level (`{directory}`) — read
+     * that too, so a notice never renders a bare label when the directory is
+     * right there. Every read is null-safe: an explicit JSON null must not
+     * become the literal word "null" on the row. A directory with no basename
+     * (the filesystem root `/`) falls back to the directory itself
+     * ([displayName]), so the row reads `Location changed /`, never a bare
+     * label.
+     */
+    fun switch(rawJson: String?): Switch {
+        val obj = obj(rawJson) ?: return Switch(null)
+        obj.optStringOrNull("agent")?.let { return Switch(it) }
+        obj.optJSONObject("model")?.let { model ->
+            val id = model.optStringOrNull("modelID") ?: return@let
+            val provider = model.optStringOrNull("providerID")
+            return Switch(if (provider == null) id else "$provider/$id")
+        }
+        obj.optStringOrNull("subpath")?.let { return Switch(it) }
+        obj.optJSONObject("location")?.optStringOrNull("directory")?.let { return Switch(displayName(it)) }
+        obj.optStringOrNull("directory")?.let { return Switch(displayName(it)) }
+        return Switch(null)
+    }
+
+    /** `system` / `synthetic` summary line (`description`, upstream `notice()`). */
+    fun description(rawJson: String?): String? = obj(rawJson)?.optStringOrNull("description")
 
     fun retry(rawJson: String?): Retry? {
         val obj = obj(rawJson) ?: return null
@@ -114,7 +152,11 @@ object RawParts {
 
     fun retryMessage(message: String?): String? {
         val text = message?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        return if (text.length > RETRY_MESSAGE_MAX) text.take(RETRY_MESSAGE_MAX) + "…" else text
+        return if (text.length > RETRY_MESSAGE_MAX) {
+            ToolPresentation.capChars(text, RETRY_MESSAGE_MAX) + "…"
+        } else {
+            text
+        }
     }
 
     /** `capitalizeAgent()` — `build` → `Build` (`session-timeline-row.tsx:313`). */
@@ -123,6 +165,16 @@ object RawParts {
 
     /** Last path segment of a `patch` file entry (`getFilename`). */
     fun basename(path: String): String = path.substringAfterLast('/').substringAfterLast('\\')
+
+    /**
+     * Directory display name for `location-switched` rows: the basename, falling
+     * back to the directory itself when it has no basename. The filesystem root
+     * (`/`, and the same for a `C:/` anchor whose trailing separator leaves an
+     * empty last segment) would otherwise render as a bare
+     * 「Location changed」 label with no value (v47 tD_53: the move to `/`
+     * sat between two named rows as a naked label).
+     */
+    fun displayName(directory: String): String = basename(directory).ifEmpty { directory }
 
     // ------------------------------------------------------------------ utils
 
@@ -135,9 +187,6 @@ object RawParts {
         }
     }
 
-    private fun JSONObject.optStringOrNull(key: String): String? =
-        optString(key, "").takeIf { it.isNotEmpty() && it != "null" }
-
     private fun JSONObject.optDoubleOrNull(key: String): Double? =
         if (has(key) && !isNull(key)) optDouble(key) else null
 
@@ -145,8 +194,11 @@ object RawParts {
         if (this == null) return emptyList()
         val out = ArrayList<String>(length())
         for (i in 0 until length()) {
-            val value = optString(i, "")
-            if (value.isNotEmpty()) out += value
+            // `opt(i)` + type check, not `optString(i, "")`: a JSON null element
+            // would otherwise join the list as the literal string "null" (see
+            // [optStringOrNull] for the org.json split behind that).
+            val value = opt(i) as? String ?: continue
+            if (value.isNotEmpty() && value != "null") out += value
         }
         return out
     }

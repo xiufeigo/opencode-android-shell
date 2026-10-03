@@ -58,6 +58,10 @@ import com.termux.view.textselection.TextSelectionCursorController;
  *       so the host can push the grid to the server (100 ms debounced);</li>
  *   <li>{@code mTermSession.getEmulator()} → {@code mEmulator}.</li>
  * </ul>
+ * Two further host-side fixes live here (each marked {@code A' patch}):
+ * {@link #onKeyMultiple(int, int, KeyEvent)} accepts the {@code ACTION_MULTIPLE} character bursts
+ * that upstream only looked for in {@code onKeyDown} (where they never arrive), and the tap handler
+ * leaves touch mode so the framework cannot spend the next key on that transition.
  * Everything else — IME {@code InputConnection}, {@code handleKeyCode}, gestures, text selection,
  * scrolling, the cursor blinker and the renderer — is upstream code, unmodified.
  */
@@ -127,6 +131,16 @@ public final class TerminalView extends View {
 
             @Override
             public boolean onUp(MotionEvent event) {
+                // A' patch: the finger lifted over a terminal that already owns the
+                // keyboard — leave touch mode *now*. `onSingleTapUp` below is only
+                // reached after the double-tap timeout (≈300 ms), so a key pressed
+                // right after the tap would otherwise still be spent by
+                // `ViewRootImpl.checkForLeavingTouchModeAndConsume` (see the note
+                // there). Guarded on `hasFocus()` so a scroll/drag over the pane can
+                // never take the keyboard away from whatever else had it.
+                if (hasFocus() && isInTouchMode() && !isSelectingText()) {
+                    requestFocusFromTouch();
+                }
                 mScrollRemainder = 0.0f;
                 if (mEmulator != null && mEmulator.isMouseTrackingActive() && !isSelectingText() && !scrolledWithFinger) {
                     // Quick event processing when mouse tracking is active - do not wait for check of double tapping
@@ -147,7 +161,18 @@ public final class TerminalView extends View {
                     stopTextSelectionMode();
                     return true;
                 }
-                requestFocus();
+                // A' patch: `requestFocusFromTouch()` leaves touch mode *and* focuses
+                // (`View.requestFocusFromTouch` → `ViewRootImpl.ensureTouchMode(false)`).
+                // Plain `requestFocus()` left the window in touch mode, and the framework
+                // then spends the user's *next* key on leaving it: `ViewRootImpl
+                // .checkForLeavingTouchModeAndConsume` consumes a navigation key (space /
+                // tab / enter / dpad) outright and, for a typing key, runs `leaveTouchMode()`
+                // → `restoreDefaultFocus()`, which moves the focus to the window's default
+                // focusable view — and the key is dispatched to *that* view instead of the
+                // terminal. Either way one keystroke is lost after the tap, which is what
+                // v37 tA reported as "the first key after a prompt is swallowed" (a leading
+                // space being eaten and everything after it working is the same rule).
+                requestFocusFromTouch();
                 if (!mEmulator.isMouseTrackingActive()) {
                     if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) {
                         mClient.onSingleTapUp(event);
@@ -656,9 +681,6 @@ public final class TerminalView extends View {
             return true;
         } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
             return super.onKeyDown(keyCode, event);
-        } else if (event.getAction() == KeyEvent.ACTION_MULTIPLE && keyCode == KeyEvent.KEYCODE_UNKNOWN) {
-            if (mIo != null) mIo.write(event.getCharacters().getBytes(StandardCharsets.UTF_8)); // A' patch
-            return true;
         }
 
         final int metaState = event.getMetaState();
@@ -782,6 +804,25 @@ public final class TerminalView extends View {
         String code = KeyHandler.getCode(keyCode, keyMod, term.isCursorKeysApplicationMode(), term.isKeypadApplicationMode());
         if (code == null) return false;
         mIo.write(code.getBytes(StandardCharsets.UTF_8)); // A' patch
+        return true;
+    }
+
+    /**
+     * <b>A' patch — the {@code ACTION_MULTIPLE} character burst.</b> Upstream looked for this
+     * shape in {@link #onKeyDown(int, KeyEvent)}, where it can never arrive: {@code
+     * KeyEvent.dispatch} routes {@code ACTION_MULTIPLE} to this callback and, for {@code
+     * KEYCODE_UNKNOWN} (the "sequence of characters" form used by IMEs and by {@code adb shell
+     * input text} for text the virtual keymap cannot map), it has no {@code onKeyDown} fallback
+     * — the characters were dropped silently. The bytes go straight to the transport.
+     */
+    @Override
+    public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
+        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
+            mClient.logInfo(LOG_TAG, "onKeyMultiple(keyCode=" + keyCode + ", repeatCount=" + repeatCount + ", event=" + event + ")");
+        if (mIo == null) return false;
+        CharSequence characters = event.getCharacters();
+        if (characters == null || characters.length() == 0) return false;
+        mIo.write(characters.toString().getBytes(StandardCharsets.UTF_8));
         return true;
     }
 

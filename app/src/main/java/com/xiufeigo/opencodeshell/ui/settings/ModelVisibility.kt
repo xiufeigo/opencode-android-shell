@@ -3,24 +3,40 @@ package com.xiufeigo.opencodeshell.ui.settings
 import org.json.JSONObject
 
 /**
- * P0 Models — per-model visibility + group collapse state.
+ * P0 Models — per-entry visibility + group collapse state.
  *
  * Upstream (`settings/models/models.tsx:45-71,130-207`,
  * `providers/models/models.tsx:95-113`):
  *
- * - visibility is a per-`{providerID,modelID}` map (`show`/`hide`/unset);
- *   unset means "visible iff in the latest set or without a parseable release
- *   date". The model picker (`providers/models/select-dialog.tsx:270`)
- *   filters on `visible()`, so the Models tab exists *to drive* that picker.
+ * - visibility is a per-entry map (`show`/`hide`/unset); unset means "visible
+ *   iff in the latest set or without a parseable release date". The model picker
+ *   (`providers/models/select-dialog.tsx:270`) filters on `visible()`, so the
+ *   Models tab exists *to drive* that picker. Upstream's key is
+ *   `{providerID, modelID: item.id}` (`models.tsx:186-199`) — the **catalog
+ *   entry** id (`Model.Info.id` → `Model.entryID`), not the wire `modelID`:
+ *   one provider can list several entries under one `modelID` (measured on the
+ *   live v2 backend: `openai` ships `gpt-5.6`, `gpt-5.6-fast` and
+ *   `gpt-5.6-pro`, all reporting `modelID: "gpt-5.6"`), and keying by the wire
+ *   id made one Switch toggle every sibling. [key] is therefore
+ *   `providerID:entryID`.
  * - group collapse is a per-provider-id `collapsed` map persisted in
  *   `settings-v2.models.providers` (`ModelProvidersSchema`), and groups sort
  *   popular-first (`popularProviders` order) then by provider name.
  *
  * This file is the pure layer: [ModelVisibility] encodes/decodes the override
- * map (the shape [SettingsStore] persists), [isModelVisible] applies the
- * upstream default rule, and [modelGroupOrder]/[sortedModelGroups] apply the
- * group ordering. Collapse state is keyed by provider id in the same map
- * shape.
+ * map (the shape [SettingsStore] persists), [isVisible] applies the upstream
+ * default rule, and [modelGroupOrder]/[sortedModelGroups] apply the group
+ * ordering. Collapse state is keyed by provider id in the same map shape.
+ *
+ * Legacy keys: builds before entry keys wrote `providerID:modelID` (the wire
+ * id), so every override persisted back then still resolves — [isVisible] falls
+ * back to that key when the entry has none of its own.
+ *
+ * The fallback has one sharp edge worth naming: the **base** entry's key *is* the
+ * legacy key (`gpt-5.6`'s entry id equals its model id), so a plain write to the
+ * base would leak to its siblings through the fallback. [toggleWrites] is what the
+ * Models tab calls instead: it pins every sibling to its current state first, which
+ * keeps a flip entry-level without giving up the legacy read.
  */
 object ModelVisibility {
 
@@ -35,8 +51,11 @@ object ModelVisibility {
         }
     }
 
-    /** `providerID:modelID` — the same key encoding `models.tsx` uses. */
-    fun key(providerID: String, modelID: String): String = "$providerID:$modelID"
+    /**
+     * `providerID:entryID` — the same encoding `models.tsx:186-199` builds from
+     * the catalog entry id ([ModelRow.entryID], `Model.Info.id`).
+     */
+    fun key(providerID: String, entryID: String): String = "$providerID:$entryID"
 
     /**
      * Upstream `visible()` (`models.tsx:95-103`): an explicit override wins;
@@ -44,30 +63,86 @@ object ModelVisibility {
      * parseable release date. [inLatestSet] and [hasReleaseDate] carry the two
      * signals the native picker can compute; both default to the visible side
      * so unknown models never vanish.
+     *
+     * [modelID] is the entry's wire model id, used only as the **legacy
+     * fallback** key (see the file header); it defaults to [entryID], which is
+     * what a v1 catalog (no separate entry id) and the pre-entry-key build both
+     * wrote.
      */
     fun isVisible(
         providerID: String,
-        modelID: String,
+        entryID: String,
         overrides: Map<String, String>,
         inLatestSet: Boolean = true,
         hasReleaseDate: Boolean = false,
+        modelID: String = entryID,
     ): Boolean {
-        return when (Override.fromWire(overrides[key(providerID, modelID)])) {
+        return when (overrideFor(providerID, entryID, overrides, modelID)) {
             Override.SHOW -> true
             Override.HIDE -> false
             null -> inLatestSet || !hasReleaseDate
         }
     }
 
+    /**
+     * The override that applies to one entry: its own entry key first, then the
+     * legacy `providerID:modelID` key an older build wrote. Null = unset (the
+     * caller applies the upstream default rule).
+     */
+    fun overrideFor(
+        providerID: String,
+        entryID: String,
+        overrides: Map<String, String>,
+        modelID: String = entryID,
+    ): Override? =
+        Override.fromWire(overrides[key(providerID, entryID)])
+            ?: Override.fromWire(overrides[key(providerID, modelID)])
+
+    /**
+     * Writes the override for one **entry** (`providerID:entryID`). A write never
+     * touches the legacy key: the base entry's entry id equals its model id, so
+     * for that one row the two keys are the same string, and clearing it would
+     * throw away the user's own base override.
+     */
     fun setVisible(
         overrides: Map<String, String>,
         providerID: String,
-        modelID: String,
+        entryID: String,
         visible: Boolean,
     ): Map<String, String> {
         val next = overrides.toMutableMap()
-        next[key(providerID, modelID)] = if (visible) Override.SHOW.wire else Override.HIDE.wire
+        next[key(providerID, entryID)] = if (visible) Override.SHOW.wire else Override.HIDE.wire
         return next
+    }
+
+    /** One Models-tab write: `providerID:entryID` ← [visible]. */
+    data class EntryWrite(val providerID: String, val entryID: String, val visible: Boolean)
+
+    /**
+     * The writes one Models-tab Switch performs: [row] flipped to [visible], plus —
+     * only when [row] is the **base** entry (`entryID == modelID`, whose key is
+     * also the legacy key) — one explicit write per sibling so the flip cannot
+     * reach them through the legacy fallback.
+     *
+     * The sibling write carries the sibling's *current* visibility ([ModelRow.visible],
+     * the effective value [modelRows] already resolved), so materialising it never
+     * changes what the sibling shows; it only pins that state to the sibling's own
+     * key. Without it, hiding `gpt-5.6` would write `openai:gpt-5.6 = hide`, which
+     * every `-fast`/`-pro` entry would inherit — the group switch this change
+     * removes. [rows] must be the **unfiltered** row list, so a search cannot leave
+     * a sibling unmaterialised.
+     */
+    fun toggleWrites(rows: List<ModelRow>, row: ModelRow, visible: Boolean): List<EntryWrite> {
+        val own = EntryWrite(row.providerID, row.entryID, visible)
+        if (row.entryID != row.id) return listOf(own)
+        return buildList {
+            add(own)
+            for (sibling in rows) {
+                if (sibling.providerID != row.providerID) continue
+                if (sibling.id != row.id || sibling.entryID == row.entryID) continue
+                add(EntryWrite(sibling.providerID, sibling.entryID, sibling.visible))
+            }
+        }
     }
 
     /** Inverse of [encode]: malformed input reads as "no overrides". */

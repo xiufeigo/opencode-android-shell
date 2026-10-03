@@ -3,6 +3,7 @@ package com.xiufeigo.opencodeshell
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatStoreTest {
@@ -32,8 +33,40 @@ class ChatStoreTest {
         )
         val merged = s.messages.single { it.id == "msg_1" }
         assertEquals(listOf("p1", "p2"), merged.parts.map { it.id })
-        assertEquals("v1", merged.parts.first { it.id == "p1" }.text)
+        assertEquals("v2", merged.parts.first { it.id == "p1" }.text)
         assertEquals("stream", merged.parts.first { it.id == "p2" }.text)
+    }
+
+    @Test
+    fun partUpdatedKeepsToolNameWhenLaterFramesOmitIt() {
+        val started = ChatStore.UiPart(id = "c1", type = "tool", toolName = "shell", toolStatus = "streaming")
+        var s = ChatStore.reduce(state(), ChatStore.Event.PartUpdated("msg_1", started))
+        // v2 input.ended / called / success payloads carry no tool name.
+        s = ChatStore.reduce(
+            s,
+            ChatStore.Event.PartUpdated(
+                "msg_1",
+                ChatStore.UiPart(id = "c1", type = "tool", toolStatus = "running", toolInput = "{}"),
+            ),
+        )
+        s = ChatStore.reduce(
+            s,
+            ChatStore.Event.PartUpdated(
+                "msg_1",
+                ChatStore.UiPart(id = "c1", type = "tool", toolStatus = "completed", toolOutput = "ok"),
+            ),
+        )
+        val part = s.messages.single().parts.single()
+        assertEquals("shell", part.toolName)
+        assertEquals("completed", part.toolStatus)
+        assertEquals("ok", part.toolOutput)
+
+        // An incoming name still wins.
+        s = ChatStore.reduce(
+            s,
+            ChatStore.Event.PartUpdated("msg_1", ChatStore.UiPart(id = "c1", type = "tool", toolName = "tar")),
+        )
+        assertEquals("tar", s.messages.single().parts.single().toolName)
     }
 
     @Test
@@ -146,67 +179,6 @@ class ChatStoreTest {
     }
 
     @Test
-    fun parseEventUnwrapsPropertiesEnvelope() {
-        // Real wire format: {"type":"...","properties":{...}} (vendored SDK
-        // reads t.properties.part / t.properties.info / t.properties.messageID).
-        val partEvent = ChatStore.parseEvent(
-            "message.part.updated",
-            JSONObject(
-                """{"type":"message.part.updated","properties":
-                   {"sessionID":"ses_1","messageID":"msg_1",
-                    "part":{"id":"prt_1","type":"text","text":"hi"}}}""",
-            ),
-        )
-        assertEquals(ChatStore.Event.PartUpdated("msg_1", ChatStore.parsePart(JSONObject("""{"id":"prt_1","type":"text","text":"hi"}"""))), partEvent)
-
-        val updated = ChatStore.parseEvent(
-            "message.updated",
-            JSONObject(
-                """{"type":"message.updated","properties":
-                   {"info":{"id":"msg_1","role":"assistant","time":{"created":5}},
-                    "parts":[]}}""",
-            ),
-        )
-        assertEquals("msg_1", (updated as ChatStore.Event.MessageUpdated).message.id)
-
-        val removed = ChatStore.parseEvent(
-            "message.removed",
-            JSONObject("""{"type":"message.removed","properties":{"messageID":"msg_9"}}"""),
-        )
-        assertEquals(ChatStore.Event.MessageRemoved("msg_9"), removed)
-
-        val idle = ChatStore.parseEvent(
-            "session.idle",
-            JSONObject("""{"type":"session.idle","properties":{"sessionID":"ses_1"}}"""),
-        )
-        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.IDLE), idle)
-
-        // Flat payloads (no properties) still parse.
-        assertEquals(
-            ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.IDLE),
-            ChatStore.parseEvent("session.idle", JSONObject("""{"type":"session.idle"}""")),
-        )
-        // part envelope without messageID anywhere is dropped, not crashed on.
-        assertNull(
-            ChatStore.parseEvent(
-                "message.part.updated",
-                JSONObject("""{"type":"message.part.updated","properties":{"part":{"id":"x"}}}"""),
-            ),
-        )
-    }
-
-    @Test
-    fun sessionIdOfReadsEnvelopeAndInfoShapes() {
-        assertEquals("ses_1", ChatStore.sessionIdOf(JSONObject("""{"properties":{"id":"ses_1"}}""")))
-        assertEquals(
-            "ses_2",
-            ChatStore.sessionIdOf(JSONObject("""{"properties":{"info":{"id":"ses_2"}}}""")),
-        )
-        assertEquals("ses_3", ChatStore.sessionIdOf(JSONObject("""{"id":"ses_3"}""")))
-        assertNull(ChatStore.sessionIdOf(JSONObject("""{"properties":{}}""")))
-    }
-
-    @Test
     fun partDeltaAppendsTextAndDropsOrphans() {
         var s = ChatStore.reduce(
             ChatStore.ChatState(),
@@ -223,52 +195,46 @@ class ChatStoreTest {
         assertEquals(before, ChatStore.reduce(s, ChatStore.Event.PartDelta("msg_1", "p1", "toolInput", "x")))
     }
 
+    // --------------------------------------- initial model-selection notice
+
+    private fun modelNotice(id: String, time: Long) =
+        ChatStore.UiMessage(
+            id = id,
+            role = "assistant",
+            timeCreated = time,
+            parts = listOf(ChatStore.UiPart(id = "$id:notice", type = "model-switched")),
+        )
+
     @Test
-    fun parseEventHandlesPartDeltaAndSessionStatus() {
-        val delta = ChatStore.parseEvent(
-            "message.part.delta",
-            JSONObject(
-                """{"type":"message.part.delta","properties":
-                   {"sessionID":"ses_1","messageID":"msg_1","partID":"p1","field":"text","delta":" more"}}""",
-            ),
+    fun initialModelSelectionLeavesAnEmptyTranscriptEmpty() {
+        // Upstream `data.ts` drops the `session.model.selected` marker while
+        // the session has no message list: the initial frame names the
+        // current model, it is not a switch, so an empty session must not
+        // open with a stray "Model changed" row (5554/5560).
+        val s = ChatStore.reduce(
+            ChatStore.ChatState(),
+            ChatStore.Event.MessageUpdated(modelNotice("msg_evt1", 100)),
         )
-        assertEquals(ChatStore.Event.PartDelta("msg_1", "p1", "text", " more"), delta)
+        assertTrue(s.messages.isEmpty())
+    }
 
-        val busy = ChatStore.parseEvent(
-            "session.status",
-            JSONObject(
-                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"busy"}}}""",
-            ),
+    @Test
+    fun modelSwitchOntoATranscriptStillLands() {
+        val s = ChatStore.reduce(
+            state(message("msg_1", 100, listOf(part("p1", "hello")), role = "user")),
+            ChatStore.Event.MessageUpdated(modelNotice("msg_evt2", 200)),
         )
-        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.RUNNING), busy)
+        assertEquals(listOf("msg_1", "msg_evt2"), s.messages.map { it.id })
+    }
 
-        // A retry frame is still "running" but now carries its own detail
-        // (`ChatState.retry`, see ChatStoreWave4EventTest); it must NOT be
-        // reported as an `error`, which would mount the red error card.
-        val retry = ChatStore.parseEvent(
-            "session.status",
-            JSONObject(
-                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"retry"}}}""",
-            ),
-        ) as ChatStore.Event.RunStatusChanged
-        assertEquals(ChatStore.RunStatus.RUNNING, retry.status)
-        assertNull(retry.error)
-        assertEquals(0, retry.retry?.attempt)
-
-        val idle = ChatStore.parseEvent(
-            "session.status",
-            JSONObject(
-                """{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"idle"}}}""",
-            ),
+    @Test
+    fun ordinaryRowsStillLandOnAnEmptyTranscript() {
+        // The gate names the pure `model-switched` notice shape only: the
+        // first real row of a session is never dropped by it.
+        val s = ChatStore.reduce(
+            ChatStore.ChatState(),
+            ChatStore.Event.MessageUpdated(message("msg_1", 100, listOf(part("p1", "hello")))),
         )
-        assertEquals(ChatStore.Event.RunStatusChanged(ChatStore.RunStatus.IDLE), idle)
-
-        // Unknown status type is dropped, not mapped.
-        assertNull(
-            ChatStore.parseEvent(
-                "session.status",
-                JSONObject("""{"type":"session.status","properties":{"status":{"type":"weird"}}}"""),
-            ),
-        )
+        assertEquals(listOf("msg_1"), s.messages.map { it.id })
     }
 }

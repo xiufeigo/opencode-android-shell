@@ -31,9 +31,10 @@ import kotlin.math.abs
  *   the previous message's model. The first model of a session is the initial
  *   selection, not a switch, so it never opens the timeline with a separator.
  * - **compaction start / end** — a message carrying a `compaction` part
- *   (`UiPart.type == "compaction"`). The store has no compaction *status*, so
- *   the end separator always follows the message and never carries an outcome
- *   suffix (documented data gap, `research/wave5_timeline.md`).
+ *   (`UiPart.type == "compaction"`). The end separator follows the message and
+ *   carries the outcome the part settled on: a rejected compaction reads
+ *   `oc_compaction_failed` instead of upstream's completed label
+ *   ([Row.Separator.failed], [ChatStore.compactionFailed]).
  * - **interrupted** — `UiMessage.interrupted` (`isInterrupted(info.error)`,
  *   `ChatStore.kt:455,476`). The divider is placed *after* the interrupted
  *   turn, matching `projection.ts:349-352` ("a divider after interrupted output
@@ -90,8 +91,40 @@ object TimelineRows {
             val anchorID: String,
             /** [SeparatorKind.MODEL] only: `"providerID/modelID"`. */
             val model: String? = null,
+            /**
+             * [SeparatorKind.COMPACTION_END] only: the compaction was rejected,
+             * so the label must not read as a completed compaction — the v19
+             * over-limit session showed "Session compacted" for a compaction
+             * whose own summary request had just been rejected, i.e. the one
+             * thing that told the user the rescue worked when it had not.
+             *
+             * Both shapes of the fact land here ([ChatStore.compactionFailed]):
+             * the live `session.compaction.*` row (`toolStatus == "error"`) and
+             * the durable `Session.Message.Compaction` row (`status: "failed"`,
+             * rebuilt by [ChatStore.compactionRow]).
+             */
+            val failed: Boolean = false,
         ) : Row {
             override val key: String get() = "sep:" + kind.name.lowercase() + ":" + anchorID
+        }
+
+        /**
+         * The failure of a turn (`TimelineRow.Error`,
+         * `_upstream/packages/session-ui/src/timeline/projection.ts:357-359`):
+         * one row per failed turn, in turn order, keyed `error:<anchor>` exactly
+         * like upstream's `error:${userMessageID}`
+         * (`timeline/timeline-row.ts:99-100`). It replaces the message row of the
+         * failure row it came from ([ChatStore.ERROR_ROLE]) — the row carries no
+         * parts of its own — and it never merges with a neighbouring failure:
+         * consecutive failures are consecutive cards.
+         */
+        data class Error(
+            /** The failure row's message id (the `LazyColumn` key is `error:<id>`). */
+            val messageID: String,
+            val message: String,
+            val detail: String?,
+        ) : Row {
+            override val key: String get() = "error:$messageID"
         }
     }
 
@@ -114,30 +147,74 @@ object TimelineRows {
     /**
      * `projection.ts:311-376` for the Android data: the message rows plus the
      * separators that belong between them, in visual (top → bottom) order.
+     *
+     * Failure rows ([ChatStore.ERROR_ROLE]) surface as [Row.Error] at their own
+     * position — they are not message rows, and they are invisible to the
+     * separator rules (they carry no model and never interrupt), so the model
+     * switch / interruption dividers keep keying on the real messages around
+     * them.
+     *
+     * Parked steers ([ChatStore.PENDING_ROLE]) are **held back and appended
+     * last**. They are not turn content: upstream keeps a pending steer out of
+     * the interrupted/assistant bookkeeping and moves it to the end of the
+     * visible list (`controller-projection.ts:27-32` — "pending steers do not
+     * own assistant work until they are delivered"), so it can neither open a
+     * divider nor become the `previous` a model-switch separator is compared
+     * against, and the trailing `Interrupted` divider still closes the turn it
+     * belongs to (before the steer, not after it).
      */
     fun build(messages: List<ChatStore.UiMessage>): List<Row> {
         val rows = ArrayList<Row>(messages.size + 4)
-        messages.forEachIndexed { index, message ->
-            val previous = messages.getOrNull(index - 1)
+        var previous: ChatStore.UiMessage? = null
+        val parked = ArrayList<ChatStore.UiMessage>(0)
+        for (message in messages) {
+            if (ChatStore.isErrorRow(message)) {
+                rows += Row.Error(
+                    messageID = message.id,
+                    message = ChatStore.errorRowText(message),
+                    detail = ChatStore.errorRowDetail(message),
+                )
+                continue
+            }
+            if (ChatStore.isPendingRow(message)) {
+                parked += message
+                continue
+            }
             if (previous != null) {
                 if (previous.interrupted && !hasCompaction(previous)) {
                     rows += Row.Separator(SeparatorKind.INTERRUPTED, previous.id)
                 }
-                if (message.model != null && message.model != previous.model) {
+                if (message.model != null && message.model != previous.model &&
+                    // A `model-switched` notice row is the upstream separator
+                    // (`session-timeline-row.tsx:509-513`); its own part row
+                    // renders the switch, so the derived separator stays away.
+                    message.parts.none { it.type == "model-switched" }
+                ) {
                     rows += Row.Separator(SeparatorKind.MODEL, message.id, model = message.model)
                 }
             }
             val compaction = hasCompaction(message)
             if (compaction) rows += Row.Separator(SeparatorKind.COMPACTION_START, message.id)
             rows += Row.Message(message)
-            if (compaction) rows += Row.Separator(SeparatorKind.COMPACTION_END, message.id)
+            if (compaction) {
+                rows += Row.Separator(
+                    SeparatorKind.COMPACTION_END,
+                    message.id,
+                    failed = message.parts.any { it.type == "compaction" && ChatStore.compactionFailed(it) },
+                )
+            }
+            previous = message
         }
         // The last turn is interrupted and nothing follows it: the divider has no
         // "next message" to precede, so it closes the timeline.
-        val last = messages.lastOrNull()
+        // Client-side rows (the failure history, a parked steer) never *are* the
+        // last turn — a failure row closes the turn before it and a pending steer
+        // is not part of the turn at all — so they must not mask the divider.
+        val last = messages.lastOrNull { !ChatStore.isClientRow(it) }
         if (last != null && last.interrupted && !hasCompaction(last)) {
             rows += Row.Separator(SeparatorKind.INTERRUPTED, last.id)
         }
+        for (message in parked) rows += Row.Message(message)
         return rows
     }
 
@@ -212,7 +289,25 @@ object TimelineRows {
             ?: return null
         val flat = text.replace(WHITESPACE, " ").trim()
         if (flat.isEmpty()) return null
-        return if (flat.length > PREVIEW_MAX) flat.take(PREVIEW_MAX) + "…" else flat
+        return if (flat.length > PREVIEW_MAX) {
+            ToolPresentation.capChars(flat, PREVIEW_MAX) + "…"
+        } else {
+            flat
+        }
+    }
+
+    /**
+     * Stable `LazyColumn` `contentType` for a [Row]: messages split by role,
+     * separators by kind. Without it Compose recycles item slots across types
+     * (a user bubble slot reused for an assistant turn re-creates the whole
+     * subtree); with it a long session scrolls on warm slots.
+     *
+     * Pure so it is covered by a JVM unit test (`TimelineFoldTest`).
+     */
+    fun contentType(row: Row): String = when (row) {
+        is Row.Separator -> "separator:" + row.kind.name.lowercase()
+        is Row.Message -> "message:" + row.message.role
+        is Row.Error -> "error"
     }
 
     private val WHITESPACE = Regex("\\s+")

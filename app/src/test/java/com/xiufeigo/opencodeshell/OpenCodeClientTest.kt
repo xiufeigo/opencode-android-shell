@@ -17,47 +17,12 @@ class OpenCodeClientTest {
         OpenCodeClient(server.url("/").toString().toHttpUrlOrNull()!!, username, password)
 
     @Test
-    fun promptAsyncPostsTextAndFilePartsToPromptAsyncPath() {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-            val c = client(server)
-            c.promptAsync(
-                "ses_1",
-                "hi",
-                listOf(
-                    ChatStore.UiPart(
-                        id = "att1",
-                        type = "file",
-                        mime = "image/png",
-                        filename = "a.png",
-                        url = "data:image/png;base64,AAA",
-                    ),
-                ),
-            )
-            val recorded = server.takeRequest()
-            assertEquals("POST", recorded.method)
-            assertEquals("/session/ses_1/prompt_async", recorded.path)
-            val body = JSONObject(recorded.body.readUtf8())
-            val parts = body.getJSONArray("parts")
-            assertEquals(2, parts.length())
-            val text = parts.getJSONObject(0)
-            assertEquals("text", text.getString("type"))
-            assertEquals("hi", text.getString("text"))
-            val file = parts.getJSONObject(1)
-            assertEquals("file", file.getString("type"))
-            assertEquals("image/png", file.getString("mime"))
-            assertEquals("a.png", file.getString("filename"))
-            assertEquals("data:image/png;base64,AAA", file.getString("url"))
-            c.close()
-        }
-    }
-
-    @Test
-    fun listSessionsParsesNestedTimeUpdated() {
+    fun listSessionsParsesV2EnvelopeAndLocationDirectory() {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """[{"id":"ses_1","title":"T1","directory":"/w","time":{"updated":42}}]""",
+                    """{"data":[{"id":"ses_1","title":"T1","location":{"directory":"/w"},""" +
+                        """"time":{"updated":42},"cost":0.5}]}""",
                 ),
             )
             val c = client(server)
@@ -69,30 +34,39 @@ class OpenCodeClientTest {
             assertEquals(42L, sessions[0].updatedAt)
             val recorded = server.takeRequest()
             assertEquals("GET", recorded.method)
-            assertEquals("/session", recorded.path)
+            assertEquals("/api/session", recorded.requestUrl!!.encodedPath)
             assertNull(recorded.getHeader("Authorization"))
             c.close()
         }
     }
 
     @Test
-    fun messagesParsesInfoWrapperAndNestedTimeCreated() {
+    fun messagesParsesV2RowsNewestFirstIntoChronologicalOrder() {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """[{"info":{"id":"msg_1","sessionID":"ses_1","role":"assistant","time":{"created":123}},""" +
-                        """"parts":[{"id":"p1","type":"text","text":"hello"}]}]""",
+                    """{"data":[
+                        {"id":"msg_2","time":{"created":200},"type":"assistant","agent":"build",
+                         "model":{"id":"gpt-5","providerID":"openai"},
+                         "content":[{"id":"p1","type":"text","text":"hello"}]},
+                        {"id":"msg_1","time":{"created":100},"type":"user","text":"hi"}]}""",
                 ),
             )
             val c = client(server)
             val messages = c.messages("ses_1")
-            assertEquals(1, messages.size)
+            assertEquals(2, messages.size)
             assertEquals("msg_1", messages[0].id)
             assertEquals("ses_1", messages[0].sessionID)
-            assertEquals("assistant", messages[0].role)
-            assertEquals(123L, messages[0].timeCreated)
-            assertEquals("hello", messages[0].parts[0].text)
-            assertEquals("/session/ses_1/message", server.takeRequest().path)
+            assertEquals("user", messages[0].role)
+            assertEquals(100L, messages[0].timeCreated)
+            assertEquals("hi", messages[0].parts[0].text)
+            assertEquals("msg_2", messages[1].id)
+            assertEquals("assistant", messages[1].role)
+            assertEquals("openai", messages[1].providerID)
+            assertEquals("gpt-5", messages[1].modelID)
+            assertEquals("build", messages[1].agent)
+            assertEquals("hello", messages[1].parts[0].text)
+            assertEquals("/api/session/ses_1/message", server.takeRequest().requestUrl!!.encodedPath)
             c.close()
         }
     }
@@ -115,15 +89,15 @@ class OpenCodeClientTest {
     @Test
     fun directoryQueryParameterIncludedOnlyWhenNotBlank() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
             val c = client(server)
             c.listSessions("/workspace")
             assertEquals("/workspace", server.takeRequest().requestUrl!!.queryParameter("directory"))
             c.listSessions("")
             val blanked = server.takeRequest()
             assertNull(blanked.requestUrl!!.queryParameter("directory"))
-            assertEquals("/session", blanked.path)
+            assertEquals("/api/session", blanked.requestUrl!!.encodedPath)
             c.close()
         }
     }
@@ -160,12 +134,16 @@ class OpenCodeClientTest {
         assertEquals(0, OpenCodeClient.parseJsonArray("""{"noArray":1}""").size)
     }
 
-    /** `/find/file` returns a bare array of path strings on the wire. */
+    /** `GET /api/fs/find` returns a `{location,data}` envelope of relative paths. */
     @Test
-    fun findFilesReadsStringArrayAndQueryParameter() {
+    fun findFilesReadsEnvelopeRowsAndQueryParameter() {
         MockWebServer().use { server ->
             server.enqueue(
-                MockResponse().setResponseCode(200).setBody("""["src/App.kt","README.md"]"""),
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/w"},"data":[""" +
+                        """{"path":"src/App.kt","type":"file"},""" +
+                        """{"path":"README.md","type":"file"}]}""",
+                ),
             )
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody("""["mixed"]"""),
@@ -174,11 +152,11 @@ class OpenCodeClientTest {
             val paths = c.findFiles("App", directory = "/w")
             assertEquals(listOf("src/App.kt", "README.md"), paths)
             val recorded = server.takeRequest()
-            assertEquals("/find/file", recorded.requestUrl!!.encodedPath)
+            assertEquals("/api/fs/find", recorded.requestUrl!!.encodedPath)
             assertEquals("App", recorded.requestUrl!!.queryParameter("query"))
-            assertEquals("/w", recorded.requestUrl!!.queryParameter("directory"))
+            assertEquals("/w", recorded.requestUrl!!.queryParameter("location[directory]"))
 
-            // Object entries with a "path" field are tolerated too.
+            // A bare string array (the v1 shape) still parses.
             assertEquals(listOf("mixed"), c.findFiles("m"))
             c.close()
         }
@@ -204,20 +182,21 @@ class OpenCodeClientTest {
         assertNull(user.modelID)
     }
 
-    /** `GET /session/:id` single-session read (title refresh on snapshot). */
+    /** `GET /api/session/:id` single-session read (title refresh on snapshot). */
     @Test
     fun sessionReadsSingleSessionInfo() {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """{"id":"ses_9","title":"DRAFT_OK","directory":"D:\\w","time":{"updated":7}}""",
+                    """{"data":{"id":"ses_9","title":"DRAFT_OK","location":{"directory":"D:\\w"},""" +
+                        """"time":{"updated":7}}}""",
                 ),
             )
             val c = client(server)
             val s = c.session("ses_9")
             assertEquals("DRAFT_OK", s.title)
             assertEquals("D:\\w", s.directory)
-            assertEquals("/session/ses_9", server.takeRequest().path)
+            assertEquals("/api/session/ses_9", server.takeRequest().requestUrl!!.encodedPath)
             c.close()
         }
     }

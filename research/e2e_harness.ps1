@@ -16,7 +16,7 @@ param(
     [string]$Prompt = 'Reply with the single word E2E_OK',
     [string]$Name = 'shot',
     [string]$Session = 'ses_f41f7138cffeB43nHxQAyNE1uf',
-    [string]$Base = 'http://127.0.0.1:4096'
+    [string]$Base = 'http://127.0.0.1:4095/api'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,15 +45,16 @@ switch ($Action) {
     'install' {
         & $adb -s $Serial install -r $apk | Select-Object -Last 1
         & $adb -s $Serial reverse tcp:4096 tcp:4096 | Out-Null
+        & $adb -s $Serial reverse tcp:4095 tcp:4095 | Out-Null
         & $adb -s $Serial shell am force-stop com.xiufeigo.opencodeshell
         & $adb -s $Serial shell monkey -p com.xiufeigo.opencodeshell 1 | Out-Null
         Start-Sleep -Seconds 8
         Write-Output "installed + relaunched on $Serial (reverse re-added)"
     }
     'send' {
-        $body = @{ parts = @(@{ type = 'text'; text = $Prompt }) } | ConvertTo-Json -Depth 5 -Compress
-        $code = (Invoke-WebRequest -Uri "$Base/session/$Session/prompt_async" -Method Post -ContentType 'application/json' -Body $body -UseBasicParsing).StatusCode
-        Write-Output "prompt_async -> $code ; waiting for the turn to settle"
+        $body = @{ text = $Prompt } | ConvertTo-Json -Compress
+        $code = (Invoke-WebRequest -Uri "$Base/session/$Session/prompt" -Method Post -ContentType 'application/json' -Body $body -UseBasicParsing).StatusCode
+        Write-Output "prompt -> $code ; waiting for the turn to settle"
         Start-Sleep -Seconds 20
         & $adb -s $Serial shell screencap -p /sdcard/$Name.png
         & $adb -s $Serial pull /sdcard/$Name.png (Join-Path $repo "$Name.png") | Out-Null

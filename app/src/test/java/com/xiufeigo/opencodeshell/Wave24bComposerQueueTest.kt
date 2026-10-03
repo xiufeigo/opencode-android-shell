@@ -114,6 +114,53 @@ class Wave24bComposerQueueTest {
         assertEquals(listOf(token), MentionTokens.retokenize("@build ", listOf(token, token)))
     }
 
+    @Test
+    fun retokenizeKeepsCjkAndSpaceLabelsTheRegexCouldNotSee() {
+        // The P1 repro: TOKEN_REGEX finds no hit for a 中文/space label, the
+        // empty hit list dropped *every* token, and the pick left files[].
+        val zhFile = MentionTokens.Token(
+            ComposerSuggestions.Category.FILE,
+            "需求文档.md",
+            path = "需求文档.md",
+        )
+        val agent = MentionTokens.Token(ComposerSuggestions.Category.AGENT, "build", agent = "build")
+        assertEquals(
+            listOf(zhFile, agent),
+            MentionTokens.retokenize("看 @需求文档.md 问 @build ", listOf(zhFile, agent)),
+        )
+        val spaced = MentionTokens.Token(
+            ComposerSuggestions.Category.FILE,
+            "my plan.txt",
+            path = "my plan.txt",
+        )
+        assertEquals(
+            listOf(spaced),
+            MentionTokens.retokenize("see @my plan.txt now", listOf(spaced)),
+        )
+        // Editing the chip away still drops it — literal matching, not a pass.
+        assertTrue(MentionTokens.retokenize("plan gone", listOf(spaced)).isEmpty())
+        assertEquals(
+            listOf(zhFile),
+            MentionTokens.retokenize("@需求文档.md ", listOf(zhFile, agent)),
+        )
+    }
+
+    @Test
+    fun retokenizePrefersTheLongestLabelAndKeepsBareSuffixesOut() {
+        val short = MentionTokens.Token(ComposerSuggestions.Category.AGENT, "build", agent = "build")
+        val long = MentionTokens.Token(ComposerSuggestions.Category.AGENT, "build tools", agent = "build tools")
+        // Longest closed label wins at the '@'…
+        assertEquals(
+            listOf(long, short),
+            MentionTokens.retokenize("@build tools and @build ", listOf(short, long)),
+        )
+        // …a tail that continues a bare token is not the chip…
+        assertTrue(MentionTokens.retokenize("@building", listOf(short)).isEmpty())
+        // …while punctuation right after it still is.
+        assertEquals(listOf(short), MentionTokens.retokenize("@build,", listOf(short)))
+        assertEquals(listOf(short), MentionTokens.retokenize("mail@build ", listOf(short)))
+    }
+
     // ------------------------------------------------- structured submission
 
     @Test

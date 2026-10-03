@@ -450,6 +450,8 @@
     <string name="error_childStore_persistedProjectMetadataCreateFailed">Failed to create persisted project metadata</string>
     <string name="error_childStore_storeCreateFailed">Failed to create store</string>
     <string name="error_dev_rootNotFound">Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?</string>
+    <string name="error_locationMissing_title">Project directory missing or inaccessible</string>
+    <string name="error_locationMissing_advice">This session\'s project directory was deleted or cannot be reached on the server. Restore the directory, then retry — or move the session to another directory.</string>
     <string name="error_page_action_checkUpdates">Check for updates</string>
     <string name="error_page_action_checking">Checking…</string>
     <string name="error_page_action_exportLogs">Export Logs</string>
@@ -469,6 +471,30 @@
     <string name="error_page_title_status">Server request failed</string>
     <string name="error_page_version">Version: %1$s</string>
     <string name="error_server_invalidConfiguration">Invalid configuration</string>
+    <string name="error_server_workingDirectoryMissing">Working directory does not exist</string>
+    <string name="error_server_workingDirectoryNotDirectory">Working directory is not a directory</string>
+    <string name="error_server_unableToExecuteCommand">Unable to execute command</string>
+    <string name="error_server_commandFailed">Command failed</string>
+    <string name="error_server_commandCancelled">Command cancelled</string>
+    <string name="error_server_fileNotFound">File not found</string>
+    <string name="error_server_pathIsDirectoryNotFile">Path is a directory, not a file</string>
+    <string name="error_server_oldStringNotFoundHead">Could not find oldString in</string>
+    <string name="error_server_oldStringNotFoundTail">. It must match exactly, including whitespace and indentation.</string>
+    <string name="error_server_editNoChanges">No changes to apply: oldString and newString are identical.</string>
+    <string name="error_server_unableToEdit">Unable to edit</string>
+    <string name="error_server_unableToWrite">Unable to write</string>
+    <string name="error_server_searchPathMissing">Search path does not exist</string>
+    <string name="error_server_searchPathNotDirectory">Search path is not a directory</string>
+    <string name="error_server_requestTimedOut">Request timed out</string>
+    <string name="error_server_webSearchCancelled">Web search cancelled</string>
+    <string name="error_server_notConnectedNeedsCredentials">Not connected — this server needs a username/password (save it in Servers).</string>
+    <string name="error_server_notConnectedBadCredentials">Not connected — the server rejected the saved credentials.</string>
+    <string name="error_server_notConnectedNoAnswer">Not connected — the server did not answer.</string>
+    <string name="error_server_notConnectedNotV2">Not connected — this build requires an OpenCode 2.x server.</string>
+    <string name="error_server_notConnectedNoConfig">Not connected — open the Terminal tab once to load the server config.</string>
+    <string name="error_server_stopUndeliveredHead">Stop did not reach the server (</string>
+    <string name="error_server_stopUndeliveredTail">) — the turn may still be running.</string>
+    <string name="error_server_stopUndeliveredNoAnswer">the server did not answer</string>
     <string name="error_serverSDK_noServerAvailable">No server available</string>
     <string name="error_serverSDK_serverNotAvailable">Server not available</string>
     <string name="error_serverSync_connectFailed">Could not connect to server. Is there a server running at `%1$s`?</string>
@@ -800,6 +826,7 @@
     <string name="session_error_notFound_closeTab">Close Tab</string>
     <string name="session_error_notFound_description">This tab points to a session that no longer exists on this server.</string>
     <string name="session_error_serverConnection">Can\'t connect to this server</string>
+    <string name="session_error_transient_advice">The connection to the server dropped. Check your network, then try again.</string>
     <string name="session_files_all">All files</string>
     <string name="session_files_binaryContent">Binary file (content cannot be displayed)</string>
     <string name="session_files_empty">No files</string>
@@ -1788,6 +1815,10 @@
     <string name="wsl_server_menu_label">WSL server</string>
     <string name="wsl_server_retryStart">Retry start</string>
     <string name="wsl_server_updating">Updating…</string>
+
+    <!-- debugBar.* -->
+    <string name="debugBar_tok_label">TOK</string>
+    <string name="debugBar_tok_tip">Session token spend accumulated so far.</string>
 
     <!-- legacy-carryover (removed upstream; kept for existing Kotlin refs) -->
     <!-- legacy-carryover: upstream key 'ui.tool.todos' no longer exists -->

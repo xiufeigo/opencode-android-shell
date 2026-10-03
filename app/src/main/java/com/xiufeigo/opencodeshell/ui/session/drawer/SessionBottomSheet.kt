@@ -9,9 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -41,8 +39,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.xiufeigo.opencodeshell.ui.overlay.DialogLayerPolicy
+import com.xiufeigo.opencodeshell.ui.overlay.DialogScrim
+import com.xiufeigo.opencodeshell.ui.overlay.dialogCardBounds
+import com.xiufeigo.opencodeshell.ui.overlay.rememberDialogScrimState
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 import com.xiufeigo.opencodeshell.ui.theme.ocShadow
 import kotlin.math.roundToInt
@@ -96,6 +99,7 @@ fun SessionBottomSheet(
     val dragOffset = remember { Animatable(0f) }
     var sheetHeightPx by remember { mutableStateOf(0) }
     LaunchedEffect(open) { if (!open) dragOffset.snapTo(0f) }
+    val scrim = rememberDialogScrimState()
 
     Box(modifier = modifier.fillMaxSize()) {
         // --------------------------------------------------------------- scrim
@@ -104,18 +108,16 @@ fun SessionBottomSheet(
             enter = fadeIn(animationSpec = tween(MobileForm.SHEET_ENTER_MS)),
             exit = fadeOut(animationSpec = tween(MobileForm.SHEET_EXIT_MS)),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MobileColors.scrim)
-                    // A no-ripple click target that also swallows taps meant for
-                    // the session content behind the sheet.
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismissRequest,
-                    ),
-            )
+            // The backdrop swallows the taps meant for the session content
+            // behind the sheet, and dismisses only outside the sheet below.
+            // `closing = !open`: the exit keeps this mounted for ~200 ms, and
+            // for that window the detector is off the chain (a mounted
+            // `pointerInput` takes the hit even when its block does nothing)
+            // and the backdrop hides from the semantics tree — the
+            // `DialogHost` layers' exit-gating, applied to the one hand-rolled
+            // surface that has a real exit window
+            // ([DialogLayerPolicy.acceptsPointerInput]).
+            DialogScrim(scrim, onDismissRequest, color = MobileColors.scrim, closing = !open)
         }
 
         // ---------------------------------------------------------------- sheet
@@ -147,6 +149,21 @@ fun SessionBottomSheet(
                     .background(c.bgDeep)
                     .ocShadow(OcTheme.elevation.overlay, shape)
                     .onSizeChanged { sheetHeightPx = it.height }
+                    .dialogCardBounds(scrim)
+                    // A closing sheet is a picture, not a control: hide the
+                    // card from the semantics tree for the exit window so a
+                    // TalkBack focus that landed mid-exit cannot be double-
+                    // tapped after the surface is conceptually gone (the
+                    // BOM-pinned Compose has no `hideFromAccessibility` yet;
+                    // the `DialogHost` layers' exit-gating, applied to the one
+                    // hand-rolled surface with a real exit window).
+                    .then(
+                        if (DialogLayerPolicy.isHitTransparent(!open)) {
+                            Modifier.clearAndSetSemantics { }
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(
                         start = MobileForm.SHEET_SIDE_PADDING_DP.dp,
                         end = MobileForm.SHEET_SIDE_PADDING_DP.dp,

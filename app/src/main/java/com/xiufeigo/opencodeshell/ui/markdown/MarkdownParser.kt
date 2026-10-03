@@ -10,6 +10,22 @@ package com.xiufeigo.opencodeshell.ui.markdown
  * inline code / link — matching the block structure of
  * `_upstream/packages/session-ui/src/components/markdown.css`.
  *
+ * A-1 adds `![alt](src)`: a paragraph that carries nothing but images becomes one
+ * [MdBlock.Image] per image (the shape a chart/screenshot answer uses) and the
+ * renderer draws it through `GET /api/fs/read` / the remote URL
+ * (`ui/markdown/MarkdownImages`); an image mixed into a paragraph keeps its alt
+ * text for now ([MdSpan.image] carries the target so an inline renderer can land
+ * without a parser change).
+ *
+ * Inline links come from explicit `[label](url)` syntax and the three GFM
+ * extended autolinks in body text — a bare `http://` / `https://` URL, a bare
+ * `www.` domain, and an email address — so a pasted link or address taps
+ * through `LinkAnnotation.Url` into the in-app browser (`http(s)` and `www.`
+ * keep their own destination, an email gets `mailto:`; a literal `mailto:` /
+ * `xmpp:` prefix is absorbed into the link, as cmark-gfm does). `ftp:` and
+ * every other scheme stays literal, and code spans / fenced blocks are
+ * terminal — a link inside back-ticks stays plain text.
+ *
  * Deliberate CommonMark simplifications (documented, tested):
  * - soft line breaks inside a paragraph collapse to a single space;
  * - list continuation lines are folded into the current item with a space
@@ -22,14 +38,31 @@ package com.xiufeigo.opencodeshell.ui.markdown
  * - an **unclosed** code fence (a streaming answer mid-block) still yields a
  *   [MdBlock.CodeBlock] with `complete = false` — the same
  *   `mode: "code", complete: false` state upstream's `markdown-stream.ts`
- *   produces, so a partial fence never flashes as raw back-ticks.
+ *   produces, so a partial fence never flashes as raw back-ticks;
+ * - block quotes nest at most [MAX_QUOTE_DEPTH] levels; deeper `>` markers
+ *   degrade to plain text instead of recursing (each level peels one `>`, so
+ *   a `>`-heavy line would otherwise recurse until StackOverflowError);
+ * - a bare `www.` domain gets an `https://` destination where GFM inserts
+ *   `http://`, and its domain characters are `[A-Za-z0-9._-]` plus Unicode
+ *   letters/digits (GFM admits any non-punctuation character, emoji included);
+ * - `ftp://` and every other scheme stays literal (GFM links `ftp://`).
  *
  * The parser is a pure function with no Android/Compose imports so the whole
  * contract is JVM-testable (`TimelineFidelityTest`).
  */
 object MarkdownParser {
 
-    fun parse(markdown: String): List<MdBlock> {
+    /**
+     * Block-quote nesting cap. Each recursion peels exactly one `>` per line,
+     * so one line with thousands of `>` (pathological quoted tool/file
+     * output) would recurse unbounded and crash the render with a
+     * StackOverflowError; past this depth the remainder renders as plain text.
+     */
+    const val MAX_QUOTE_DEPTH = 32
+
+    fun parse(markdown: String): List<MdBlock> = parse(markdown, 0)
+
+    private fun parse(markdown: String, depth: Int): List<MdBlock> {
         if (markdown.isBlank()) return emptyList()
         val lines = markdown.replace("\r\n", "\n").replace('\r', '\n').split('\n')
         val blocks = ArrayList<MdBlock>()
@@ -77,7 +110,11 @@ object MarkdownParser {
                         quoted += lines[j].trimStart().removePrefix(">").removePrefix(" ")
                         j++
                     }
-                    blocks += MdBlock.BlockQuote(parse(quoted.joinToString("\n")))
+                    blocks += if (depth >= MAX_QUOTE_DEPTH) {
+                        MdBlock.Paragraph(parseInline(quoted.joinToString(" ")))
+                    } else {
+                        MdBlock.BlockQuote(parse(quoted.joinToString("\n"), depth + 1))
+                    }
                     i = j
                 }
 
@@ -126,7 +163,17 @@ object MarkdownParser {
                         paragraph.append(' ').append(next.trim())
                         j++
                     }
-                    blocks += MdBlock.Paragraph(parseInline(paragraph.toString()))
+                    val spans = parseInline(paragraph.toString())
+                    // A-1: a paragraph that carries nothing but images becomes
+                    // one [MdBlock.Image] per image, which is the shape an
+                    // assistant answer uses for a chart/screenshot; anything
+                    // mixed keeps the alt-text spans.
+                    val images = imageBlocks(spans)
+                    if (images != null) {
+                        blocks += images
+                    } else {
+                        blocks += MdBlock.Paragraph(spans)
+                    }
                     i = j
                 }
             }
@@ -375,7 +422,8 @@ object MarkdownParser {
     /**
      * Inline spans of one text run. Code spans are terminal (their content is
      * never re-scanned, so markdown inside back-ticks stays literal); bold /
-     * italic nest; link labels keep their inner styling.
+     * italic nest; link labels keep their inner styling; the GFM extended
+     * autolinks (`http(s)://`, `www.`, email) autolink ([appendLiteral]).
      */
     fun parseInline(text: String): List<MdSpan> {
         val spans = ArrayList<MdSpan>()
@@ -394,7 +442,7 @@ object MarkdownParser {
 
         fun flush() {
             if (literal.isNotEmpty()) {
-                out += MdSpan(literal.toString(), bold, italic, code = false, link = link)
+                appendLiteral(literal.toString(), out, bold, italic, link)
                 literal.clear()
             }
         }
@@ -461,8 +509,12 @@ object MarkdownParser {
                     }
                 }
 
-                // `![alt](src)` renders as its alt text (the timeline has no
-                // inline image slot; the attachment chip carries real files).
+                // `![alt](src)` — A-1: the image span keeps its target so the
+                // renderer can draw it (`markdown-image.ts`); a paragraph made of
+                // nothing but images is emitted as [MdBlock.Image] blocks below,
+                // which is the shape an assistant answer actually uses. Mixed
+                // text/images keep the alt text inline (the Compose body has no
+                // inline-image slot yet — documented gap).
                 ch == '!' && i + 1 < s.length && s[i + 1] == '[' -> {
                     val parsed = parseLink(s, i + 1)
                     if (parsed == null) {
@@ -470,8 +522,15 @@ object MarkdownParser {
                         i++
                     } else {
                         flush()
-                        if (parsed.label.isNotEmpty()) {
-                            out += MdSpan(parsed.label, bold, italic, code = false, link = link)
+                        if (parsed.label.isNotEmpty() || parsed.url.isNotEmpty()) {
+                            out += MdSpan(
+                                parsed.label,
+                                bold,
+                                italic,
+                                code = false,
+                                link = link,
+                                image = MdImage(parsed.label, parsed.url),
+                            )
                         }
                         i = parsed.end
                     }
@@ -506,6 +565,281 @@ object MarkdownParser {
             .removePrefix("<").removeSuffix(">")
         if (url.isEmpty()) return null
         return Link(label = s.substring(open + 1, labelEnd), url = url, end = j + 1)
+    }
+
+    /**
+     * Emits one literal run, splitting GFM extended autolinks into link spans
+     * so the renderer carries them as `LinkAnnotation.Url` — tappable into the
+     * in-app browser. Three shapes autolink ([findAutolink]): a bare
+     * `http(s)://` URL, a bare `www.` domain, and an email address. Runs
+     * already inside an explicit `[label](url)` (`link != null`) keep the outer
+     * destination; code spans never reach here (they are terminal in
+     * [parseInto]) and fenced blocks never go through inline parsing, so a link
+     * inside back-ticks or a fence stays plain text. `ftp:` and every other
+     * scheme is not matched and stays literal.
+     */
+    private fun appendLiteral(
+        text: String,
+        out: MutableList<MdSpan>,
+        bold: Boolean,
+        italic: Boolean,
+        link: String?,
+    ) {
+        if (link != null || !mayAutolink(text)) {
+            out += MdSpan(text, bold, italic, code = false, link = link)
+            return
+        }
+        var i = 0
+        while (i < text.length) {
+            val match = findAutolink(text, i)
+            if (match == null) {
+                out += MdSpan(text.substring(i), bold, italic, code = false, link = null)
+                return
+            }
+            if (match.start > i) {
+                out += MdSpan(text.substring(i, match.start), bold, italic, code = false, link = null)
+            }
+            out += MdSpan(
+                text.substring(match.start, match.end),
+                bold,
+                italic,
+                code = false,
+                link = match.url,
+            )
+            i = match.end
+        }
+    }
+
+    /** Cheap gate before the per-character scan: one of the three triggers is present. */
+    private fun mayAutolink(text: String): Boolean =
+        text.indexOf('@') >= 0 ||
+            text.indexOf("http", ignoreCase = true) >= 0 ||
+            text.indexOf("www.", ignoreCase = true) >= 0
+
+    /** One resolved autolink: the link-text range `[start, end)` and its destination. */
+    private class Autolink(val start: Int, val end: Int, val url: String)
+
+    /**
+     * The next GFM extended autolink at or after [from], or null. [from] is the
+     * end of the previous link (0 for the first): an email's local part never
+     * reaches back past it, so a match always starts at or after [from] and the
+     * caller's emit cursor never has to rewind — cmark-gfm's `postprocess_text`
+     * bounds its own scan the same way.
+     */
+    private fun findAutolink(text: String, from: Int): Autolink? {
+        var i = from
+        while (i < text.length) {
+            val found = when (text[i]) {
+                'h', 'H' -> matchHttp(text, i)
+                'w', 'W' -> matchWww(text, i)
+                '@' -> matchEmail(text, i, from)
+                else -> null
+            }
+            if (found != null) return found
+            i++
+        }
+        return null
+    }
+
+    /** `http(s)://` + a target, trimmed by [trimAutolinkEnd]; `ftp:` and other schemes stay literal. */
+    private fun matchHttp(text: String, at: Int): Autolink? {
+        val scheme = urlSchemeLength(text, at)
+        if (scheme == 0) return null
+        val end = trimAutolinkEnd(text, at, runEnd(text, at + scheme))
+        if (end <= at + scheme) return null
+        return Autolink(at, end, text.substring(at, end))
+    }
+
+    /**
+     * `www.` + a [valid domain][isValidDomain] (`gfm` §Autolinks (extension)),
+     * then zero or more non-space characters (path, query, fragment) trimmed by
+     * [trimAutolinkEnd]. Recognised only at the start of a run or after
+     * whitespace / the delimiters `*` `_` `~` `(` — `xwww.example.com` stays
+     * literal. The destination is [WWW_SCHEME] + the matched text.
+     */
+    private fun matchWww(text: String, at: Int): Autolink? {
+        if (!text.regionMatches(at, "www.", 0, 4, ignoreCase = true)) return null
+        if (at > 0 && !isAutolinkStart(text[at - 1])) return null
+        val end = trimAutolinkEnd(text, at, runEnd(text, at + 4))
+        if (end <= at + 4) return null
+        // Only the leading domain-char run is validated; a path/query after it
+        // is free-form (`www.github.com/a_b` links).
+        if (!isValidDomain(text, at, domainEnd(text, at, end))) return null
+        return Autolink(at, end, WWW_SCHEME + text.substring(at, end))
+    }
+
+    /**
+     * `local@domain` (`gfm` §Autolinks (extension); cmark-gfm's
+     * `postprocess_text`): a local part of alphanumerics and `. - _ +`, an `@`,
+     * then a domain of alphanumerics and `- _` separated by periods, with at
+     * least one period and a last character that is neither `-` nor `_`. A
+     * second `@` restarts the match with the text between the two as the new
+     * local part. The destination is `mailto:` + the address, unless a literal
+     * `mailto:` / `xmpp:` prefix was absorbed into the link text — then the
+     * text is already the destination. [lowerBound] is the caller's scan start,
+     * which the local part may not reach back past.
+     */
+    private fun matchEmail(text: String, at: Int, lowerBound: Int): Autolink? {
+        val head = emailHead(text, at, lowerBound) ?: return null
+        var end = at + 1
+        while (end < text.length) {
+            val ch = text[end]
+            if (ch == '@') return matchEmail(text, end, at + 1)
+            if (ch.isLetterOrDigit() || ch == '-' || ch == '_' || (ch == '/' && head.xmpp)) {
+                end++
+                continue
+            }
+            // A `.` belongs to the domain only when an alphanumeric follows: the
+            // full stop of a sentence ends the address instead.
+            if (ch == '.' && end + 1 < text.length && text[end + 1].isLetterOrDigit()) {
+                end++
+                continue
+            }
+            break
+        }
+        if (end - at < 2 || !isEmailDomain(text, at + 1, end)) return null
+        val address = text.substring(head.start, end)
+        return Autolink(head.start, end, if (head.autoMailto) MAILTO_SCHEME + address else address)
+    }
+
+    private class EmailHead(val start: Int, val autoMailto: Boolean, val xmpp: Boolean)
+
+    /**
+     * The local part behind the `@` at [at]: rewinds over the allowed
+     * characters, absorbing a `mailto:` / `xmpp:` prefix when one sits
+     * immediately before the address — `mailto:foo@bar.com` links whole while
+     * `mmmmailto:foo@bar.com` links only the address, because the prefix must
+     * follow a non-alphanumeric or start the run. `null` when there is no local
+     * part (an address may not start with `@`).
+     */
+    private fun emailHead(text: String, at: Int, lowerBound: Int): EmailHead? {
+        var rewind = 0
+        var autoMailto = true
+        var xmpp = false
+        while (at - rewind - 1 >= lowerBound) {
+            val i = at - rewind - 1
+            val ch = text[i]
+            when {
+                ch.isLetterOrDigit() || ch == '.' || ch == '+' || ch == '-' || ch == '_' -> rewind++
+                ch == ':' && isSchemeAt(text, i, "mailto:", lowerBound) -> {
+                    autoMailto = false
+                    rewind++
+                }
+                ch == ':' && isSchemeAt(text, i, "xmpp:", lowerBound) -> {
+                    autoMailto = false
+                    xmpp = true
+                    rewind++
+                }
+                else -> break
+            }
+        }
+        if (rewind == 0) return null
+        return EmailHead(at - rewind, autoMailto, xmpp)
+    }
+
+    /**
+     * [scheme] (colon included) ends at [colon], starts at or after
+     * [lowerBound], and is preceded by a non-alphanumeric — `at:foo@bar.com`
+     * absorbs `xmpp:`, `mmmmailto:` does not absorb `mailto:`.
+     */
+    private fun isSchemeAt(text: String, colon: Int, scheme: String, lowerBound: Int): Boolean {
+        val start = colon + 1 - scheme.length
+        if (start < lowerBound) return false
+        if (!text.regionMatches(start, scheme, 0, scheme.length, ignoreCase = true)) return false
+        return start == lowerBound || !text[start - 1].isLetterOrDigit()
+    }
+
+    /**
+     * GFM valid domain over `[from, end)`: at least one period, and no
+     * underscore in the last two segments — `www.xxx.yyy._zzz` and
+     * `www.xxx._yyy.zzz` are not domains, `www._xxx.yyy.zzz` is.
+     */
+    private fun isValidDomain(text: String, from: Int, end: Int): Boolean {
+        var periods = 0
+        var underscores = 0
+        var previousUnderscores = 0
+        for (i in from until end) {
+            when (text[i]) {
+                '.' -> {
+                    periods++
+                    previousUnderscores = underscores
+                    underscores = 0
+                }
+                '_' -> underscores++
+            }
+        }
+        if (periods == 0) return false
+        return previousUnderscores == 0 && underscores == 0
+    }
+
+    /** End of the leading domain-char run in `[from, end)`; the rest is path/query. */
+    private fun domainEnd(text: String, from: Int, end: Int): Int {
+        var i = from
+        while (i < end && isDomainChar(text[i])) i++
+        return i
+    }
+
+    /** A domain character: alphanumeric, `-`, `_` or `.`. */
+    private fun isDomainChar(ch: Char): Boolean =
+        ch.isLetterOrDigit() || ch == '-' || ch == '_' || ch == '.'
+
+    /**
+     * GFM email domain over `[from, end)`: at least one period, and a last
+     * character that is neither `-` nor `_` (`a.b-c_d@a.b` links,
+     * `a.b-c_d@a.b-` and `a.b-c_d@a.b_` do not).
+     */
+    private fun isEmailDomain(text: String, from: Int, end: Int): Boolean {
+        if (end <= from) return false
+        val last = text[end - 1]
+        if (last == '-' || last == '_') return false
+        return text.substring(from, end).contains('.')
+    }
+
+    /** The extent a bare link can reach: up to the first [isAutolinkEnd] character. */
+    private fun runEnd(text: String, from: Int): Int {
+        var end = from
+        while (end < text.length && !isAutolinkEnd(text[end])) end++
+        return end
+    }
+
+    /** Start of a run, whitespace, or one of GFM's autolink delimiters `*` `_` `~` `(`. */
+    private fun isAutolinkStart(ch: Char): Boolean =
+        ch.isWhitespace() || ch == '*' || ch == '_' || ch == '~' || ch == '('
+
+    /** 8 for `https://`, 7 for `http://`, 0 when [at] is neither. */
+    private fun urlSchemeLength(text: String, at: Int): Int = when {
+        text.regionMatches(at, "https://", 0, 8, ignoreCase = true) -> 8
+        text.regionMatches(at, "http://", 0, 7, ignoreCase = true) -> 7
+        else -> 0
+    }
+
+    /** Terminates a bare-link run: whitespace, `<>` (markup), or a back-tick. */
+    private fun isAutolinkEnd(ch: Char): Boolean =
+        ch.isWhitespace() || ch == '<' || ch == '>' || ch == '`'
+
+    /**
+     * Trims a bare-URL candidate to its linkable extent (GFM trailing rules):
+     * a trailing `)` is dropped while `)` outnumbers `(` (so
+     * `(see https://x/a)` links without the paren but
+     * `https://en.wikipedia.org/wiki/Foo_(bar)` keeps its balanced one), then
+     * trailing `? ! . , : ; * _ ~ ' "` are dropped.
+     */
+    private fun trimAutolinkEnd(text: String, start: Int, end: Int): Int {
+        var e = end
+        var open = 0
+        var close = 0
+        for (k in start until e) {
+            when (text[k]) {
+                '(' -> open++
+                ')' -> close++
+            }
+        }
+        while (e > start && text[e - 1] == ')' && close > open) {
+            e--
+            close--
+        }
+        while (e > start && text[e - 1] in AUTOLINK_TRAIL) e--
+        return e
     }
 
     /** Closing run of exactly [run] back-ticks, or -1 (unterminated span). */
@@ -569,11 +903,44 @@ object MarkdownParser {
         return merged
     }
 
+    /**
+     * A-1: [spans] as image blocks when the paragraph is nothing but images and
+     * whitespace (a lone `![chart](chart.png)`, or two on one line), else null.
+     * Whitespace between images is dropped — it is paragraph filler, not
+     * content.
+     */
+    private fun imageBlocks(spans: List<MdSpan>): List<MdBlock.Image>? {
+        val images = ArrayList<MdBlock.Image>()
+        for (span in spans) {
+            val image = span.image
+            if (image == null) {
+                if (span.text.isBlank()) continue
+                return null
+            }
+            images += MdBlock.Image(alt = image.alt, src = image.src)
+        }
+        return images.takeIf { it.isNotEmpty() }
+    }
+
     private fun MdSpan.sameStyle(other: MdSpan): Boolean =
-        bold == other.bold && italic == other.italic && code == other.code && link == other.link
+        bold == other.bold && italic == other.italic && code == other.code && link == other.link &&
+            // A-1: an image span is never merged into a neighbouring text run.
+            image == other.image
 
     /** Punctuation that `\` escapes in CommonMark (plus the escapes chat output actually uses). */
     private val ESCAPABLE = "\\`*_{}[]()#+-.!~|>".toSet()
+
+    /** Trailing characters stripped from a bare-link autolink (GFM rule). */
+    private val AUTOLINK_TRAIL = "?!.,:;*_~'\"".toSet()
+
+    /**
+     * Inserted before a bare `www.` domain. GFM inserts `http`; this shell
+     * prefers TLS for a link the in-app browser opens.
+     */
+    private const val WWW_SCHEME = "https://"
+
+    /** Inserted before a bare email address. */
+    private const val MAILTO_SCHEME = "mailto:"
 }
 
 /** One inline run with its resolved style flags. */
@@ -583,7 +950,16 @@ data class MdSpan(
     val italic: Boolean = false,
     val code: Boolean = false,
     val link: String? = null,
+    /**
+     * A-1: `![alt](src)` carries its target here; [text] is then the alt text,
+     * which the renderer shows when the image cannot be read. Every other span
+     * has none.
+     */
+    val image: MdImage? = null,
 )
+
+/** `![alt](src)`'s two halves (`markdown-image.ts` reads `src`, `alt` is the fallback). */
+data class MdImage(val alt: String, val src: String)
 
 /** Block-level markdown structure (see [MarkdownParser]). */
 sealed interface MdBlock {
@@ -591,6 +967,12 @@ sealed interface MdBlock {
 
     /** ATX heading, [level] 1..6. */
     data class Heading(val level: Int, val spans: List<MdSpan>) : MdBlock
+
+    /**
+     * A-1: one image of a paragraph that carries nothing else (upstream's
+     * `<img>` in the markdown flow, `markdown-image.ts:26-60`).
+     */
+    data class Image(val alt: String, val src: String) : MdBlock
 
     /**
      * Fenced code. [complete] is false for a stream-cut unclosed fence

@@ -107,6 +107,43 @@ object HalfWidthText {
     }
 
     /**
+     * The **name** rule (v40 BUG-2): the whole `U+FF01`–`U+FF5E` block and
+     * `U+3000` fold onto ASCII.
+     *
+     * [normalize] is deliberately narrow — it rewrites only what the composer
+     * *reads as syntax*, so a user's CJK prose (`，`, `。`, `！`) is left alone.
+     * A **name** is not prose: it is an identifier the app sends on the wire and
+     * shows back in a row, a tab and a header, so a Chinese IME's full-width
+     * `：` where the user pressed `:` is a bug in every one of those places
+     * (`research/v40_verify/tC/h4_typed.png`), and `OcKeyboard.literal` only
+     * sets `autoCorrectEnabled = false`, which does not stop it. This is the
+     * title-field input boundary: Home's row rename editor, the header's inline
+     * title, the row rename dialog and the tab rename field all fold through it.
+     *
+     * Reference-preserving like [normalize], so an untouched keystroke schedules
+     * no extra recomposition.
+     */
+    fun normalizeName(text: String): String {
+        var hit = false
+        for (ch in text) {
+            if (isFullWidthAscii(ch) || ch == IDEOGRAPHIC_SPACE) {
+                hit = true
+                break
+            }
+        }
+        if (!hit) return text
+        return buildString(text.length) {
+            for (ch in text) append(halfWidth(ch))
+        }
+    }
+
+    /** [normalizeName] for a whole editor value. 1:1, so the selection survives. */
+    fun normalizeName(value: TextFieldValue): TextFieldValue {
+        val text = normalizeName(value.text)
+        return if (text === value.text) value else TextFieldValue(text, value.selection, value.composition)
+    }
+
+    /**
      * The comparison rule (see the type doc): `U+FF01`–`U+FF5E` fold onto ASCII
      * and `U+3000` becomes a plain space. Reference-preserving like [normalize],
      * and used by the suggestion filters / the `/name` lookup only.

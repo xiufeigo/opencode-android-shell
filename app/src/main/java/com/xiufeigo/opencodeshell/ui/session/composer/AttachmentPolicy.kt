@@ -1,6 +1,8 @@
 package com.xiufeigo.opencodeshell.ui.session.composer
 
 import com.xiufeigo.opencodeshell.ChatViewModel
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.Base64
 
 /**
@@ -29,6 +31,32 @@ object AttachmentPolicy {
     /** True when the raw payload is past [MAX_ATTACHMENT_BYTES] (strictly greater). */
     fun isTooLarge(bytes: Int): Boolean = bytes > MAX_ATTACHMENT_BYTES
 
+    /** Same rule for a declared/streamed size — SAF sizes are `Long`, an oversized file may exceed `Int`. */
+    fun isTooLarge(size: Long): Boolean = size > MAX_ATTACHMENT_BYTES
+
+    /**
+     * Buffered read capped at [limit] (defaults to [MAX_ATTACHMENT_BYTES]),
+     * returning null as soon as the stream proves larger — the budget is spent
+     * on bytes, never on the heap. An unbounded `readBytes()` over a
+     * hundreds-of-MB SAF pick OOM'd (an `Error`, invisible to every
+     * `catch (e: Exception)`) before `isTooLarge` could reject it.
+     */
+    fun readCapped(input: InputStream, limit: Int = MAX_ATTACHMENT_BYTES): ByteArray? {
+        val buffer = ByteArray(READ_BUFFER_BYTES)
+        val out = ByteArrayOutputStream(limit.coerceAtMost(1 shl 16))
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > limit) return null
+            out.write(buffer, 0, read)
+        }
+        return out.toByteArray()
+    }
+
+    private const val READ_BUFFER_BYTES = 8 * 1024
+
     /**
      * `data:<mime>;base64,<payload>`. `java.util.Base64` (API 26+, minSdk 26) is
      * used instead of `android.util.Base64` so this exact string can be asserted
@@ -47,6 +75,35 @@ object AttachmentPolicy {
         filename = filename,
         dataUrl = dataUrl(mime, bytes),
     )
+
+    /**
+     * The mime one inline pack may travel under. An **image** read that yielded no
+     * bytes at all — the SAF pick of a file that exists but was never written
+     * (created during or after the picker opened) — has no image content: packing
+     * it as `image/…` would hand the server a payload no decoder can open and the
+     * preview row a payload with no thumbnail cache key ([imagePayload]). It
+     * degrades to the binary type instead, which the filename still labels, so the
+     * pick stays a visible file chip. Every other pick keeps its mime — a
+     * zero-byte non-image file included.
+     */
+    fun packedMime(mime: String, bytes: ByteArray): String =
+        if (bytes.isEmpty() && AttachmentMime.isImage(mime)) OCTET_STREAM else mime
+
+    /** Which chip a pending attachment renders as ([chip]). */
+    enum class Chip { IMAGE, FILE }
+
+    /**
+     * The preview row's chip shape. A thumbnail is decoded from the `data:` URL's
+     * payload ([imagePayload]), which is also the cache key it is stored under —
+     * an image with no payload (an empty read, a restored draft) and an image
+     * Android could not decode have neither, so they render as a named file chip
+     * instead of an empty 58×46 frame.
+     */
+    fun chip(mime: String?, dataUrl: String?, decodeFailed: Boolean = false): Chip = when {
+        decodeFailed -> Chip.FILE
+        imagePayload(mime, dataUrl) != null -> Chip.IMAGE
+        else -> Chip.FILE
+    }
 
     /** Result of [merge]: what to keep and how many picks the cap discarded. */
     data class Merge(

@@ -1,6 +1,9 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.ui.session.timeline.NO_RESPONSE_THRESHOLD_MS
 import com.xiufeigo.opencodeshell.ui.session.timeline.showWorkingRow
+import com.xiufeigo.opencodeshell.ui.session.timeline.stallNoticeMinutes
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -103,5 +106,57 @@ class WorkingRowTest {
             ),
         )
         assertTrue(showWorkingRow(messages, ChatStore.RunStatus.RUNNING))
+    }
+
+    // ------------------------------------------------- the stall notice (P1)
+
+    /**
+     * Device P1, 2026-09-25: a turn whose provider call hangs keeps the timeline
+     * byte-identical to a busy one, so the shimmering `Working` label sat on
+     * screen for the whole 38-minute silence with nothing telling the user that
+     * nothing was arriving. [stallNoticeMinutes] is the pure half of the fix: the
+     * notice appears only after the threshold, and the elapsed minutes it shows
+     * are the ones the user can count on.
+     */
+    @Test
+    fun theStallNoticeWaitsForTheThreshold() {
+        assertEquals(0, stallNoticeMinutes(0L))
+        assertEquals(0, stallNoticeMinutes(NO_RESPONSE_THRESHOLD_MS - 1))
+        // Inclusive: exactly two minutes of silence is the first moment the
+        // notice may claim "2 min".
+        assertEquals(2, stallNoticeMinutes(NO_RESPONSE_THRESHOLD_MS))
+        assertEquals(2, stallNoticeMinutes(179_999L))
+        assertEquals(3, stallNoticeMinutes(180_000L))
+        // The reported hang: 38 minutes.
+        assertEquals(38, stallNoticeMinutes(38L * 60_000L))
+    }
+
+    /**
+     * The notice shares the `Working` slot, so it can only ever appear where the
+     * row itself appears — while the run is busy *and* nothing visible explains
+     * the wait. Every guard below is the one [showWorkingRow] already enforces,
+     * which is why the two can never contradict each other.
+     */
+    @Test
+    fun theStallNoticeOnlyReplacesAVisibleWorkingRow() {
+        val empty = listOf(assistant(emptyList()))
+        assertTrue(showWorkingRow(empty, ChatStore.RunStatus.RUNNING))
+        assertFalse(showWorkingRow(empty, ChatStore.RunStatus.IDLE))
+        assertFalse(showWorkingRow(empty, ChatStore.RunStatus.RUNNING, hasPendingRequest = true))
+        // Visibly writing, a live retry card, or a standalone running tool: the
+        // row is off, so the notice is off (server activity is already on screen).
+        assertFalse(
+            showWorkingRow(
+                listOf(assistant(listOf(part("p1", "text", text = "still writing")))),
+                ChatStore.RunStatus.RUNNING,
+            ),
+        )
+        assertFalse(showWorkingRow(listOf(assistant(listOf(part("p1", "retry")))), ChatStore.RunStatus.RUNNING))
+        assertFalse(
+            showWorkingRow(
+                listOf(assistant(listOf(part("p1", "tool", toolName = "question", toolStatus = "running")))),
+                ChatStore.RunStatus.RUNNING,
+            ),
+        )
     }
 }

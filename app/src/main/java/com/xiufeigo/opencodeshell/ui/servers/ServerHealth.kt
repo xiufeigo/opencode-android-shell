@@ -10,8 +10,6 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONException
-import org.json.JSONObject
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
@@ -21,13 +19,10 @@ import java.util.concurrent.TimeUnit
  * Wave 5-E1 / D3 — the native mirror of upstream's `checkServerHealth`
  * (`_upstream/packages/app/src/runtime/server/health.ts:72-107`).
  *
- * Upstream calls the SDK's `server.info()` on an HTTP connection
- * (`health.ts:93-99`) with **no** timeout of its own
- * (`defaultTimeoutMs = 30_000`, `health.ts:17`) and two transport retries. For
- * the Android shell the probe is used from two places — the first-run connect
- * page (E1) and the settings server list (D3) — so it is deliberately simpler:
+ * The probe is used from two places — the first-run connect page (E1) and the
+ * settings server list (D3) — so it is deliberately simple:
  *
- * * one `GET` against the health endpoint, with a hard per-request budget
+ * * one `GET /api/info` with a hard per-request budget
  *   ([HEALTH_TIMEOUT_MS], `connectTimeout` + `readTimeout` + `callTimeout`);
  * * **no** retry loop: a dead host must not hold a settings open for 30 s;
  * * failures are returned as data ([HealthResult] + [HealthFailure]), never
@@ -37,30 +32,9 @@ import java.util.concurrent.TimeUnit
  * The Basic-auth rule is upstream's, shared with [com.xiufeigo.opencodeshell.OpenCodeClient]
  * through [basicAuthorizationHeader] (`health.ts:81-85`: `Authorization` only
  * when a password exists, username defaulting to the literal `opencode`).
- *
- * **Two implementations, one wire rule (for the Lead):** `OpenCodeClient.health()`
- * (`OpenCodeClient.kt:1071`) also calls `GET /global/health`, but it shares the
- * client's 30 s read timeout, throws on any failure and can only ever probe the
- * *active* server. This probe is the one wired into the UI; see
- * `research/wave5_connect.md` §"合并建议" for how to collapse the two.
  */
 
-/** `GET /global/health` — the endpoint upstream's `server.info()` reaches. */
-const val HEALTH_PATH: String = "/global/health"
-
-/**
- * Older/aliased builds answer only the v1-shaped path; the vendored web bundle
- * checks both (`ConnectCorsTest`, `assets/opencode-app/assets`). The probe only
- * falls back when the first path is *missing* (404/405) — a 500 is a real
- * verdict, not a routing difference.
- */
-const val HEALTH_PATH_LEGACY: String = "/api/health"
-
-/**
- * `GET /api/info` — the v2 probe leg, judged by [V2Capability.decideInfo].
- * Consulted only when the v1 answer could be a v2 server (see
- * [ServerHealthProbe.check]).
- */
+/** `GET /api/info` — the single probe leg, judged by [V2Capability.decideInfo]. */
 const val V2_INFO_PATH: String = "/api/info"
 
 /** Probe budget. One request, ≤3 s (E1/D3 requirement). */
@@ -71,6 +45,29 @@ data class HealthTarget(
     val url: String,
     val username: String? = null,
     val password: String? = null,
+)
+
+/**
+ * The credential a pre-save probe must send — exactly the one the save path
+ * will keep. `SettingsServerBridge.replace` stores `typed ?: existing`, so an
+ * edit that does not retype the secret has to probe with the **stored**
+ * password; probing with the blank form field sent no `Authorization` at all
+ * and the server's `401` was reported as "the server rejected that password".
+ *
+ * The username follows the form (and the save path) verbatim: empty becomes
+ * `null`, which [basicAuthorizationHeader] and `ServerConfigStore.fromHttp`
+ * both default to the literal `opencode`.
+ */
+fun probeTarget(
+    url: String,
+    username: String?,
+    typedPassword: String?,
+    storedPassword: String?,
+): HealthTarget = HealthTarget(
+    url = url,
+    username = username?.trim()?.takeIf { it.isNotEmpty() },
+    password = typedPassword?.takeIf { it.isNotEmpty() }
+        ?: storedPassword?.takeIf { it.isNotEmpty() },
 )
 
 /**
@@ -86,6 +83,13 @@ sealed interface HealthFailure {
 
     /** The host answered too late (probe budget exhausted). */
     data object Timeout : HealthFailure
+
+    /**
+     * `401`/`403` with **no** `Authorization` on the wire: the server wants a
+     * credential and this probe deliberately sent none (empty password). The
+     * sentence has to say "enter username and password", not "rejected".
+     */
+    data object MissingCredentials : HealthFailure
 
     /** `401`/`403` — the server is up but rejected the credential. */
     data object Unauthorized : HealthFailure
@@ -121,32 +125,35 @@ data class HealthMessage(val resId: Int, val formatArg: String? = null)
  * Maps an HTTP outcome onto the tri-state. Pure — the JVM test asserts every
  * branch without a socket.
  *
- * `200 {"healthy":true,"version":"1.18.31"}` is the live response of opencode
- * 1.18.31 (verified against the local server); upstream only reads `version`
- * (`health.ts:99`) and treats any successful decode as healthy, so a document
- * that explicitly says `healthy: false` is the one case upstream cannot express
- * and this probe reports as UNHEALTHY.
+ * The 2xx body is judged by [V2Capability.decideInfo]: a confirmed v2
+ * `/api/info` document is HEALTHY; anything else (SPA shell, non-JSON,
+ * non-2.x version) is UNHEALTHY with [HealthFailure.InvalidResponse].
  */
-fun healthResult(code: Int, body: String?): HealthResult = when {
-    code == 401 || code == 403 -> unhealthy(HealthFailure.Unauthorized)
+fun healthResult(
+    code: Int,
+    contentType: String?,
+    body: String?,
+    credentialsSent: Boolean = true,
+): HealthResult = when {
+    // `401` is two different stories and must not share a sentence: nothing was
+    // offered (empty password ⇒ [basicAuthorizationHeader] sends no header ⇒
+    // "enter username and password") vs. a credential the server refused
+    // ("rejected that password").
+    code == 401 || code == 403 -> unhealthy(
+        if (credentialsSent) HealthFailure.Unauthorized else HealthFailure.MissingCredentials,
+    )
     code !in 200..299 -> unhealthy(HealthFailure.HttpStatus(code))
-    else -> healthBody(body)
+    else -> healthBody(contentType, body)
 }
 
-/** Parses the health document of a `2xx` response. */
-fun healthBody(body: String?): HealthResult {
-    val text = body?.trim().orEmpty()
-    if (text.isEmpty()) return unhealthy(HealthFailure.InvalidResponse)
-    val json = try {
-        JSONObject(text)
-    } catch (_: JSONException) {
-        return unhealthy(HealthFailure.InvalidResponse)
+/** Parses the `/api/info` document of a `2xx` response via [V2Capability.decideInfo]. */
+fun healthBody(contentType: String?, body: String?): HealthResult {
+    val info = V2Capability.decideInfo(200, contentType, body)
+    return if (info.generation == ServerGeneration.V2) {
+        HealthResult(state = ServerHealth.HEALTHY, version = info.version)
+    } else {
+        unhealthy(HealthFailure.InvalidResponse)
     }
-    if (json.has("healthy") && !json.optBoolean("healthy", false)) return unhealthy(HealthFailure.NotHealthy)
-    return HealthResult(
-        state = ServerHealth.HEALTHY,
-        version = json.optString("version", "").takeIf { it.isNotEmpty() },
-    )
 }
 
 private fun unhealthy(failure: HealthFailure) = HealthResult(ServerHealth.UNHEALTHY, failure = failure)
@@ -166,6 +173,9 @@ fun healthFailureMessage(failure: HealthFailure?): HealthMessage = when (failure
     // what that string says.
     HealthFailure.InvalidUrl -> HealthMessage(R.string.oc_connect_address_invalid)
     HealthFailure.Timeout -> HealthMessage(R.string.oc_connect_error_timeout)
+    // Nothing was offered (`401` with no `Authorization` on the wire): the
+    // honest sentence is "enter username and password", never "rejected".
+    HealthFailure.MissingCredentials -> HealthMessage(R.string.oc_server_error_auth)
     HealthFailure.Unauthorized -> HealthMessage(R.string.oc_connect_error_auth)
     HealthFailure.NotHealthy -> HealthMessage(R.string.oc_connect_error_unhealthy)
     HealthFailure.InvalidResponse -> HealthMessage(R.string.oc_connect_error_invalid_response)
@@ -207,70 +217,14 @@ class ServerHealthProbe(
     private val http: OkHttpClient = probeClient(timeoutMs),
 ) {
     /**
-     * `GET /global/health` for [target], with the legacy path tried only when
-     * the first one is missing.
-     *
-     * When both v1 legs fail in a way that is consistent with a **v2 server**
-     * (SPA HTML on `/global/health` ⇒ [HealthFailure.InvalidResponse], or an
-     * auth wall ⇒ [HealthFailure.Unauthorized]), one extra leg runs:
-     * `GET /api/info` judged by [V2Capability.decideInfo] — a `2.x` JSON
-     * version is HEALTHY, a 401/403 stays Unauthorized, anything else keeps the
-     * original v1 verdict. Without this leg an auth-walled 2.x server is
-     * rejected as "not an OpenCode server" even though the app speaks v2.
+     * `GET /api/info` for [target], judged by [V2Capability.decideInfo].
      *
      * Never throws: every transport error becomes an UNHEALTHY [HealthResult].
      */
     fun check(target: HealthTarget): HealthResult {
-        var missing: HealthResult? = null
-        for (path in listOf(HEALTH_PATH, HEALTH_PATH_LEGACY)) {
-            val url = healthUrl(target.url, path)
-                ?: return unhealthy(HealthFailure.InvalidUrl)
-            val result = attempt(url, target)
-            if (result.healthy) return result
-            if (result.failure is HealthFailure.HttpStatus && result.failure.code in MISSING_STATUS) {
-                // Remember the *first* missing path; a later 405 must not
-                // overwrite the more specific 404.
-                if (missing == null) missing = result
-                continue
-            }
-            return v2Fallback(target, result)
-        }
-        // Both paths answered 404/405: report the first verdict, not a mash-up.
-        return v2Fallback(target, missing ?: unhealthy(HealthFailure.InvalidUrl))
-    }
-
-    /**
-     * The v2 leg of [check]: consulted only when the v1 answer could actually be
-     * a v2 server (its `/global/health` serves the SPA shell, or the whole host
-     * sits behind Basic auth). A 404/405 never qualifies — v2 answers
-     * `/global/health` with 200 HTML, so "missing" really means missing. A
-     * network error here keeps the v1 verdict — the first failure is the
-     * better sentence.
-     */
-    private fun v2Fallback(target: HealthTarget, v1: HealthResult): HealthResult {
-        if (v1.failure !is HealthFailure.InvalidResponse &&
-            v1.failure !is HealthFailure.Unauthorized
-        ) {
-            return v1
-        }
-        val url = healthUrl(target.url, V2_INFO_PATH) ?: return v1
-        val builder = Request.Builder().url(url).get()
-        basicAuthorizationHeader(target.username, target.password)
-            ?.let { builder.header("Authorization", it) }
-        val raw = try {
-            http.newCall(builder.build()).execute().use { response ->
-                Triple(response.code, response.header("Content-Type"), response.body?.string())
-            }
-        } catch (_: IOException) {
-            return v1
-        }
-        if (raw.first == 401 || raw.first == 403) return unhealthy(HealthFailure.Unauthorized)
-        val info = V2Capability.decideInfo(raw.first, raw.second, raw.third)
-        return if (info.generation == ServerGeneration.V2) {
-            HealthResult(state = ServerHealth.HEALTHY, version = info.version)
-        } else {
-            v1
-        }
+        val url = healthUrl(target.url, V2_INFO_PATH)
+            ?: return unhealthy(HealthFailure.InvalidUrl)
+        return attempt(url, target)
     }
 
     /**
@@ -284,11 +238,16 @@ class ServerHealthProbe(
 
     private fun attempt(url: HttpUrl, target: HealthTarget): HealthResult {
         val builder = Request.Builder().url(url).get()
-        basicAuthorizationHeader(target.username, target.password)
-            ?.let { builder.header("Authorization", it) }
+        val authorization = basicAuthorizationHeader(target.username, target.password)
+        authorization?.let { builder.header("Authorization", it) }
         return try {
             http.newCall(builder.build()).execute().use { response ->
-                healthResult(response.code, response.body?.string())
+                healthResult(
+                    response.code,
+                    response.header("Content-Type"),
+                    response.body?.string(),
+                    credentialsSent = authorization != null,
+                )
             }
         } catch (_: SocketTimeoutException) {
             unhealthy(HealthFailure.Timeout)
@@ -300,14 +259,9 @@ class ServerHealthProbe(
             unhealthy(HealthFailure.Unreachable)
         }
     }
-
-    private companion object {
-        /** "This path does not exist", as opposed to a real server verdict. */
-        val MISSING_STATUS = setOf(404, 405)
-    }
 }
 
-/** `http://host:4096` + `/global/health`, or `null` when the base is unusable. */
+/** `http://host:4095` + `/api/info`, or `null` when the base is unusable. */
 internal fun healthUrl(baseUrl: String, path: String): HttpUrl? {
     val base = baseUrl.trim().trimEnd('/')
     if (base.isEmpty()) return null

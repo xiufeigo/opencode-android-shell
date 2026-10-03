@@ -2,6 +2,7 @@ package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.actions.ForkMessage
 import com.xiufeigo.opencodeshell.ui.session.actions.RevertStep
+import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsMenuItem
 import com.xiufeigo.opencodeshell.ui.session.actions.SessionActionsModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -107,40 +108,27 @@ class SessionActionsTest {
     fun menuEnablementFollowsTheVisibleSetAndTheRevertBoundary() {
         val messages = listOf(user(u1, "one"), assistant(a1), user(u2, "two"), assistant(a2))
 
-        val fresh = SessionActionsModel.menu(messages, revertMessageID = null, shareUrl = null)
+        val fresh = SessionActionsModel.menu(messages, revertMessageID = null)
         assertTrue("there is a user message to rewind to", fresh.undoEnabled)
         assertTrue("nothing is reverted yet", !fresh.redoEnabled)
         assertTrue("the picker has rows", fresh.forkEnabled)
-        assertFalse(fresh.shared)
 
-        val reverted = SessionActionsModel.menu(messages, revertMessageID = u2, shareUrl = null)
+        val reverted = SessionActionsModel.menu(messages, revertMessageID = u2)
         assertTrue(reverted.undoEnabled)
         assertTrue(reverted.redoEnabled)
         assertTrue(reverted.forkEnabled)
 
         // Everything visible is reverted away → both undo and fork go away, but
         // 重做 stays available (that is the way back).
-        val allHidden = SessionActionsModel.menu(messages, revertMessageID = u1, shareUrl = null)
+        val allHidden = SessionActionsModel.menu(messages, revertMessageID = u1)
         assertFalse(allHidden.undoEnabled)
         assertFalse(allHidden.forkEnabled)
         assertTrue(allHidden.redoEnabled)
     }
 
     @Test
-    fun shareRowIsSelectedOnlyWhileAUrlIsKnown() {
-        val messages = listOf(user(u1, "one"))
-        assertTrue(
-            SessionActionsModel.menu(messages, null, "https://opncd.ai/share/x").shared,
-        )
-        // The Android form clears its own flow after unshare (the DELETE response
-        // still carries the old URL), so an empty/blank value must read as "not shared".
-        assertFalse(SessionActionsModel.menu(messages, null, null).shared)
-        assertFalse(SessionActionsModel.menu(messages, null, "").shared)
-    }
-
-    @Test
     fun anEmptySessionDisablesUndoForkAndRedo() {
-        val state = SessionActionsModel.menu(emptyList(), revertMessageID = null, shareUrl = null)
+        val state = SessionActionsModel.menu(emptyList(), revertMessageID = null)
         assertFalse(state.undoEnabled)
         assertFalse(state.redoEnabled)
         assertFalse(state.forkEnabled)
@@ -190,5 +178,31 @@ class SessionActionsTest {
             ),
         )
         assertEquals("alpha\nbeta", SessionActionsModel.messageText(message))
+    }
+
+    // ---------------------------------------------------------- F-4 move
+
+    @Test
+    fun moveJoinsTheSessionActionsAfterFork() {
+        assertEquals(
+            listOf(
+                SessionActionsMenuItem.UNDO,
+                SessionActionsMenuItem.REDO,
+                SessionActionsMenuItem.FORK,
+                SessionActionsMenuItem.MOVE,
+            ),
+            SessionActionsMenuItem.values().toList(),
+        )
+    }
+
+    @Test
+    fun moveIsAlwaysEnabledWhileUndoRedoForkFollowTheBoundary() {
+        val messages = listOf(user(u1, "one"), assistant(a1))
+        assertTrue(SessionActionsModel.menu(messages, revertMessageID = null).moveEnabled)
+        assertTrue(SessionActionsModel.menu(messages, revertMessageID = u1).moveEnabled)
+        // Even an empty session keeps the row: the move needs no transcript
+        // and no boundary — the only gate is the tracked session id, which the
+        // host already guarantees before the row renders.
+        assertTrue(SessionActionsModel.menu(emptyList(), revertMessageID = null).moveEnabled)
     }
 }

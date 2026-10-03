@@ -4,10 +4,14 @@ import com.xiufeigo.opencodeshell.ui.palette.CATEGORY_SESSION
 import com.xiufeigo.opencodeshell.ui.palette.PaletteEntry
 import com.xiufeigo.opencodeshell.ui.palette.PaletteEntryType
 import com.xiufeigo.opencodeshell.ui.palette.PaletteHostKind
+import com.xiufeigo.opencodeshell.ui.palette.SessionCommands
 import com.xiufeigo.opencodeshell.ui.palette.filePaletteEntries
 import com.xiufeigo.opencodeshell.ui.palette.sessionPaletteEntries
 import com.xiufeigo.opencodeshell.ui.palette.sources
 import com.xiufeigo.opencodeshell.ui.palette.visibleEntries
+import com.xiufeigo.opencodeshell.ui.overlay.mcpChooserCounts
+import com.xiufeigo.opencodeshell.ui.overlay.mcpChooserFilter
+import com.xiufeigo.opencodeshell.ui.settings.McpPageRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -104,5 +108,66 @@ class PaletteDataTest {
             server = "srv1",
         )
         assertEquals("ses_1", entries.single().sessionID)
+    }
+
+    // `/mcp` + `mcp.toggle` (`ui/overlay/McpChooserDialog`, upstream
+    // `DialogSelectMcp`): the chooser's pure data helpers and the registry
+    // wiring that routes both entries to the host action instead of the stub.
+
+    private fun mcpRow(name: String, status: String, error: String? = null) =
+        McpPageRow(name = name, status = status, error = error)
+
+    @Test
+    fun mcpChooserCountsConnectedOverTotal() {
+        // Upstream `dialog.mcp.description`: `{{enabled}} of {{total}} enabled`.
+        val rows = listOf(
+            mcpRow("alpha", "connected"),
+            mcpRow("beta", "disabled"),
+            mcpRow("gamma", "failed", "boom"),
+        )
+        assertEquals(1 to 3, mcpChooserCounts(rows))
+        assertEquals(0 to 0, mcpChooserCounts(emptyList()))
+    }
+
+    @Test
+    fun mcpChooserFilterMatchesNameOrStatus() {
+        // Upstream list `filterKeys: ["name", "status"]`, case-insensitive;
+        // blank keeps every row in source order.
+        val rows = listOf(
+            mcpRow("alpha", "connected"),
+            mcpRow("beta", "disabled"),
+            mcpRow("gamma", "failed", "boom"),
+        )
+        assertEquals(rows, mcpChooserFilter(rows, ""))
+        assertEquals(rows, mcpChooserFilter(rows, "   "))
+        assertEquals(listOf("alpha"), mcpChooserFilter(rows, "ALP").map { it.name })
+        assertEquals(listOf("beta"), mcpChooserFilter(rows, "dis").map { it.name })
+        assertTrue(mcpChooserFilter(rows, "zzz").isEmpty())
+    }
+
+    @Test
+    fun mcpSlashAliasRoutesToToggleCommand() {
+        assertEquals("mcp.toggle", SessionCommands.commandIdForSlash("mcp"))
+        assertEquals("mcp", SessionCommands.slashForCommand("mcp.toggle"))
+    }
+
+    @Test
+    fun mcpToggleRowCallsHostActionNotStub() {
+        var called = false
+        val rows = SessionCommands.sessionCommands(
+            actions = SessionCommands.SessionCommandActions(onToggleMcp = { called = true }),
+        )
+        rows.first { it.id == "mcp.toggle" }.onSelect()
+        assertTrue(called)
+    }
+
+    @Test
+    fun mcpToggleRowWithoutHostStaysStubbed() {
+        val reported = mutableListOf<String>()
+        val rows = SessionCommands.sessionCommands(
+            stubReporter = SessionCommands.StubReporter { reported.add(it) },
+        )
+        rows.first { it.id == "mcp.toggle" }.onSelect()
+        assertEquals(listOf("mcp.toggle"), reported)
     }
 }

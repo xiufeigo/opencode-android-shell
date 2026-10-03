@@ -238,19 +238,79 @@ class Wave23aSettingsPaletteTerminalTest {
     @Test
     fun registryCoversTheSessionGroups() {
         val ids = SHORTCUT_ROWS.map { it.id }
-        for (id in SessionCommands.SESSION_COMMAND_IDS) {
-            if (id != "terminal.close") assertTrue(id, id in ids)
+        // B-5: the settings table is exactly the set of wired ids — a row the
+        // shell cannot run must not be listed (`SettingsStructureTest`
+        // `everyShortcutRowIsWired` pins the same equality from the other side).
+        assertEquals(WIRED_SHORTCUT_IDS, ids.toSet())
+        // Every session-route id with a real action is listed…
+        for (id in listOf(
+            "session.undo",
+            "session.redo",
+            "session.compact",
+            "session.background",
+            "session.fork",
+            "session.export",
+            "session.copyID",
+            "session.aside",
+            "message.previous",
+            "message.next",
+            "mcp.toggle",
+            "permissions.autoaccept",
+            "input.focus",
+            "terminal.new",
+            "file.close",
+            "session.location.cycle",
+            "model.choose",
+            "model.variant.cycle",
+            "agent.cycle",
+            "agent.cycle.reverse",
+        )) {
+            assertTrue(id, id in ids)
         }
-        assertTrue(ids.contains("model.choose"))
-        assertTrue(ids.contains("agent.cycle"))
+        // …while the palette-only stubs and the dropped rows stay unlisted.
+        // (`debugBar.toggle` left this list in B-17: the debug bar landed and the
+        // row is now a wired, rebindable one.)
+        for (dropped in listOf(
+            "terminal.close",
+            "context.addSelection",
+            "project.copyID",
+            "session.archive",
+            "session.import",
+            "steps.toggle",
+            "browser.open",
+            "browser.reload",
+            "prompt.submit",
+            "project.select",
+        )) {
+            assertFalse(dropped, dropped in ids)
+        }
         assertTrue(ids.contains("tab.reopenClosed"))
         assertTrue(ids.contains("session.search"))
-        assertTrue(ids.contains("steps.toggle"))
-        assertTrue(ids.contains("browser.open"))
-        assertTrue(ids.contains("debugBar.toggle"))
-        assertTrue(WIRED_SHORTCUT_IDS.contains("command.palette"))
-        assertTrue(WIRED_SHORTCUT_IDS.contains("session.search"))
-        assertFalse(WIRED_SHORTCUT_IDS.contains("session.undo"))
+        // B-5 wired `session.undo`; it is no longer the inert example.
+        assertTrue(WIRED_SHORTCUT_IDS.contains("session.undo"))
+        assertTrue(WIRED_SHORTCUT_IDS.contains("tab.reopenClosed"))
+    }
+
+    /**
+     * B-5: the settings row and the chord table live in two files, so this pins
+     * the handler side of the contract by source scan — the same technique
+     * `Wave5IntegrationWiringTest` uses for `GlobalChord.SUMMARY`. A row added to
+     * [SHORTCUT_ROWS] without an entry in `ui/App.kt`'s
+     * `GLOBAL_CHORD_COMMAND_IDS` fails here instead of silently doing nothing.
+     */
+    @Test
+    fun everyWiredShortcutIdHasAChordTableEntry() {
+        val file = java.io.File("app/src/main/java/com/xiufeigo/opencodeshell/ui/App.kt")
+            .takeIf { it.isFile }
+            ?: java.io.File("src/main/java/com/xiufeigo/opencodeshell/ui/App.kt")
+        val app = file.readText()
+        for (id in WIRED_SHORTCUT_IDS) {
+            assertTrue("App.kt must map $id", app.contains("\"$id\""))
+        }
+        // The ids whose action lives inside a screen go through the request
+        // channel instead of a direct call.
+        assertTrue(app.contains("intents.requestCommand(id)"))
+        assertTrue(app.contains("onCommand = onChordCommand"))
     }
 
     // ---------------------------------------------------------- palette (P0/P1)
@@ -266,6 +326,11 @@ class Wave23aSettingsPaletteTerminalTest {
                 onRedo = {},
                 onFork = {},
                 onArchive = {},
+                // `session.aside` is registered only when the host provides it
+                // (`SessionCommands.kt:204`), and it *is* in `SESSION_COMMAND_IDS`
+                // — the same rule `session.undo` follows, so a null action here
+                // would leave the registry one row short.
+                onAskAside = {},
                 onPreviousMessage = {},
                 onNextMessage = {},
                 onToggleAutoAccept = {},

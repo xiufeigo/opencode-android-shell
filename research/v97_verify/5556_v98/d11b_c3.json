@@ -1,0 +1,47 @@
+[
+  {
+    "cycle": 3,
+    "planned": 1,
+    "actual": 1,
+    "kind": "LOADING",
+    "texts": "E2ECHK5556d11 | E2ECHK5556d11b | Session | Changes | Files | Terminal | main | Git changes | Branch changes | Last turn changes | Refresh | Loading",
+    "dump": "d11b_c3_t1.xml",
+    "shot": "d11b_c3_t1.png"
+  },
+  {
+    "cycle": 3,
+    "planned": 3,
+    "actual": 4,
+    "kind": "LOADING",
+    "texts": "E2ECHK5556d11 | E2ECHK5556d11b | Session | Changes | Files | Terminal | main | Git changes | Branch changes | Last turn changes | Refresh | Loading",
+    "dump": "d11b_c3_t3.xml",
+    "shot": "d11b_c3_t3.png"
+  },
+  {
+    "cycle": 3,
+    "planned": 10,
+    "actual": 10,
+    "kind": "FAILED",
+    "texts": "E2ECHK5556d11 | E2ECHK5556d11b | Session | Changes | Files | Terminal | main | Git changes | Branch changes | Last turn changes | Refresh | The diff request timed out or failed. Tap Refresh to try again.",
+    "dump": "d11b_c3_t10.xml",
+    "shot": "d11b_c3_t10.png"
+  },
+  {
+    "cycle": 3,
+    "planned": 20,
+    "actual": 20,
+    "kind": "FAILED",
+    "texts": "E2ECHK5556d11 | E2ECHK5556d11b | Session | Changes | Files | Terminal | main | Git changes | Branch changes | Last turn changes | Refresh | Couldn't load changes | The diff request timed out or failed. Tap Refresh to try again.",
+    "dump": "d11b_c3_t20.xml",
+    "shot": "d11b_c3_t20.png"
+  },
+  {
+    "cycle": 3,
+    "planned": 40,
+    "actual": 41,
+    "kind": "FAILED",
+    "texts": "E2ECHK5556d11 | E2ECHK5556d11b | Session | Changes | Files | Terminal | main | Git changes | Branch changes | Last turn changes | Refresh | Couldn't load changes | The diff request timed out or failed. Tap Refresh to try again.",
+    "dump": "d11b_c3_t40.xml",
+    "shot": "d11b_c3_t40.png"
+  }
+]

@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.v2.V2EventAdapter
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,16 +10,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * W5-E, store side: the E2 invalidation signals (`provider.updated`,
- * `project.updated`, `vcs.branch.updated`, `file.edited`, `session.*`,
- * `pty.*`) and the two E3 parsing gaps (`message.part.delta` beyond
- * `field == "text"`, and the dropped `permission.replied.reply` /
- * `question.replied.answers` payloads).
+ * W5-E, store side: the E2 invalidation signals and the E3 `PartDelta`
+ * field coverage, adapted to the v2 frame path (`V2EventAdapter`; the v1
+ * `parseEvent` is gone).
  *
- * Wire anchors: `_upstream/packages/schema/src/v1/session.ts:632-641`
- * (`PartDelta`), `v1/permission.ts:61-65`, `v1/question.ts:47-60`,
- * `project.ts:59`, `pty.ts:34-37`, `vcs-event.ts:8`, `v1/filesystem.ts:7`,
- * `agent.ts:11` / `model.ts:12` / `provider.ts:26` / `config.ts:134`.
+ * Wire anchors: `_upstream/packages/schema/src/event-manifest.ts` (signal
+ * inventory), `project.ts:59`, `pty.ts:34-37`, `vcs-event.ts:8`,
+ * `filesystem.ts:6-13`, `agent.ts:11` / `model.ts:12` / `provider.ts:26` /
+ * `config.ts:134`, `credential.ts:18-22` … `location-event.ts:6`.
  */
 class ChatStoreWave5EventTest {
 
@@ -31,14 +30,18 @@ class ChatStoreWave5EventTest {
     private fun state(parts: List<ChatStore.UiPart> = listOf(textPart())) =
         ChatStore.ChatState(sessionID = "ses_1", messages = listOf(message(parts = parts)))
 
-    private fun parse(type: String, json: String) = ChatStore.parseEvent(type, JSONObject(json))
+    private fun adapt(type: String, json: String = "{}"): List<ChatStore.Event> =
+        V2EventAdapter.adapt(
+            type,
+            JSONObject("""{"id":"evt_1","type":"$type","created":1,"data":$json}"""),
+        )
 
-    private fun signalOf(type: String, json: String): ChatStore.Event.ServerSignal =
-        parse(type, json) as ChatStore.Event.ServerSignal
+    private fun signalOf(type: String, json: String = "{}"): ChatStore.Event.ServerSignal =
+        adapt(type, json).single() as ChatStore.Event.ServerSignal
 
     // ------------------------------------------------- E2: signal coverage
 
-    /** The 13 wire types E2 consumes, one row per event definition. */
+    /** Every wire type [ChatStore.Signal] models, one row per event definition. */
     private val signalTypes = listOf(
         "provider.updated" to ChatStore.Signal.PROVIDER_UPDATED,
         "model.updated" to ChatStore.Signal.MODEL_UPDATED,
@@ -49,16 +52,44 @@ class ChatStoreWave5EventTest {
         "file.edited" to ChatStore.Signal.FILE_EDITED,
         "session.created" to ChatStore.Signal.SESSION_CREATED,
         "session.deleted" to ChatStore.Signal.SESSION_DELETED,
+        // A-3: the session-row write. v1's own frame; on v2 the adapter
+        // synthesizes it from the row-writing session events (model/agent
+        // selection, permissions, revert) — see `ChatStore.Signal`.
+        "session.updated" to ChatStore.Signal.SESSION_UPDATED,
         "pty.created" to ChatStore.Signal.PTY_CREATED,
         "pty.updated" to ChatStore.Signal.PTY_UPDATED,
         "pty.exited" to ChatStore.Signal.PTY_EXITED,
         "pty.deleted" to ChatStore.Signal.PTY_DELETED,
+        "credential.updated" to ChatStore.Signal.CREDENTIAL_UPDATED,
+        "credential.switched" to ChatStore.Signal.CREDENTIAL_SWITCHED,
+        "integration.updated" to ChatStore.Signal.INTEGRATION_UPDATED,
+        "plugin.updated" to ChatStore.Signal.PLUGIN_UPDATED,
+        "worktree.updated" to ChatStore.Signal.WORKTREE_UPDATED,
+        "worktree.resolved" to ChatStore.Signal.WORKTREE_RESOLVED,
+        "worktree.ready" to ChatStore.Signal.WORKTREE_READY,
+        "worktree.failed" to ChatStore.Signal.WORKTREE_FAILED,
+        "persistent-pty.added" to ChatStore.Signal.PERSISTENT_PTY_ADDED,
+        "persistent-pty.removed" to ChatStore.Signal.PERSISTENT_PTY_REMOVED,
+        "shell.created" to ChatStore.Signal.SHELL_CREATED,
+        "shell.exited" to ChatStore.Signal.SHELL_EXITED,
+        "shell.deleted" to ChatStore.Signal.SHELL_DELETED,
+        "websearch.updated" to ChatStore.Signal.WEBSEARCH_UPDATED,
+        "reference.updated" to ChatStore.Signal.REFERENCE_UPDATED,
+        "skill.updated" to ChatStore.Signal.SKILL_UPDATED,
+        "command.updated" to ChatStore.Signal.COMMAND_UPDATED,
+        "lsp.updated" to ChatStore.Signal.LSP_UPDATED,
+        "location.shutdown" to ChatStore.Signal.LOCATION_SHUTDOWN,
+        // `mcp-event.ts:5-26` — the three MCP settle frames (W2 A-5: they used
+        // to be a deliberate drop, so the MCP list never went live).
+        "mcp.status.changed" to ChatStore.Signal.MCP_STATUS_CHANGED,
+        "mcp.tools.changed" to ChatStore.Signal.MCP_TOOLS_CHANGED,
+        "mcp.resources.changed" to ChatStore.Signal.MCP_RESOURCES_CHANGED,
     )
 
     @Test
     fun everyWiredSignalTypeParsesToItsSignal() {
         for ((wire, expected) in signalTypes) {
-            val event = parse(wire, """{"type":"$wire","properties":{}}""")
+            val event = adapt(wire).single()
             assertEquals("$wire must map to $expected", ChatStore.Event.ServerSignal(expected), event)
             assertEquals("$wire", expected.wireType)
             assertEquals(expected, ChatStore.Signal.ofWireType(wire))
@@ -69,22 +100,22 @@ class ChatStoreWave5EventTest {
     }
 
     @Test
-    fun unknownEventsStillFallThroughToNull() {
-        // Not modelled on purpose: no MCP / LSP / TUI surface here, and
-        // `server.heartbeat` is a keepalive. They must stay `null` so nothing
-        // downstream starts reacting to a type the store does not model.
-        for (type in listOf("lsp.updated", "server.heartbeat", "tui.toast.show", "sync", "totally.made.up")) {
-            assertNull(type, parse(type, """{"type":"$type","properties":{}}"""))
+    fun unknownEventsStillFallThroughToNothing() {
+        // Not modelled on purpose: no TUI surface here, `server.heartbeat` is a
+        // keepalive, and `models-dev.refreshed` is server-internal. They must
+        // produce no event so nothing downstream starts reacting to a type the
+        // store does not model.
+        for (type in listOf("server.heartbeat", "tui.toast.show", "sync", "totally.made.up", "models-dev.refreshed")) {
+            assertTrue(type, adapt(type).isEmpty())
         }
-        assertNull(ChatStore.Signal.ofWireType("lsp.updated"))
+        assertNull(ChatStore.Signal.ofWireType("models-dev.refreshed"))
     }
 
     @Test
     fun projectUpdatedCarriesTheProjectSubject() {
         val event = signalOf(
             "project.updated",
-            """{"type":"project.updated","properties":{"id":"prj_7","canonical":"/work/app",
-               "time":{"created":1,"updated":2},"sandboxes":[]}}""",
+            """{"id":"prj_7","canonical":"/work/app","time":{"created":1,"updated":2},"sandboxes":[]}""",
         )
         assertEquals(ChatStore.Signal.PROJECT_UPDATED, event.signal)
         assertEquals("prj_7", event.subject)
@@ -98,51 +129,42 @@ class ChatStoreWave5EventTest {
             "pty_9",
             signalOf(
                 "pty.created",
-                """{"type":"pty.created","properties":{"info":{"id":"pty_9","title":"Terminal 1",
-                   "command":"bash","args":[],"cwd":"/w","status":"running","pid":42}}}""",
+                """{"info":{"id":"pty_9","title":"Terminal 1",
+                   "command":"bash","args":[],"cwd":"/w","status":"running","pid":42}}""",
             ).subject,
         )
-        assertEquals(
-            "pty_9",
-            signalOf("pty.updated", """{"type":"pty.updated","properties":{"info":{"id":"pty_9"}}}""").subject,
-        )
-        assertEquals(
-            "pty_9",
-            signalOf("pty.exited", """{"type":"pty.exited","properties":{"id":"pty_9","exitCode":0}}""").subject,
-        )
-        assertEquals("pty_9", signalOf("pty.deleted", """{"type":"pty.deleted","properties":{"id":"pty_9"}}""").subject)
+        assertEquals("pty_9", signalOf("pty.updated", """{"info":{"id":"pty_9"}}""").subject)
+        assertEquals("pty_9", signalOf("pty.exited", """{"id":"pty_9","exitCode":0}""").subject)
+        assertEquals("pty_9", signalOf("pty.deleted", """{"id":"pty_9"}""").subject)
         // Missing payload → signal still fires, just without a subject.
-        assertNull(signalOf("pty.created", """{"type":"pty.created","properties":{}}""").subject)
+        assertNull(signalOf("pty.created", """{}""").subject)
     }
 
     @Test
     fun fileEditedCarriesTheWrittenPath() {
-        val event = signalOf("file.edited", """{"type":"file.edited","properties":{"file":"src/App.kt"}}""")
+        val event = signalOf("file.edited", """{"file":"src/App.kt"}""")
         assertEquals(ChatStore.Signal.FILE_EDITED, event.signal)
         assertEquals("src/App.kt", event.subject)
     }
 
     @Test
     fun sessionSignalsCarryTheirSessionForListRefreshes() {
-        val created = signalOf(
-            "session.created",
-            """{"type":"session.created","properties":{"sessionID":"ses_new","info":{"id":"ses_new"}}}""",
-        )
+        val created = signalOf("session.created", """{"sessionID":"ses_new","slug":"s","version":"2"}""")
         assertEquals(ChatStore.Signal.SESSION_CREATED, created.signal)
         // Unlike the chat-state events, the signal is read *before* the session
         // gate, so a session created in another project still reaches the owner.
         assertEquals("ses_new", created.sessionID)
 
-        val deleted = signalOf("session.deleted", """{"type":"session.deleted","properties":{"sessionID":"ses_old"}}""")
+        val deleted = signalOf("session.deleted", """{"sessionID":"ses_old"}""")
         assertEquals(ChatStore.Signal.SESSION_DELETED, deleted.signal)
         assertEquals("ses_old", deleted.sessionID)
     }
 
     @Test
-    fun signalFramesWithoutAnEnvelopeStillParse() {
-        // Flat payloads are tolerated everywhere else in `parseEvent`; a signal
-        // must not be the one branch that needs `properties`.
-        val flat = parse("vcs.branch.updated", """{"type":"vcs.branch.updated"}""")
+    fun signalFramesWithoutPayloadFieldsStillFire() {
+        // Several signal payloads are empty by schema (`provider.updated`,
+        // `skill.updated`, …) — the signal itself is the message.
+        val flat = adapt("vcs.branch.updated").single()
         assertEquals(ChatStore.Event.ServerSignal(ChatStore.Signal.VCS_BRANCH_UPDATED), flat)
     }
 
@@ -227,29 +249,18 @@ class ChatStoreWave5EventTest {
     }
 
     @Test
-    fun parseEventReadsTheDeltaFieldForEachShape() {
-        val reasoning = parse(
-            "message.part.delta",
-            """{"type":"message.part.delta","properties":{"sessionID":"ses_1","messageID":"m1",
-               "partID":"p1","field":"state.output","delta":"hi"}}""",
-        )
-        assertEquals(ChatStore.Event.PartDelta("m1", "p1", "state.output", "hi"), reasoning)
+    fun v2DeltaFramesMapToPartDeltaEvents() {
+        // v2 deltas are `session.{text,reasoning}.delta{assistantMessageID,
+        // ordinal, delta}` (`session-event.ts:396-406`) — the adapter keys the
+        // part by `messageID:kind:ordinal` and always appends to `text`.
+        val event = adapt(
+            "session.text.delta",
+            """{"sessionID":"ses_1","assistantMessageID":"m1","ordinal":2,"delta":"hi"}""",
+        ).single()
+        assertEquals(ChatStore.Event.PartDelta("m1", "m1:text:2", "text", "hi"), event)
 
-        // `field` omitted → the historical default stays "text".
-        val missing = parse(
-            "message.part.delta",
-            """{"type":"message.part.delta","properties":{"sessionID":"ses_1","messageID":"m1",
-               "partID":"p1","delta":"bare"}}""",
-        )
-        assertEquals(ChatStore.Event.PartDelta("m1", "p1", "text", "bare"), missing)
-
-        // Ids are still required: without them there is nothing to append to.
-        assertNull(
-            parse(
-                "message.part.delta",
-                """{"type":"message.part.delta","properties":{"sessionID":"ses_1","field":"text","delta":"x"}}""",
-            ),
-        )
+        // A delta with no assistant is dropped — nothing to append to.
+        assertTrue(adapt("session.text.delta", """{"sessionID":"ses_1","ordinal":0,"delta":"x"}""").isEmpty())
     }
 
     // ------------------------------------- E3: permission.replied keeps reply
@@ -258,18 +269,14 @@ class ChatStoreWave5EventTest {
     fun permissionRepliedParsesAndKeepsTheReply() {
         assertEquals(
             ChatStore.Event.PermissionReplied("per_1", "always"),
-            parse(
-                "permission.replied",
-                """{"type":"permission.replied","properties":
-                   {"sessionID":"ses_1","requestID":"per_1","reply":"always"}}""",
-            ),
+            adapt("permission.replied", """{"sessionID":"ses_1","requestID":"per_1","reply":"always"}""").single(),
         )
         // An older server may omit `reply`: the removal must still happen.
         assertEquals(
             ChatStore.Event.PermissionReplied("per_1", ""),
-            parse("permission.replied", """{"properties":{"sessionID":"ses_1","requestID":"per_1"}}"""),
+            adapt("permission.replied", """{"sessionID":"ses_1","requestID":"per_1"}""").single(),
         )
-        assertNull(parse("permission.replied", """{"properties":{"sessionID":"ses_1"}}"""))
+        assertTrue(adapt("permission.replied", """{"sessionID":"ses_1"}""").isEmpty())
     }
 
     @Test
@@ -354,100 +361,24 @@ class ChatStoreWave5EventTest {
         assertNull(s.permissionReply("per_0"))
     }
 
-    // ------------------------------------- E3: question.replied keeps answers
-
-    @Test
-    fun questionRepliedKeepsTheAnswerMatrix() {
-        assertEquals(
-            ChatStore.Event.QuestionResolved("que_1", listOf(listOf("a.kt", "b.kt"), listOf("yes"))),
-            parse(
-                "question.replied",
-                """{"type":"question.replied","properties":{"sessionID":"ses_1","requestID":"que_1",
-                   "answers":[["a.kt","b.kt"],["yes"]]}}""",
-            ),
-        )
-        // `answers` absent / malformed → an empty answer list, never a crash.
-        assertEquals(
-            ChatStore.Event.QuestionResolved("que_1"),
-            parse("question.replied", """{"properties":{"sessionID":"ses_1","requestID":"que_1"}}"""),
-        )
-        assertEquals(
-            ChatStore.Event.QuestionResolved("que_1"),
-            parse(
-                "question.replied",
-                """{"properties":{"sessionID":"ses_1","requestID":"que_1","answers":"nope"}}""",
-            ),
-        )
-        assertEquals(
-            ChatStore.Event.QuestionResolved("que_1", listOf(emptyList())),
-            parse(
-                "question.replied",
-                """{"properties":{"sessionID":"ses_1","requestID":"que_1","answers":[[]]}}""",
-            ),
-        )
-    }
-
-    @Test
-    fun questionRejectedIsDistinguishableFromAnEmptyAnswer() {
-        assertEquals(
-            ChatStore.Event.QuestionResolved("que_2", rejected = true),
-            parse(
-                "question.rejected",
-                """{"type":"question.rejected","properties":{"sessionID":"ses_1","requestID":"que_2"}}""",
-            ),
-        )
-    }
-
-    @Test
-    fun questionResolutionsAreStoredAndIdempotent() {
-        var s = ChatStore.reduce(
-            ChatStore.ChatState(sessionID = "ses_1"),
-            ChatStore.Event.QuestionAsked(
-                OpenCodeClient.QuestionRequest(
-                    id = "que_1",
-                    sessionID = "ses_1",
-                    questions = listOf(
-                        OpenCodeClient.QuestionRequest.Info(
-                            question = "Which file?",
-                            header = "File",
-                            options = emptyList(),
-                            multiple = false,
-                            custom = true,
-                        ),
-                    ),
-                    tool = null,
-                ),
-            ),
-        )
-        s = ChatStore.reduce(s, ChatStore.Event.QuestionResolved("que_1", listOf(listOf("a.kt"))))
-        assertTrue(s.pendingQuestions.isEmpty())
-        assertEquals(listOf(listOf("a.kt")), s.questionResolution("que_1")?.answers)
-        assertFalse(s.questionResolution("que_1")!!.rejected)
-
-        assertEquals(s, ChatStore.reduce(s, ChatStore.Event.QuestionResolved("que_1", listOf(listOf("a.kt")))))
-        assertEquals(s, ChatStore.reduce(s, ChatStore.Event.QuestionResolved("que_other")))
-    }
-
     // ------------------------------------------------------------ wiring order
 
     @Test
-    fun aSignalFrameOnTheGlobalStreamKeepsItsSessionRouting() {
-        // `/global/event` wraps the payload: the signal must survive unwrapping
-        // and still carry its session / subject (`GlobalEventTest` covers the
-        // envelope itself).
+    fun aSignalFrameKeepsItsSessionRoutingOnTheV2Envelope() {
+        // v2 frames carry routing in `data.sessionID`; the gate that drops a
+        // foreign session's transcript would drop this frame too — which is
+        // exactly why the owner reads signals first.
         val frame = JSONObject(
-            """{"directory":"/w","payload":{"id":"e1","type":"session.deleted",
-               "properties":{"sessionID":"ses_x","info":{"id":"ses_x"}}}}""",
+            """{"id":"evt_9","type":"session.deleted","created":1,"data":{"sessionID":"ses_x"}}""",
         )
-        val inner = ChatStore.unwrapGlobal(frame) ?: error("must unwrap")
-        val event = ChatStore.parseEvent(inner.optString("type"), inner)
+        val event = V2EventAdapter.adapt("session.deleted", frame).single()
         assertEquals(
             ChatStore.Event.ServerSignal(ChatStore.Signal.SESSION_DELETED, sessionID = "ses_x"),
             event,
         )
-        // The gate that drops a foreign session's transcript would drop this
-        // frame too — which is exactly why the owner reads signals first.
-        assertFalse(ChatStore.acceptsSession("ses_mine", inner))
+        assertEquals("ses_x", ChatStore.eventSessionId(frame))
+        assertFalse(ChatStore.acceptsSession("ses_mine", frame))
+        assertTrue(ChatStore.acceptsSession("ses_x", frame))
         assertNotNull(ChatStore.Signal.ofWireType("session.deleted"))
     }
 }

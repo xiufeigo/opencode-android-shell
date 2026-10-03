@@ -2,6 +2,7 @@ package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.data.HomeProjectRecords
 import com.xiufeigo.opencodeshell.data.HomeProjectStore
+import com.xiufeigo.opencodeshell.data.ProjectPaths
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -71,6 +72,202 @@ class HomeProjectStoreTest {
         assertEquals(listOf("/work/api/", "/work/site"), twice.recentlyClosed)
         // Closing a directory that is not open still records it, like upstream.
         assertEquals(listOf("/other", "/work/api/", "/work/site"), HomeProjectRecords.close(twice, "/other").recentlyClosed)
+    }
+
+    @Test
+    fun `open treats separator case and trailing slash variants as one project`() {
+        var state = HomeProjectRecords.open(home, "C:\\src\\app")
+        state = HomeProjectRecords.open(state, "C:/src/app")
+        state = HomeProjectRecords.open(state, "c:/SRC/app/")
+        assertEquals(listOf("C:\\src\\app"), opened(state))
+        // A re-open under another spelling keeps the row's position.
+        state = HomeProjectRecords.open(HomeProjectRecords.open(state, "/work/site"), "c:\\SRC\\APP")
+        assertEquals(listOf("/work/site", "C:\\src\\app"), opened(state))
+        // POSIX stays case-sensitive: a different case is a different directory.
+        state = HomeProjectRecords.open(home, "/work/api")
+        assertEquals(
+            listOf("/work/API", "/work/api"),
+            opened(HomeProjectRecords.open(state, "/work/API")),
+        )
+    }
+
+    @Test
+    fun `close removes every spelling of the directory`() {
+        val state = HomeProjectRecords.open(
+            HomeProjectRecords.open(home, "C:\\src\\app"),
+            "/work/site",
+        )
+        val closed = HomeProjectRecords.close(state, "c:/src/app/")
+        assertEquals(listOf("/work/site"), opened(closed))
+        assertEquals(listOf("c:/src/app/"), closed.recentlyClosed)
+    }
+
+    @Test
+    fun `move finds the project under another spelling`() {
+        val state = HomeProjectRecords.open(
+            HomeProjectRecords.open(HomeProjectRecords.open(home, "C:\\a"), "C:\\b"),
+            "C:\\c",
+        )
+        assertEquals(
+            listOf("C:\\a", "C:\\c", "C:\\b"),
+            opened(HomeProjectRecords.move(state, "c:/a", 0)),
+        )
+    }
+
+    @Test
+    fun `decode collapses windows case variants and unions their sandboxes`() {
+        val decoded = HomeProjectRecords.decode(
+            """
+            {"projects":[{"worktree":"C:\\Repo","sandboxes":["C:\\sb1"]},{"worktree":"c:/repo/","sandboxes":["c:\\SB1","C:\\sb2"]}],
+             "recentlyClosed":["C:\\Old","c:/old/"],
+             "lastProject":"C:\\Repo"}
+            """.trimIndent(),
+        )
+        assertEquals(listOf("C:\\Repo"), opened(decoded))
+        assertEquals(listOf("C:\\sb1", "C:\\sb2"), decoded.list.single().sandboxes)
+        assertEquals(listOf("C:\\Old"), decoded.recentlyClosed)
+        // The healed record persists as one row.
+        assertEquals(decoded, HomeProjectRecords.decode(HomeProjectRecords.encode(decoded)))
+    }
+
+    @Test
+    fun `msys and win32 spellings share one match key`() {
+        val msys = "/mnt/c/sensorsdata/main/program/opencode-android-shell"
+        // Separator, case and trailing-slash variants all fold together.
+        assertEquals(
+            ProjectPaths.matchKey("C:/sensorsdata/main/program/opencode-android-shell"),
+            ProjectPaths.matchKey(msys),
+        )
+        assertEquals(
+            ProjectPaths.matchKey("C:\\SensorsData\\Main\\Program\\OpenCode-Android-Shell"),
+            ProjectPaths.matchKey(msys),
+        )
+        assertEquals(ProjectPaths.matchKey(msys), ProjectPaths.matchKey("$msys/"))
+        assertEquals(ProjectPaths.matchKey("C:\\"), ProjectPaths.matchKey("/mnt/c"))
+        assertEquals(ProjectPaths.matchKey("c:/"), ProjectPaths.matchKey("/mnt/c/"))
+        // Not a drive: `/mnt/<multi-letter>/…` and bare `/mnt/` stay POSIX and
+        // must not merge with any drive key.
+        assertEquals("/mnt/cfoo/bar", ProjectPaths.matchKey("/mnt/cfoo/bar"))
+        assertEquals("/mnt/data", ProjectPaths.matchKey("/mnt/data"))
+        assertTrue(ProjectPaths.matchKey("/mnt/data") != ProjectPaths.matchKey("d:/ata"))
+    }
+
+    @Test
+    fun `cygdrive and win32 spellings share one match key`() {
+        val cygdrive = "/cygdrive/c/sensorsdata/main/program/opencode-android-shell"
+        assertEquals(
+            ProjectPaths.matchKey("C:/sensorsdata/main/program/opencode-android-shell"),
+            ProjectPaths.matchKey(cygdrive),
+        )
+        assertEquals(
+            ProjectPaths.matchKey("C:\\SensorsData\\Main\\Program\\OpenCode-Android-Shell"),
+            ProjectPaths.matchKey(cygdrive),
+        )
+        assertEquals(ProjectPaths.matchKey(cygdrive), ProjectPaths.matchKey("$cygdrive/"))
+        assertEquals(ProjectPaths.matchKey("C:\\"), ProjectPaths.matchKey("/cygdrive/c"))
+        assertEquals(ProjectPaths.matchKey("c:/"), ProjectPaths.matchKey("/CYGDRIVE/C/"))
+        // The two POSIX drive spellings are twins of each other too.
+        assertEquals(
+            ProjectPaths.matchKey("/mnt/c/sensorsdata"),
+            ProjectPaths.matchKey("/cygdrive/c/sensorsdata"),
+        )
+        // Not a drive: multi-letter names and bare prefixes stay POSIX.
+        assertEquals("/cygdrive/cfoo/bar", ProjectPaths.matchKey("/cygdrive/cfoo/bar"))
+        assertEquals("/cygdrive", ProjectPaths.matchKey("/cygdrive"))
+        assertEquals("/cygdrive", ProjectPaths.matchKey("/cygdrive/"))
+        assertTrue(ProjectPaths.matchKey("/cygdrive/data") != ProjectPaths.matchKey("d:/ata"))
+    }
+
+    @Test
+    fun `wsl unc spellings share one match key`() {
+        val backslash = "\\\\wsl.localhost\\Ubuntu\\home\\xiufeigo\\repo"
+        val dollar = "//wsl$/Ubuntu/home/xiufeigo/repo"
+        assertEquals(ProjectPaths.matchKey(backslash), ProjectPaths.matchKey(dollar))
+        // Separator mix and host case still fold together.
+        assertEquals(
+            ProjectPaths.matchKey("//WSL$/Ubuntu/home/xiufeigo/repo"),
+            ProjectPaths.matchKey(dollar),
+        )
+        assertEquals(
+            ProjectPaths.matchKey("//wsl.localhost\\Ubuntu\\home\\xiufeigo\\repo"),
+            ProjectPaths.matchKey(dollar),
+        )
+        assertEquals(ProjectPaths.matchKey(dollar), ProjectPaths.matchKey("$dollar/"))
+        // A non-WSL share keeps its own key and stays case-folded.
+        assertEquals("//host/share/dir", ProjectPaths.matchKey("\\\\HOST\\SHARE\\dir"))
+        assertTrue(ProjectPaths.matchKey("//host/share") != ProjectPaths.matchKey(dollar))
+        // POSIX paths are untouched by the UNC fold.
+        assertEquals("/home/xiufeigo/repo", ProjectPaths.matchKey("/home/xiufeigo/repo"))
+    }
+
+    @Test
+    fun `open merges cygdrive and unc twins into one row`() {
+        val win32 = "C:\\sensorsdata\\main\\program\\opencode-android-shell"
+        val cygdrive = "/cygdrive/c/sensorsdata/main/program/opencode-android-shell"
+        var state = HomeProjectRecords.open(HomeProjectRecords.open(home, win32), cygdrive)
+        assertEquals(listOf(win32), opened(state))
+        val uncA = "\\\\wsl.localhost\\Ubuntu\\home\\xiufeigo\\repo"
+        val uncB = "//wsl$/Ubuntu/home/xiufeigo/repo"
+        state = HomeProjectRecords.open(HomeProjectRecords.open(home, uncA), uncB)
+        assertEquals(listOf(uncA), opened(state))
+        val closed = HomeProjectRecords.close(state, uncB)
+        assertTrue(closed.list.isEmpty())
+        assertEquals(1, closed.recentlyClosed.size)
+        assertTrue(HomeProjectRecords.open(closed, uncA).recentlyClosed.isEmpty())
+    }
+
+    @Test
+    fun `open merges msys and win32 twins into one row`() {        val win32 = "C:\\sensorsdata\\main\\program\\opencode-android-shell"
+        val msys = "/mnt/c/sensorsdata/main/program/opencode-android-shell"
+        // Each spelling opened once leaves a single row (first spelling wins).
+        var state = HomeProjectRecords.open(HomeProjectRecords.open(home, win32), msys)
+        assertEquals(listOf(win32), opened(state))
+        var reverse = HomeProjectRecords.open(HomeProjectRecords.open(home, msys), win32)
+        assertEquals(listOf(msys), opened(reverse))
+        // A re-open under the twin spelling keeps the row's position.
+        state = HomeProjectRecords.open(HomeProjectRecords.open(state, "/work/site"), "$msys/")
+        assertEquals(listOf("/work/site", win32), opened(state))
+    }
+
+    @Test
+    fun `close clears msys twins from either spelling`() {
+        val win32 = "C:\\sensorsdata\\main\\program\\opencode-android-shell"
+        val msys = "/mnt/c/sensorsdata/main/program/opencode-android-shell"
+        // A record an older build persisted as two spellings of one directory.
+        val twins = HomeProjectRecords.State(
+            list = listOf(
+                HomeProjectRecords.Project(msys),
+                HomeProjectRecords.Project(win32),
+                HomeProjectRecords.Project("/work/site"),
+            ),
+        )
+        // Closing with the Win32 spelling removes both twins, one tombstone.
+        val closedWin = HomeProjectRecords.close(twins, "c:/sensorsdata/main/program/opencode-android-shell/")
+        assertEquals(listOf("/work/site"), opened(closedWin))
+        assertEquals(1, closedWin.recentlyClosed.size)
+        // Closing with the MSYS spelling does the same.
+        val closedMsys = HomeProjectRecords.close(twins, msys)
+        assertEquals(listOf("/work/site"), opened(closedMsys))
+        assertEquals(1, closedMsys.recentlyClosed.size)
+        // Re-opening under either spelling drops the twin tombstone too.
+        assertTrue(HomeProjectRecords.open(closedMsys, win32).recentlyClosed.isEmpty())
+        assertTrue(HomeProjectRecords.open(closedWin, msys).recentlyClosed.isEmpty())
+    }
+
+    @Test
+    fun `decode collapses msys and win32 twins and unions their sandboxes`() {
+        val decoded = HomeProjectRecords.decode(
+            """
+            {"projects":[{"worktree":"C:\\Repo","sandboxes":["C:\\sb1"]},{"worktree":"/mnt/c/repo/","sandboxes":["/mnt/c/SB1","C:\\sb2"]}],
+             "recentlyClosed":["/mnt/c/old","C:\\Old"],
+             "lastProject":"/mnt/c/repo"}
+            """.trimIndent(),
+        )
+        assertEquals(listOf("C:\\Repo"), opened(decoded))
+        assertEquals(listOf("C:\\sb1", "C:\\sb2"), decoded.list.single().sandboxes)
+        assertEquals(listOf("/mnt/c/old"), decoded.recentlyClosed)
+        // The healed record persists as one row.
+        assertEquals(decoded, HomeProjectRecords.decode(HomeProjectRecords.encode(decoded)))
     }
 
     @Test

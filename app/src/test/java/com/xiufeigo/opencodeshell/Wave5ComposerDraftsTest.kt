@@ -58,9 +58,11 @@ class Wave5ComposerDraftsTest {
         assertTrue(ComposerDrafts.pendingRestore("ses_a"))
         assertEquals("keep me", ComposerDrafts.text("ses_a"))
         // The composer consumes it; a second read must not resurrect the text.
-        assertEquals("keep me", ComposerDrafts.takeRestore("ses_a"))
+        // The second argument is the editor's own text — the failed send cleared
+        // it, so the handback lands (v84 P2).
+        assertEquals("keep me", ComposerDrafts.takeRestore("ses_a", ""))
         assertFalse(ComposerDrafts.pendingRestore("ses_a"))
-        assertNull(ComposerDrafts.takeRestore("ses_a"))
+        assertNull(ComposerDrafts.takeRestore("ses_a", ""))
         // …but the draft itself stays, so the editor still shows it.
         assertEquals("keep me", ComposerDrafts.text("ses_a"))
     }
@@ -69,7 +71,7 @@ class Wave5ComposerDraftsTest {
     fun restoringBlankTextIsIgnored() {
         ComposerDrafts.restore("ses_a", "")
         assertFalse(ComposerDrafts.pendingRestore("ses_a"))
-        assertNull(ComposerDrafts.takeRestore("ses_a"))
+        assertNull(ComposerDrafts.takeRestore("ses_a", ""))
     }
 
     @Test
@@ -85,7 +87,7 @@ class Wave5ComposerDraftsTest {
         ComposerDrafts.set("ses_a", "sent")
         ComposerDrafts.clear("ses_a")
         assertEquals("", ComposerDrafts.text("ses_a"))
-        assertNull(ComposerDrafts.takeRestore("ses_a"))
+        assertNull(ComposerDrafts.takeRestore("ses_a", ""))
     }
 
     @Test

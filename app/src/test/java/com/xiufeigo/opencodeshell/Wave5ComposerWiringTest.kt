@@ -35,7 +35,7 @@ class Wave5ComposerWiringTest {
     @Test
     fun composerWiresTheSlashMenuAndTheAddMenu() {
         val composer = composer()
-        assertTrue("command detection", composer.contains("ComposerSuggestions.commandQuery("))
+        assertTrue("command detection", composer.contains("ComposerSuggestions.triggerAt("))
         assertTrue("command candidates", composer.contains("ComposerSuggestions.commandItems("))
         assertTrue("submitted server command", composer.contains("ComposerSuggestions.invocation("))
         assertTrue("the `+` menu is a real menu", composer.contains("AddMenuRow("))
@@ -51,7 +51,7 @@ class Wave5ComposerWiringTest {
         // W5-F moved the literal `updated.text == "!"` into
         // `HalfWidthText.isShellTrigger`, so a Chinese IME's `！` opens the mode
         // too; the rule itself is pinned by `Wave5HalfWidthInputTest`.
-        assertTrue("`!` (half- or full-width) enters shell mode", composer.contains("HalfWidthText.isShellTrigger(updated.text)"))
+        assertTrue("`!` (half- or full-width) enters shell mode", composer.contains("HalfWidthText.isShellTrigger(readable)"))
         assertTrue("shell placeholder", composer.contains("R.string.oc_composer_placeholder_shell"))
         assertTrue("monospace editor", composer.contains("FontFamily.Monospace"))
         assertTrue("escape leaves the mode", composer.contains("shellMode = false"))
@@ -77,7 +77,11 @@ class Wave5ComposerWiringTest {
     @Test
     fun composerWiresMentionCategoriesPasteAndUploadProgress() {
         val composer = composer()
-        assertTrue("category candidates", composer.contains("ComposerSuggestions.mentionItems("))
+        // v69: the menu is asked for as its two halves (`mentionRowSets`) so the
+        // row-generation hold can cover the fixed block without freezing the
+        // `/find/file` wave; `joinMentionRows` puts them back together.
+        assertTrue("category candidates", composer.contains("ComposerSuggestions.mentionRowSets("))
+        assertTrue("and joined for the panel", composer.contains("ComposerSuggestions.joinMentionRows("))
         assertTrue("files still come from the find bridge", composer.contains("MentionText.candidates(files)"))
         assertTrue("paste detection", composer.contains("AttachmentPolicy.pasteKind("))
         assertTrue("paste is reachable without a DOM event", composer.contains("pasteFromClipboard()"))
@@ -91,7 +95,7 @@ class Wave5ComposerWiringTest {
         val composer = composer()
         assertTrue(composer.contains("onSend(outgoing, attachments)"))
         assertTrue(composer.contains("MentionText.insert("))
-        assertTrue(composer.contains("MentionText.anchorAt("))
+        assertTrue(composer.contains("ComposerSuggestions.triggerAt("))
         assertTrue(composer.contains("AttachmentPreviewRow("))
     }
 
@@ -111,15 +115,20 @@ class Wave5ComposerWiringTest {
         assertTrue(vm.contains("fun submit("))
         assertTrue(vm.contains("fun sendShell(text: String)"))
         assertTrue(vm.contains("fun runCommand(name: String, arguments: String)"))
-        assertTrue("the shell route", vm.contains("sendShellAs("))
-        assertTrue("the command route", vm.contains("sendCommandAs("))
-        assertTrue("agent + variant are pinned on the prompt", vm.contains("variant = variant,"))
+        assertTrue("the shell route", vm.contains("t.sendShell(id, text, messageID = null)"))
+        assertTrue("the command route", vm.contains("t.sendCommand("))
+        assertTrue(
+            "agent + the picked model are pinned before the send",
+            vm.contains("t.switchModel(id, pin.providerID, pin.modelID, pin.variant)"),
+        )
     }
 
     @Test
     fun aFailedSendRestoresTheComposerDraftAndDropsItsHistoryEntry() {
         val vm = viewModel()
-        assertTrue(vm.contains("ComposerDrafts.restore(key, text)"))
+        // P1-C: the rollback hands the full handoff back (text + the failed
+        // payload's attachments, stashed ref preserved) instead of text only.
+        assertTrue(vm.contains("ComposerDrafts.restoreHandoff(key, text, attachments.map { it.toDraft() })"))
         assertTrue(vm.contains("ComposerHistory.of(key).remove(text, shell)"))
     }
 
@@ -127,16 +136,22 @@ class Wave5ComposerWiringTest {
 
     @Test
     fun clientExposesTheW5Endpoints() {
+        // The v1 write endpoints died with `V1Transport`; the three write
+        // routes land on `V2Api` now (`/api/session/{id}/{shell,command,prompt}`
+        // plus `GET /api/health`).
+        val api = source("src/main/java/com/xiufeigo/opencodeshell/v2/V2Api.kt")
+        assertTrue(api.contains("fun shell(sessionID: String, command: String, messageID: String? = null)"))
+        assertTrue(api.contains("fun command("))
+        assertTrue(api.contains("fun prompt("))
+        assertTrue(api.contains("fun health()"))
+        assertTrue(api.contains("session/\$sessionID/shell"))
+        assertTrue(api.contains("session/\$sessionID/command"))
+        assertTrue(api.contains("session/\$sessionID/prompt"))
+        // Catalog reads stay on the plain REST client.
         val client = client()
-        assertTrue(client.contains("fun shellCommand("))
-        assertTrue(client.contains("fun runCommand("))
         assertTrue(client.contains("fun agents("))
         assertTrue(client.contains("fun commands("))
         assertTrue(client.contains("fun skills("))
-        assertTrue(client.contains("fun health()"))
-        assertTrue(client.contains("/session/\$sessionID/shell"))
-        assertTrue(client.contains("/session/\$sessionID/command"))
-        assertTrue(client.contains("/global/health"))
     }
 
     // ------------------------------------------------------ attachments (B6)

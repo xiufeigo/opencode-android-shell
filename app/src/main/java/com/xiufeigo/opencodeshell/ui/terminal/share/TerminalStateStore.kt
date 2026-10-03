@@ -26,7 +26,17 @@ object TerminalStateStore {
 
     data class PersistedTab(val id: String, val title: String?, val number: Int)
 
-    data class PersistedState(val activeId: String?, val tabs: List<PersistedTab>)
+    /**
+     * Tab chrome plus the `terminal.title.numbered` counter ([nextNumber]).
+     * The counter must outlive the tabs themselves: when every persisted id is
+     * dead after a restart (daemon dropped the PTYs) the revive adopts nothing
+     * and the next fresh tab would otherwise restart at "Terminal 1".
+     */
+    data class PersistedState(
+        val activeId: String?,
+        val tabs: List<PersistedTab>,
+        val nextNumber: Int = 0,
+    )
 
     /** Key for one workspace: the directory, or "" for the server cwd. */
     fun workspaceKey(directory: String?): String = directory?.trim().orEmpty()
@@ -34,6 +44,7 @@ object TerminalStateStore {
     fun encode(state: PersistedState): String {
         val obj = JSONObject()
         state.activeId?.takeIf { it.isNotBlank() }?.let { obj.put("active", it) }
+        obj.put("nextNumber", state.nextNumber.coerceAtLeast(0))
         val all = JSONArray()
         for (tab in state.tabs) {
             if (tab.id.isBlank()) continue
@@ -66,7 +77,15 @@ object TerminalStateStore {
             )
         }
         val active = obj.optString("active", "").takeIf { it.isNotEmpty() && it in seen }
-        return PersistedState(activeId = active, tabs = tabs)
+        // Payloads written before the counter existed carry no `nextNumber` —
+        // fall back to the highest restored tab number instead of restarting
+        // numbering from zero.
+        val nextNumber = if (obj.has("nextNumber")) {
+            obj.optInt("nextNumber", 0).coerceAtLeast(0)
+        } else {
+            tabs.maxOfOrNull { it.number }?.coerceAtLeast(0) ?: 0
+        }
+        return PersistedState(activeId = active, tabs = tabs, nextNumber = nextNumber)
     }
 
     /** Encodes the whole per-workspace map (`workspaceKey` → [encode]). */
@@ -113,7 +132,7 @@ object TerminalStateStore {
         if (state.tabs.none { it.id == id }) return state
         val tabs = state.tabs.filter { it.id != id }
         val active = state.activeId?.takeIf { it != id } ?: tabs.firstOrNull()?.id
-        return PersistedState(activeId = active, tabs = tabs)
+        return PersistedState(activeId = active, tabs = tabs, nextNumber = state.nextNumber)
     }
 
     /** Snapshot of a live [TerminalTabs] for persistence. */
@@ -121,5 +140,6 @@ object TerminalStateStore {
         PersistedState(
             activeId = tabs.activeId,
             tabs = tabs.tabs.map { PersistedTab(id = it.id, title = it.title, number = it.number) },
+            nextNumber = tabs.issuedNumber,
         )
 }

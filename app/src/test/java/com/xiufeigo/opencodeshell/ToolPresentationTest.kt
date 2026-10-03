@@ -143,9 +143,30 @@ class ToolPresentationTest {
     }
 
     @Test
-    fun subtitleFallsBackToTheErrorLabelOnAFailureWithoutText() {
+    fun subtitleNeverRepeatsTheErrorTextOnAFailure() {
+        // v32 BUG-1 (`research/v32_verify/tA/tA_30_baddir.png`): the trigger
+        // printed the error line twice — the subtitle carried the whole
+        // 「Working directory does not exist: /home/xiufeigo/v32projA」 and the
+        // head its first `": "` segment. A failed tool whose input names nothing
+        // now shows no subtitle at all (upstream `toolErrorSubtitle` answers
+        // `undefined`), leaving the error text to the head/detail pair only.
+        val part = toolPart(
+            "bash",
+            status = "error",
+            error = "Working directory does not exist: /home/xiufeigo/v32projA",
+        )
+        assertNull(ToolPresentation.subtitle(part))
+        val (head, detail) = ToolText.errorHeadDetail(part.toolError.orEmpty(), part.toolName)
+        assertEquals("Working directory does not exist", head)
+        assertEquals("/home/xiufeigo/v32projA", detail)
+    }
+
+    @Test
+    fun subtitleStaysNullOnAFailureWithoutText() {
+        // The old `summary ?: errorLabel` fallback also printed "Error"/"Failed"
+        // where upstream prints nothing.
         val part = toolPart("bash", status = "error")
-        assertEquals("Echec", ToolPresentation.subtitle(part, errorLabel = "Echec"))
+        assertNull(ToolPresentation.subtitle(part))
     }
 
     @Test
@@ -153,6 +174,26 @@ class ToolPresentationTest {
         val long = "x".repeat(400)
         val subtitle = ToolPresentation.subtitle(toolPart("bash", input = """{"command":"$long"}"""))
         assertEquals(ToolPresentation.SUBTITLE_MAX, subtitle?.length)
+    }
+
+    @Test
+    fun capCharsNeverSplitsASurrogatePair() {
+        val text = "a😀b"
+        assertEquals("a", ToolPresentation.capChars(text, 2))
+        assertEquals("a😀", ToolPresentation.capChars(text, 3))
+        assertEquals(text, ToolPresentation.capChars(text, 4))
+        assertEquals(text, ToolPresentation.capChars(text, 100))
+        assertEquals("", ToolPresentation.capChars(text, 0))
+    }
+
+    @Test
+    fun subtitleCapLandsOutsideASurrogatePair() {
+        // SUBTITLE_MAX falls between the emoji's two UTF-16 units; the old
+        // `take` kept the lone high surrogate (renders as U+FFFD).
+        val command = "y".repeat(119) + "😀tail"
+        val subtitle = ToolPresentation.subtitle(toolPart("bash", input = """{"command":"$command"}"""))
+        assertEquals(119, subtitle?.length)
+        assertEquals('y', subtitle!!.last())
     }
 
     // ------------------------------------------------------------------- body

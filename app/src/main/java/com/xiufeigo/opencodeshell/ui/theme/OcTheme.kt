@@ -103,21 +103,31 @@ data class OcColors(
          * Parses a token literal.
          *
          * Eight-digit tokens are authored in **CSS order** (`#RRGGBBAA`) because
-         * they are transcribed from the upstream token sheet; Android's
-         * `Color.parseColor` only understands `#AARRGGBB`, so the two halves are
-         * swapped here.
+         * they are transcribed from the upstream token sheet; the trailing pair
+         * is the alpha channel, so it moves to the front when packing
+         * `0xAARRGGBB`.
          *
-         * Without this the whole palette drifted: `borderBase` in the light
-         * scheme (`#0000001a`) parsed to *alpha 0* — invisible borders and a
-         * scrim that never dimmed — while dark values like `#ffffff1a` parsed to
-         * an opaque yellow-white. Every eight-digit token in this file uses the
-         * CSS order (the `00`/`ff` halves are always the RGB prefix, the trailing
-         * pair is always `0a/0f/14/1a/33/99`), so the conversion is unambiguous.
+         * Pure Kotlin on purpose (no `android.graphics.Color.parseColor`): the
+         * theme registry resolves all 36 upstream built-ins through this parser,
+         * and plain JVM unit tests stub every Android framework call to return
+         * zero — parsing through the framework would turn every palette
+         * transparent under test while looking fine on device. The packing math
+         * matches `parseColor` int-for-int (`(component and 0xff) / 255f` per
+         * channel via the `Color(Long)` constructor), so device rendering is
+         * unchanged.
+         *
+         * Internal (not private) so [OcThemeRegistry] resolves the generated
+         * themes with byte-identical semantics instead of a second parser.
          */
-        private fun c(hex: String): Color {
+        internal fun c(hex: String): Color {
             val body = hex.removePrefix("#")
-            val argb = if (body.length == 8) "#" + body.substring(6, 8) + body.substring(0, 6) else hex
-            return Color(android.graphics.Color.parseColor(argb))
+            require(body.length == 6 || body.length == 8) { "token must be #RRGGBB or #RRGGBBAA, got $hex" }
+            val r = body.substring(0, 2).toInt(16)
+            val g = body.substring(2, 4).toInt(16)
+            val b = body.substring(4, 6).toInt(16)
+            val a = if (body.length == 8) body.substring(6, 8).toInt(16) else 0xff
+            val packed = (a.toLong() shl 24) or (r.toLong() shl 16) or (g.toLong() shl 8) or b.toLong()
+            return Color(packed)
         }
 
         /** [data-color-scheme="dark"] semantic values. */
@@ -384,15 +394,31 @@ internal val LocalOcMonoFontFamily = staticCompositionLocalOf { OcFonts.mono }
  * reads that CompositionLocal. Only family + weight are supplied: font sizes and
  * line heights stay with the caller (or [OcType]) so adopting Inter cannot
  * silently re-layout screens written before this change.
+ *
+ * @param themeId an [OcThemeRegistry] id (`settings-theme`, upstream
+ *   `opencode-theme-id`). Unknown ids fall back to the default palette, exactly
+ *   like upstream `resolveStoredTheme`.
+ * @param uiFont overrides the ambient UI family when non-null
+ *   (`settings-ui-font` via [uiFontFamily]); null keeps whatever the outer
+ *   composition provides, so call sites that do not wire settings (previews,
+ *   dialogs under the app root) keep compiling and behaving as before.
+ * @param codeFont overrides the ambient mono family when non-null
+ *   (`settings-code-font` via [codeFontFamily]); null keeps the current mono
+ *   stack. Every reader of [OcTheme.monoFont] (code blocks, diff, review)
+ *   follows without touching its call site.
  */
 @androidx.compose.runtime.Composable
 fun OcTheme(
     isDark: Boolean,
+    themeId: String = OcThemeRegistry.DEFAULT_ID,
+    uiFont: androidx.compose.ui.text.font.FontFamily? = null,
+    codeFont: androidx.compose.ui.text.font.FontFamily? = null,
     content: @androidx.compose.runtime.Composable () -> Unit,
 ) {
-    val colors = if (isDark) OcColors.Dark else OcColors.Light
+    val colors = OcThemeRegistry.colors(themeId, isDark)
     val elevation = if (isDark) OcElevation.Dark else OcElevation.Light
-    val fontFamily = LocalOcFontFamily.current
+    val fontFamily = uiFont ?: LocalOcFontFamily.current
+    val monoFamily = codeFont ?: LocalOcMonoFontFamily.current
     val textStyle = androidx.compose.material3.LocalTextStyle.current.merge(
         androidx.compose.ui.text.TextStyle(
             fontFamily = fontFamily,
@@ -405,7 +431,7 @@ fun OcTheme(
         LocalOcType provides OcType.Default,
         LocalOcShapes provides OcShapes.Default,
         LocalOcFontFamily provides fontFamily,
-        LocalOcMonoFontFamily provides LocalOcMonoFontFamily.current,
+        LocalOcMonoFontFamily provides monoFamily,
         androidx.compose.material3.LocalTextStyle provides textStyle,
     ) {
         content()

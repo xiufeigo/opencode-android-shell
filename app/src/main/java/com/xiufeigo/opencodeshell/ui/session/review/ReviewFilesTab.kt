@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,11 +18,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,11 +38,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -57,17 +55,20 @@ import com.xiufeigo.opencodeshell.ui.theme.OcMotion
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 
 /**
- * 「文件」 tab of the review panel: the project file tree behind
- * `GET /file?path=`, lazily loaded one directory at a time (upstream
- * `flattenLiveFileTreeV2` + `file.tree.list`), directories sorting before
- * files (`ReviewFileTree.sortSiblings`). Tapping a file swaps the tree for a
- * content preview (`GET /file/content?path=`): mono text capped at
- * [MAX_PREVIEW_LINES] lines with a copy action, or a binary hint.
+ * 「文件」 tab of the review panel: the upstream v2 **file browser + open-file
+ * tabs** pair — `SessionMobileFiles` (`session-mobile-files.tsx:14-100`, the
+ * `mobileView === "files"` mount of `session/screen.tsx:310-312`) over
+ * `SessionFileBrowserTab`'s tree, with each tapped file opening a sortable tab
+ * whose body is the rich [ArtifactView] of `session/files/file-tabs.tsx`
+ * (`SessionFileView`, `:180-482`).
  *
- * Tree state lives in `remember` maps keyed by [OpenCodeClient.FileNode.absolute]
- * so a refresh of one directory never disturbs the rest of the tree.
+ * Tree data stays the lazy `GET /file?path=` walk of the old preview
+ * (`flattenLiveFileTreeV2` + `file.tree.list`), directories sorting before
+ * files ([ReviewFileTree.sortSiblings]). Opening a file loads
+ * `GET /file/content?path=` (`V2Api.fsRead`) **once per tab** — the tab strip
+ * switches between already-loaded bodies like upstream `file.get(path)`.
  *
- * **W5-R additions:**
+ * **W5-R additions (kept):**
  * - the **Filter files** field of the upstream sidebar
  *   (`session-review-v2.tsx:88-123`, `ui.sessionReviewV2.filterFiles`) with the
  *   case-insensitive substring matcher of `review-diff-kinds.ts:57-61` plus the
@@ -76,9 +77,20 @@ import com.xiufeigo.opencodeshell.ui.theme.OcTheme
  * - **A/M/D change badges** (`file-tree-v2.tsx:114-122`) driven by the active
  *   scope's diffs — files only, never directories, exactly like upstream.
  *
- * @param openPath absolute path to open straight into the preview (`file.open`).
+ * @param openPath absolute path to open straight into a tab (`file.open`,
+ *   `palette.ts:66-80`). New value = new request; the tree behind the tabs
+ *   keeps its state so 「All files」 returns to it.
  * @param diffs changed files of the active scope, used for the row badges.
  *   Empty (the default) simply renders a tree without badges.
+ * @param refreshKey bumped by the host when the user taps 「刷新」
+ *   (`SessionReviewPanel.reprobeKey`, the same settle signal the diff walks
+ *   use). A new value is a *new read request* for the root listing: the
+ *   cached answer is evicted first, because [load] treats an already-listed
+ *   directory as answered and would otherwise hand the previous listing —
+ *   narrowed by whatever filter was last typed — back to the screen
+ *   (`research/v97_verify/5562_v98/REPORT_SWEEPD2.md` §3.11 U11). A failed
+ *   re-read lands in `failedDirs` and the body says so rather than
+ *   re-rendering a stale subset. Default `0` keeps the mount-time read only.
  */
 @Composable
 fun ReviewFilesTab(
@@ -87,16 +99,12 @@ fun ReviewFilesTab(
     onLoadFile: (String, (OpenCodeClient.FileContent?) -> Unit) -> Unit,
     onResolveRoot: ((String?) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
-    /**
-     * Absolute path to open straight into the preview, from the `file.open`
-     * palette command (`palette.ts:66-80`: open the file, show the file tree
-     * tab and select it). New value = new request; the tree behind the preview
-     * keeps its state so Back returns to the tree.
-     */
     openPath: String? = null,
     diffs: List<OpenCodeClient.FileDiff> = emptyList(),
+    refreshKey: Int = 0,
 ) {
     val c = OcTheme.colors
+    val mountRefreshKey = remember { refreshKey }
     var resolvedRoot by remember { mutableStateOf<String?>(null) }
     var rootRequested by remember { mutableStateOf(false) }
     val children = remember { mutableStateMapOf<String, List<OpenCodeClient.FileNode>>() }
@@ -104,12 +112,23 @@ fun ReviewFilesTab(
     val loadingDirs = remember { mutableStateMapOf<String, Boolean>() }
     val failedDirs = remember { mutableStateMapOf<String, Boolean>() }
     val expandedDirs = remember { mutableStateMapOf<String, Boolean>() }
-    var selected by remember { mutableStateOf<OpenCodeClient.FileNode?>(null) }
-    var preview by remember { mutableStateOf<FilePreview>(FilePreview.Idle) }
+    // `session-mobile-files.tsx:23-24` `browsing` + the open-file tab list
+    // (`layout.tabs()` upstream). Tree state above is `remember`-scoped too, so
+    // the tab list follows it rather than a saveable join-encode.
+    var browsing by rememberSaveable { mutableStateOf(true) }
+    var openedTabs by remember { mutableStateOf(emptyList<String>()) }
+    var activeTab by remember { mutableStateOf<String?>(null) }
+    val contents = remember { mutableStateMapOf<String, FilePreview>() }
     // The filter is transient upstream too (`panel-state.ts:28-30`: a persisted
     // filter would silently hide files after a reload), so a plain saveable.
     var filter by rememberSaveable { mutableStateOf("") }
     val badges = remember(diffs) { ReviewChangeBadges.badges(diffs) }
+    val openInApp = rememberOpenInAppActions()
+
+    fun commitTabs(tabs: List<String>, active: String?) {
+        openedTabs = tabs
+        activeTab = active
+    }
 
     fun load(dir: String) {
         if (children.containsKey(dir) || loadingDirs.containsKey(dir)) return
@@ -118,6 +137,19 @@ fun ReviewFilesTab(
         onLoadChildren(dir) { result ->
             loadingDirs.remove(dir)
             if (result == null) failedDirs[dir] = true else children[dir] = result
+        }
+    }
+
+    /** `session-mobile-files.tsx:27-31` `open(path)`: tab + `file.load` + leave browsing. */
+    fun openFile(path: String) {
+        commitTabs(FileTabs.open(openedTabs, path), path)
+        browsing = false
+        if (contents[path] == null || contents[path] is FilePreview.Failed) {
+            contents[path] = FilePreview.Loading
+            onLoadFile(path) { result ->
+                contents[path] =
+                    if (result == null) FilePreview.Failed else FilePreview.Loaded(result)
+            }
         }
     }
 
@@ -131,32 +163,53 @@ fun ReviewFilesTab(
             onResolveRoot { resolvedRoot = it }
         }
     }
-    LaunchedEffect(resolvedRoot) {
-        resolvedRoot?.takeIf { it.isNotEmpty() }?.let(::load)
+    LaunchedEffect(resolvedRoot, refreshKey) {
+        val dir = resolvedRoot?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+        // The mount-time read is the plain one. A later `refreshKey` is a user
+        // 「刷新」, and `load` treats a listed directory as already answered — so
+        // the eviction has to come first, or the tap hands the previous listing
+        // back and the screen keeps whatever the last filter narrowed it to.
+        if (ReviewTreeRead.mustEvictBeforeReload(refreshKey, mountRefreshKey)) {
+            children.remove(dir)
+        }
+        load(dir)
     }
-    // `file.open <path>`: jump straight to that file's preview. The node is
-    // synthesised (the tree may not have loaded the containing directory yet);
-    // `FilePreviewView` only needs name/absolute.
+    // `file.open <path>`: open that file as a tab (`createOpenReviewFile`,
+    // `helpers.ts:135-151`). The node is synthesised — the tree may not have
+    // loaded the containing directory yet; the viewer only needs the path.
     LaunchedEffect(openPath) {
         val path = openPath?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
-        selected = OpenCodeClient.FileNode(
-            name = path.trimEnd('/').substringAfterLast('/').ifEmpty { path },
-            path = path,
-            absolute = path,
-            directory = false,
-            ignored = false,
-        )
-        preview = FilePreview.Loading
-        onLoadFile(path) { result ->
-            preview = if (result == null) FilePreview.Failed else FilePreview.Loaded(result)
-        }
+        openFile(path)
     }
 
     val root = resolvedRoot
     Column(modifier = modifier) {
+        // The strip is the `session-mobile-files-header` (`:35-79`): 「All
+        // files」 + the sortable open-file tabs. Always mounted, like upstream.
+        FileTabStrip(
+            tabs = openedTabs,
+            active = activeTab,
+            browsing = browsing || activeTab == null,
+            onBrowse = { browsing = true },
+            onSelect = { path ->
+                commitTabs(openedTabs, path)
+                browsing = false
+            },
+            onClose = { path ->
+                val index = openedTabs.indexOf(path)
+                val remaining = FileTabs.close(openedTabs, path)
+                val next = FileTabs.activeAfterClose(activeTab, path, index, remaining)
+                commitTabs(remaining, next)
+                contents.remove(path)
+                if (next == null) browsing = true
+            },
+            onReorder = { from, to ->
+                commitTabs(FileTabs.reorder(openedTabs, from, to), activeTab)
+            },
+        )
         // The filter lives above the tree, like the upstream sidebar header
-        // (`session-review-v2.tsx:88-123`); it has no meaning inside a preview.
-        if (selected == null && !root.isNullOrEmpty()) {
+        // (`session-review-v2.tsx:88-123`); it has no meaning inside a viewer.
+        if ((browsing || activeTab == null) && !root.isNullOrEmpty()) {
             FileFilterField(
                 value = filter,
                 onValueChange = { filter = it },
@@ -166,16 +219,30 @@ fun ReviewFilesTab(
             )
         }
         Box(modifier = Modifier.fillMaxSize()) {
+            val active = activeTab
             when {
-                selected != null -> FilePreviewView(
-                    node = selected!!,
-                    preview = preview,
-                    onBack = {
-                        selected = null
-                        preview = FilePreview.Idle
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                !browsing && active != null -> {
+                    when (val preview = contents[active]) {
+                        null, FilePreview.Loading -> CenteredHint(
+                            text = stringResource(R.string.oc_common_loading),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+
+                        FilePreview.Failed -> CenteredHint(
+                            text = stringResource(R.string.oc_review_file_error),
+                            modifier = Modifier.fillMaxSize(),
+                            onRetry = { openFile(active) },
+                        )
+
+                        is FilePreview.Loaded -> ArtifactView(
+                            path = active,
+                            content = preview.content,
+                            onOpenInApp = { path -> openInApp.openInApp(path, preview.content) },
+                            onCopyPath = openInApp.copyPath,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
 
                 root.isNullOrEmpty() -> CenteredHint(
                     text = stringResource(R.string.oc_common_loading),
@@ -183,6 +250,15 @@ fun ReviewFilesTab(
                 )
 
                 else -> {
+                    // v97 fix: while a filter is active, search over every
+                    // *loaded* row, not only the expanded ones. The browse
+                    // flatten below is gated by `expandedDirs`, so a file in a
+                    // collapsed directory was unreachable by any query
+                    // (searching `gradle` missed `build.gradle.kts` until the
+                    // folder was opened by hand). The search flatten descends
+                    // into every directory already fetched — no new request, and
+                    // `expandedDirs` itself is never written, so clearing the
+                    // filter still restores the tree the user left.
                     val allRows = remember(children.toMap(), expandedDirs.toMap(), root) {
                         ReviewFileTree.flatten(
                             children = { key -> children[key].orEmpty() },
@@ -190,7 +266,39 @@ fun ReviewFilesTab(
                             expanded = { expandedDirs.containsKey(it) },
                         )
                     }
-                    val rows = remember(allRows, filter) { ReviewFileFilter.filterRows(allRows, filter) }
+                    val filtering = ReviewFileFilter.isActive(filter)
+                    // U11 (`REPORT_SWEEPD2.md` §3.11 / §4.3): the row input was
+                    // never the bug — `filter = ""` did restore every row, and
+                    // the dump proves it (the 「Clear filter」 button disappears
+                    // and the field goes back to its placeholder). What the
+                    // tester was left looking at is this list: `items(key = …)`
+                    // makes `LazyListState` pin the *previous* first item by key
+                    // when the item set changes, so the viewport stayed on the
+                    // match (`.gradle`, index 3 of 15) with the first three
+                    // rows scrolled off the top. With the IME up the viewport is
+                    // ~2 rows tall, so 「恢复全量」 read as 「只剩 2 行」 — stable
+                    // and byte-identical across rounds, which is exactly what a
+                    // deterministic scroll offset looks like. Returning to the
+                    // top on the active → inactive edge is the upstream
+                    // `filterFiles` behaviour and makes the clear observable.
+                    val listState = rememberLazyListState()
+                    LaunchedEffect(filtering) {
+                        if (!filtering) listState.scrollToItem(0)
+                    }
+                    val rows = if (filtering) {
+                        ReviewFileFilter.filterRows(
+                            ReviewFileFilter.searchRows(
+                                children = { key -> children[key].orEmpty() },
+                                root = root,
+                                isExpanded = { expandedDirs.containsKey(it) },
+                                hasLoadedChildren = { children.containsKey(it) },
+                                query = filter,
+                            ),
+                            filter,
+                        )
+                    } else {
+                        allRows
+                    }
                     when {
                         failedDirs.containsKey(root) -> CenteredHint(
                             text = stringResource(R.string.oc_review_files_error),
@@ -214,7 +322,10 @@ fun ReviewFilesTab(
                             modifier = Modifier.fillMaxSize(),
                         )
 
-                        else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        else -> LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
                             items(
                                 items = rows,
                                 key = { row -> row.node.absolute.ifEmpty { "root:${rows.indexOf(row)}" } },
@@ -237,15 +348,7 @@ fun ReviewFilesTab(
                                                 load(node.absolute)
                                             }
                                         } else {
-                                            selected = node
-                                            preview = FilePreview.Loading
-                                            onLoadFile(node.absolute) { result ->
-                                                preview = if (result == null) {
-                                                    FilePreview.Failed
-                                                } else {
-                                                    FilePreview.Loaded(result)
-                                                }
-                                            }
+                                            openFile(node.absolute)
                                         }
                                     },
                                 )
@@ -312,16 +415,20 @@ private fun FileFilterField(
             )
         }
         if (value.isNotEmpty()) {
+            // Hoisted: `semantics {}` is not a composable scope. The label rides
+            // the clickable Box, not the `Icon` inside it.
+            val clearLabel = stringResource(R.string.oc_review_filter_clear)
             Box(
                 modifier = Modifier
                     .size(20.dp)
                     .clip(CircleShape)
-                    .clickable(role = Role.Button) { onValueChange("") },
+                    .clickable(role = Role.Button) { onValueChange("") }
+                    .semantics { contentDescription = clearLabel },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_oc_close),
-                    contentDescription = stringResource(R.string.oc_review_filter_clear),
+                    contentDescription = null,
                     tint = c.iconMuted,
                     modifier = Modifier.size(11.dp),
                 )
@@ -330,9 +437,8 @@ private fun FileFilterField(
     }
 }
 
-/** Preview fetch state for the tapped file. */
+/** Per-tab fetch state of `GET /file/content?path=` (`file.get(path)` upstream). */
 private sealed interface FilePreview {
-    data object Idle : FilePreview
     data object Loading : FilePreview
     data class Loaded(val content: OpenCodeClient.FileContent) : FilePreview
     data object Failed : FilePreview
@@ -363,7 +469,7 @@ private fun FileTreeRow(
             .height(28.dp)
             .clip(OcTheme.shapes.sm)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(start = (8 + row.level * 16).dp, end = 8.dp)
+            .padding(start = (8 + row.level * 16).dp, end = FilesRowEndPadding)
             .alpha(if (row.node.ignored) 0.5f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -419,137 +525,6 @@ private fun FileTreeRow(
     }
 }
 
-/** Master-detail preview: back row + name + copy, then the capped mono body. */
-@Composable
-private fun FilePreviewView(
-    node: OpenCodeClient.FileNode,
-    preview: FilePreview,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val c = OcTheme.colors
-    val clipboard = LocalClipboardManager.current
-    Column(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .padding(start = 4.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PanelIconButton(
-                iconRes = R.drawable.ic_oc_chevron_down,
-                contentDescription = stringResource(R.string.oc_back),
-                iconModifier = Modifier.rotate(90f),
-                onClick = onBack,
-            )
-            Text(
-                text = node.name,
-                color = c.textBase,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.W500,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            val loaded = preview as? FilePreview.Loaded
-            if (loaded != null && !loaded.content.binary && loaded.content.content.isNotEmpty()) {
-                PanelIconButton(
-                    iconRes = R.drawable.ic_oc_copy,
-                    contentDescription = stringResource(R.string.oc_review_copy),
-                    onClick = { clipboard.setText(AnnotatedString(loaded.content.content)) },
-                )
-            }
-        }
-        Box(Modifier.fillMaxWidth().height(0.5.dp).background(c.borderMuted))
-        when (preview) {
-            FilePreview.Idle, FilePreview.Loading -> CenteredHint(
-                text = stringResource(R.string.oc_common_loading),
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            FilePreview.Failed -> CenteredHint(
-                text = stringResource(R.string.oc_review_file_error),
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            is FilePreview.Loaded -> {
-                if (preview.content.binary) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.oc_review_binary),
-                            color = c.textMuted,
-                            fontSize = 13.sp,
-                        )
-                        preview.content.mimeType?.let { mime ->
-                            Text(
-                                text = mime,
-                                color = c.textFaint,
-                                fontFamily = OcTheme.monoFont,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                        }
-                    }
-                } else {
-                    FileTextPreview(text = preview.content.content)
-                }
-            }
-        }
-    }
-}
-
-/**
- * Text preview body: mono 11/16, both axes scrollable, capped at
- * [MAX_PREVIEW_LINES] lines ([MAX_LINE_CHARS] per line) so a huge file cannot
- * stall the panel — a truncated marker closes the listing, and the copy
- * action still carries the full content.
- */
-@Composable
-private fun FileTextPreview(text: String) {
-    val c = OcTheme.colors
-    val lines = remember(text) {
-        val all = text.split('\n')
-        PreviewLines(
-            lines = all.take(MAX_PREVIEW_LINES).map { it.take(MAX_LINE_CHARS) },
-            truncated = all.size > MAX_PREVIEW_LINES,
-        )
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .horizontalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
-    ) {
-        lines.lines.forEach { line ->
-            Text(
-                text = line,
-                color = c.textMuted,
-                fontFamily = OcTheme.monoFont,
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                softWrap = false,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
-        if (lines.truncated) {
-            Text(
-                text = stringResource(R.string.oc_review_truncated),
-                color = c.textFaint,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-        }
-    }
-}
-
-private class PreviewLines(val lines: List<String>, val truncated: Boolean)
-
 /** Empty/loading/failure hint centred in the tab, with an optional retry. */
 @Composable
 private fun CenteredHint(
@@ -580,6 +555,14 @@ private fun CenteredHint(
     }
 }
 
-/** Preview body caps — see [FileTextPreview]. */
-private const val MAX_PREVIEW_LINES = 400
-private const val MAX_LINE_CHARS = 500
+/**
+ * Trailing gutter of a file-tree row.
+ *
+ * The row's right edge is the **screen's** right edge (the review sidebar is
+ * the last column and its own header only reserves 4 dp), so the 8 dp the rows
+ * used left the `A`/`M`/`D` badge sitting a few pixels off the bezel — the
+ * rows read as clipped where the rows above them (which start 12 dp in) read
+ * as padded (`research/v63_verify/5554/39_files.png`). The badge is the last
+ * thing in the row, so its gutter is the row's gutter.
+ */
+internal val FilesRowEndPadding = 12.dp

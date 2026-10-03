@@ -1,0 +1,28 @@
+diff --git a/research/v97_fix/build.gradle.kts.orig b/app/build.gradle.kts
+index faae2e0..68c8db6 100644
+--- a/research/v97_fix/build.gradle.kts.orig
++++ b/app/build.gradle.kts
+@@ -68,6 +68,23 @@ android {
+     androidResources {
+         noCompress += listOf("woff", "woff2", "wasm")
+     }
++
++    packaging {
++        resources {
++            // Both `com.github.mwiede:jsch` and `org.bouncycastle:bcprov-jdk18on`
++            // are multi-release jars that ship the *same* OSGi manifest under
++            // META-INF/versions/N, so `:app:mergeDebugJavaResource` aborts on the
++            // duplicate. Those entries are pure OSGi build metadata — Android
++            // neither reads them nor D8 ever sees them — so dropping them is
++            // behaviour-neutral. The bouncycastle *classes* stay in the APK:
++            // F14b (jsch ed25519) runs on bcprov's Ed25519Signer.
++            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
++            // Round 2: AGP aborts on the *next* same-named entry it walks into.
++            excludes += "META-INF/versions/11/OSGI-INF/MANIFEST.MF"
++            // Round 3: same story for the Java 15 OSGi manifest.
++            excludes += "META-INF/versions/15/OSGI-INF/MANIFEST.MF"
++        }
++    }
+ }
+ 
+ dependencies {

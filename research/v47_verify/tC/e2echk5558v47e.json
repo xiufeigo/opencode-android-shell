@@ -1,0 +1,42 @@
+{
+  "info": {
+    "id": "ses_f19f20400ffejHk59Boa3Egc6C",
+    "projectID": "bac50598dce58983f370e54ab1d4a458c1d56c23",
+    "model": {
+      "id": "space-bunny-free",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1790566071329,
+      "updated": 1790566094997
+    },
+    "title": "E2ECHK5558V47E",
+    "location": {
+      "directory": "\/home\/xiufeigo\/v36projC"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_0e60dfc36001mcJNja3ghJ1rQ3",
+      "time": {
+        "created": 1790566071350
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go"
+      }
+    }
+  ]
+}

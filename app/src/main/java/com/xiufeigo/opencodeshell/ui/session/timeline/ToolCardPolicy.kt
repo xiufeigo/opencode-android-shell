@@ -65,13 +65,20 @@ object ToolCardPolicy {
      * `deletionOnly(part)`: an edit-like part whose body has deletions and no
      * addition. A body-less part is **not** deletion-only (upstream returns
      * `undefined` too, which the caller treats as "no default expansion").
+     *
+     * [lines] carries a precomputed [ToolPresentation.bodyLines] so a card that
+     * already remembered its body does not re-parse the JSON and re-run Myers
+     * for every policy question in the same recomposition.
      */
-    fun deletionOnly(part: ChatStore.UiPart): Boolean {
+    fun deletionOnly(
+        part: ChatStore.UiPart,
+        lines: List<ToolPresentation.BodyLine>? = null,
+    ): Boolean {
         if (!isEditLike(part.toolName)) return false
-        val lines = ToolPresentation.bodyLines(part)
-        if (lines.isEmpty()) return false
-        return lines.none { it.kind == ToolPresentation.LineKind.ADD } &&
-            lines.any { it.kind == ToolPresentation.LineKind.DELETE }
+        val body = lines ?: ToolPresentation.bodyLines(part)
+        if (body.isEmpty()) return false
+        return body.none { it.kind == ToolPresentation.LineKind.ADD } &&
+            body.any { it.kind == ToolPresentation.LineKind.DELETE }
     }
 
     /**
@@ -87,9 +94,10 @@ object ToolCardPolicy {
         part: ChatStore.UiPart,
         shellExpanded: Boolean = DEFAULT_SHELL_EXPANDED,
         editExpanded: Boolean = DEFAULT_EDIT_EXPANDED,
+        lines: List<ToolPresentation.BodyLine>? = null,
     ): Boolean {
         if (isShell(part.toolName)) return shellExpanded
-        if (isEditLike(part.toolName)) return editExpanded && !deletionOnly(part)
+        if (isEditLike(part.toolName)) return editExpanded && !deletionOnly(part, lines)
         return false
     }
 
@@ -99,8 +107,8 @@ object ToolCardPolicy {
      * would render something" — a part with no input, no output and no error has
      * no body, so it gets no chevron (the upstream `hideDetails` gate).
      */
-    fun canExpand(part: ChatStore.UiPart): Boolean {
-        if (ToolPresentation.bodyLines(part).isEmpty()) return false
+    fun canExpand(part: ChatStore.UiPart, lines: List<ToolPresentation.BodyLine>? = null): Boolean {
+        if ((lines ?: ToolPresentation.bodyLines(part)).isEmpty()) return false
         if (!isPendingOrRunning(part)) return true
         return isShell(part.toolName)
     }
@@ -117,8 +125,9 @@ object ToolCardPolicy {
         userOpen: Boolean?,
         shellExpanded: Boolean = DEFAULT_SHELL_EXPANDED,
         editExpanded: Boolean = DEFAULT_EDIT_EXPANDED,
+        lines: List<ToolPresentation.BodyLine>? = null,
     ): Boolean {
-        if (!canExpand(part)) return false
-        return userOpen ?: defaultOpen(part, shellExpanded, editExpanded)
+        if (!canExpand(part, lines)) return false
+        return userOpen ?: defaultOpen(part, shellExpanded, editExpanded, lines)
     }
 }

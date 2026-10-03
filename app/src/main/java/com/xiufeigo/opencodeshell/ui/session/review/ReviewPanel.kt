@@ -48,7 +48,6 @@ import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.session.context.SessionContextModel
 import com.xiufeigo.opencodeshell.ui.session.context.SessionContextPanel
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
-import kotlinx.coroutines.delay
 
 /** Review side panel tabs, upstream `SessionReviewV2` sidebar modes. */
 enum class ReviewPanelTab { CHANGES, CONTEXT, FILES }
@@ -82,7 +81,10 @@ enum class ReviewPanelTab { CHANGES, CONTEXT, FILES }
  *   ([hasVcs], [defaultBranch], [vcsDiffs], [onRequestVcsDiff]) — upstream
  *   `review/view.tsx:228-247`;
  * - the **no-git empty state** ([onInitGit]) — upstream
- *   `session-review-empty-no-git-v2.tsx`.
+ *   `session-review-empty-no-git-v2.tsx`. It is gated on a *known* project
+ *   verdict ([ReviewScopes.noGit]: the host's [hasVcs], else
+ *   `rememberReviewProjectVcs`'s `GET /api/project` read); a `/vcs` read that
+ *   answered nothing is "unknown", not "no repository".
  *
  * @param diffs current session diff from `ChatStore.ChatState.diff`
  *   (`GET /session/:id/diff`; the "last turn" scope).
@@ -93,20 +95,47 @@ enum class ReviewPanelTab { CHANGES, CONTEXT, FILES }
  *   340 dp so the current call site is unchanged; once the caller stops pinning
  *   the width in its own modifier, pass
  *   `ReviewPanelWidth.DEFAULT.dp` (240) for the upstream default.
- * @param hasVcs project VCS flag (`project.vcs`); null = unknown, treated as
- *   "a repo" so the panel does not claim no-git before `GET /vcs` answered.
+ * @param hasVcs project VCS flag (`project.vcs`); null = unknown, and then
+ *   `GET /api/project` decides (unknown still counts as "a repo" so the panel
+ *   never claims no-git on a missing answer).
  * @param defaultBranch `vcs.branch.default`, needed before the Branch scope is
  *   offered (`review/model.ts:59-66`).
  * @param vcsDiffs diffs of the Git / Branch scopes.
  * @param onRequestVcsDiff asks the host for the VCS diff of a scope; while it
  *   is null the two VCS scopes stay disabled (see `research/wave5_review.md`).
+ *   The failure body's retry uses the same callback — one request seam.
+ * @param vcsDiffFailed the host's last VCS-scope pull timed out or failed
+ *   (`ReviewVcsDiffResult.Failed`). Rendered as the failure body instead of the
+ *   「no uncommitted changes」 copy, so a read that never came back is not
+ *   reported as an empty repository (see `ReviewScopes.changesBody`).
+ * @param vcsDiffPending the host's VCS-scope pull is still out. The body then
+ *   waits rather than claiming 「no changes」 — the third of the three states
+ *   the empty copy used to swallow.
  * @param onInitGit "Create Git repository" action; null keeps the button
- *   disabled (nothing creates a repository yet).
+ *   disabled (the host wires `ReviewGitInit` — `git init` over
+ *   `POST /api/shell`, then the location evict).
  * @param contextSnapshot B2 projection of the context tab
  *   ([com.xiufeigo.opencodeshell.ui.session.context.SessionContextModel]);
  *   `null` renders the sixteen rows with every value `—`, so a host that has not
  *   loaded the payloads yet still shows the tab. The panel never fetches it:
  *   the screen owns that one-shot read.
+ * @param commentStore F-2 line-comment store (hoisted by the host, keyed by
+ *   session), forwarded to [ReviewChangesTab]. Null disables the comment
+ *   affordances.
+ * @param onQuoteLine F-2 S-step: tap-a-diff-line → composer text, forwarded to
+ *   [ReviewChangesTab]. The host routes it to `ChatViewModel.appendComposerText`.
+ * @param onSendComments F-2: per-file aggregated comment notes → composer
+ *   text, forwarded to [ReviewChangesTab].
+ * @param onRefreshVcs 「刷新」: the host evicts the directory's cached location
+ *   and re-reads its own review payloads (see
+ *   [com.xiufeigo.opencodeshell.ChatViewModel.reviewReprobeLocation]). Null
+ *   (every call site that has not wired it) hides the action. **Only the user
+ *   click reaches it** — the evict cancels in-flight permissions/forms of that
+ *   location, so it is never automatic, and the copy says so
+ *   (`oc_review_refresh_done`).
+ * @param reprobeKey bumped by the host once that refresh settled. Changing it
+ *   re-reads the two self-serve probes below (`GET /api/project`, `/api/vcs/base`)
+ *   and re-requests the active scope's diff, and clears the button's busy state.
  */
 @Composable
 fun SessionReviewPanel(
@@ -131,9 +160,16 @@ fun SessionReviewPanel(
     defaultBranch: String? = null,
     vcsDiffs: List<OpenCodeClient.FileDiff> = emptyList(),
     onRequestVcsDiff: ((ReviewChangeScope) -> Unit)? = null,
+    vcsDiffFailed: Boolean = false,
+    vcsDiffPending: Boolean = false,
     onInitGit: (() -> Unit)? = null,
     gitPending: Boolean = false,
+    onRefreshVcs: (() -> Unit)? = null,
+    reprobeKey: Int = 0,
     contextSnapshot: SessionContextModel.Snapshot? = null,
+    commentStore: ReviewCommentStore? = null,
+    onQuoteLine: ((String) -> Unit)? = null,
+    onSendComments: ((String) -> Unit)? = null,
 ) {
     val c = OcTheme.colors
 
@@ -145,38 +181,54 @@ fun SessionReviewPanel(
     var widthDp by rememberSaveable { mutableStateOf(ReviewPanelWidth.restore(initialWidth.value)) }
 
     // --------------------------------------------------------- scope (C4)
-    var scopeName by rememberSaveable { mutableStateOf(ReviewChangeScope.LAST_TURN.name) }
-    val scope = ReviewChangeScope.values().firstOrNull { it.name == scopeName } ?: ReviewChangeScope.LAST_TURN
+    // Upstream opens on `"git"` (`model.ts:40 mode() ?? "git"`) and rewrites the
+    // mode only when the switch does not offer it (`model.ts:341-350`); the
+    // session snapshot is the extra scope this port adds, not the default.
+    var scopeName by rememberSaveable { mutableStateOf(ReviewChangeScope.GIT.name) }
+    val scope = ReviewChangeScope.values().firstOrNull { it.name == scopeName } ?: ReviewChangeScope.GIT
     val vcsWired = onRequestVcsDiff != null
-    val available = remember(hasVcs, branch, defaultBranch) {
-        ReviewScopes.available(hasVcs = hasVcs ?: true, currentBranch = branch, defaultBranch = defaultBranch)
+
+    // ------------------------------------------------------- vcs verdict (C5)
+    // Upstream asks the *project* (`project().vcs`, `view.tsx:252`) — a known
+    // fact, never a failed `/vcs` read. The host's flag is authoritative when it
+    // has one (`hasVcs = false` for a project without a repository); otherwise a
+    // fresh `GET /api/project` read answers, because the location-scoped `/vcs`
+    // read cannot: it reports "no provider" both for a directory without a
+    // repository and for a location graph built before `git init`
+    // (`ReviewVcsReprobe`).
+    val projectVcs = rememberReviewProjectVcs(rootPath, reprobeKey)
+    val vcsKnown = hasVcs ?: projectVcs
+    val available = remember(vcsKnown, branch, defaultBranch) {
+        ReviewScopes.available(
+            hasVcs = vcsKnown ?: true,
+            currentBranch = branch,
+            defaultBranch = defaultBranch,
+        )
     }
     val visibleDiffs = remember(scope, diffs, vcsDiffs) { ReviewScopes.diffsFor(scope, diffs, vcsDiffs) }
     val requestVcsDiff = rememberUpdatedState(onRequestVcsDiff)
-    LaunchedEffect(scope) {
+    LaunchedEffect(scope, reprobeKey) {
         if (scope == ReviewChangeScope.LAST_TURN) return@LaunchedEffect
         requestVcsDiff.value?.invoke(scope)
     }
-
-    // --------------------------------------------------------- no git (C5)
-    // `GET /vcs` is asynchronous: a null branch right after the panel opens is
-    // "unknown", not "no repository". The verdict is only drawn once the
-    // request had a chance to answer, and it is dropped again as soon as either
-    // signal arrives. A host that already knows (`hasVcs = false`) skips the wait.
-    var noGitSettled by remember { mutableStateOf(false) }
-    LaunchedEffect(branch, hasVcs, diffs.isEmpty()) {
-        if (hasVcs == false) {
-            noGitSettled = true
-            return@LaunchedEffect
-        }
-        if (branch != null || diffs.isNotEmpty() || hasVcs == true) {
-            noGitSettled = false
-            return@LaunchedEffect
-        }
-        delay(NO_GIT_SETTLE_MS)
-        noGitSettled = branch == null && diffs.isEmpty()
+    // The switch must follow the project: a scope that is no longer offered
+    // falls back to the first one that is (upstream `model.ts:341-350`).
+    LaunchedEffect(available) {
+        if (available.isNotEmpty() && scope !in available) scopeName = available.first().name
     }
-    val noGit = noGitSettled && visibleDiffs.isEmpty()
+
+    val noGit = ReviewScopes.noGit(hasVcs, projectVcs, visibleDiffs.isNotEmpty())
+
+    // Diff base line (`GET /api/vcs/base` → `name@ref`, `ReviewVcsBase`):
+    // fetched per panel mount and shown on the changes tab only.
+    val vcsBase = rememberVcsBase(rootPath, reprobeKey)
+    val vcsBaseLabel = ReviewVcsBase.label(vcsBase)
+
+    // 「刷新」 busy state. The host owns the evict and bumps [reprobeKey] once it
+    // settled (success or failure), which is also the signal that clears this —
+    // the panel never decides on its own that the refresh is over.
+    var refreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(reprobeKey) { refreshing = false }
 
     Row(
         modifier = Modifier
@@ -205,7 +257,7 @@ fun SessionReviewPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(40.dp)
-                    .padding(start = 12.dp, end = 4.dp),
+                    .padding(start = 12.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -235,6 +287,19 @@ fun SessionReviewPanel(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                // 「刷新」 (evict this directory's cached location + re-probe):
+                // only shown when the host wired it, and only ever on this tap.
+                if (onRefreshVcs != null) {
+                    ReviewRefreshAction(
+                        pending = refreshing,
+                        onClick = {
+                            if (!refreshing) {
+                                refreshing = true
+                                onRefreshVcs()
+                            }
+                        },
+                    )
+                }
                 PanelIconButton(
                     iconRes = R.drawable.ic_oc_close,
                     contentDescription = stringResource(R.string.oc_common_close),
@@ -305,6 +370,12 @@ fun SessionReviewPanel(
                         openPath = openPath,
                         // C5 badges: the tree marks the files the active scope changed.
                         diffs = visibleDiffs,
+                        // U11: the panel's 「刷新」 settles by bumping
+                        // `reprobeKey`; the file tree re-reads on the same
+                        // signal, or the tap leaves the last listing — and the
+                        // last filter's subset of it — on screen
+                        // (`REPORT_SWEEPD2.md` §3.11).
+                        refreshKey = reprobeKey,
                     )
 
                     ReviewPanelTab.CONTEXT -> SessionContextPanel(
@@ -319,6 +390,15 @@ fun SessionReviewPanel(
                         onInitGit = onInitGit,
                         gitPending = gitPending,
                         scope = scope,
+                        baseLabel = vcsBaseLabel,
+                        loadFailed = vcsDiffFailed,
+                        loadPending = vcsDiffPending,
+                        // Retry = the same request the scope switch makes, so the
+                        // panel needs no second seam into the host.
+                        onRetryDiff = { requestVcsDiff.value?.invoke(scope) },
+                        commentStore = commentStore,
+                        onQuoteLine = onQuoteLine,
+                        onSendComments = onSendComments,
                     )
                 }
             }
@@ -357,6 +437,40 @@ private fun PanelResizeHandle(
     ) {
         // The visible 1 px grab line from `resize-handle::after`.
         Box(Modifier.width(1.dp).fillMaxHeight().background(c.borderBase))
+    }
+}
+
+/**
+ * 「刷新」 text action of the review chrome (`oc_review_refresh`). It evicts the
+ * directory's cached location and re-probes the review reads, so it belongs to
+ * the panel header (desktop) and to the mobile Changes header — both label it
+ * from the same string and dim it while the host's evict is out.
+ *
+ * No icon: the review panel has no refresh glyph in `res/drawable`, and the
+ * header already carries a text-sized branch chip; a text action keeps the
+ * touch target legible at both widths.
+ */
+@Composable
+internal fun ReviewRefreshAction(
+    pending: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = OcTheme.colors
+    Box(
+        modifier = modifier
+            .clip(OcTheme.shapes.sm)
+            .alpha(if (pending) DISABLED_ALPHA else 1f)
+            .clickable(enabled = !pending, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.oc_review_refresh),
+            color = c.textMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight(530),
+            maxLines = 1,
+        )
     }
 }
 
@@ -438,12 +552,14 @@ internal fun PanelIconButton(
         modifier = modifier
             .size(32.dp)
             .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick)
+            // The description rides the clickable Box, not the `Icon` inside it.
+            .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(iconRes),
-            contentDescription = contentDescription,
+            contentDescription = null,
             tint = c.iconBase,
             modifier = iconModifier.size(14.dp),
         )
@@ -459,9 +575,6 @@ private val LEGACY_PANEL_WIDTH = 340.dp
 
 /** Touch width of the drag handle: a 1 dp line with a comfortable grab area. */
 private val RESIZE_HANDLE_WIDTH = 14.dp
-
-/** How long `GET /vcs` gets to answer before the panel claims "no git". */
-private const val NO_GIT_SETTLE_MS = 700L
 
 /** Dim factor of a chip whose data source is not wired yet. */
 private const val DISABLED_ALPHA = 0.4f

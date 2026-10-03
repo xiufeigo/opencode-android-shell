@@ -35,6 +35,19 @@ object HomeSessions {
         /** Project label, i.e. `basename(directory)`; null when unknown. */
         val project: String?,
         val updatedAt: Long,
+        /**
+         * `Project.icon.color` / `Project.icon.override` of the project this
+         * session belongs to ([HomeProjects.forSession]), resolved here because
+         * v1's session row carries no project attribution of its own (see
+         * [rows]). The row's avatar draws them through the same
+         * `override → color → initial` chain the projects column uses, instead
+         * of the name-initial stand-in. `null` when the session matches no
+         * project (or the caller passed none) — the avatar then keeps the
+         * neutral surface. Appended last, with defaults, so every existing
+         * construction compiles unchanged.
+         */
+        val iconColor: String? = null,
+        val iconOverride: String? = null,
     )
 
     data class Section(val group: Group, val rows: List<Row>)
@@ -61,6 +74,74 @@ object HomeSessions {
     fun isArchived(session: OpenCodeClient.Session): Boolean = (session.archivedAt ?: 0L) > 0L
 
     /**
+     * v54 P1 「子路径会话在 Home 列表与搜索里双双缺失」: the directory a session
+     * actually lives in — [OpenCodeClient.Session.directory] with its
+     * [OpenCodeClient.Session.subpath] appended.
+     *
+     * v2 writes a session created in a window bound to a subpath as the
+     * **project root** plus the subpath (`location.directory=/repo`,
+     * `subpath=app/src`, measured in `research/sess.json` and every sessions
+     * dump under `research/`), while the shell registers the project the window
+     * was bound to (`…/app/src`) and scopes the column to it. Matching the raw
+     * `directory` therefore asked `containsDirectory(…/app/src, /repo)` — false
+     * — so the row was dropped from the list **and** from the search panel, and
+     * an empty column showed no copy at all
+     * (`research/v54_verify/tB/tB_50_home.png`, `tB_82_home_search.png`).
+     *
+     * The join is deliberately forgiving, because the server's two spellings are
+     * not exclusive: a blank subpath keeps [directory] as it is, and a subpath
+     * that is already the directory's own tail (`/repo` + `repo`) is not
+     * appended twice. The result is normalised through [ProjectPaths.pathKey]'s
+     * rules, so the joined path compares exactly like any other directory.
+     *
+     * v58 P0: the tail test has to see the whole subpath, not its last segment.
+     * 2.0.18 answers a session created in `<repo>/app/src` with
+     * `location.directory=<repo>/app/src` **and** `subpath=app/src` (verified
+     * live), so a last-segment test (`src` vs `app/src`) always missed and the
+     * value this returned — `<repo>/app/src/app/src` — became the next create's
+     * directory: one more `app/src` per session until the server answered
+     * `500 FileSystem.realPath … ENOENT` on every request of that session
+     * (`research/v58_verify/5556_b/REPORT.md` §0). The directory is now tested
+     * against the subpath **as a whole** and the result goes through
+     * [ProjectPaths.normalizeLocation], so a directory that already carries the
+     * segment is returned unchanged and a polluted one heals in one step.
+     */
+    fun sessionDirectory(session: OpenCodeClient.Session): String? {
+        val base = session.directory?.trim().orEmpty()
+        val sub = session.subpath?.trim()?.trim('/', '\\').orEmpty()
+        if (base.isEmpty()) return ProjectPaths.normalizeLocation(session.directory)
+        if (sub.isEmpty()) return ProjectPaths.normalizeLocation(base)
+        val already = endsWithSubpath(base, sub)
+        val joined = if (already) base else base.trimEnd('/', '\\') + "/" + sub
+        // A Windows base keeps its separator convention (`C:\repo` + `app/src`
+        // must not become `C:\repo/app/src`, which no project row is spelled).
+        val spelled = if (!already && base.contains('\\') && !base.contains('/')) {
+            joined.replace('/', '\\')
+        } else {
+            joined
+        }
+        return ProjectPaths.normalizeLocation(spelled)
+    }
+
+    /**
+     * Does [base] already **end** with the multi-segment [sub]? `/repo/app/src`
+     * against `app/src` is the v58 P0 case, `/repo` against `repo` the one this
+     * shell always had; comparison is case-insensitive under a Windows root and
+     * case-sensitive under a POSIX one (the [ProjectPaths.matchKey] rule).
+     */
+    private fun endsWithSubpath(base: String, sub: String): Boolean {
+        val trimmed = base.trimEnd('/', '\\').replace('\\', '/')
+        val tail = sub.trimEnd('/', '\\').replace('\\', '/')
+        if (tail.isEmpty() || trimmed.length < tail.length) return false
+        val windows = (trimmed.length > 1 && trimmed[1] == ':') || trimmed.startsWith("//")
+        if (!trimmed.regionMatches(trimmed.length - tail.length, tail, 0, tail.length, windows)) {
+            return false
+        }
+        val boundary = trimmed.length - tail.length - 1
+        return boundary < 0 || trimmed[boundary] == '/' || trimmed[boundary] == '\\'
+    }
+
+    /**
      * Newest first, capped at [limit]. `listSessions()` already sorts by
      * `updatedAt` descending, but the sort is repeated here so the view cannot
      * depend on its caller's ordering.
@@ -84,26 +165,53 @@ object HomeSessions {
      *
      *   An empty/blank list is "no project selected": then every session is
      *   listed, exactly as `rows(sessions)` behaved before a selection existed.
+     * @param projects the project rows the session's icon is attributed from
+     *   ([HomeProjects.forSession]) — the same catalogue `projectNames` comes
+     *   from. Empty (the default) leaves every row's icon fields null, so a
+     *   caller that has no catalogue renders the neutral avatar it always did.
      */
     fun rows(
         sessions: List<OpenCodeClient.Session>,
         limit: Int = MAX_SESSIONS,
         directories: List<String> = emptyList(),
+        projectNames: Map<String, String> = emptyMap(),
+        projects: List<HomeProjects.Project> = emptyList(),
     ): List<Row> {
         val scope = directories.filter { it.isNotBlank() }
         return sessions.filterNot { isArchived(it) }
-            .filter { scope.isEmpty() || containsAny(scope, it.directory) }
+            .filter { scope.isEmpty() || containsAny(scope, sessionDirectory(it)) }
             .sortedByDescending { it.updatedAt }
             .take(limit)
-            .map { session ->
-                Row(
-                    id = session.id,
-                    title = session.title,
-                    directory = session.directory,
-                    project = projectName(session.directory),
-                    updatedAt = session.updatedAt,
-                )
-            }
+            .map { session -> rowOf(session, projectNames, projects) }
+    }
+
+    /**
+     * One session as a [Row]. The project label and the project's icon both come
+     * from the directory: `projectNames` is the catalogue's display names
+     * ([projectLabel]) and `projects` the rows the icon is attributed from
+     * ([HomeProjects.forSession]) — v1's `Session` has no `projectID` to match
+     * on, so the directory is the only attribution this server offers.
+     */
+    private fun rowOf(
+        session: OpenCodeClient.Session,
+        projectNames: Map<String, String>,
+        projects: List<HomeProjects.Project>,
+    ): Row {
+        // v54 P1: the row is attributed to the directory it lives in, subpath
+        // included ([sessionDirectory]) — the shell registered the subpath the
+        // window was bound to, so the raw `location.directory` attributed the
+        // row to a project the user never opened.
+        val directory = sessionDirectory(session)
+        val icon = HomeProjects.forSession(directory, projects)
+        return Row(
+            id = session.id,
+            title = session.title,
+            directory = directory,
+            project = projectLabel(directory, projectNames),
+            updatedAt = session.updatedAt,
+            iconColor = icon?.iconColor,
+            iconOverride = icon?.iconOverride,
+        )
     }
 
     /**
@@ -165,25 +273,26 @@ object HomeSessions {
      * The project scope still applies first (upstream builds `allRecords` with
      * the scope inside `buildHomeSessionRecords`), then the result is
      * de-duplicated by id and sorted newest-first without a cap.
+     *
+     * [projects] is the catalogue the `all`-derived rows take their project icon
+     * from ([rowOf]); the [visible] rows already carry it, and an empty list
+     * leaves the fresh rows' icon fields null.
      */
     fun searchRows(
         all: List<OpenCodeClient.Session>?,
         visible: List<Row>,
         directories: List<String> = emptyList(),
+        projectNames: Map<String, String> = emptyMap(),
+        projects: List<HomeProjects.Project> = emptyList(),
     ): List<Row> {
         if (all.isNullOrEmpty()) return visible
         val scope = directories.filter { it.isNotBlank() }
         val scoped = all.filterNot { isArchived(it) }
-            .filter { scope.isEmpty() || containsAny(scope, it.directory) }
-        val merged = (scoped.map {
-            Row(
-                id = it.id,
-                title = it.title,
-                directory = it.directory,
-                project = projectName(it.directory),
-                updatedAt = it.updatedAt,
-            )
-        } + visible).distinctBy { it.id }
+            .filter { scope.isEmpty() || containsAny(scope, sessionDirectory(it)) }
+        // The `all`-derived rows win the `distinctBy` below, so they have to
+        // carry the icon themselves — taking it from the matching [visible] row
+        // would leave every search hit with a neutral avatar.
+        val merged = (scoped.map { rowOf(it, projectNames, projects) } + visible).distinctBy { it.id }
         return merged.sortedByDescending { it.updatedAt }
     }
 
@@ -217,6 +326,21 @@ object HomeSessions {
             row.title.contains(needle, ignoreCase = true) ||
                 row.project?.contains(needle, ignoreCase = true) == true
         }
+    }
+
+    /**
+     * The session row's project label — upstream `buildHomeSessionRecords`
+     * (`home/sessions/records.ts:30` `projectName: displayName(project)`): the
+     * owning project's display name, not the bare folder name. [names] is the
+     * catalogue's name by [matchKey]; without it (or when the server never set
+     * one) the label is the folder name, `null` when the directory is unknown.
+     */
+    fun projectLabel(directory: String?, names: Map<String, String> = emptyMap()): String? {
+        val path = directory?.trim().orEmpty()
+        if (path.isEmpty()) return null
+        val server = matchKey(path)?.let { names[it] }?.trim().orEmpty()
+        if (server.isNotEmpty()) return server
+        return projectName(path)
     }
 
     /**
@@ -294,4 +418,44 @@ object HomeSessions {
      * counterpart here: the shell always has exactly one server.
      */
     fun placeholderScope(directory: String?): String? = displayName(directory)
+
+    /**
+     * Whether the sessions column shows its load-error state instead of the
+     * skeleton / list / empty state (emulator-5554 v74: the list sat on the
+     * skeleton forever — a failed read left `loading` true with no terminal
+     * state and no retry).
+     *
+     * Real loading always wins: the error is only for a *settled* read that
+     * failed while there are no rows to show, so a retry in flight shows the
+     * skeleton again instead of flashing the error over it, and a cached list
+     * keeps rendering under a failed refresh.
+     */
+    fun shouldShowLoadError(loading: Boolean, loadFailed: Boolean, rowCount: Int): Boolean =
+        !loading && loadFailed && rowCount == 0
+
+    /**
+     * Whether the sessions column shows the skeleton instead of the error /
+     * list / empty state (emulator-5554 v84: with the backend unreachable the
+     * column sat on the skeleton forever — even across a restart — with no
+     * error and no retry, while Projects read fine from the local store).
+     *
+     * The v83 bound did flip `sessionsLoadFailed` on the first load, but the
+     * screen OR-ed a pending probe verdict on top of the read's own spinner:
+     * with no transport every catalogue read reports `ProbePending` (a probe
+     * is in flight, or no verdict ever landed while a server row is
+     * configured), so `loading` never settled and [shouldShowLoadError] never
+     * fired. A catalogue read that actually failed is the terminal answer —
+     * the error/retry state — and a still-churning probe must not drag it
+     * back to the skeleton. A retry in flight still shows the skeleton
+     * through [localLoading], and a healthy first launch is unchanged (no
+     * failure recorded, so a pending probe still holds the skeleton).
+     */
+    fun isColumnLoading(
+        localLoading: Boolean,
+        loadFailed: Boolean,
+        firstReadOk: Boolean,
+        rowCount: Int,
+        probePending: Boolean,
+    ): Boolean =
+        localLoading || (!loadFailed && !firstReadOk && rowCount == 0 && probePending)
 }

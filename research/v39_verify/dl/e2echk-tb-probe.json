@@ -1,0 +1,93 @@
+{
+  "info": {
+    "id": "ses_f1d844145ffehbvsRr3Amfek6b",
+    "projectID": "global",
+    "cost": 0,
+    "tokens": {
+      "input": 46136,
+      "output": 18,
+      "reasoning": 117,
+      "cache": {
+        "read": 28288,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1790506155909,
+      "updated": 1790506491415,
+      "idle": 1790506345693,
+      "viewed": 1790506345693
+    },
+    "title": "E2ECHK tB probe",
+    "location": {
+      "directory": "C:\\sensorsdata\\main\\program\\opencode-android-shell\\v36projB"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_0e27bbfe0001RQRLtWp6LZ9LEb",
+      "time": {
+        "created": 1790506156031
+      },
+      "text": "reply with the single word PROBE_OK",
+      "type": "user"
+    },
+    {
+      "id": "msg_0e27bc012001aB8Q2G7zu1vWnF",
+      "time": {
+        "created": 1790506156234,
+        "streamed": 1790506162896,
+        "completed": 1790506163004
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "longcat-2.5-preview-free",
+        "providerID": "opencode-go"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "\nThe user asked me to reply with the single word \"PROBE_OK\". This is a simple request that requires no tool calls or complex reasoning. I should just reply with that exact word.",
+          "state": {
+            "reasoningField": "reasoning_content"
+          },
+          "time": {
+            "created": 1790506160895,
+            "completed": 1790506162890
+          }
+        },
+        {
+          "type": "text",
+          "text": "PROBE_OK"
+        }
+      ],
+      "snapshot": {
+        "start": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "end": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "files": []
+      },
+      "finish": "stop",
+      "rawFinish": "stop",
+      "cost": 0,
+      "tokens": {
+        "input": 22949,
+        "output": 6,
+        "reasoning": 39,
+        "cache": {
+          "read": 1792,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_0e27bdb41001XWvV6ydQ5iJ0Bt",
+      "time": {
+        "created": 1790506163009
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

@@ -432,9 +432,9 @@ class LocalGateway(
         internal const val SSE_IDLE_READ_TIMEOUT_MS = 35_000L
 
         /**
-         * SSE paths used by the official client: `/event` (v1 subscribe),
-         * `/global/event` (v2 global), `/api/event`, and session streams
-         * `/api/session/{id}/event`. The SDK's `sse.get` sets no
+         * SSE paths used by the official client: `/api/event` (global) and
+         * session streams `/api/session/{id}/event` /
+         * `/api/experimental/session/{id}/log`. The SDK's `sse.get` sets no
          * `Accept: text/event-stream` request header (only the response is
          * content-checked), so the path is the reliable marker.
          */

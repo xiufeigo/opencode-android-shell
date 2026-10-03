@@ -202,6 +202,15 @@ class Wave22bToolFidelityTest {
     }
 
     @Test
+    fun firstLineCapLandsOutsideASurrogatePair() {
+        // The old `take` kept a lone high surrogate (renders as U+FFFD).
+        val line = "y".repeat(ToolPresentation.SUBTITLE_MAX - 1) + "😀tail"
+        val first = ToolText.firstLine("  \n  $line  \nsecond")
+        assertEquals(ToolPresentation.SUBTITLE_MAX - 1, first!!.length)
+        assertEquals('y', first.last())
+    }
+
+    @Test
     fun errorSubtitleUsesTheToolInputKey() {
         assertEquals(
             "sleep 30",
@@ -222,11 +231,9 @@ class Wave22bToolFidelityTest {
                 ),
             ),
         )
-        // No input at all → the old error-summary path (unchanged behaviour).
-        assertEquals(
-            "boom",
-            ToolPresentation.subtitle(toolPart("bash", status = "error", error = "boom")),
-        )
+        // No input at all → no subtitle: the error text is the card's head
+        // (v32 BUG-1 — this used to echo the summary line here as well).
+        assertNull(ToolPresentation.subtitle(toolPart("bash", status = "error", error = "boom")))
     }
 
     // ------------------------------------------------- A3-26 error unwrap
@@ -267,6 +274,62 @@ class Wave22bToolFidelityTest {
         // payload returns the *original* message (upstream parity:
         // `projection.ts:741` `if (!record(json)) return message`).
         assertEquals("Error: x", ToolText.unwrapErrorMessage("Error: x"))
+    }
+
+    // ---------------------------- v32 BUG-1: the server phrase in the locale
+
+    @Test
+    fun localizeSwapsTheServerPhraseForTheLocaleWords() {
+        // `shell.ts:145` composes the failure itself, so there is no key to
+        // translate: the phrase table is the only hook. The head/detail split
+        // runs on the *localized* line, or the trigger would stay English while
+        // the expanded body changed language.
+        val zh = mapOf("Working directory does not exist" to "工作目录不存在")
+        val raw = "Working directory does not exist: /home/xiufeigo/v32projA"
+        assertEquals(
+            "工作目录不存在: /home/xiufeigo/v32projA",
+            ToolText.localizeServerPhrases(raw, zh),
+        )
+        val (head, detail) = ToolText.errorHeadDetail(ToolText.localizeServerPhrases(raw, zh), "shell")
+        assertEquals("工作目录不存在", head)
+        assertEquals("/home/xiufeigo/v32projA", detail)
+    }
+
+    @Test
+    fun localizeMatchesCaseInsensitivelyAndLeavesOtherTextAlone() {
+        val zh = mapOf("Working directory does not exist" to "工作目录不存在")
+        assertEquals(
+            "工作目录不存在: /tmp",
+            ToolText.localizeServerPhrases("working directory does not exist: /tmp", zh),
+        )
+        assertEquals("exit 1", ToolText.localizeServerPhrases("exit 1", zh))
+        assertEquals("", ToolText.localizeServerPhrases("", zh))
+        assertEquals("exit 1", ToolText.localizeServerPhrases("exit 1", emptyMap()))
+    }
+
+    @Test
+    fun localizeSkipsIdentityPairsSoTheEnglishLocaleIsUntouched() {
+        // The `en` dictionary maps the phrase onto itself; a no-op replace would
+        // still rewrite the string, so those pairs are skipped outright.
+        val en = mapOf("Working directory does not exist" to "Working directory does not exist")
+        assertEquals(
+            "Working directory does not exist: /tmp",
+            ToolText.localizeServerPhrases("Working directory does not exist: /tmp", en),
+        )
+    }
+
+    @Test
+    fun localizeAppliesTheLongestPhraseFirst() {
+        // A short phrase must not eat the prefix of a longer one, whatever order
+        // the caller's map happens to have.
+        val map = linkedMapOf(
+            "Working directory" to "工作目录",
+            "Working directory does not exist" to "工作目录不存在",
+        )
+        assertEquals(
+            "工作目录不存在: /tmp",
+            ToolText.localizeServerPhrases("Working directory does not exist: /tmp", map),
+        )
     }
 
     // ------------------------------------------------- dedicated dispatch

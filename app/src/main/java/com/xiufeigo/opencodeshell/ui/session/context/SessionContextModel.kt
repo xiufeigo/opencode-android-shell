@@ -2,6 +2,8 @@ package com.xiufeigo.opencodeshell.ui.session.context
 
 import com.xiufeigo.opencodeshell.OpenCodeClient
 import com.xiufeigo.opencodeshell.ui.session.export.SessionExport
+import com.xiufeigo.opencodeshell.ui.session.export.SessionExportKind
+import com.xiufeigo.opencodeshell.ui.session.header.ContextUsage
 import com.xiufeigo.opencodeshell.ui.session.review.MobileUsage
 import org.json.JSONObject
 import java.time.Instant
@@ -51,6 +53,10 @@ import java.util.Locale
  * - **The system prompt** is read from the last `system` **message**; when that
  *   message is a v1 `{info, parts}` row (this server's shape) the text comes from
  *   its text parts, because v1 has no flat `text` field.
+ * - **`User Messages`** counts prompts through [isUserPrompt], which is
+ *   upstream's `type === "user"` plus the one extra rule the v1 shape needs (its
+ *   injected records are `role: "user"` rows, so the discriminator alone counts
+ *   frames). See that function — the v19 device finding is why.
  */
 object SessionContextModel {
 
@@ -60,9 +66,18 @@ object SessionContextModel {
     /** Upstream `context.stats.*` (`session-context-tab.tsx:173-193`), in order. */
     enum class Kind {
         SESSION,
+
+        /**
+         * **All** frames of the message list, `system`/injected rows included —
+         * upstream `counts().all` (`:133-141`), i.e. `messages().length`. Not
+         * `USER_MESSAGES + ASSISTANT_MESSAGES`; the label carries that ("all
+         * frames", see [SessionContextPanel]'s `oc_context_stats_messages`).
+         */
         MESSAGES,
         PROVIDER,
         MODEL,
+
+        /** The model's effective window, `min(limit.input, limit.context)` (see [project]). */
         LIMIT,
         TOTAL_TOKENS,
         USAGE,
@@ -97,6 +112,70 @@ object SessionContextModel {
         val title: String get() = "$type \u2022 $id"
     }
 
+    /** Three-way affordance of the tab's always-rendered export button. */
+    enum class ExportState {
+        /** Payloads arrived — the payload-backed rows are enabled. */
+        READY,
+        /** Nothing loaded yet — those rows are disabled with a waiting hint. */
+        EMPTY,
+        /** The backing fetch failed — those rows are disabled with the error. */
+        FAILED,
+    }
+
+    /**
+     * The four rows of the raw-messages header's menu, in render order
+     * (`session-context-tab.tsx:296-307` for the first; the two route-backed
+     * exports and the import are this shell's additions, `research/wave6_export.md`).
+     *
+     * [kind] is the save format the three export rows use; [IMPORT] has none —
+     * it reads a file the user picks and posts it to `session/import`.
+     */
+    enum class ExportRow(val kind: SessionExportKind?) {
+        /** Upstream's hand-rolled `{info, messages}` pair, serialized from [Snapshot.export]. */
+        ASSEMBLED(SessionExportKind.ASSEMBLED),
+
+        /** `GET /api/experimental/session/{id}/export` — needs the session id. */
+        OFFICIAL(SessionExportKind.OFFICIAL),
+
+        /** The same route with `?sanitize=true`. */
+        SANITIZED(SessionExportKind.SANITIZED),
+
+        /** `POST /api/experimental/session/import` — needs no payload and no id. */
+        IMPORT(null),
+    }
+
+    /**
+     * Whether [row] can run right now — the one place the menu's enablement
+     * rules live, so the panel renders them and the JVM test pins them.
+     *
+     * - [payloadReady]: the tab's `{info, messages}` payload is in hand
+     *   (`Snapshot.export != null`). [ExportRow.ASSEMBLED] serializes it, so it
+     *   needs it;
+     * - [sessionID]: the raw session id, `null` until the session half lands.
+     *   Both route-backed rows are keyed by it;
+     * - [exportBusy]: one of the three export rows has an attempt out. It gates
+     *   those rows **only**;
+     * - [importBusy]: the import row's own attempt.
+     *
+     * [ExportRow.IMPORT] deliberately ignores every payload fact: it needs
+     * neither the session payload nor the id, so a payload that never loaded
+     * (or failed) must not take Import down with it. The v9-41 device report is
+     * exactly that bug — the *trigger* was gated on `payloadReady`, so a failed
+     * payload left Import permanently unreachable even though its own row would
+     * have been enabled.
+     */
+    fun exportRowEnabled(
+        row: ExportRow,
+        payloadReady: Boolean,
+        sessionID: String?,
+        exportBusy: Boolean,
+        importBusy: Boolean,
+    ): Boolean = when (row) {
+        ExportRow.ASSEMBLED -> payloadReady && !exportBusy
+        ExportRow.OFFICIAL, ExportRow.SANITIZED -> sessionID != null && !exportBusy
+        ExportRow.IMPORT -> !importBusy
+    }
+
     data class Snapshot(
         val stats: List<Stat>,
         val messages: List<RawMessage>,
@@ -108,10 +187,45 @@ object SessionContextModel {
          * there; this screen already holds the raw payloads [project] was called
          * with, so the button writes exactly the data the sixteen rows were
          * derived from — no second request and no new HTTP code. `null` while
-         * nothing has loaded (the button is not rendered then).
+         * nothing has loaded: the export rows then render disabled (with
+         * [exportState]'s hint) instead of disappearing, and flip enabled the
+         * moment payloads arrive. The header's own menu stays reachable either
+         * way, because [ExportRow.IMPORT] needs none of this.
          */
         val export: Export? = null,
-    )
+        /**
+         * Raw reason of the backing export-frame fetch failure, e.g. the
+         * exception message. `null` while loading or loaded — a failure never
+         * hides the button, it only moves [exportState] to [ExportState.FAILED]
+         * so the panel can show the reason. An arrival wins over a stale
+         * failure ([ExportState.READY] while [export] is non-null).
+         */
+        val exportError: String? = null,
+        /**
+         * `Session.Info.id` of the payload — the handle the official export
+         * (`experimental/session/{id}/export`) and the instructions routes
+         * need. `null` until the raw session half lands.
+         */
+        val sessionID: String? = null,
+    ) {
+        /** See [ExportState]: arrivals win, then failures, then the waiting state. */
+        val exportState: ExportState get() = when {
+            export != null -> ExportState.READY
+            exportError != null -> ExportState.FAILED
+            else -> ExportState.EMPTY
+        }
+
+        /**
+         * The message drain stopped at its page cap (`SessionExport.Frame`
+         * `truncated`): [Export.json] then carries the `truncated` note and the
+         * tab shows the "only the first N pages" hint. `false` while nothing is
+         * loaded — an absent payload is [ExportState.EMPTY], not a truncation.
+         */
+        val exportTruncated: Boolean get() = export?.truncated == true
+
+        /** Pages the drain read before stopping (`SessionExport.Frame.truncatedPages`). */
+        val exportTruncatedPages: Int get() = export?.truncatedPages ?: 0
+    }
 
     /**
      * The `{info, messages}` payload of the tab's export button, i.e. upstream's
@@ -127,9 +241,24 @@ object SessionContextModel {
         val filename: String,
         val info: JSONObject?,
         val messages: List<JSONObject>,
+        /** `Session.Info.id` — the official export route's path half; `null` disables it. */
+        val sessionID: String? = null,
+        /**
+         * The backing read stopped at `V2Api.MessageDrain`'s page cap with the
+         * server still offering a cursor — the payload holds the first
+         * [truncatedPages] pages of the transcript, not all of it. [json] writes
+         * `SessionExport.TRUNCATED_KEY` when set, so the *file* says so too; the
+         * panel renders the matching hint (the flag used to be dropped when the
+         * context tab rebuilt its own payload from `{info, messages}`).
+         */
+        val truncated: Boolean = false,
+        /** Pages the drain read before stopping. */
+        val truncatedPages: Int = 0,
     ) {
         /** `JSON.stringify(data, null, 2)`, exactly `SessionExport.serialize`. */
-        val json: String by lazy { SessionExport.serialize(info ?: JSONObject(), messages) }
+        val json: String by lazy {
+            SessionExport.serialize(info ?: JSONObject(), messages, truncated, truncatedPages)
+        }
     }
 
     /**
@@ -156,6 +285,42 @@ object SessionContextModel {
      * source is missing on this server: v1 `GET /session/:id` carries no
      * session-level `cost`. They are not the primary source, so a server that
      * does price the session still wins (upstream semantics).
+     *
+     * [activeMessages] is the v2 **active** context (`GET /api/session/{id}/
+     * context`, `ChatViewModel.activeContextRows`) — every message after the last
+     * compaction, and the **live** read behind the header ring's numerator
+     * ([lastAssistantTotal] is the shared rule). When given, it owns the `ctx()`
+     * half of upstream's stats (`session-context-tab.tsx:114-135,176-193`:
+     * provider / model / limit / token buckets / last activity, all read off the
+     * last assistant message with tokens), so those rows track the header ring's
+     * `activeContextTokens` — the same rows of the same fetch — instead of a
+     * pre-compaction turn or a frame read frozen at this tab's first open.
+     * Upstream reads that message off `data.session.message.list` instead; `null`
+     * keeps that full-list source (v1 servers, before the first read, after a
+     * failed one). Counts, the raw list, the system prompt and the export always
+     * come from [messages], exactly like `fetchSessionExport` — that half is the
+     * export frame, re-read on a session/server change, on the tab's 「刷新」 and
+     * once per settled run ([SessionContextLoad]) — not per event.
+     *
+     * [exportError] is the backing fetch's failure reason; it only feeds
+     * `Snapshot.exportState` (disabled button + error hint), never the rows.
+     *
+     * The `Context Limit` / `Usage` rows show the **effective window**
+     * `min(limit.input, limit.context)` ([ContextUsage.windowOf]) rather than the
+     * raw `limit.context` upstream prints: the server compacts on the input half,
+     * so the v20 device read `Usage 59 %` (619,741 tokens) on a model whose real
+     * ceiling is 504,288 — see `ContextUsage`'s class doc. Both halves come off
+     * the resolved entry of [providers] itself
+     * ([OpenCodeClient.Providers.Model.limitInput]); an entry that carries no
+     * `limit.input` (v1, or 74 of the 129 live v20 rows) keeps the upstream
+     * `limit.context` reading.
+     *
+     * [exportTruncated] / [exportTruncatedPages] are the backing read's own
+     * report (`SessionExport.Frame`, i.e. `V2Api.MessageDrain.truncated` /
+     * `pages`): a transcript longer than the drain's page cap. They only feed
+     * `Snapshot.exportTruncated*` — the payload's `truncated` note and the tab's
+     * hint — and change nothing else, so a truncated projection is otherwise
+     * identical to a complete one.
      */
     fun project(
         session: JSONObject?,
@@ -165,18 +330,32 @@ object SessionContextModel {
         locale: Locale = Locale.getDefault(),
         contextLimit: Int? = null,
         sessionCost: Double? = null,
+        activeMessages: List<JSONObject>? = null,
+        exportError: String? = null,
+        exportTruncated: Boolean = false,
+        exportTruncatedPages: Int = 0,
     ): Snapshot {
-        val last = messages.lastOrNull { isAssistantWithTokens(it) }
+        val last = (activeMessages ?: messages).lastOrNull { isAssistantWithUsage(it) }
         val buckets = last?.let { tokensOf(it) }?.let(::Buckets)
         val ref = last?.let { modelRef(it) }
         val provider = ref?.providerID?.let { id -> providers?.all?.firstOrNull { it.id == id } }
         val model = ref?.let { (providerID, modelID) ->
             if (providerID != null && modelID != null) providers?.model(providerID, modelID) else null
         }
-        // `model?.limit.context` upstream; the catalog row can be absent while
-        // the screen still knows the limit it shows in the header ring, and the
-        // two must never disagree.
-        val limit = model?.limitContext ?: contextLimit
+        // `model?.limit.context` upstream — narrowed to the **effective window**
+        // `min(limit.input, limit.context)` (v20, [ContextUsage.windowOf]), which
+        // is also what `ChatViewModel.contextLimit` resolves to, so the panel's
+        // `Context Limit` / `Usage` rows and the header ring cannot disagree. The
+        // same helper re-resolves the ref, so both halves can only ever come from
+        // the one catalog entry; a row that is absent from the catalog falls back
+        // to the screen's own value.
+        val limit = ref?.let { (providerID, modelID) ->
+            if (providerID != null && modelID != null) {
+                ContextUsage.windowOf(providers, providerID, modelID)
+            } else {
+                null
+            }
+        } ?: contextLimit
         val usage = if (buckets != null && limit != null && limit > 0) {
             Math.round(buckets.total.toDouble() / limit * 100.0).toInt()
         } else {
@@ -186,6 +365,15 @@ object SessionContextModel {
         val stats = listOf(
             // `info()?.title ?? params.id ?? "—"`
             Stat(Kind.SESSION, sessionTitle(session)),
+            // `counts().all` — **every frame** of the message list, system and
+            // injected rows included (`session-context-tab.tsx:133-141`:
+            // `const all = messages()` … `all.length`; `messages()` is
+            // `data.session.message.list(id)` unfiltered). So it is deliberately
+            // *not* `user + assistant`: the v20 device saw `Messages 17` above
+            // `User Messages 1` / `Assistant Messages 8` and read the mismatch as
+            // a bug. Upstream's semantics are kept (the row is the frame count)
+            // and the label says so instead — see
+            // `oc_context_stats_messages` in `res/values*/strings.xml`.
             Stat(Kind.MESSAGES, number(messages.size.toLong())),
             // `provider?.name ?? message.model.providerID` then `?? "—"`
             Stat(Kind.PROVIDER, provider?.name?.takeIf { it.isNotBlank() } ?: ref?.providerID ?: DASH),
@@ -203,7 +391,9 @@ object SessionContextModel {
                 (buckets?.let { number(it.cacheRead) } ?: DASH) + " / " +
                     (buckets?.let { number(it.cacheWrite) } ?: DASH),
             ),
-            Stat(Kind.USER_MESSAGES, number(messages.count { messageType(it) == ROLE_USER }.toLong())),
+            // `counts().user` — the prompt rows only; see [isUserPrompt] for why
+            // this is not the shared discriminator alone.
+            Stat(Kind.USER_MESSAGES, number(messages.count(::isUserPrompt).toLong())),
             Stat(Kind.ASSISTANT_MESSAGES, number(messages.count { messageType(it) == ROLE_ASSISTANT }.toLong())),
             // `usd().format(info()?.cost ?? 0)` upstream; this server leaves the
             // session-level `cost` out, so the screen's own 总成本 is the
@@ -217,7 +407,9 @@ object SessionContextModel {
             stats = stats,
             messages = rawMessages(messages, zone, locale),
             systemPrompt = systemPrompt(messages),
-            export = exportSource(session, messages),
+            export = exportSource(session, messages, exportTruncated, exportTruncatedPages),
+            exportError = exportError,
+            sessionID = session?.optString("id", "")?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -226,8 +418,16 @@ object SessionContextModel {
      * (both payloads absent — the pre-load state of the mobile usage view).
      * Upstream's `sessionExportFilename(data.info)` falls back to the id, and a
      * row without one exports as a session-shaped file rather than failing.
+     *
+     * [truncated] / [truncatedPages] ride along so the rebuilt payload keeps the
+     * note the backing read reported (see [Export.truncated]).
      */
-    private fun exportSource(session: JSONObject?, messages: List<JSONObject>): Export? {
+    private fun exportSource(
+        session: JSONObject?,
+        messages: List<JSONObject>,
+        truncated: Boolean = false,
+        truncatedPages: Int = 0,
+    ): Export? {
         if (session == null && messages.isEmpty()) return null
         return Export(
             filename = SessionExport.filename(
@@ -237,6 +437,9 @@ object SessionContextModel {
             ),
             info = session,
             messages = messages,
+            sessionID = session?.optString("id", "")?.takeIf { it.isNotBlank() },
+            truncated = truncated,
+            truncatedPages = truncatedPages,
         )
     }
 
@@ -256,6 +459,61 @@ object SessionContextModel {
             time = time(createdAt(row), zone, locale),
             json = row.toString(SessionExport.INDENT),
         )
+    }
+
+    /**
+     * The newest assistant row's usage total, **the header ring's numerator rule**
+     * (`input + output + reasoning + cache.read + cache.write`) applied to the
+     * rows of `GET /api/session/{id}/context` — [ChatViewModel.activeContextRows].
+     * `null` when no row carries usage, or the total is 0, i.e. exactly
+     * `OpenCodeClient.tokenTotal`'s shape.
+     *
+     * This is the one place the numerator is derived, so the ring
+     * (`ChatViewModel.activeContextTokens`) and the tab's `Total Tokens` /
+     * `Usage` rows ([project] with `activeMessages`) read **the same message of
+     * the same fetch** and can never describe different turns.
+     *
+     * The v17-23 device finding was exactly a split here: the ring re-read this
+     * route on every snapshot while the tab kept a second, one-shot read of it
+     * (`ChatViewModel.sessionContext`) that froze at the tab's first open — the
+     * ring showed 42 % of the live total while the tab still printed the first
+     * turn's `9,154` / `1 %`.
+     */
+    fun lastAssistantTotal(rows: List<JSONObject>?): Long? {
+        val last = (rows ?: emptyList()).lastOrNull { isAssistantWithUsage(it) } ?: return null
+        val tokens = tokensOf(last) ?: return null
+        return Buckets(tokens).total.takeIf { it > 0L }
+    }
+
+    /**
+     * Whether [row] is a **prompt** — the row `User Messages` counts
+     * (upstream `counts()`: `message.type === "user"`, `session-context-tab.tsx:141-149`).
+     *
+     * On a v2 payload the discriminator alone is the whole rule: the union has
+     * exactly one `user` type (`schema/src/session-message.ts:78-86`), and the
+     * other ten — `assistant`, `synthetic`, `system`, `shell`, `skill`,
+     * `compaction`, `idle`, `agent-switched`, `model-switched`,
+     * `location-switched` — are frames. The one the v19 report named, the
+     * `model-switched` record a model switch writes
+     * (`core/src/session/message-updater.ts:101-115`), is a `model-switched`
+     * type and never a `user` one; the tests pin every frame of that list.
+     *
+     * The **v1 shape** is where the discriminator is not enough, and why this is
+     * a named rule rather than an inline comparison: v1 has no `type` field at
+     * all (`schema/src/v1/session.ts:327-355`: `Info = User | Assistant`, `role`
+     * is the discriminator) and it stores its injected records as
+     * `role: "user"` messages — model-facing reminders arrive as `synthetic`
+     * text parts. Counting every `role: "user"` row therefore counted frames
+     * the user cannot see as prompts. [isInjectedNotice] is the payload's own
+     * "this is a notice" test, and a row it cannot prove is a notice stays a
+     * prompt (nothing identifies it as a frame).
+     */
+    fun isUserPrompt(row: JSONObject): Boolean {
+        val info = infoOf(row)
+        val type = info.optString("type", "").trim()
+        if (type.isNotEmpty()) return type.equals(ROLE_USER, ignoreCase = true)
+        if (!info.optString("role", "").trim().equals(ROLE_USER, ignoreCase = true)) return false
+        return !isInjectedNotice(row, info)
     }
 
     /** Last `system` message's trimmed text, `null` when there is none or it is blank. */
@@ -298,8 +556,65 @@ object SessionContextModel {
         return info.optString("type", "").ifEmpty { info.optString("role", "") }
     }
 
-    private fun isAssistantWithTokens(row: JSONObject): Boolean =
-        messageType(row) == ROLE_ASSISTANT && tokensOf(row) != null
+    /**
+     * The v1 shape's own "this is an injected record, not a prompt" test — the
+     * `role: "user"` half of [isUserPrompt].
+     *
+     * It mirrors the rule the server itself applies when it migrates a v1
+     * database into the v2 message store
+     * (`core/src/database/v1-migration.bun.ts:277-368`), because that is the one
+     * place upstream has to answer the same question: a v1 `role: "user"` row is
+     * a **`synthetic`** message when it carries no ordinary text part, no
+     * attachment and no agent mention, and at least one synthetic text part
+     * (`:326-347`); a row owning a `compaction` part is re-typed `compaction`
+     * (`:277-312`); a row of nothing but `subtask` parts is dropped (`:315`).
+     * None of the three is a prompt.
+     *
+     * Deliberately lenient in the other direction: a row with no parts at all,
+     * or with only `ignored` parts, is **not** a notice — nothing in the payload
+     * identifies it as a frame, and dropping rows we cannot classify would
+     * under-count prompts, which is worse than the over-count this rule fixes.
+     */
+    private fun isInjectedNotice(row: JSONObject, info: JSONObject): Boolean {
+        val parts = row.optJSONArray("parts") ?: info.optJSONArray("parts") ?: return false
+        var synthetic = false
+        var envelope = false
+        for (index in 0 until parts.length()) {
+            val part = parts.optJSONObject(index) ?: continue
+            when (part.optString("type", "")) {
+                // An ordinary (non-synthetic, non-ignored) text part is what the
+                // user typed, so the row is a prompt whatever else it carries.
+                "text" -> {
+                    if (part.optBoolean("ignored", false)) continue
+                    if (part.optBoolean("synthetic", false)) {
+                        synthetic = true
+                    } else {
+                        return false
+                    }
+                }
+                // An attachment or an @-mention is content the user chose.
+                "file", "agent" -> return false
+                "compaction", "subtask" -> envelope = true
+            }
+        }
+        return synthetic || envelope
+    }
+
+    /**
+     * The row that owns the `ctx()` half of the stats and the ring's numerator:
+     * an assistant row carrying a **non-zero** usage total.
+     *
+     * Upstream's selector is `item.type === "assistant" && !!item.tokens`
+     * (`session-context-tab.tsx:115`), which an all-zero `tokens` object also
+     * satisfies. The ring's own rule is stricter — `ContextUsage.lastUsage` wants
+     * `tokens > 0` — and a tab that answered `0` / `0 %` for a turn the ring
+     * ignores is exactly the kind of two-answers-one-screen split the v17-23
+     * finding was about. So the stricter rule is the shared one: a zero-usage
+     * trailing row is skipped by both sides, and the newest real usage wins.
+     */
+    private fun isAssistantWithUsage(row: JSONObject): Boolean =
+        messageType(row) == ROLE_ASSISTANT &&
+            (tokensOf(row)?.let { Buckets(it).total } ?: 0L) > 0L
 
     /** Raw `info.tokens`, or `null` when the message carries none (`!!item.tokens`, `:115`). */
     private fun tokensOf(row: JSONObject): JSONObject? = infoOf(row).optJSONObject("tokens")

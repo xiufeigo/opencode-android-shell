@@ -36,7 +36,33 @@ object ComposerSubmit {
      * the editor action after committing its composing text.
      */
     fun enterSubmits(isShiftPressed: Boolean, isRepeat: Boolean): Boolean =
-        !isShiftPressed && !isRepeat
+        enterAction(isShiftPressed, isRepeat) == EnterAction.SUBMIT
+
+    /**
+     * What a hardware `Enter` / `NumPadEnter` key-down means, upstream
+     * `composer/editor/editor.tsx:211`
+     * (`event.key === "Enter" && !event.shiftKey && !event.isComposing` → submit,
+     * every other Enter falls through to the `<textarea>` and newlines).
+     *
+     * The split matters because the composer asks the IME for `ImeAction.Send`:
+     * Compose's text field performs that IME action for **any** Enter key-down
+     * that reaches it (`TextFieldDelegate.processKeyEvent`), so letting a
+     * `Shift+Enter` fall through did not newline — it sent. The composer
+     * therefore owns the whole key: [NEWLINE] inserts the break itself and
+     * [SUBMIT] submits, and both are consumed.
+     *
+     * [IGNORE] is the auto-repeat case: a held Enter is swallowed rather than
+     * falling through, which used to re-run the IME action on every repeat.
+     */
+    enum class EnterAction { SUBMIT, NEWLINE, IGNORE }
+
+    /** See [EnterAction]; an IME that is still composing newlines (upstream). */
+    fun enterAction(isShiftPressed: Boolean, isRepeat: Boolean, isComposing: Boolean = false): EnterAction =
+        when {
+            isShiftPressed || isComposing -> EnterAction.NEWLINE
+            isRepeat -> EnterAction.IGNORE
+            else -> EnterAction.SUBMIT
+        }
 
     /**
      * W5-C: may this editor content be submitted? Shell mode requires real text

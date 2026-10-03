@@ -66,8 +66,13 @@ class HomeNavTest {
     @Test
     fun `session route pattern matches the graph`() {
         // `ui/App.kt#Route.SESSION` — the nav graph owns the pattern; this is the
-        // only place the restore path hard-codes it.
-        assertEquals("server/{serverKey}/session/{id}", NavRestore.session("{serverKey}", "{id}"))
+        // only place the restore path hard-codes it. The id goes through
+        // `encodeSegment` (v65 P0: a worktree *directory* reached this builder
+        // and produced `session//home/…`, a route with no matching destination),
+        // so this passes a real id — the pattern's own braces are placeholders,
+        // not a value that ever travels.
+        assertEquals("server/key/session/ses_1", NavRestore.session("key", "ses_1"))
+        assertEquals("server/key/session/ses_1", NavRestore.sessionOrNull("key", "ses_1"))
     }
 
     @Test

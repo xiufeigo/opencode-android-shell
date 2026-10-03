@@ -89,25 +89,33 @@ public class TextSelectionCursorController implements CursorController {
     }
 
     public void setInitialTextSelectionPosition(MotionEvent event) {
-        int cx = (int) (event.getX() / terminalView.mRenderer.getFontWidth());
+        final float fontWidth = terminalView.mRenderer.getFontWidth();
+        final float lineSpacing = terminalView.mRenderer.getFontLineSpacing();
+        final int columns = terminalView.mEmulator.mColumns;
+        final int rows = terminalView.mEmulator.mRows;
+        int cx = (int) (event.getX() / fontWidth);
         final boolean eventFromMouse = event.isFromSource(InputDevice.SOURCE_MOUSE);
-        // Offset for finger:
-        final int SELECT_TEXT_OFFSET_Y = eventFromMouse ? 0 : -40;
-        int cy = (int) ((event.getY() + SELECT_TEXT_OFFSET_Y) / terminalView.mRenderer.getFontLineSpacing()) + terminalView.getTopRow();
+        // Offset for finger: the fingertip covers the row it pressed, so the
+        // selection is taken from the row above it. Upstream hard-codes 40 px,
+        // which is about one row only at termux's own metrics — at the shell's
+        // 14 sp the same constant is more than a whole row, so the highlight
+        // opened on a line the user never touched. One *rendered* row keeps the
+        // upstream intent at any font size.
+        final float SELECT_TEXT_OFFSET_Y = eventFromMouse ? 0 : -lineSpacing;
+        int cy = (int) ((event.getY() + SELECT_TEXT_OFFSET_Y) / lineSpacing) + terminalView.getTopRow();
+        // The renderer compares the selectors against the visible rows, so a row
+        // past the bottom of the screen would highlight nothing at all.
+        cy = Math.max(0, Math.min(cy, rows - 1));
 
-        mSelX1 = mSelX2 = cx;
+        final TerminalBuffer screen = terminalView.mEmulator.getScreen();
+        TerminalSelectionPolicy.Span span = TerminalSelectionPolicy.initial(row -> {
+            if (row < 0 || row >= rows) return "";
+            return screen.getSelectedText(0, row, columns - 1, row);
+        }, cy, cx, columns, rows);
+
+        mSelX1 = span.x1;
+        mSelX2 = span.x2;
         mSelY1 = mSelY2 = cy;
-
-        TerminalBuffer screen = terminalView.mEmulator.getScreen();
-        if (!" ".equals(screen.getSelectedText(mSelX1, mSelY1, mSelX1, mSelY1))) {
-            // Selecting something other than whitespace. Expand to word.
-            while (mSelX1 > 0 && !"".equals(screen.getSelectedText(mSelX1 - 1, mSelY1, mSelX1 - 1, mSelY1))) {
-                mSelX1--;
-            }
-            while (mSelX2 < terminalView.mEmulator.mColumns - 1 && !"".equals(screen.getSelectedText(mSelX2 + 1, mSelY1, mSelX2 + 1, mSelY1))) {
-                mSelX2++;
-            }
-        }
     }
     
     public void setActionModeCallBacks() {

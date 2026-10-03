@@ -380,4 +380,84 @@ class PtyClientTest {
             )
         }
     }
+
+    // --------------------------------------------------- post-close safety
+
+    @Test
+    fun resizeAfterCloseIsDroppedInsteadOfSchedulingOnADeadScheduler() {
+        MockWebServer().use { server ->
+            val fixture = Fixture(server, clock = { 0L })
+            fixture.connect()
+
+            fixture.client.close()
+            // The view can still deliver one grid change before it unbinds
+            // (rotation, IME, pinch): the scheduler is already shut down, so on
+            // the real executor that path was a RejectedExecutionException on
+            // the layout thread. Both the immediate and the debounced branch drop.
+            fixture.client.resize(cols = 100, rows = 40)
+            fixture.client.resize(cols = 101, rows = 41)
+            assertEquals(emptyList<Long>(), fixture.scheduler.delays())
+        }
+    }
+
+    @Test
+    fun executorSchedulerDiscardsWorkAfterShutdownInsteadOfThrowing() {
+        val scheduler = PtyClient.Scheduler.executor("oc-pty-test-ree")
+        scheduler.shutdown()
+        // close() shuts the executor down while a late resize/reconnect still
+        // wants a slot: DiscardPolicy semantics — `schedule` must not throw.
+        scheduler.schedule(0L) { }.cancel()
+    }
+
+    // ------------------------------------------------- FAILED keeps retrying
+
+    @Test
+    fun afterTheFastLadderGivesUpTheClientKeepsSlowRetrying() {
+        // Connection refused on every attempt (loopback port 1): each scheduled
+        // task is one full failed attempt, so the ladder advances deterministically.
+        val scheduler = ManualScheduler()
+        val errors = LinkedBlockingQueue<String>()
+        val api = PtyApi(
+            baseHttpUrl = "http://127.0.0.1:1/".toHttpUrlOrNull()!!,
+            username = "opencode",
+            password = "secret",
+            directory = "/w",
+            http = PtyApi.defaultHttp(),
+        )
+        val client = PtyClient(
+            api = api,
+            ptyId = "pty_1",
+            engine = PlaceholderPtyScreenEngine(),
+            listener = object : PtyClient.Listener {
+                override fun onState(state: PtyClient.State) = Unit
+                override fun onCursor(cursor: Long) = Unit
+                override fun onOutput(text: String) = Unit
+                override fun onError(message: String, code: Int?) {
+                    errors.add(message)
+                }
+            },
+            socketClient = PtyApi.defaultSocketClient(),
+            scheduler = scheduler,
+            clock = { 0L },
+        )
+
+        client.start()
+        // Attempts 1..12 ride the upstream backoff ladder …
+        repeat(PtyClient.MAX_ATTEMPTS) {
+            assertTrue("attempt ${it + 1} must run", scheduler.runNext())
+        }
+        assertEquals(PtyClient.State.RECONNECTING, client.state)
+        // … the 13th crosses the cap: FAILED is reported, but a slow probe stays armed.
+        assertTrue(scheduler.runNext())
+        assertEquals(PtyClient.State.FAILED, client.state)
+        assertEquals(listOf(PtyClient.SLOW_RETRY_MS), scheduler.delays())
+        assertEquals(1, errors.count { it.contains("giving up") })
+
+        // The next failure re-arms the same slow probe instead of freezing the tab.
+        assertTrue(scheduler.runNext())
+        assertEquals(PtyClient.State.FAILED, client.state)
+        assertEquals(listOf(PtyClient.SLOW_RETRY_MS), scheduler.delays())
+        assertEquals(1, errors.count { it.contains("giving up") })
+        client.close()
+    }
 }

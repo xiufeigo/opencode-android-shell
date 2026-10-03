@@ -94,54 +94,43 @@ class Wave5ConnectTest {
     @Test
     fun pathIsKeptBecauseUpstreamKeepsIt() {
         // No query/hash ⇒ upstream accepts a base with a path; the probe appends
-        // its own `/global/health` to whatever the user typed.
+        // its own `/api/info` to whatever the user typed.
         assertEquals("http://host:4096/oc", serverAddress("http://host:4096/oc"))
     }
 
     // --------------------------------------------------- health mapping
 
     @Test
-    fun liveHealthDocumentIsHealthyWithVersion() {
-        // The exact body of opencode 1.18.31 (measured locally).
-        val result = healthResult(200, """{"healthy":true,"version":"1.18.31"}""")
+    fun liveInfoDocumentIsHealthyWithVersion() {
+        val result = healthResult(200, "application/json", """{"version":"2.0.11"}""")
         assertEquals(ServerHealth.HEALTHY, result.state)
-        assertEquals("1.18.31", result.version)
+        assertEquals("2.0.11", result.version)
         assertNull(result.failure)
         assertTrue(result.healthy)
     }
 
     @Test
-    fun healthDocumentWithoutAVersionIsStillHealthy() {
-        val result = healthResult(200, """{"healthy":true}""")
-        assertEquals(ServerHealth.HEALTHY, result.state)
-        assertNull(result.version)
-    }
-
-    @Test
-    fun documentThatReportsItselfUnhealthyIsUnhealthy() {
-        // Upstream cannot express this (it only reads `version`); the endpoint's
-        // own verdict must win over "the request completed".
-        val result = healthResult(200, """{"healthy":false}""")
+    fun infoDocumentWithoutA2xVersionIsInvalid() {
+        val result = healthResult(200, "application/json", """{"version":"1.18.31"}""")
         assertEquals(ServerHealth.UNHEALTHY, result.state)
-        assertEquals(HealthFailure.NotHealthy, result.failure)
+        assertEquals(HealthFailure.InvalidResponse, result.failure)
     }
 
     @Test
     fun nonJsonAndEmptyBodiesAreInvalidResponses() {
-        // A captive portal / proxy answering 200 with HTML must not read healthy.
-        assertEquals(HealthFailure.InvalidResponse, healthResult(200, "<html>hi</html>").failure)
-        assertEquals(HealthFailure.InvalidResponse, healthResult(200, "").failure)
-        assertEquals(HealthFailure.InvalidResponse, healthResult(200, null).failure)
-        assertEquals(HealthFailure.InvalidResponse, healthResult(204, "").failure)
+        assertEquals(HealthFailure.InvalidResponse, healthResult(200, "text/html", "<html>hi</html>").failure)
+        assertEquals(HealthFailure.InvalidResponse, healthResult(200, null, "").failure)
+        assertEquals(HealthFailure.InvalidResponse, healthResult(200, null, null).failure)
+        assertEquals(HealthFailure.InvalidResponse, healthResult(204, null, "").failure)
     }
 
     @Test
     fun statusCodesMapToTheirOwnFailure() {
-        assertEquals(HealthFailure.Unauthorized, healthResult(401, "").failure)
-        assertEquals(HealthFailure.Unauthorized, healthResult(403, "").failure)
-        assertEquals(HealthFailure.HttpStatus(500), healthResult(500, "boom").failure)
-        assertEquals(HealthFailure.HttpStatus(404), healthResult(404, "").failure)
-        assertEquals(ServerHealth.UNHEALTHY, healthResult(500, "boom").state)
+        assertEquals(HealthFailure.Unauthorized, healthResult(401, null, "").failure)
+        assertEquals(HealthFailure.Unauthorized, healthResult(403, null, "").failure)
+        assertEquals(HealthFailure.HttpStatus(500), healthResult(500, null, "boom").failure)
+        assertEquals(HealthFailure.HttpStatus(404), healthResult(404, null, "").failure)
+        assertEquals(ServerHealth.UNHEALTHY, healthResult(500, null, "boom").state)
     }
 
     @Test
@@ -234,19 +223,18 @@ class Wave5ConnectTest {
     // ------------------------------------------------------- wire probe
 
     @Test
-    fun probeHitsGlobalHealthAndSendsNoAuthorizationWithoutAPassword() {
+    fun probeHitsApiInfoAndSendsNoAuthorizationWithoutAPassword() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"healthy":true,"version":"1.18.31"}"""))
+            server.enqueue(MockWebServer200())
             val target = HealthTarget(url = base(server))
 
             val result = ServerHealthProbe().check(target)
 
             assertEquals(ServerHealth.HEALTHY, result.state)
-            assertEquals("1.18.31", result.version)
+            assertEquals("2.0.11", result.version)
             val request = server.takeRequest()
             assertEquals("GET", request.method)
-            assertEquals("/global/health", request.path)
-            // `health.ts:81-85`: no password ⇒ no `Authorization` at all.
+            assertEquals("/api/info", request.path)
             assertNull(request.getHeader("Authorization"))
         }
     }
@@ -325,58 +313,27 @@ class Wave5ConnectTest {
     }
 
     @Test
-    fun aMissingGlobalHealthFallsBackToTheLegacyPath() {
+    fun aSpaShellIsAnInvalidResponse() {
         MockWebServer().use { server ->
-            // 404 ⇒ "this build has no /global/health", not a verdict.
-            server.enqueue(MockResponse().setResponseCode(404))
-            server.enqueue(MockWebServer200())
-
+            server.enqueue(
+                MockResponse().setResponseCode(200)
+                    .setHeader("Content-Type", "text/html")
+                    .setBody("<!doctype html><title>OpenCode</title>"),
+            )
             val result = ServerHealthProbe().check(HealthTarget(url = base(server)))
-
-            assertEquals(ServerHealth.HEALTHY, result.state)
-            assertEquals("/global/health", server.takeRequest().path)
-            assertEquals("/api/health", server.takeRequest().path)
-        }
-    }
-
-    @Test
-    fun aMissingBothPathsReportsTheFirstMissingPathNotAHealthyServer() {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(404))
-            server.enqueue(MockResponse().setResponseCode(405))
-
-            val result = ServerHealthProbe().check(HealthTarget(url = base(server)))
-
             assertEquals(ServerHealth.UNHEALTHY, result.state)
-            // The first verdict wins: `/global/health` was 404 (the specific
-            // "no such endpoint" answer), not the fallback path's 405.
-            assertEquals(HealthFailure.HttpStatus(404), result.failure)
-            assertEquals("/global/health", server.takeRequest().path)
-            assertEquals("/api/health", server.takeRequest().path)
+            assertEquals(HealthFailure.InvalidResponse, result.failure)
+            assertEquals("/api/info", server.takeRequest().path)
         }
     }
 
     @Test
     fun authWalledV2ServerProbesHealthyViaApiInfo() {
         MockWebServer().use { server ->
-            // v2 2.0.11 behind Basic auth (measured 2026-09-22): `/global/health`
-            // answers the SPA shell, `/api/info` answers the 2.x version JSON.
-            server.enqueue(
-                MockResponse().setResponseCode(200)
-                    .setHeader("Content-Type", "text/html")
-                    .setBody("<!doctype html><title>OpenCode</title>"),
-            )
-            server.enqueue(
-                MockResponse().setResponseCode(200)
-                    .setHeader("Content-Type", "application/json")
-                    .setBody("""{"version":"2.0.11","pid":281}"""),
-            )
-
+            server.enqueue(MockWebServer200())
             val result = ServerHealthProbe().check(HealthTarget(url = base(server), password = "opencode"))
-
             assertEquals(ServerHealth.HEALTHY, result.state)
             assertEquals("2.0.11", result.version)
-            assertEquals("/global/health", server.takeRequest().path)
             val info = server.takeRequest()
             assertEquals("/api/info", info.path)
             assertEquals(basic("opencode:opencode"), info.getHeader("Authorization"))
@@ -384,33 +341,12 @@ class Wave5ConnectTest {
     }
 
     @Test
-    fun v2ServerWithWrongCredentialsStaysUnauthorized() {
+    fun wrongCredentialsStayUnauthorized() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(401))
-            server.enqueue(MockResponse().setResponseCode(401))
-
             val result = ServerHealthProbe().check(HealthTarget(url = base(server), password = "wrong"))
-
             assertEquals(ServerHealth.UNHEALTHY, result.state)
             assertEquals(HealthFailure.Unauthorized, result.failure)
-            assertEquals("/global/health", server.takeRequest().path)
-            assertEquals("/api/info", server.takeRequest().path)
-        }
-    }
-
-    @Test
-    fun aCaptivePortalKeepsTheInvalidResponseVerdict() {
-        MockWebServer().use { server ->
-            // 200 HTML on the health path is also what a proxy login page says;
-            // without a 2.x `/api/info` the original verdict must survive.
-            server.enqueue(MockResponse().setResponseCode(200).setBody("<html>login</html>"))
-            server.enqueue(MockResponse().setResponseCode(404))
-
-            val result = ServerHealthProbe().check(HealthTarget(url = base(server)))
-
-            assertEquals(ServerHealth.UNHEALTHY, result.state)
-            assertEquals(HealthFailure.InvalidResponse, result.failure)
-            assertEquals("/global/health", server.takeRequest().path)
             assertEquals("/api/info", server.takeRequest().path)
         }
     }
@@ -437,7 +373,7 @@ class Wave5ConnectTest {
     private fun base(server: MockWebServer): String = server.url("/").toString().trimEnd('/')
 
     private fun MockWebServer200() =
-        MockResponse().setResponseCode(200).setBody("""{"healthy":true,"version":"1.18.31"}""")
+        MockResponse().setResponseCode(200).setBody("""{"version":"2.0.11"}""")
 
     private fun basic(credentials: String): String =
         "Basic " + Base64.getEncoder().encodeToString(credentials.toByteArray(Charsets.UTF_8))

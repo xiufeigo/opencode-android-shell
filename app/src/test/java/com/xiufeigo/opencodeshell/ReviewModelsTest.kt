@@ -135,6 +135,76 @@ class ReviewModelsTest {
     }
 
     @Test
+    fun parsePatchLinesKeepsDashedContentInsideACountedHunk() {
+        // `--x: 1` deleted renders `---x: 1`, `++y: 2` added renders
+        // `+++y: 2`: a stateless prefix order claimed both as file headers.
+        val patch = listOf(
+            "diff --git a/styles.css b/styles.css",
+            "index 111..222 100644",
+            "--- a/styles.css",
+            "+++ b/styles.css",
+            "@@ -1,3 +1,3 @@",
+            " .a {",
+            "---x: 1",
+            "+++y: 2",
+            " }",
+        ).joinToString("\n")
+        val kinds = ReviewDiff.parsePatchLines(patch).map { it.kind }
+        assertEquals(
+            listOf(
+                DiffLineKind.FILE_HEADER, // diff --git
+                DiffLineKind.FILE_HEADER, // index
+                DiffLineKind.FILE_HEADER, // --- a/styles.css
+                DiffLineKind.FILE_HEADER, // +++ b/styles.css
+                DiffLineKind.HUNK,
+                DiffLineKind.CONTEXT,
+                DiffLineKind.DELETION, // ---x: 1 (content, not a header)
+                DiffLineKind.ADDITION, // +++y: 2 (content, not a header)
+                DiffLineKind.CONTEXT,
+            ),
+            kinds,
+        )
+    }
+
+    @Test
+    fun parsePatchLinesReturnsToFileHeadersAfterTheCountedHunk() {
+        // Counts exhausted → `--- a/y` is structure again; an over-counted
+        // hunk still yields to the next file's `--- `/`+++ `/`@@` triple
+        // (the jsdiff parseHunk prune).
+        val exact = ReviewDiff.parsePatchLines("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n--- a/y\n+++ b/y")
+        assertEquals(
+            listOf(
+                DiffLineKind.FILE_HEADER,
+                DiffLineKind.FILE_HEADER,
+                DiffLineKind.HUNK,
+                DiffLineKind.DELETION,
+                DiffLineKind.ADDITION,
+                DiffLineKind.FILE_HEADER,
+                DiffLineKind.FILE_HEADER,
+            ),
+            exact.map { it.kind },
+        )
+        val overCounted = ReviewDiff.parsePatchLines(
+            "--- a/x\n+++ b/x\n@@ -1,9 +1,9 @@\n-a\n+b\n--- a/y\n+++ b/y\n@@ -1 +1 @@\n-c\n+d",
+        )
+        assertEquals(
+            listOf(
+                DiffLineKind.FILE_HEADER,
+                DiffLineKind.FILE_HEADER,
+                DiffLineKind.HUNK,
+                DiffLineKind.DELETION,
+                DiffLineKind.ADDITION,
+                DiffLineKind.FILE_HEADER, // --- a/y: pruned, not a deletion
+                DiffLineKind.FILE_HEADER, // +++ b/y
+                DiffLineKind.HUNK,
+                DiffLineKind.DELETION,
+                DiffLineKind.ADDITION,
+            ),
+            overCounted.map { it.kind },
+        )
+    }
+
+    @Test
     fun hasHunksMatchesTheUpstreamLoadTest() {
         assertTrue(ReviewDiff.hasHunks("--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+y"))
         assertFalse(ReviewDiff.hasHunks(""))

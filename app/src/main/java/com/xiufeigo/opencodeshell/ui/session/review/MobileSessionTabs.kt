@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.ui.session.review
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -24,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -72,6 +75,29 @@ fun MobileSessionTabs(
     val c = OcTheme.colors
     val stripLabel = stringResource(R.string.oc_mobile_view_select)
     var menuOpen by remember { mutableStateOf(false) }
+    // Silent-prompt guard: IME/keyboard focus leaves with the tab. Without
+    // this the previous tab's editor keeps the focus it grabbed on entry
+    // (the composer's B7 auto-focus), keeps receiving injected keys while
+    // hidden, and Enter submits a prompt the user never wrote — measured on
+    // the Terminal tab (adb typing + KEYCODE_ENTER → session reply).
+    val focusManager = LocalFocusManager.current
+    val select: (MobileForm.Tab) -> Unit = { tab ->
+        focusManager.clearFocus()
+        onSelect(tab)
+    }
+    val openUsage: () -> Unit = {
+        focusManager.clearFocus()
+        menuOpen = false
+        onOpenUsage()
+    }
+    val openSummary: () -> Unit = {
+        focusManager.clearFocus()
+        menuOpen = false
+        onOpenSummary?.invoke()
+    }
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // clickable Box, not the `Icon` inside it.
+    val moreLabel = stringResource(R.string.oc_more_options)
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -85,7 +111,7 @@ fun MobileSessionTabs(
                     MobileTabButton(
                         label = stringResource(tab.labelRes()),
                         selected = tab == current,
-                        onClick = { onSelect(tab) },
+                        onClick = { select(tab) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -96,32 +122,38 @@ fun MobileSessionTabs(
                         .padding(horizontal = 6.dp)
                         .size(28.dp)
                         .clip(OcTheme.shapes.sm)
-                        .clickable(role = Role.Button) { menuOpen = true },
+                        .clickable(role = Role.Button) { menuOpen = true }
+                        .semantics { contentDescription = moreLabel },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_oc_dots),
-                        contentDescription = stringResource(R.string.oc_more_options),
+                        contentDescription = null,
                         tint = if (menuOpen) c.iconAccent else c.iconMuted,
                         modifier = Modifier.size(14.dp),
                     )
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                    // v11 dark-surface sweep (see `DropdownMenuDarkSurfaceTest`):
+                    // the M3 default `surfaceContainer` is a light translucent
+                    // tint the shell never re-themes, so these rows landed on a
+                    // near-white panel in the dark theme.
+                    shape = RoundedCornerShape(6.dp),
+                    containerColor = c.layer01,
+                    tonalElevation = 0.dp,
+                    border = BorderStroke(0.5.dp, c.borderMuted),
+                ) {
                     MobileViewMenuItem(
                         label = stringResource(R.string.oc_mobile_usage),
                         enabled = true,
-                        onClick = {
-                            menuOpen = false
-                            onOpenUsage()
-                        },
+                        onClick = openUsage,
                     )
                     MobileViewMenuItem(
                         label = stringResource(R.string.oc_mobile_summary),
                         enabled = onOpenSummary != null,
-                        onClick = {
-                            menuOpen = false
-                            onOpenSummary?.invoke()
-                        },
+                        onClick = openSummary,
                     )
                 }
             }

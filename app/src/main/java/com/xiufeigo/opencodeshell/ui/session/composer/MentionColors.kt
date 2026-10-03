@@ -25,13 +25,20 @@ internal fun mentionColor(kind: MentionText.Kind, colors: OcColors): Color = whe
 }
 
 /** The body with every `@token` coloured; returns the input unchanged when there is none. */
-internal fun mentionAnnotated(text: String, colors: OcColors): AnnotatedString {
+internal fun mentionAnnotated(
+    text: String,
+    colors: OcColors,
+    /** F-1: labels whose kind is known from the accepted tokens (`@docs` → reference). */
+    kinds: Map<String, MentionText.Kind> = emptyMap(),
+): AnnotatedString {
     val spans = MentionText.spans(text)
     if (spans.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)
         for (span in spans) {
-            addStyle(SpanStyle(color = mentionColor(span.kind, colors)), span.start, span.end)
+            val label = text.substring(span.start + 1, span.end)
+            val kind = kinds[label] ?: span.kind
+            addStyle(SpanStyle(color = mentionColor(kind, colors)), span.start, span.end)
         }
     }
 }
@@ -41,9 +48,16 @@ internal fun mentionAnnotated(text: String, colors: OcColors): AnnotatedString {
  *
  * Offsets are untouched ([OffsetMapping.Identity]), so the caret/selection
  * mapping stays exact — only `SpanStyle`s are added.
+ *
+ * F-1: [kinds] carries the kinds of the accepted tokens
+ * ([MentionTokens.colors]) so a reference/resource mention colours by its
+ * *kind* and not by [MentionText.classify]'s text heuristic.
  */
-internal class MentionColorTransformation(private val colors: OcColors) : VisualTransformation {
+internal class MentionColorTransformation(
+    private val colors: OcColors,
+    private val kinds: Map<String, MentionText.Kind> = emptyMap(),
+) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText =
-        TransformedText(mentionAnnotated(text.text, colors), OffsetMapping.Identity)
+        TransformedText(mentionAnnotated(text.text, colors, kinds), OffsetMapping.Identity)
 }

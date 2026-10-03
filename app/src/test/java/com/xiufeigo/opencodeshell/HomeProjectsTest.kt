@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.data.HomeProjectRecords
 import com.xiufeigo.opencodeshell.ui.home.HomeProjects
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -64,6 +65,64 @@ class HomeProjectsTest {
     @Test
     fun `empty input yields no projects`() {
         assertTrue(HomeProjects.fromSessions(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `openRows collapses twin records of one directory into one row`() {
+        val rows = HomeProjects.openRows(
+            opened = listOf(
+                HomeProjectRecords.Project("C:\\repo", sandboxes = listOf("C:\\sb1")),
+                HomeProjectRecords.Project("c:/repo/", sandboxes = listOf("C:\\sb2")),
+            ),
+            known = emptyList(),
+        )
+        assertEquals(1, rows.size)
+        assertEquals("C:\\repo", rows.single().path)
+        assertEquals(listOf("C:\\sb1", "C:\\sb2"), rows.single().sandboxes)
+    }
+
+    @Test
+    fun `openRows collapses msys and win32 twins into one row`() {
+        val rows = HomeProjects.openRows(
+            opened = listOf(
+                HomeProjectRecords.Project(
+                    "/mnt/c/sensorsdata/repo",
+                    sandboxes = listOf("/mnt/c/sb1"),
+                ),
+                HomeProjectRecords.Project(
+                    "C:\\SensorsData\\Repo",
+                    sandboxes = listOf("C:\\sb2"),
+                ),
+            ),
+            known = emptyList(),
+        )
+        assertEquals(1, rows.size)
+        assertEquals("/mnt/c/sensorsdata/repo", rows.single().path)
+        assertEquals(listOf("/mnt/c/sb1", "C:\\sb2"), rows.single().sandboxes)
+    }
+
+    @Test
+    fun `openRows honours a closed tombstone under another spelling`() {
+        // `close` records the spelling it was given, but the tombstone matches
+        // by key — a twin spelling must not resurrect the row.
+        val rows = HomeProjects.openRows(
+            opened = listOf(HomeProjectRecords.Project("C:\\sensorsdata\\repo")),
+            known = emptyList(),
+            closed = listOf("/mnt/c/sensorsdata/repo/"),
+        )
+        assertTrue(rows.isEmpty())
+    }
+
+    @Test
+    fun `openRows keeps posix case variants as two rows`() {
+        val rows = HomeProjects.openRows(
+            opened = listOf(
+                HomeProjectRecords.Project("/work/api"),
+                HomeProjectRecords.Project("/work/API"),
+            ),
+            known = emptyList(),
+        )
+        assertEquals(listOf("/work/api", "/work/API"), rows.map { it.path })
     }
 
     @Test

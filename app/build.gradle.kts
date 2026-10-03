@@ -68,6 +68,41 @@ android {
     androidResources {
         noCompress += listOf("woff", "woff2", "wasm")
     }
+
+    packaging {
+        resources {
+            // Both `com.github.mwiede:jsch` and `org.bouncycastle:bcprov-jdk18on`
+            // are multi-release jars that ship the *same* OSGi manifest under
+            // META-INF/versions/N, so `:app:mergeDebugJavaResource` aborts on the
+            // duplicate. Those entries are pure OSGi build metadata — Android
+            // neither reads them nor D8 ever sees them — so dropping them is
+            // behaviour-neutral. The bouncycastle *classes* stay in the APK:
+            // F14b (jsch ed25519) runs on bcprov's Ed25519Signer.
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            // Round 2: AGP aborts on the *next* same-named entry it walks into.
+            excludes += "META-INF/versions/11/OSGI-INF/MANIFEST.MF"
+            // Round 3: same story for the Java 15 OSGi manifest.
+            excludes += "META-INF/versions/15/OSGI-INF/MANIFEST.MF"
+            // v97 (④ cold start): bcprov also ships the Picnic post-quantum
+            // KEM constant tables as *resources*
+            // (`org/bouncycastle/pqc/crypto/picnic/lowmcL{1,3,5}.bin.properties`,
+            // 1.21 MB raw / 1.21 MB stored) — pure data, no code. They are read
+            // only by `org.bouncycastle.pqc.crypto.picnic.*`, which this app
+            // never reaches: the launcher never registers a JCE provider
+            // (no `Security.addProvider` / `BouncyCastleProvider` anywhere), and
+            // the one bcprov path we use is jsch's ed25519 signature, which
+            // resolves through `org.bouncycastle.crypto.signers.Ed25519Signer`
+            // into `crypto.**` / `math.**` / `util.**` — never `pqc.**`.
+            // Resource-only exclusion: no class is removed, so dex count, class
+            // count and start-up behaviour are unchanged; this only shrinks the
+            // APK (install/transfer), it does not speed up the first frame.
+            // ⚠ If anyone ever adds a PQC algorithm, these tables must come back
+            //   or the failure surfaces at runtime as a missing resource.
+            excludes += "org/bouncycastle/pqc/crypto/picnic/lowmcL1.bin.properties"
+            excludes += "org/bouncycastle/pqc/crypto/picnic/lowmcL3.bin.properties"
+            excludes += "org/bouncycastle/pqc/crypto/picnic/lowmcL5.bin.properties"
+        }
+    }
 }
 
 dependencies {
@@ -78,6 +113,21 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // OpenCode native capabilities: QR device pairing (`servers/connect/scanner`)
+    // and SSH server connections (`servers/ssh/*`). zxing:core is decode+encode
+    // only (no camera UI — the system scanner intent covers capture); jsch is the
+    // SSH client behind `SshDialog`'s connection half.
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.github.mwiede:jsch:0.2.24")
+    // F14b: jsch's stock `ssh-ed25519` signing route points at its jce class,
+    // whose jar *base* entry is a Java15+ stub (the real impl lives only in
+    // META-INF/versions/15, which D8 never packs) — on device every ed25519
+    // signature resolved to a dead stub and the public key was silently never
+    // offered. `net.i2p.crypto:eddsa` is NOT the answer (no jsch 0.2.24 class
+    // references net/i2p; its POM declares no deps): the runnable ed25519
+    // implementation is jsch's `bc.*` family, which delegates to bcprov's
+    // Ed25519Signer. Pinned by SshEd25519IdentityF14Test.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     // `collectAsStateWithLifecycle` (used by the Compose root for theme + nav

@@ -49,8 +49,12 @@ import java.util.Locale
  * session-context-usage.tsx`):
  *
  * - the ring is the `compact` geometry (14 px / 1.5 stroke, `:125-129`) fed by
- *   `round(total / model.limit.context * 100)` (`:68-82`) — the whole point of
- *   the item is that it must **not** be an always-empty track;
+ *   `round(total / limit * 100)` (`:68-82`) — the whole point of the item is
+ *   that it must **not** be an always-empty track. v20: `limit` is the entry's
+ *   **effective window** `min(limit.input, limit.context)`
+ *   (`ContextUsage.windowOf`), read off the provider/model catalog
+ *   (`GET /provider` v1; v2 folds `GET /api/provider` + `GET /api/model`) — not
+ *   the bare `model.limit.context` upstream divides by;
  * - clicking opens the Review→Context panel (`:93-108`);
  * - the Cost / Context / Tokens triple lives in the tooltip (`:131-155`,
  *   `w-[120px] gap-2`, muted name left, base value right).

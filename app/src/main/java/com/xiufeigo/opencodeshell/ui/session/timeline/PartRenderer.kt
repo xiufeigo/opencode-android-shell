@@ -40,6 +40,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -67,7 +69,7 @@ import com.xiufeigo.opencodeshell.ui.theme.OcTheme
  * | `text` | markdown body (`OcMarkdown`) |
  * | `tool` | chrome-less collapsible card (see [ToolCard]) |
  * | `reasoning` | chrome-less "Thought" collapsible |
- * | `compaction` | one-line notice |
+ * | `compaction` | summary markdown, the running shimmer, or the failure label + its detail ([CompactionBlock]) |
  * | `file` | attachment chip |
  * | `patch` | `Patch` + `{n} files` row, file list on expand |
  * | `subtask` | agent + description row |
@@ -114,24 +116,35 @@ fun PartRenderer(
 ) {
     when (part.type) {
         "text" -> if (part.text.isNotBlank()) {
-            SelectableBody {
-                OcMarkdown(
-                    markdown = part.text,
-                    modifier = modifier,
-                    color = OcTheme.colors.textBase,
-                )
-            }
+            FoldableMarkdown(
+                markdown = part.text,
+                stateKey = part.id,
+                modifier = modifier,
+                color = OcTheme.colors.textBase,
+                streaming = isTrailing,
+            )
         }
 
         "tool" -> if (part.toolName != null && part.toolName !in TimelineGrouping.HIDDEN_TOOLS) {
-            // `question` hides while streaming/running (`ToolDisplay`'s
-            // `hideQuestion`, `tool-renderer.tsx:1195`).
-            if (toolRendererKind(part) == ToolRendererKind.HIDDEN) return@PartRenderer
-            // The subagent streaming pill and the read-image / skill rows are
-            // headline-only: they render at row level instead of behind the
-            // generic card trigger (upstream renders its own `BasicTool`).
+            // `ToolDisplay`'s Switch **replaces** the whole card for error /
+            // question / subagent (`tool-renderer.tsx:1219-1256`; the subagent
+            // registry entry is `hideDetails`): nesting those cards inside the
+            // generic ToolCard stacked two trigger rows and made the error
+            // detail a two-tap target. Question still hides while
+            // streaming/running (`hideQuestion`, `:1195`); the read-image /
+            // skill rows stay headline-only (upstream renders its own
+            // `BasicTool`).
             when (toolRendererKind(part)) {
-                ToolRendererKind.SUBAGENT -> if (part.toolStatus == "streaming") {
+                ToolRendererKind.HIDDEN -> return@PartRenderer
+                ToolRendererKind.ERROR -> {
+                    ToolErrorCard(part = part, modifier = modifier)
+                    return@PartRenderer
+                }
+                ToolRendererKind.QUESTION -> {
+                    QuestionCard(part = part, modifier = modifier)
+                    return@PartRenderer
+                }
+                ToolRendererKind.SUBAGENT -> {
                     SubagentCard(part = part, modifier = modifier)
                     return@PartRenderer
                 }
@@ -156,7 +169,19 @@ fun PartRenderer(
             ReasoningCard(part = part, modifier = modifier, shimmer = isTrailing)
         }
 
-        "compaction" -> CompactionBlock(part = part, modifier = modifier)
+        // v19 P2 / v21 P3: both status hooks come off the store's one reader
+        // ([ChatStore.compactionStatusOf]) — the live `session.compaction.*` row
+        // (`toolStatus`, settled by `ChatStore.reduceCompaction`) and the durable
+        // `type=compaction` message row (its `status`, rebuilt by
+        // `ChatStore.compactionRow`) read the same way, so a rejected compaction
+        // gets its own label and its own error row instead of the static
+        // "Session compacted" fallback.
+        "compaction" -> CompactionBlock(
+            part = part,
+            running = ChatStore.compactionRunning(part),
+            error = ChatStore.compactionErrorOf(part),
+            modifier = modifier,
+        )
 
         "file" -> AttachmentChip(part = part, modifier = modifier)
 
@@ -165,6 +190,51 @@ fun PartRenderer(
         "subtask" -> SubtaskRow(part = part, modifier = modifier)
         "agent" -> AgentNoticeRow(part = part, modifier = modifier)
         "retry" -> RetryNoticeRow(part = part, modifier = modifier)
+
+        // v2 notice rows (`V2EventAdapter.notice`, upstream
+        // `session-timeline-row.tsx:307-356` + `session-message.ts:40-125`).
+        "system", "synthetic" -> NoticeLabelRow(
+            label = RawParts.description(part.rawJson) ?: part.text,
+            modifier = modifier,
+        )
+        "skill" -> NoticeLabelRow(
+            label = stringResource(R.string.oc_tool_skill),
+            value = part.toolName?.takeIf { it.isNotEmpty() },
+            modifier = modifier,
+        )
+        "shell" -> NoticeLabelRow(
+            label = stringResource(R.string.oc_tool_shell),
+            value = part.toolName?.takeIf { it.isNotEmpty() },
+            modifier = modifier,
+        )
+        "agent-switched" -> NoticeLabelRow(
+            label = stringResource(R.string.oc_step_agent_changed),
+            value = RawParts.capitalize(RawParts.switch(part.rawJson).value),
+            modifier = modifier,
+        )
+        // Upstream renders `model-switched` as the timeline separator only
+        // (`session-timeline-row.tsx:316` returns no notice text); the row here
+        // replaces `TimelineRows`' derived MODEL separator (its dedup rule skips
+        // messages that carry this part).
+        "model-switched" -> NoticeLabelRow(
+            label = stringResource(R.string.oc_step_model_changed),
+            value = TimelineRows.modelLabel(RawParts.switch(part.rawJson).value),
+            modifier = modifier,
+        )
+        "location-switched" -> NoticeLabelRow(
+            label = stringResource(R.string.oc_step_location_changed),
+            // Snapshot rows carry no `rawJson` (Route-C keeps it only for the
+            // eight v1 part types), so `switch()` alone leaves every reopened
+            // row a bare label (v46 tD). The snapshot projection resolves the
+            // project name into `text` instead — read it here, exactly like
+            // the `system` / `synthetic` row above. Blank-tolerant on both
+            // sides: a `switch()` value with no visible characters (or none at
+            // all) must fall through to `text` rather than pin the row to a
+            // bare label.
+            value = RawParts.switch(part.rawJson).value?.takeIf { it.isNotBlank() }
+                ?: part.text.takeIf { it.isNotBlank() },
+            modifier = modifier,
+        )
 
         // Explicit no-ops (never an "unknown type"): upstream `step-start` /
         // `step-finish` / `snapshot` have no timeline representation of their
@@ -241,18 +311,29 @@ private fun ToolCard(
         ToolCardPolicy.State.COMPLETED -> c.iconMuted
         ToolCardPolicy.State.PENDING -> c.iconMuted
     }
-    val expandable = ToolCardPolicy.canExpand(part)
-    val expanded = ToolCardPolicy.resolveOpen(part, userOpen, shellExpanded, editExpanded)
+    // One `bodyLines` per recomposition: canExpand + resolveOpen→defaultOpen
+    // and ToolBody would otherwise each re-parse the JSON and re-run Myers
+    // (O(n·m)) on every recomposition of a large edit card.
+    val lines = remember(part.id, part.toolInput, part.toolOutput, part.toolName, part.toolStatus, part.toolError) {
+        ToolPresentation.bodyLines(part)
+    }
+    val expandable = ToolCardPolicy.canExpand(part, lines)
+    val expanded = ToolCardPolicy.resolveOpen(part, userOpen, shellExpanded, editExpanded, lines)
     // Upstream collapsible arrow: closed = pointing right (-90°), open = down
     // (`collapsible.css` `rotate(-90deg)` → `rotate(0deg)` on aria-expanded).
     val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "tool-chevron")
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // clickable Row, not the chevron `Icon` inside it — only the node carrying
+    // ACTION_CLICK is announced as a button.
+    val toggleLabel = stringResource(R.string.oc_toggle_tool)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(TRIGGER_HEIGHT)
-                .clickable(enabled = expandable, role = Role.Button) { onToggle(expanded) },
+                .clickable(enabled = expandable, role = Role.Button) { onToggle(expanded) }
+                .semantics { contentDescription = toggleLabel },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -278,7 +359,7 @@ private fun ToolCard(
                 fontSize = 13.sp,
                 fontWeight = FontWeight(530),
             )
-            val subtitle = ToolPresentation.subtitle(part, stringResource(R.string.oc_tool_error))
+            val subtitle = ToolPresentation.subtitle(part)
             if (!subtitle.isNullOrEmpty()) {
                 Spacer(Modifier.width(GAP))
                 Text(
@@ -304,7 +385,7 @@ private fun ToolCard(
                 Spacer(Modifier.width(GAP))
                 Icon(
                     painter = painterResource(R.drawable.ic_oc_chevron_down),
-                    contentDescription = stringResource(R.string.oc_toggle_tool),
+                    contentDescription = null,
                     tint = c.textFaint,
                     modifier = Modifier.size(16.dp).rotate(rotation),
                 )
@@ -316,7 +397,7 @@ private fun ToolCard(
             enter = expandVertically(animationSpec = OcMotion.expand) + fadeIn(OcMotion.fade),
             exit = shrinkVertically(animationSpec = OcMotion.expand) + fadeOut(OcMotion.fade),
         ) {
-            ToolBody(part)
+            ToolBody(part, lines)
         }
     }
 }
@@ -331,12 +412,13 @@ private fun ToolCard(
  * that the card itself has no surface.
  */
 @Composable
-internal fun ToolBody(part: ChatStore.UiPart) {
+internal fun ToolBody(part: ChatStore.UiPart, sharedLines: List<ToolPresentation.BodyLine>? = null) {
     val c = OcTheme.colors
     // Dedicated renderers first (`ToolDisplay`'s `Switch`: error + registry
     // branches before `GenericTool`, `tool-renderer.tsx:1218-1261`). The
-    // trigger row above stays the generic one; only the expanded content is
-    // specialised, which keeps grouping/policy untouched.
+    // standalone path now replaces the whole card for those kinds (see
+    // `PartRenderer`); this branch serves the group rows
+    // (`ContextToolGroupCard`), whose flat trigger still wraps ToolBody.
     when (toolRendererKind(part)) {
         ToolRendererKind.HIDDEN -> return
         ToolRendererKind.ERROR -> {
@@ -389,17 +471,30 @@ internal fun ToolBody(part: ChatStore.UiPart) {
         }
         ToolRendererKind.GENERIC -> Unit
     }
-    val lines = remember(part.id, part.toolInput, part.toolOutput, part.toolName, part.toolStatus, part.toolError) {
-        ToolPresentation.bodyLines(part)
+    // `sharedLines` is ToolCard's own remember — same keys, so the standalone
+    // card parses JSON + runs Myers once per change, not once per call site.
+    val lines = remember(part.id, part.toolInput, part.toolOutput, part.toolName, part.toolStatus, part.toolError, sharedLines) {
+        sharedLines ?: ToolPresentation.bodyLines(part)
     }
     if (lines.isEmpty()) return
+    // U-4 fold threshold: a running/streaming tool keeps rendering its live
+    // tail; a settled body longer than OUTPUT_FOLD_LINES renders the head plus
+    // an expander, so opening the card on a huge output no longer inflates the
+    // measure/layout pass (upstream only caps at 240 px with an inner scroll,
+    // `message-part.css:323-464` — the cap stays as the second limit).
+    val live = part.toolStatus == "running" || part.toolStatus == "streaming"
+    val long = remember(lines, live) { !live && TimelineFold.isLongBody(lines.size) }
+    var showAll by rememberSaveable(part.id, "body-more") { mutableStateOf(false) }
+    val visible = if (long && !showAll) lines.subList(0, TimelineFold.OUTPUT_FOLD_LINES) else lines
+    val hidden = lines.size - visible.size
     // Diff lines are tinted by **background**, matching upstream's diff renderer
     // (`--diffs-*` backgrounds, foreground untouched) and the review panel's
     // `DiffLineKind.ADDITION -> textBase to stateSuccessBg` mapping. A single
     // `Text` can only paint a span behind the glyphs, so a body that actually
     // contains diff lines is rendered line-per-row where the tint spans the full
     // width; everything else stays on the cheap single-`Text` path.
-    val hasDiff = lines.any { ToolPresentation.isDiffKind(it.kind) }
+    val hasDiff = visible.any { ToolPresentation.isDiffKind(it.kind) }
+    Column(modifier = Modifier.fillMaxWidth()) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -415,7 +510,7 @@ internal fun ToolBody(part: ChatStore.UiPart) {
                 val additionBg = c.stateSuccessBg
                 val deletionBg = c.stateDangerBg
                 val hunkBg = c.layer01
-                lines.forEach { line ->
+                visible.forEach { line ->
                     val bg = when (line.kind) {
                         ToolPresentation.LineKind.ADD -> additionBg
                         ToolPresentation.LineKind.DELETE -> deletionBg
@@ -453,13 +548,22 @@ internal fun ToolBody(part: ChatStore.UiPart) {
         } else {
             Box(Modifier.padding(12.dp)) {
                 Text(
-                    text = toolBodyAnnotated(lines),
+                    text = toolBodyAnnotated(visible),
                     color = c.textBase,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                     lineHeight = 16.sp,
                 )
             }
+        }
+    }
+        if (long) {
+            FoldToggleRow(
+                hiddenLines = hidden,
+                expanded = showAll,
+                onToggle = { showAll = it },
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp),
+            )
         }
     }
 }
@@ -609,13 +713,16 @@ internal fun ReasoningCard(
     val c = OcTheme.colors
     var expanded by rememberSaveable(part.id) { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "reasoning-chevron")
+    // Hoisted: `semantics {}` is not a composable scope (see the tool card).
+    val toggleLabel = stringResource(R.string.oc_toggle_tool)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(TRIGGER_HEIGHT)
-                .clickable { expanded = !expanded },
+                .clickable { expanded = !expanded }
+                .semantics { contentDescription = toggleLabel },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // `ui.tool.thought` is a shimmering title while the model is still
@@ -630,7 +737,7 @@ internal fun ReasoningCard(
             Spacer(Modifier.weight(1f))
             Icon(
                 painter = painterResource(R.drawable.ic_oc_chevron_down),
-                contentDescription = stringResource(R.string.oc_toggle_tool),
+                contentDescription = null,
                 tint = c.textFaint,
                 modifier = Modifier.size(16.dp).rotate(rotation),
             )
@@ -643,15 +750,16 @@ internal fun ReasoningCard(
                     .heightIn(max = TOOL_BODY_MAX_HEIGHT)
                     .verticalScroll(rememberScrollState()),
             ) {
-                SelectableBody {
-                    OcMarkdown(
-                        markdown = part.text,
-                        color = c.textMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        muted = true,
-                    )
-                }
+                // U-4: a long thought folds to head+expander on top of the
+                // card-level collapse (the card itself still starts closed).
+                FoldableMarkdown(
+                    markdown = part.text,
+                    stateKey = part.id,
+                    color = c.textMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    muted = true,
+                )
             }
         }
     }
@@ -724,13 +832,16 @@ private fun PatchRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
     var expanded by rememberSaveable(part.id) { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (expanded) 0f else -90f, label = "patch-chevron")
     val expandable = patch.files.isNotEmpty()
+    // Hoisted: `semantics {}` is not a composable scope (see the tool card).
+    val toggleLabel = stringResource(R.string.oc_toggle_tool)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(TRIGGER_HEIGHT)
-                .clickable(enabled = expandable, role = Role.Button) { expanded = !expanded },
+                .clickable(enabled = expandable, role = Role.Button) { expanded = !expanded }
+                .semantics { contentDescription = toggleLabel },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -763,7 +874,7 @@ private fun PatchRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
                 Spacer(Modifier.width(GAP))
                 Icon(
                     painter = painterResource(R.drawable.ic_oc_chevron_down),
-                    contentDescription = stringResource(R.string.oc_toggle_tool),
+                    contentDescription = null,
                     tint = c.textFaint,
                     modifier = Modifier.size(16.dp).rotate(rotation),
                 )
@@ -848,23 +959,44 @@ private fun SubtaskRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun AgentNoticeRow(part: ChatStore.UiPart, modifier: Modifier = Modifier) {
-    val c = OcTheme.colors
     val agent = remember(part.rawJson) { RawParts.agent(part.rawJson) } ?: return
-    val name = RawParts.capitalize(agent.name)
+    NoticeLabelRow(
+        label = stringResource(R.string.oc_step_agent_changed),
+        value = RawParts.capitalize(agent.name),
+        modifier = modifier,
+    )
+}
+
+/**
+ * The shared notice chrome (`session-timeline-row.tsx:308-315`): a 530
+ * `text-faint` label and the optional muted value after an 8 px gap.
+ */
+@Composable
+private fun NoticeLabelRow(
+    label: String,
+    value: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val c = OcTheme.colors
+    if (label.isEmpty() && value == null) return
     Row(
         modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = stringResource(R.string.oc_step_agent_changed),
-            color = c.textFaint,
-            fontSize = 13.sp,
-            fontWeight = FontWeight(530),
-        )
-        if (!name.isNullOrBlank()) {
+        if (label.isNotEmpty()) {
+            Text(
+                text = label,
+                color = c.textFaint,
+                fontSize = 13.sp,
+                fontWeight = FontWeight(530),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (!value.isNullOrBlank()) {
             Spacer(Modifier.width(8.dp))
             Text(
-                text = name,
+                text = value,
                 color = c.textMuted,
                 fontSize = 13.sp,
                 maxLines = 1,

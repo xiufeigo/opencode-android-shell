@@ -16,7 +16,10 @@ import org.junit.Test
  * Covered: the six field types (parse + defaults), the `when` linkage
  * (AND, unanswered ⇒ false, multiselect `eq` = includes), page visibility,
  * answer building (answered-only, single value vs array, inactive/hidden/
- * external dropped) and the cancel-request wire shape.
+ * external dropped), numeric draft/default validation (finite, Long-range),
+ * the custom-row toggle (single-select enter/exit, multi draft removal),
+ * boolean defaults (explicit null / invalid ⇒ no default) and the
+ * cancel-request wire shape.
  */
 class SessionFormModelTest {
 
@@ -259,5 +262,157 @@ class SessionFormModelTest {
                 password = null,
             ),
         )
+    }
+
+    // ------------------------------------------------------- numeric drafts
+
+    @Test
+    fun numberDraftRejectsNonFiniteInput() {
+        // `JSONObject.put` throws on non-finite doubles — these must never
+        // reach `values`, or the submit rolls back with no visible error.
+        assertNull(SessionFormModel.parseNumberDraft("NaN", integer = false))
+        assertNull(SessionFormModel.parseNumberDraft("Infinity", integer = false))
+        assertNull(SessionFormModel.parseNumberDraft("-Infinity", integer = false))
+        assertNull(SessionFormModel.parseNumberDraft("1e400", integer = false))
+        assertNull(SessionFormModel.parseNumberDraft("abc", integer = false))
+        assertEquals(1.5, SessionFormModel.parseNumberDraft(" 1.5 ", integer = false)!!, 0.0)
+        assertEquals(1e30, SessionFormModel.parseNumberDraft("1e30", integer = false)!!, 0.0)
+    }
+
+    @Test
+    fun integerDraftRejectsValuesBeyondLongRange() {
+        assertNull(SessionFormModel.parseNumberDraft("1e30", integer = true))
+        assertNull(SessionFormModel.parseNumberDraft("-1e30", integer = true))
+        assertNull(SessionFormModel.parseNumberDraft("1e400", integer = true))
+        assertEquals(2.0, SessionFormModel.parseNumberDraft("2", integer = true)!!, 0.0)
+        // In-range fractions still parse (they post as Double, unchanged).
+        assertEquals(1.5, SessionFormModel.parseNumberDraft("1.5", integer = true)!!, 0.0)
+    }
+
+    @Test
+    fun buildAnswerNeverPostsNonFiniteOrSaturatingNumbers() {
+        val form = fields(
+            """{"key":"n","type":"number"}""",
+            """{"key":"i","type":"integer"}""",
+            """{"key":"g","type":"number"}""",
+        )
+        val answer = SessionFormModel.buildAnswer(
+            form,
+            mapOf(
+                "n" to Double.NaN,
+                "i" to 1e30,
+                "g" to Double.NEGATIVE_INFINITY,
+            ),
+        )
+        assertTrue(answer.isEmpty())
+
+        // In-range integers still convert exactly — 2^63 - 1024 is the
+        // largest integral double a `Long` can hold.
+        val ok = SessionFormModel.buildAnswer(
+            form,
+            mapOf("n" to 0.5, "i" to 9223372036854774784.0),
+        )
+        assertEquals(0.5, ok["n"])
+        assertEquals(9223372036854774784L, ok["i"])
+    }
+
+    @Test
+    fun numberDefaultsRejectNonFiniteAndOutOfRangeIntegers() {
+        val parsed = fields(
+            """{"key":"inf","type":"number","default":1e400}""",
+            """{"key":"nul","type":"number","default":null}""",
+            """{"key":"big","type":"integer","default":1e30}""",
+            """{"key":"ok","type":"integer","default":7}""",
+        )
+        assertNull((parsed[0] as FormField.NumberInput).default)
+        assertNull((parsed[1] as FormField.NumberInput).default)
+        assertNull((parsed[2] as FormField.NumberInput).default)
+        assertEquals(7.0, (parsed[3] as FormField.NumberInput).default!!, 0.0)
+    }
+
+    // ------------------------------------------------------- custom toggle
+
+    @Test
+    fun singleCustomEnterReplacesTheOptionPick() {
+        val entered = SessionFormModel.toggleCustom(
+            key = "s",
+            multi = false,
+            customOn = emptySet(),
+            customText = emptyMap(),
+            values = mapOf("s" to "A"),
+        )
+        assertEquals(setOf("s"), entered.customOn)
+        assertFalse(entered.values.containsKey("s"))
+
+        // A retained draft becomes the answer so it matches the visible
+        // input (upstream `customOpen` → `customUpdate(input(), true)`).
+        val restored = SessionFormModel.toggleCustom(
+            key = "s",
+            multi = false,
+            customOn = emptySet(),
+            customText = mapOf("s" to "B"),
+            values = mapOf("s" to "A"),
+        )
+        assertEquals(mapOf("s" to "B"), restored.values)
+    }
+
+    @Test
+    fun singleCustomExitDropsTheDraftFromTheAnswer() {
+        val closed = SessionFormModel.toggleCustom(
+            key = "s",
+            multi = false,
+            customOn = setOf("s"),
+            customText = mapOf("s" to "B"),
+            values = mapOf("s" to "B"),
+        )
+        assertEquals(emptySet<String>(), closed.customOn)
+        assertFalse(closed.values.containsKey("s"))
+
+        // The reported trigger: with nothing left in `values`, a closed
+        // custom row can no longer submit its draft invisibly.
+        val form = fields("""{"key":"s","type":"string","options":[{"value":"A","label":"A"}]}""")
+        assertTrue(SessionFormModel.buildAnswer(form, closed.values).isEmpty())
+    }
+
+    @Test
+    fun multiCustomToggleKeepsPicksAndDropsOnlyTheDraftOnExit() {
+        val closed = SessionFormModel.toggleCustom(
+            key = "m",
+            multi = true,
+            customOn = setOf("m"),
+            customText = mapOf("m" to "B"),
+            values = mapOf("m" to listOf("X", "B")),
+        )
+        assertEquals(emptySet<String>(), closed.customOn)
+        assertEquals(mapOf("m" to listOf("X")), closed.values)
+
+        // Entering multi custom extends the picks — it never replaces them.
+        val entered = SessionFormModel.toggleCustom(
+            key = "m",
+            multi = true,
+            customOn = emptySet(),
+            customText = mapOf("m" to "B"),
+            values = mapOf("m" to listOf("X")),
+        )
+        assertEquals(setOf("m"), entered.customOn)
+        assertEquals(mapOf("m" to listOf("X")), entered.values)
+    }
+
+    // ------------------------------------------------------ boolean default
+
+    @Test
+    fun booleanDefaultsTreatNullAndInvalidAsAbsent() {
+        val parsed = fields(
+            """{"key":"n","type":"boolean","default":null}""",
+            """{"key":"y","type":"boolean","default":"yes"}""",
+            """{"key":"f","type":"boolean","default":false}""",
+            """{"key":"t","type":"boolean","default":"true"}""",
+            """{"key":"a","type":"boolean"}""",
+        )
+        assertNull((parsed[0] as FormField.BooleanInput).default)
+        assertNull((parsed[1] as FormField.BooleanInput).default)
+        assertEquals(false, (parsed[2] as FormField.BooleanInput).default)
+        assertEquals(true, (parsed[3] as FormField.BooleanInput).default)
+        assertNull((parsed[4] as FormField.BooleanInput).default)
     }
 }

@@ -1,11 +1,11 @@
 package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.markdown.MdBlock
+import com.xiufeigo.opencodeshell.ui.markdown.MdImage
 import com.xiufeigo.opencodeshell.ui.markdown.MdSpan
 import com.xiufeigo.opencodeshell.ui.markdown.MarkdownParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -189,6 +189,35 @@ class TimelineFidelityTest {
         assertEquals(listOf(MdBlock.Paragraph(listOf(MdSpan("deep")))), inner.children)
     }
 
+    @Test
+    fun quoteNestingWithinTheCapIsUnchanged() {
+        var blocks = parse(">".repeat(5) + " x")
+        var nesting = 0
+        while (blocks.size == 1 && blocks[0] is MdBlock.BlockQuote) {
+            blocks = (blocks[0] as MdBlock.BlockQuote).children
+            nesting++
+        }
+        assertEquals(5, nesting)
+        assertEquals(listOf(MdBlock.Paragraph(listOf(MdSpan("x")))), blocks)
+    }
+
+    @Test
+    fun aPathologicalQuoteLineIsCappedInsteadOfOverflowingTheStack() {
+        // One line with thousands of `>` used to peel one recursion level per
+        // marker until StackOverflowError on the render thread.
+        var blocks = parse(">".repeat(10_000) + " x")
+        var nesting = 0
+        while (blocks.size == 1 && blocks[0] is MdBlock.BlockQuote) {
+            blocks = (blocks[0] as MdBlock.BlockQuote).children
+            nesting++
+        }
+        assertEquals(MarkdownParser.MAX_QUOTE_DEPTH, nesting)
+        assertEquals(1, blocks.size)
+        val text = (blocks[0] as MdBlock.Paragraph).spans.joinToString("") { it.text }
+        assertTrue("unread `>` markers stay as text", text.startsWith(">"))
+        assertTrue("the line tail survives", text.endsWith(" x"))
+    }
+
     // --------------------------------------------------------- thematic break
 
     @Test
@@ -289,16 +318,26 @@ class TimelineFidelityTest {
     }
 
     @Test
-    fun imageRendersAsItsAltText() {
-        assertEquals(listOf(MdSpan("logo")), inline("![logo](https://example.com/l.png)"))
+    fun anInlineImageSpanKeepsItsTargetBesideTheAltText() {
+        // A-1: the span still carries the target so a renderer can draw it; the
+        // paragraph itself (mixed text) keeps the alt text.
+        assertEquals(
+            listOf(MdSpan("logo", image = MdImage("logo", "https://example.com/l.png"))),
+            inline("![logo](https://example.com/l.png)"),
+        )
     }
 
     @Test
-    fun plainUrlsAreNotAutoLinked() {
-        // `marked` without gfm autolink extension leaves bare URLs as text;
-        // only [label](url) is a link here.
-        val spans = inline("see https://example.com")
-        assertNull(spans.firstOrNull { it.link != null })
+    fun bareHttpUrlsAreAutoLinked() {
+        // GFM autolink: a bare http(s) URL taps through `LinkAnnotation.Url`
+        // into the in-app browser; only [label](url) used to link here.
+        assertEquals(
+            listOf(
+                MdSpan("see "),
+                MdSpan("https://example.com", link = "https://example.com"),
+            ),
+            inline("see https://example.com"),
+        )
     }
 
     // -------------------------------------------------------------- structure

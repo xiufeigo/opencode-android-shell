@@ -54,6 +54,7 @@
     <string name="oc_cursor">▍</string>
     <string name="oc_compaction">Session compacted</string>
     <string name="oc_composer_placeholder">Ask anything, / for commands, @ for context...</string>
+    <string name="oc_composer_send_newline">Long press for a new line</string>
     <!-- Empty timeline placeholder; `session.new.title` ("Build anything"). -->
     <string name="oc_timeline_empty">Build anything</string>
     <string name="oc_back">Back</string>
@@ -64,6 +65,20 @@
     <string name="oc_rename_session">Rename</string>
     <!-- `common.delete`; M2 renders it as a disabled placeholder. -->
     <string name="oc_delete_session">Delete</string>
+
+    <!-- v44 tC (P0 「删除静默无效」, research/v44_verify/tC/v44_49_delete_confirm.png):
+         Home 的 删除/重命名报告服务端答复。删除失败时确认弹窗保留，同一个「删除」可以直接重试。 -->
+    <string name="oc_delete_session_failed">Not deleted — the server did not confirm it. Check the connection and try again.</string>
+    <string name="oc_rename_session_failed">Not renamed — the server did not confirm it. Check the connection and try again.</string>
+    <!-- v81 P1 (5556 v81_verify/5556/25_renamed.png, server log `07:04:47.171 PATCH … http.status=500`):
+         the rename's PATCH was refused by the server itself — the session's project directory
+         (`/mnt/c/x`) does not exist on the server host, so every location-scoped route on that
+         session answers 500. That is neither a connection problem nor a retry the user can win,
+         so it gets its own line instead of 「check the connection」. -->
+    <string name="oc_rename_session_refused">Not renamed — the server returned an error for this session. Its project folder may be unavailable on the server.</string>
+    <!-- v81 P1/P2: the `404` half — the server no longer has the session at all, so its entry is
+         dropped instead of being offered for another try. -->
+    <string name="oc_rename_session_gone">This session no longer exists on the server. Its entry has been removed.</string>
     <!--
       W6: the ⋮ menu's session actions. Every label and toast they use is the
       upstream key of the same rule (`command_session_undo` / `_redo` / `_fork` /
@@ -139,7 +154,7 @@
     -->
     <string name="oc_settings_title">Settings</string>
     <string name="oc_settings_close">Close</string>
-    <string name="oc_settings_app_name">OpenCode Desktop</string>
+    <string name="oc_settings_app_name">OpenCode Android</string>
     <string name="oc_setting_section_desktop">Desktop</string>
     <string name="oc_setting_section_server">Server</string>
     <string name="oc_setting_tab_general">General</string>
@@ -223,7 +238,7 @@
     <string name="oc_servers_menu_default">Set as default</string>
     <string name="oc_servers_menu_delete">Delete</string>
     <string name="oc_server_address">Server address</string>
-    <string name="oc_server_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_server_url_placeholder">http://10.0.2.2:4095</string>
     <string name="oc_server_name">Server name (optional)</string>
     <string name="oc_server_name_placeholder">Localhost</string>
     <string name="oc_server_username">Username (optional)</string>
@@ -234,7 +249,7 @@
     <string name="oc_server_error_connect">Could not connect to server</string>
     <string name="oc_server_error_auth">Server requires authentication. Enter username and password.</string>
     <string name="oc_server_error_cors">Could not connect. If the URL is reachable in a browser, check username/password. The Android shell proxies API calls natively and does not require server CORS.</string>
-    <string name="oc_server_cors_hint">Enter the real backend URL (for example https://backend.example.com). On an emulator use 10.0.2.2 to reach the host machine; if that fails, run `adb reverse tcp:4096 tcp:4096` and use http://127.0.0.1:4096 (also works for USB devices). On Wi-Fi devices use the computer\'s LAN IP. The Android shell proxies API/SSE natively — no CORS needed.</string>
+    <string name="oc_server_cors_hint">Enter the real backend URL (for example https://backend.example.com). On an emulator use 10.0.2.2 to reach the host machine; if that fails, run `adb reverse tcp:4095 tcp:4095` and use http://127.0.0.1:4095 (also works for USB devices). On Wi-Fi devices use the computer\'s LAN IP. The Android shell proxies API/SSE natively — no CORS needed.</string>
     <string name="oc_common_cancel">Cancel</string>
     <string name="oc_common_save">Save</string>
     <string name="oc_common_loading">Loading</string>
@@ -303,6 +318,8 @@
     -->
     <string name="oc_command_project_open">Open project</string>
     <string name="oc_home_project_close">Close</string>
+    <string name="oc_home_project_close_title">Close project?</string>
+    <string name="oc_home_project_close_message">“%1$s” leaves this list. The project and its sessions stay on the server — nothing is deleted.</string>
     <string name="oc_home_sessions">Recent sessions</string>
     <string name="oc_home_search">Search sessions</string>
     <!--
@@ -318,6 +335,7 @@
     <string name="oc_home_group_older">Older</string>
     <string name="oc_home_empty">Nothing here yet</string>
     <string name="oc_home_empty_description">Create a session to get started</string>
+    <string name="oc_home_sessions_load_failed">Couldn\'t load sessions</string>
     <string name="oc_home_settings">Settings</string>
     <string name="oc_home_help">Help</string>
     <string name="oc_home_tab_close">Close tab</string>
@@ -347,11 +365,84 @@
     <string name="oc_newsession_project_new">New project</string>
     <string name="oc_newsession_default_directory">Default directory (server cwd)</string>
     <string name="oc_newsession_create_failed">Failed to create session</string>
+    <!--
+      New-session workspace selector (`ui/home/NewSessionScreen.kt`; upstream
+      `new-session/workspace/selector.tsx` `session.new.workspace.*` /
+      `workspace.new`).
+    -->
+    <string name="oc_new_session_create">Create session</string>
+    <string name="oc_new_session_workspace_run_in">Run session in</string>
+    <string name="oc_new_session_workspace_local">Local repository</string>
+    <string name="oc_new_session_workspace_trigger_local">Local</string>
+    <string name="oc_new_session_workspace_search_placeholder">Search worktrees</string>
+    <string name="oc_new_session_workspace_search_empty">No matching worktrees</string>
+    <string name="oc_new_session_workspace_empty">No worktrees on this server</string>
+    <string name="oc_new_session_worktree_delete">Delete worktree</string>
+    <string name="oc_new_session_worktree_delete_title">Delete worktree?</string>
+    <string name="oc_new_session_worktree_delete_message">%1$s will be permanently deleted, with its branch.</string>
+    <string name="oc_new_session_worktree_delete_failed">Couldn\'t delete the worktree: %1$s</string>
+    <string name="oc_new_session_worktree_delete_no_project">No project on this server owns this worktree</string>
+    <string name="oc_new_session_workspace_tooltip">Select where to run session</string>
     <string name="oc_home_projects_choose_title">Choose a project directory</string>
     <string name="oc_home_projects_select_directory">Select this directory</string>
-    <string name="oc_home_projects_parent">Parent directory</string>
+    <!-- v49 tD_59→61: the footer confirm's armed-stage label (see
+         `pickerConfirmLabelRes`) — the second tap that submits. -->
+    <string name="oc_home_projects_confirm_directory">Confirm this directory</string>
+    <string name="oc_home_projects_parent">Parent</string>
+    <string name="oc_home_projects_root">Root</string>
+    <string name="oc_home_projects_home">Home directory</string>
+    <string name="oc_home_projects_load_failed">Couldn\'t load this directory</string>
+    <string name="oc_home_projects_path_hint">Path or search directories</string>
+    <string name="oc_home_projects_escape_hint">This server only allows browsing its startup directory and its subdirectories. You can still type any path above and select it.</string>
     <string name="oc_home_projects_empty_dir">No subdirectories here</string>
     <string name="oc_home_projects_loading">Loading…</string>
+
+    <!--
+      Catalog-write / catalog-detail surfaces (upstream `dialog.project.edit.*` /
+      `project.settings.*` / settings agents / `debug.location` / plugin RPC).
+      Keys stay `oc_home_*` / `oc_palette_*` and match across all three locales.
+    -->
+    <string name="oc_home_project_edit">Edit project</string>
+    <string name="oc_home_project_edit_name">Project name</string>
+    <string name="oc_home_project_edit_color">Color</string>
+    <string name="oc_home_project_edit_color_none">None</string>
+    <string name="oc_home_project_edit_color_select">Select %1$s color</string>
+    <string name="oc_home_project_edit_icon_pick">Choose image</string>
+    <string name="oc_home_project_edit_icon_clear">Clear image</string>
+    <string name="oc_home_project_edit_icon_failed">Couldn\'t read that image</string>
+    <string name="oc_home_project_edit_startup">Worktree startup script</string>
+    <string name="oc_home_project_edit_startup_placeholder">e.g. bun install</string>
+    <string name="oc_home_project_edit_startup_hint">Runs once after creating a new worktree</string>
+    <!-- `project.settings.worktree.startup.hint.base` / `.hint.new` (`project.tsx:154-157`): the
+         two variables the server exports to the startup command (`core/src/worktree.ts:244-245`). -->
+    <string name="oc_home_project_edit_startup_hint_base">Use $OPENCODE_WORKTREE_BASE for the base worktree.</string>
+    <string name="oc_home_project_edit_startup_hint_new">Use $OPENCODE_WORKTREE_PATH for the new worktree.</string>
+    <string name="oc_home_project_edit_saved">Project saved</string>
+    <string name="oc_home_project_edit_load_failed">Couldn\'t load this project</string>
+    <string name="oc_home_project_edit_missing">This project isn\'t registered on the server</string>
+    <string name="oc_home_project_refresh_worktrees">Refresh worktrees</string>
+    <string name="oc_home_project_worktrees_refreshed">Worktrees refreshed</string>
+    <string name="oc_home_project_edit_save_failed">Couldn\'t save: %1$s</string>
+    <string name="oc_home_project_worktrees_refresh_failed">Couldn\'t refresh worktrees: %1$s</string>
+    <string name="oc_home_no_server">Not connected to a server</string>
+    <string name="oc_home_create_session_timeout">Timed out creating the session</string>
+    <string name="oc_palette_agent_details">View agent details</string>
+    <string name="oc_palette_agent_details_title">Agent details</string>
+    <string name="oc_palette_agent_empty">No agents on this server</string>
+    <string name="oc_palette_agent_system">System prompt</string>
+    <string name="oc_palette_debug_locations">Debug locations</string>
+    <string name="oc_palette_debug_locations_title">Debug locations</string>
+    <string name="oc_palette_debug_locations_empty">No locations loaded</string>
+    <string name="oc_palette_debug_locations_evict">Evict</string>
+    <string name="oc_palette_debug_locations_evicted">Location evicted</string>
+    <string name="oc_palette_plugin_rpc">Call plugin RPC</string>
+    <string name="oc_palette_rpc_title">Call plugin RPC</string>
+    <string name="oc_palette_rpc_id">RPC id</string>
+    <string name="oc_palette_rpc_method">Method</string>
+    <string name="oc_palette_rpc_input">Input (JSON)</string>
+    <string name="oc_palette_rpc_call">Call</string>
+    <string name="oc_palette_rpc_invalid_input">Input must be valid JSON</string>
+    <string name="oc_palette_rpc_output">Output</string>
 
     <!--
       M5 phase 1: terminal panel chrome (research/02 §9.3 + §9.5). The literals
@@ -362,6 +453,8 @@
     <string name="oc_terminal_title_numbered">Terminal %1$d</string>
     <string name="oc_terminal_new">New terminal</string>
     <string name="oc_terminal_close">Close terminal</string>
+    <!-- v50: chip of a terminal opened before the session was moved. -->
+    <string name="oc_terminal_cwd_stale">Old dir</string>
     <string name="oc_terminal_move_left">Move tab left</string>
     <string name="oc_terminal_move_right">Move tab right</string>
     <string name="oc_terminal_loading">Loading terminal…</string>
@@ -377,6 +470,26 @@
     <string name="oc_terminal_server_missing">No server configured — open the WebView shell\'s Terminal tab once to sync the server config, then come back.</string>
     <string name="oc_terminal_kernel_pending">VT kernel not wired yet (M5 phase 2: vendored termux terminal-emulator + TerminalIo patch). This slot shows the raw PTY data link.</string>
     <string name="oc_terminal_raw_output">Raw PTY output (tail)</string>
+    <!-- Terminal domain extensions: background shells + session/persistent
+         terminals (the server PTY family). Keys stay `oc_terminal_*` and match
+         across all three locales. -->
+    <string name="oc_terminal_shells_title">Background shells</string>
+    <string name="oc_terminal_shells_empty">No shell commands</string>
+    <string name="oc_terminal_shell_output_title">Shell output</string>
+    <string name="oc_terminal_shell_kill">Kill</string>
+    <string name="oc_terminal_shell_omitted">Earlier output omitted · showing recent output</string>
+    <string name="oc_terminal_shell_empty_output">No captured output.</string>
+    <string name="oc_terminal_shell_load_failed">Unable to read shell output. Retrying…</string>
+    <string name="oc_terminal_shell_status_running">Running</string>
+    <string name="oc_terminal_shell_status_exited">Exited</string>
+    <string name="oc_terminal_shell_status_timeout">Timed out</string>
+    <string name="oc_terminal_shell_status_killed">Killed</string>
+    <string name="oc_terminal_shell_exit_code">Exited · code %1$d</string>
+    <string name="oc_terminal_session_terminals">Session terminals</string>
+    <string name="oc_terminal_session_terminals_empty">No session terminals</string>
+    <string name="oc_terminal_session_terminal_new">New session terminal</string>
+    <string name="oc_terminal_session_create_failed">Could not create a session terminal.</string>
+    <string name="oc_terminal_session_shutdown">Shut down persistent terminals</string>
 
     <!--
       Permission dock (`SessionPermissionDock`). Title + actions are the
@@ -465,15 +578,38 @@
     <string name="oc_review_truncated_rows">… %1$d of %2$d diff lines shown</string>
 
     <!--
+      Rich file viewer (`ui/session/review`, 前缀 `oc_file_view_`, 只追加).
+      Upstream copy: `file.view.preview|source|openInBrowser|table.truncated`
+      (`session/files/artifact-view.tsx`), `session.files.all|openTabs`
+      (`session/files/session-mobile-files.tsx`) and `session.header.openIn|
+      open.copyPath` (`session/files/open-in-app-button.tsx`).
+    -->
+    <string name="oc_file_view_preview">Preview</string>
+    <string name="oc_file_view_source">Source</string>
+    <string name="oc_file_view_all_files">All files</string>
+    <string name="oc_file_view_open_in_app">Open in app</string>
+    <string name="oc_file_view_copy_path">Copy path</string>
+    <string name="oc_file_view_open_tabs">Open tabs</string>
+    <string name="oc_file_view_table_truncated">… %1$d of %2$d rows shown</string>
+
+    <!--
       B2 session context tab (`ui/session/context`), the upstream
       `SessionContextTab` (`session/files/session-context-tab.tsx`): the sixteen
       `context.stats.*` rows in their upstream order (`:173-193`), the optional
       `context.systemPrompt.title` block (`:283-292`) and the
       `context.rawMessages.title` accordion (`:294-312`). The tab label lives with
       its siblings as `oc_review_tab_context`.
+
+      `oc_context_stats_messages` is the one row whose upstream label is a
+      *misreading trap* on this server: its value is `counts().all`
+      (`:133-141`) — every frame of the message list, `system` and injected rows
+      included — while the `User Messages` / `Assistant Messages` rows below it
+      count roles. A session with an injected system frame therefore reads
+      `Messages 17` above `User Messages 1` / `Assistant Messages 8` (device
+      v20). The value keeps upstream's frame semantics; the label states it.
     -->
     <string name="oc_context_stats_session">Session</string>
-    <string name="oc_context_stats_messages">Messages</string>
+    <string name="oc_context_stats_messages">Messages (all frames)</string>
     <string name="oc_context_stats_provider">Provider</string>
     <string name="oc_context_stats_model">Model</string>
     <string name="oc_context_stats_limit">Context Limit</string>
@@ -531,6 +667,9 @@
     </plurals>
     <string name="oc_step_agent">Agent</string>
     <string name="oc_step_agent_changed">Agent changed</string>
+    <string name="oc_step_model_changed">Model changed</string>
+    <string name="oc_step_location_changed">Location changed</string>
+    <string name="oc_tool_skill">Skill</string>
     <string name="oc_step_retrying">Retrying</string>
     <string name="oc_step_retry_attempt">attempt #%1$d</string>
 
@@ -647,6 +786,9 @@
     <string name="oc_attach_preview_close">Close preview</string>
     <string name="oc_attach_uploading">Reading attachments…</string>
     <string name="oc_attach_cancel">Cancel</string>
+    <!-- `composer/dropzone.tsx` `ui.promptInput.dropFiles` (the image/pdf variants
+         stay gated on `capabilities.input`, which this composer does not read yet). -->
+    <string name="oc_composer_drop_files">Drop files to add</string>
 
     <!--
       Wave 5-E1 first-run connect page (`ui/servers/ConnectServerScreen.kt`) and
@@ -665,12 +807,13 @@
       warning). `oc_connect_url_placeholder` keeps this project's documented
       address deviation: on an emulator `localhost` is the device itself, while
       `10.0.2.2` is the host machine (`SettingsModel.DEFAULT_SERVER_URL_PLACEHOLDER`).
-      The `opencode` wordmark and the `opencode pair` command are not translated.
+      With `adb reverse tcp:4095 tcp:4095` (or USB) `http://127.0.0.1:4095` works
+      too. The `opencode` wordmark and the `opencode pair` command are not translated.
     -->
     <string name="oc_connect_title">Connect to a server</string>
     <string name="oc_connect_description">Enter your server address and password to get started.</string>
     <string name="oc_connect_url_label">Server address</string>
-    <string name="oc_connect_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_connect_url_placeholder">http://10.0.2.2:4095</string>
     <string name="oc_connect_password_label">Password</string>
     <string name="oc_connect_button">Connect</string>
     <string name="oc_connect_checking">Checking…</string>
@@ -682,6 +825,66 @@
     <string name="oc_connect_error_unhealthy">The server answered, but reports that it is not healthy.</string>
     <string name="oc_connect_error_invalid_response">Something answered, but it is not an OpenCode server.</string>
     <string name="oc_connect_error_status">The server answered HTTP %1$s.</string>
+    <string name="oc_connect_scan_unavailable">No QR code scanner app is available. Enter your connection details manually.</string>
+    <!--
+      Settings Pairing tab (`ui/settings/PairingPanel.kt`; upstream
+      `settings/pairing/pairing.tsx` + `servers/connect/pairing.ts`).
+      Pairing-code text half, the `DialogPairing` QR block, and scanning:
+      system-scanner hand-off (`ui/servers/QrScan.kt`, `server.connect.scan.*`
+      copy) plus in-app photo decode. `pair.*` keys keep upstream's English.
+    -->
+    <string name="oc_setting_tab_pairing">Pairing</string>
+    <string name="oc_pair_description">Connect another device to this machine\'s OpenCode server.</string>
+    <string name="oc_pair_connection">Local Network</string>
+    <string name="oc_pair_local_description">View connection details and a QR code to connect a device on the same network.</string>
+    <string name="oc_pair_unavailable">No server connected — pairing details are unavailable</string>
+    <string name="oc_pair_copy">Copy details</string>
+    <string name="oc_pair_qr">Pairing QR code</string>
+    <string name="oc_pair_qr_todo">The pairing QR code is coming in a later milestone</string>
+    <string name="oc_pair_scan">Scan QR code</string>
+    <string name="oc_pair_scan_soon">Camera scanning is coming in a later milestone</string>
+    <string name="oc_pair_scan_description">Point your camera at the QR code shown by opencode pair.</string>
+    <string name="oc_pair_scan_unavailable">No QR code scanner app is available. Enter the pairing code manually.</string>
+    <string name="oc_pair_scan_photo">Scan from photo</string>
+    <string name="oc_pair_scan_photo_description">Choose a photo or screenshot of the pairing QR code.</string>
+    <string name="oc_pair_scan_photo_failed">No QR code found in that image. Choose another photo.</string>
+    <string name="oc_pair_manual_title">Enter pairing code</string>
+    <string name="oc_pair_manual_description">Paste the pairing code shown by opencode pair to see its connection details.</string>
+    <string name="oc_pair_manual_placeholder">Pairing code</string>
+    <string name="oc_pair_invalid">This is not an OpenCode pairing code. Use the code shown by opencode pair.</string>
+    <string name="oc_pair_manual_result">Server address %1$s</string>
+    <string name="oc_pair_manual_password">Password included</string>
+
+    <!--
+      SSH connection form + tunnel (`ui/servers/SshDialog.kt` + `SshModel.kt` /
+      `SshConnection.kt`): upstream `servers/ssh/dialog.tsx` / `types.ts` /
+      `name.ts` / `status.ts` plus the jsch tunnel (local port forward of the
+      remote `opencode serve`). The auth-method fields are the Android stand-in
+      for upstream's interactive prompts; `oc_ssh_host_key_*` /
+      `oc_ssh_fingerprint_*` carry the `ssh.trust` fingerprint confirmation
+      (`authenticate.tsx`), `oc_ssh_*_label` the connection-panel stats.
+    -->
+    <string name="oc_ssh_title">Add SSH server</string>
+    <string name="oc_ssh_target_label">Host or SSH command</string>
+    <string name="oc_ssh_target_placeholder">ssh user@example.com</string>
+    <string name="oc_ssh_auth_label">Authentication</string>
+    <string name="oc_ssh_auth_key">Private key</string>
+    <string name="oc_ssh_key_path_label">Key file path</string>
+    <string name="oc_ssh_key_path_placeholder">~/.ssh/id_ed25519</string>
+    <string name="oc_ssh_passphrase_label">Passphrase (optional)</string>
+    <string name="oc_ssh_error_input">Enter a host or SSH command. Remote commands and unsupported SSH options aren\'t allowed.</string>
+    <string name="oc_ssh_error_password_required">Enter the password for this connection.</string>
+    <string name="oc_ssh_error_key_required">Enter the path to your private key.</string>
+    <!-- F14a: Android-only error code (`SshErrorCode.KEY_FILE`) — the key file
+         cannot be read. Upstream has no such literal, so this is a hand-written
+         resource, NOT part of the generated `strings_oc_i18n.xml` family. -->
+    <string name="ssh_error_key_file">Can\'t read the private key file. Check the path and read permission.</string>
+    <string name="oc_ssh_host_key_title">Verify host identity</string>
+    <string name="oc_ssh_fingerprint_md5">MD5 fingerprint</string>
+    <string name="oc_ssh_fingerprint_sha256">SHA256 fingerprint</string>
+    <string name="oc_ssh_host_key_hint">Only trust this host if its fingerprint matches.</string>
+    <string name="oc_ssh_latency_label">Latency</string>
+    <string name="oc_ssh_last_handshake_label">Last handshake</string>
     <string name="oc_health_healthy">Server healthy</string>
     <string name="oc_health_unhealthy">Server not reachable</string>
     <string name="oc_health_unknown">Server health unknown</string>
@@ -777,4 +980,388 @@
     <string name="oc_command_summary_toggle">Session summary</string>
     <string name="oc_export_success">Session exported to %1$s</string>
     <string name="oc_export_failed">Failed to export session</string>
+
+    <!-- Websearch request dock (`ui/session/dock`; upstream `session/requests/session-websearch-dock.tsx`). -->
+    <string name="oc_websearch_title">Third-party web search</string>
+    <string name="oc_websearch_description">Select the search provider agents use to search the web</string>
+    <string name="oc_websearch_provider">Search provider</string>
+    <string name="oc_websearch_any">Any</string>
+    <string name="oc_websearch_disable">Don’t use search</string>
+    <string name="oc_websearch_enable">Enable</string>
+    <string name="oc_websearch_load_failed">Could not load search providers.</string>
+    <string name="oc_websearch_empty">No search providers available.</string>
+    <string name="oc_websearch_failed">Could not save your choice. Please try again.</string>
+
+    <!-- Message-level revert (`ui/session/actions`; upstream `message-content.tsx:328-338`). -->
+    <string name="oc_meta_revert_message">Revert message</string>
+
+    <!-- Summary service sub-panels (`ui/session/summary`; upstream `session/summary/server-panel.tsx`, `background.tsx`). -->
+    <string name="oc_summary_mcp">MCP</string>
+    <string name="oc_summary_mcp_title">Configured MCP servers</string>
+    <string name="oc_summary_mcp_empty">No MCP servers configured</string>
+    <string name="oc_summary_plugins">Plugins</string>
+    <string name="oc_summary_plugins_configured">Configured plugins</string>
+    <string name="oc_summary_plugins_empty">No plugins configured</string>
+    <string name="oc_summary_skills">Skills</string>
+    <string name="oc_summary_skills_configured">Configured skills</string>
+    <string name="oc_summary_skills_empty">No skills configured</string>
+    <string name="oc_summary_lsp">LSP</string>
+    <string name="oc_summary_lsp_configured">Configured LSPs</string>
+    <string name="oc_summary_lsp_empty">No LSP servers configured</string>
+    <string name="oc_summary_background">Background tasks</string>
+    <string name="oc_summary_background_empty">No background tasks</string>
+    <!-- MCP row status labels (`server-panel.tsx:180-187` `session.summary.failed|connecting|needsAuth`). -->
+    <string name="oc_summary_status_failed">Failed</string>
+    <string name="oc_summary_status_connecting">Connecting…</string>
+    <string name="oc_summary_status_needs_auth">Sign in required</string>
+
+    <!-- Settings Shell + Experimental tabs (`ui/settings`). -->
+    <string name="oc_setting_tab_shell">Shell</string>
+    <string name="oc_settings_shell_clear">Clear</string>
+    <string name="oc_settings_shell_current">Current shell</string>
+    <string name="oc_settings_shell_edit">Shell command</string>
+    <string name="oc_settings_shell_edit_hint">Blank clears (Auto)</string>
+    <string name="oc_settings_shell_options">Available shells</string>
+    <string name="oc_settings_shell_saved">Shell setting saved</string>
+    <string name="oc_settings_shell_unsupported">This server does not report a shell configuration</string>
+    <string name="oc_settings_shell_write_failed">Could not save the shell command (%1$s)</string>
+    <string name="oc_settings_shell_write_unsupported">This server does not support changing the shell</string>
+    <string name="oc_settings_experimental_description">Try experimental features</string>
+    <string name="oc_settings_experimental_unavailable">Not available in this app yet</string>
+    <string name="oc_settings_experimental_tabs">Tabs</string>
+    <string name="oc_settings_experimental_tabs_description">Choose how session tabs are arranged</string>
+    <string name="oc_settings_experimental_project_name">Show project names</string>
+    <string name="oc_settings_experimental_project_name_description">Show project names in vertical tabs and the mobile tab drawer</string>
+
+    <!-- Settings write surface (credentials / connect flows / MCP / plugins / shell). -->
+    <string name="oc_settings_credentials_section">Stored credentials</string>
+    <string name="oc_settings_credentials_empty">No stored credentials</string>
+    <string name="oc_settings_credentials_active">Active</string>
+    <string name="oc_settings_credentials_activate">Activate</string>
+    <string name="oc_settings_credentials_rename_title">Rename credential</string>
+    <string name="oc_settings_credentials_label_hint">Label</string>
+    <string name="oc_settings_connect_title">Connect %1$s</string>
+    <string name="oc_settings_connect_method">Authentication method</string>
+    <string name="oc_settings_connect_method_key">API key</string>
+    <string name="oc_settings_connect_method_oauth">OAuth</string>
+    <string name="oc_settings_connect_method_command">Command sign-in</string>
+    <string name="oc_settings_connect_label_hint">Credential label (optional)</string>
+    <string name="oc_settings_connect_form_unsupported">This authentication form contains unsupported fields</string>
+    <string name="oc_settings_connect_open_url">Open authorization page</string>
+    <string name="oc_settings_connect_code_hint">Authorization code</string>
+    <string name="oc_settings_connect_submit_code">Submit code</string>
+    <string name="oc_settings_connect_command_output">Command output</string>
+    <string name="oc_settings_connect_start_command">Start</string>
+    <string name="oc_settings_connect_pending">Waiting for the server…</string>
+    <string name="oc_settings_connect_done">Connected</string>
+    <string name="oc_settings_connect_failed">Connection failed</string>
+    <string name="oc_settings_connect_expired">The authorization attempt expired</string>
+    <string name="oc_settings_mcp_add">Add server</string>
+    <string name="oc_settings_mcp_add_title">Add MCP server</string>
+    <string name="oc_settings_mcp_field_name">Name</string>
+    <string name="oc_settings_mcp_field_command">Command</string>
+    <string name="oc_settings_mcp_field_url">Server URL</string>
+    <string name="oc_settings_mcp_kind_local">Local command</string>
+    <string name="oc_settings_mcp_kind_remote">Remote URL</string>
+    <string name="oc_settings_mcp_runtime_hint">Runtime changes are lost when the server restarts.</string>
+    <string name="oc_settings_mcp_resources">Resources</string>
+    <string name="oc_settings_mcp_resources_title">MCP resources</string>
+    <string name="oc_settings_mcp_resources_empty">No resources from connected servers</string>
+    <string name="oc_settings_mcp_resources_templates">Resource templates</string>
+    <string name="oc_settings_plugins_check">Check for updates</string>
+    <string name="oc_settings_plugins_update">Update</string>
+    <string name="oc_settings_plugins_outdated">Update available</string>
+    <string name="oc_settings_plugins_up_to_date">Every plugin is up to date</string>
+    <string name="oc_settings_wellknown_section">Well-known integrations</string>
+    <string name="oc_settings_wellknown_hint">Import an integration from its well-known URL.</string>
+    <string name="oc_settings_wellknown_add">Import</string>
+    <string name="oc_settings_wellknown_url">Well-known URL</string>
+    <string name="oc_settings_migration_section">v1 history migration</string>
+    <string name="oc_settings_migration_required">Migration required</string>
+    <string name="oc_settings_migration_completed">Migration completed</string>
+    <string name="oc_settings_migration_running">Migration running: %1$s</string>
+    <string name="oc_settings_migration_error">Migration failed: %1$s</string>
+
+    <!-- /btw side-question panel (`ui/session/btw`; upstream `session/btw/{model,panel}.ts` — `command.session.btw`, `session.btw.*`). -->
+    <string name="oc_btw_ask">Ask a side question</string>
+    <string name="oc_btw_description">Get a one-shot answer without adding to the conversation</string>
+    <string name="oc_btw_question_required">Add a question after /btw</string>
+    <string name="oc_btw_error">Couldn’t answer that question</string>
+    <string name="oc_btw_retry">Retry</string>
+    <string name="oc_btw_copy">Copy answer</string>
+
+    <!-- session domain wiring (export modes / instructions / manual websearch). -->
+    <string name="oc_session_export_official">Official-format export</string>
+    <string name="oc_session_export_sanitized">Sanitized export</string>
+    <string name="oc_session_instructions_title">Instructions</string>
+    <string name="oc_session_instructions_empty">No instruction entries</string>
+    <string name="oc_session_instructions_add">Add entry</string>
+    <string name="oc_session_instructions_key">Key</string>
+    <string name="oc_session_instructions_value">Value</string>
+    <string name="oc_session_instructions_delete">Delete</string>
+    <string name="oc_session_instructions_key_invalid">Keys use lowercase letters, digits, and . _ -</string>
+    <string name="oc_session_instructions_failed">Could not save the entry</string>
+    <string name="oc_session_websearch_title">Web search</string>
+    <string name="oc_session_websearch_query">Search query</string>
+    <string name="oc_session_websearch_run">Search</string>
+    <string name="oc_session_websearch_empty">No results</string>
+    <string name="oc_session_websearch_failed">Search failed</string>
+    <string name="oc_session_websearch_disabled">Web search is disabled on this server</string>
+    <string name="oc_session_websearch_provider_missing">Search provider not found</string>
+    <string name="oc_review_diff_base">Relative to %1$s</string>
+    <string name="oc_summary_stats_title">Statistics</string>
+    <string name="oc_summary_stats_empty">No statistics yet</string>
+    <string name="oc_summary_stats_sessions">Sessions</string>
+    <string name="oc_summary_stats_subagents">Subagents</string>
+    <string name="oc_summary_stats_prompts">Prompts</string>
+    <string name="oc_summary_stats_steps">Steps</string>
+    <string name="oc_summary_stats_active_days">Active days</string>
+    <string name="oc_summary_stats_streak">Day streak</string>
+    <string name="oc_summary_stats_tool_calls">Tool calls</string>
+    <string name="oc_summary_stats_tool_failed">Tool failures</string>
+    <string name="oc_summary_reload">Reload</string>
+    <string name="oc_summary_reload_done">Locations reloaded</string>
+    <string name="oc_summary_reload_failed">Could not reload locations</string>
+    <string name="oc_summary_skill_activate">Activate</string>
+    <string name="oc_summary_skill_failed">Could not activate the skill</string>
+    <string name="oc_session_import">Import session…</string>
+    <string name="oc_session_import_success">Imported %1$s</string>
+    <string name="oc_session_import_failed">Import failed</string>
+    <string name="oc_session_import_unreadable">Import failed — the file could not be read</string>
+    <string name="oc_session_import_bad_file">Import failed — the file is not a session export</string>
+    <string name="oc_session_import_assembled">Import failed — the local export format cannot be imported; export with Official format instead</string>
+    <string name="oc_session_import_rejected">Import failed — the server refused it: %1$s</string>
+    <string name="oc_session_import_offline">Import failed — the server could not be reached</string>
+    <string name="oc_session_import_no_server">Import failed — no server is configured</string>
+    <string name="oc_settings_disconnect_done">Disconnected</string>
+    <string name="oc_settings_providers_popular_empty">No more providers to connect</string>
+    <string name="oc_servers_add_ssh">Add SSH server</string>
+    <string name="oc_servers_ssh_section">SSH tunnels</string>
+    <string name="oc_ssh_delete_title">Delete SSH server?</string>
+    <string name="oc_ssh_delete_message">This removes “%1$s” from the list. This cannot be undone.</string>
+    <string name="oc_ssh_delete_release_hint">Its tunnel is disconnected first.</string>
+    <string name="oc_context_export_waiting">Loading session data — export unlocks when it arrives</string>
+    <string name="oc_context_export_load_failed">Could not load session data: %1$s</string>
+    <string name="oc_error_quota_title">Plan quota exhausted</string>
+    <string name="oc_error_quota_advice">Your Token Plan quota is used up. Upgrade your plan, top up credits, or retry later.</string>
+    <string name="oc_error_region_title">Model unavailable in your region</string>
+    <string name="oc_error_region_advice">This model cannot be used from your current country or network. Switch to another model or change your network environment, then retry.</string>
+    <string name="oc_terminal_shell_create">New shell</string>
+    <string name="oc_terminal_shell_command_hint">Command to run</string>
+    <string name="oc_terminal_shell_run">Run</string>
+    <string name="oc_terminal_shell_create_failed">Could not create the shell</string>
+    <string name="oc_home_projects_drives">This PC</string>
+    <string name="oc_settings_models_unconnected">Unconnected</string>
+    <string name="oc_model_picker_unconnected">Not connected</string>
+    <string name="oc_usage_exceeded_free_tier_title">Free limit reached</string>
+    <string name="oc_usage_exceeded_free_tier_description">Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.</string>
+    <string name="oc_usage_exceeded_free_tier_action">Subscribe</string>
+    <string name="oc_usage_exceeded_rate_limit_title">Go limit reached</string>
+    <string name="oc_usage_exceeded_rate_limit_description">Usage limit reached. To continue using this model now, enable usage from your available balance</string>
+    <string name="oc_usage_exceeded_rate_limit_action">Open settings</string>
+    <string name="oc_usage_exceeded_quota_title">Plan quota exhausted</string>
+    <string name="oc_usage_exceeded_quota_description">Your Token Plan quota is used up. Upgrade your plan, top up credits, or check your usage and wait for the reset.</string>
+    <string name="oc_usage_exceeded_close">Got it</string>
+    <string name="oc_usage_exceeded_dont_show_again">Don\'t show again</string>
+    <string name="oc_usage_exceeded_retry_after">Available again in %1$s</string>
+    <!-- F-4: the ⋮ row of 移动到…. Upstream moves from the workspace menu
+         (`session-workspace-menu.tsx`, `workspace.move.menu.title`); Android has
+         no workspace menu, so the W6 session-action group carries it. The picker
+         keeps its own title — this short label fits the 120 px `MenuV2`. -->
+    <string name="oc_move_session">Move to…</string>
+    <!-- F-2: review diff line comments. Upstream model
+         (`composer/comments.tsx` + `session/review/model.ts:206-230`): comments
+         anchor to a diff line and are sent aggregated into the prompt text. -->
+    <string name="oc_review_comment_add_title">Add line comment</string>
+    <string name="oc_review_comment_edit_title">Edit line comment</string>
+    <string name="oc_review_comment_hint">Write a comment on this line…</string>
+    <string name="oc_review_comment_send">Add %1$d comments to composer</string>
+    <string name="oc_review_comment_edit">Edit</string>
+    <string name="oc_review_comment_delete">Delete</string>
+    <plurals name="oc_timeline_more_lines">
+        <item quantity="one">%1$d more line</item>
+        <item quantity="other">%1$d more lines</item>
+    </plurals>
+    <string name="oc_timeline_show_less">Show less</string>
+    <!-- U-1: appearance stops. Upstream takes free CSS family names for UI/code
+         fonts (`settings/model.tsx`); Android offers the bundled/system stops,
+         so these option labels are Android-only. -->
+    <string name="oc_setting_ui_font_option_default">Inter (default)</string>
+    <string name="oc_setting_ui_font_option_system">System</string>
+    <string name="oc_setting_code_font_option_default">System monospace (default)</string>
+    <string name="oc_setting_code_font_option_ui">Match interface font</string>
+    <!-- v40: Terminal Font was a free-text field next to two working dropdowns and read as a dead control; it is a mono-family select now. -->
+    <string name="oc_setting_terminal_font_option_default">System monospace (default)</string>
+    <string name="oc_copy_details_copied">Pairing details copied</string>
+    <!-- F-3: embedded browser pane (upstream `session/browser/pane.tsx`). Android-only strings. -->
+    <string name="oc_browser_close">Close</string>
+    <string name="oc_browser_open_external">Open externally</string>
+    <string name="oc_browser_reload">Reload</string>
+    <string name="oc_browser_stop">Stop</string>
+    <string name="oc_browser_go_back">Go back</string>
+    <string name="oc_browser_go_forward">Go forward</string>
+    <string name="oc_browser_address">Browser address</string>
+    <string name="oc_browser_secure">Secure connection</string>
+    <string name="oc_browser_insecure">Not secure</string>
+    <string name="oc_browser_empty_title">No page yet</string>
+    <string name="oc_browser_empty_description">Pages opened by the agent will appear here.</string>
+    <string name="oc_browser_failed_title">Page failed to load</string>
+    <string name="oc_browser_failed_description">Check the address or connection, then try again — or open it externally.</string>
+    <string name="oc_browser_retry">Retry</string>
+    <!-- `/mcp` chooser (`ui/overlay/McpChooserDialog`, upstream `dialog.mcp.*` + `mcp.status.*`). -->
+    <string name="oc_mcp_title">MCPs</string>
+    <string name="oc_mcp_description">%1$d of %2$d enabled</string>
+    <string name="oc_mcp_search">Search MCPs</string>
+    <string name="oc_mcp_empty">No MCPs configured</string>
+    <string name="oc_mcp_status_connected">connected</string>
+    <string name="oc_mcp_status_failed">failed</string>
+    <string name="oc_mcp_status_needs_auth">needs auth</string>
+    <string name="oc_mcp_status_disabled">disabled</string>
+    <!-- Session export feedback (`ui/session/SessionScreen.kt` export flow,
+         `ui/session/export/SessionExportFeedback.kt`). Every branch of the
+         attempt has its own copy so a device report names the branch: the
+         fetch reason, the dismissed picker, the Download/ bypass and the
+         re-tap while one attempt is still out. -->
+    <string name="oc_export_cancelled">Export cancelled</string>
+    <string name="oc_export_fetch_failed">Could not fetch session data: %1$s</string>
+    <!-- v40 tC: the export fetch never reached the wire (no confirmed transport),
+         which used to arrive as a reason-less `Result.success(null)` and so read
+         as the bare 「导出会话失败」. -->
+    <string name="oc_export_no_transport">Not connected to the server — check the server connection, then export again</string>
+    <string name="oc_export_saved_downloads">No save dialog available — written to Download/%1$s</string>
+    <string name="oc_export_in_progress">Export in progress…</string>
+    <!-- Review 「Refresh」 (`ui/session/review/ReviewPanel.kt` /
+         `ReviewChangesTab.kt` → `ChatViewModel.reviewReprobeLocation`): the
+         explicit-click evict of the current directory's cached location
+         (`DELETE /api/debug/location`) plus a re-probe of the review reads.
+         The success copy names the side effect the server documents for an
+         evicted location — pending permissions and forms of that directory are
+         cancelled — so the action is never a silent write. -->
+    <string name="oc_review_refresh">Refresh</string>
+    <string name="oc_review_refresh_done">Directory state rebuilt — in-flight permissions/forms may have been cancelled.</string>
+    <string name="oc_review_refresh_failed">Couldn\'t rebuild the directory state</string>
+    <string name="oc_export_fetch_timeout">no answer within %1$d s</string>
+    <string name="oc_export_phase_fetch">Fetching session data…</string>
+    <string name="oc_export_phase_save">Waiting for the save location…</string>
+    <string name="oc_session_import_timeout">Import timed out — the server did not answer</string>
+
+    <!-- Timeline (`ui/session/timeline`): the stall notice of a turn that stopped producing events, the parked-steer row's attachment count, and its not-delivered notice (BUG-2 v36 tB: a parked steer the server never promoted). -->
+    <string name="oc_timeline_no_response">No response for %1$d min</string>
+    <string name="oc_message_not_delivered">Not delivered</string>
+    <string name="oc_queued_attachments_one">%1$d attachment</string>
+    <string name="oc_queued_attachments_other">%1$d attachments</string>
+
+    <!-- Review Changes failure state (`ReviewChangesTab`): the scope's diff read timed out or failed. Distinct from `oc_review_changes_empty*`, which claim the repository has nothing to show. -->
+    <string name="oc_review_changes_failed">Couldn\'t load changes</string>
+    <string name="oc_review_changes_failed_hint">The diff request timed out or failed. Tap Refresh to try again.</string>
+
+    <!-- `/btw` side question refused locally: nothing names a model (no pick in the composer, no server default, none on the session), so `session.generate` would answer 503. -->
+    <string name="oc_btw_no_model">No model selected — pick one in the composer, then retry</string>
+
+    <!-- `/btw` in the command palette (`ui/palette/SessionCommands` `session.aside`): upstream's own description plus the trigger, because the palette's search reads title + description + category and "btw" is what a user types. -->
+    <string name="oc_btw_palette_description">One-shot answer from the session\'s context without adding to the conversation (/btw)</string>
+
+    <!-- Context tab, export area (`ui/session/context/SessionContextPanel`): the message drain stopped at its page cap, so the export holds only the first %1$d pages (`V2Api.MessageDrain.truncated`). -->
+    <string name="oc_context_export_truncated">Session too long — the export is truncated to the first %1$d pages</string>
+    <!-- U-1 residual: the system-family stops the UI/code font pickers add
+         (`OcSystemFonts`). The generic aliases carry copy; real family names are
+         data and render verbatim (proper nouns, like the theme names). -->
+    <string name="oc_setting_ui_font_option_serif">Serif</string>
+    <string name="oc_setting_ui_font_option_sans_light">Light</string>
+    <string name="oc_setting_ui_font_option_sans_medium">Medium</string>
+    <string name="oc_setting_ui_font_option_sans_condensed">Condensed</string>
+    <string name="oc_setting_ui_font_option_sans_black">Black</string>
+    <string name="oc_setting_ui_font_option_sans_smallcaps">Small caps</string>
+    <string name="oc_setting_code_font_option_serif_mono">Serif monospace</string>
+    <string name="oc_review_no_git_done">Git repository created</string>
+    <string name="oc_review_no_git_failed">Could not create the Git repository</string>
+
+    <!-- A-4 route-level failure page (`ui/session/SessionNotFoundPanel`, upstream `session/route-error.tsx:31-61`): the session the route points at no longer exists on this server. Upstream's own keys are `session.error.notFound` / `.description` / `.closeTab`; the close-tab button is this shell's Back. -->
+    <string name="oc_session_not_found">This session cannot be found</string>
+    <string name="oc_session_not_found_description">This tab points to a session that no longer exists on this server.</string>
+    <!-- Android-only second action on the same page: the 404 latch also stops every session-scoped refresh, so re-entering the session is the way back. -->
+    <string name="oc_session_not_found_retry">Retry</string>
+    <!-- v81 P2 「幽灵会话死胡同」 (research/v81_verify/5558/t4_s02_empty_session.png): Back and Retry
+         were the whole page, and Retry re-ran the same 404s for a session the server had dropped
+         (`07:07:54` onward: every route 404) — the entry itself (tab + row) had no exit. -->
+    <string name="oc_session_not_found_delete">Delete entry</string>
+
+    <!-- v82 BUG-A (research/v82_verify/5558/33_ghost_open.png): the same page for a session the
+         server *refuses* (`5xx` on its own scoped routes) instead of one it forgot. Measured on
+         2.0.18/4095 for a session created in a project directory the server host does not have:
+         `GET …/permission` and `GET …/form` answer 500 while the row and the message list answer
+         200 — so the app drew a normal-looking empty session whose every action failed. The copy
+         names the measured cause; the actions are the not-found page's own (Back / Retry / delete
+         this entry). -->
+    <string name="oc_session_refused">This session is unavailable on the server</string>
+    <string name="oc_session_refused_description">The server returned an error for this session (HTTP 500). Its project folder may be missing on the server.</string>
+
+    <!-- A-3 Home project row menu, `sidebar.project.clearNotifications` (`home/projects/view.tsx:754-758`). The import row reuses the palette's own `command_session_import` (upstream uses `command.session.import` for both). -->
+    <string name="oc_home_project_clear_notifications">Clear notifications</string>
+
+    <!-- A-2 session tab indicator (`ui/nav/SessionTabIndicator`, upstream `project-avatar-state.ts:26-49`): the dot's and the marquee's accessibility labels. -->
+    <string name="oc_tab_unread">Unread</string>
+    <string name="oc_tab_working">Working</string>
+
+    <!-- A-13 audio preview (`ui/session/review/ArtifactView`, upstream `components/file-media.tsx`'s `<audio controls>`): the two transport labels plus the decode/play failure. -->
+    <string name="oc_file_audio_play">Play</string>
+    <string name="oc_file_audio_pause">Pause</string>
+    <string name="oc_file_audio_failed">Could not play this audio file</string>
+
+    <!-- A-12 in-app camera scan (`ui/settings/PairingPanel`, upstream `servers/connect/scanner.tsx`): the entry row plus its four failure lines. -->
+    <string name="oc_pair_scan_camera">Scan with the camera</string>
+    <string name="oc_pair_scan_camera_description">Open the in-app preview and point it at the pairing QR code.</string>
+    <string name="oc_pair_scan_camera_denied">Camera permission is not granted. Allow it, or scan from a photo below.</string>
+    <string name="oc_pair_scan_camera_unavailable">No camera is available on this device. Scan from a photo or enter the code manually.</string>
+    <string name="oc_pair_scan_camera_failed">The camera could not be started. Scan from a photo or enter the code manually.</string>
+
+    <!-- F-1 `@` menu sources (`ui/session/composer/MentionPopover`, upstream `composer/model.ts:146-190`): the reference and MCP-resource category labels (also the row content descriptions). -->
+    <string name="oc_composer_mention_reference">Reference</string>
+    <string name="oc_composer_mention_resource">MCP resource</string>
+
+    <!-- W4 MCP 面板批：新建会话页（`NewSessionScreen`）。
+         A-11 `PromptGitStatus`（`new-session/workspace/selector.tsx:374-396`）：目录不是仓库时的文案。 -->
+    <string name="oc_new_session_git_none">No Git</string>
+    <!-- v64：worktree 一律以 detached 方式建出（`core/src/git.ts:654-658`），
+         `GET /api/vcs` 的 `branch.current`（`symbolic-ref` 取 HEAD）对它恒为空，
+         旧判据把这种「双空」当成非仓库，印出「No Git」/留空。 -->
+    <string name="oc_new_session_git_detached">Detached HEAD</string>
+    <string name="oc_new_session_git_from_branch">from %1$s</string>
+    <!-- F-2 草稿态提示：上游 `session.summary.mcp.onCreation` 说 "worktree is created"，手机端不创建 worktree，会话本身就是草稿落地的那次创建。 -->
+    <string name="oc_new_session_mcp_on_creation">Applied when the session is created</string>
+    <!-- A-11 tips（`new-session/view.tsx:167-200`，文案取上游 `home.providerTip` / `home.workspaceTip`）；忽略按钮复用既有 `common_dismiss`。 -->
+    <string name="oc_home_provider_tip">Connect to 75+ providers to use other models, including Claude, GPT, Gemini, etc</string>
+    <string name="oc_home_workspace_tip">Start next session in a new workspace to keep changes isolated</string>
+    <!-- F-2 `apply()` 的四种落地失败（上游 `session.summary.mcp.prepareFailed|unavailable|signInBeforeSend|notReady`，`new-session/mcp.ts:57-111`）。 -->
+    <string name="oc_summary_mcp_prepare_failed">Could not prepare MCP servers</string>
+    <string name="oc_summary_mcp_unavailable">MCP server %1$s is not available in this worktree.</string>
+    <string name="oc_summary_mcp_sign_in_before_send">Sign in to %1$s before sending the prompt.</string>
+    <string name="oc_summary_mcp_not_ready">MCP server %1$s is not ready. Resolve its connection before sending the prompt.</string>
+    <!-- F-3 summary MCP 行的写入失败提示。 -->
+    <string name="oc_summary_mcp_toggle_failed">Could not change the MCP server</string>
+    <!-- A-6 `ServiceConfigLink`（`server-panel.tsx:440-480`）：移动端只做「复制配置路径」，缺失与复制成功的反馈。 -->
+    <string name="oc_summary_copy_config_path">Copy configuration file path</string>
+    <string name="oc_summary_config_missing">No configuration file found</string>
+    <string name="oc_summary_config_copied">Configuration path copied</string>
+
+    <!-- F-4 timeline comment cards (`ui/session/timeline/CommentCard`, upstream `message-content.tsx:194-198` `ui.common.showMore`): the bounded five-card disclosure. -->
+    <string name="oc_common_show_more">Show more</string>
+
+    <!-- A-1 markdown image (`ui/markdown/MarkdownImageView`, upstream `ui.imagePreview.alt` in `image-preview.tsx:11`): the accessibility label of an image whose markdown alt text is empty. -->
+    <string name="oc_markdown_image_description">Image</string>
+
+    <!-- v15 `@` 菜单的目录行（`ui/session/composer/MentionPopover`）：`/find/file` 把目录与文件返回成同一种裸路径，两类都落在 `Category.FILE`，目录行因此用这条文案作行标签与 content-desc（图标取 `ic_oc_folder`）。 -->
+    <string name="oc_composer_mention_directory">Directory</string>
+
+    <!-- v19 P2 超限救援（`ui/session/timeline/SessionErrorCard`）：把上下文灌过 1M 窗口后模型只回 `InvalidRequest`，会话卡死；卡片给两条可行动恢复，分别复用 `ChatViewModel.compactSession`（`POST /api/session/{id}/compact`）与 `undoSession`（`session/revert`）既有链路。 -->
+    <string name="oc_error_overflow_title">Context window exceeded</string>
+    <string name="oc_error_overflow_advice">This request went past the model\'s context window, so it was rejected. Compact the session, or undo this turn to drop it from the context.</string>
+    <string name="oc_error_overflow_compact">Compact session</string>
+    <string name="oc_error_overflow_revert">Undo this turn</string>
+    <!-- 压缩失败的落点（`ui/session/timeline/TimelineSeparator` 的 `COMPACTION_END`）：v19 截图里 compact 自身也因超限失败，却仍显示「Session compacted」。 -->
+    <string name="oc_compaction_failed">Session compaction failed</string>
+    <!-- 目录选择器浏览失败的分型文案（`ui/home/DirectoryPickerDialog.pickerFailureRes`）：连接失败 / 服务器无目录接口 / 请求被拒 / 目标不存在或无权限，四类不再混用「未连接到服务器」。 -->
+    <string name="oc_picker_error_unusable">Server is reachable but has no directory API</string>
+    <string name="oc_picker_error_request">The server refused to list this directory</string>
+    <string name="oc_picker_error_missing">This directory does not exist or is not readable</string>
 </resources>

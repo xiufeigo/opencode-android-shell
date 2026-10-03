@@ -52,10 +52,13 @@ suite, unused), upstream `build.gradle` files.
 | `TerminalRenderer.java` | + `getFontLineSpacingAndAscent()` — upstream kept that field package-private while its two siblings were public, so an outside caller could not reproduce the grid math | +12 |
 | `TerminalViewClient.java` | javadoc only: the `TerminalSession` parameter of `onKeyDown`/`onCodePoint` is always `null` in the remote form | javadoc |
 | `textselection/TextSelectionCursorController.java` | COPY called `terminalView.mTermSession.clipboardText(…)` → guaranteed NPE with no local session; now `terminalView.copyTextToClipboard(…)` | 1 line |
+| `textselection/TextSelectionCursorController.java` | `setInitialTextSelectionPosition` now delegates the press→range mapping to `TerminalSelectionPolicy` (word under the finger, else the line's content, else the nearest line with content) instead of expanding only the pressed word and giving up on whitespace, and the finger offset is one **rendered** row (`mRenderer.getFontLineSpacing()`) rather than upstream's hard-coded `-40 px`, which is more than a row at 14 sp | ~30 |
+| `textselection/TerminalSelectionPolicy.java` | **new**, pure (no Android imports, no buffer API): the word/line/nearest-line fallback rules above, so `:app`'s JVM tests can cover the behaviour a device cannot | new file |
 
 `TerminalEmulator`, `TerminalBuffer`, `TerminalRow`, `TextStyle`, `WcWidth`, `ByteQueue`,
 `KeyHandler`, `TerminalColors`, `TerminalColorScheme`, `TerminalOutput`, `TerminalSessionClient`,
-`GestureAndScaleRecognizer` and the rest of `textselection/` are **byte-identical to upstream**.
+`GestureAndScaleRecognizer` and the rest of `textselection/` are **byte-identical to upstream**
+(the one exception being the selection policy row above).
 
 ## Why only six substitution points
 

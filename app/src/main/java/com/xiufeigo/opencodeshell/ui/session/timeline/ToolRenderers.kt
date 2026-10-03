@@ -1,5 +1,7 @@
 package com.xiufeigo.opencodeshell.ui.session.timeline
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +36,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -104,7 +108,13 @@ internal object ToolRendererCopy {
     /** `oc_compaction_running` <- `ui.messagePart.compaction.running` (upstream snapshot lacks the literal). */
     const val COMPACTION_RUNNING = "Compacting..."
 
-    /** `oc_tool_error_card_failed` <- `ui.toolErrorCard.failed` ("Failed"). */
+    /**
+     * `ui.toolErrorCard.failed` ("Failed"). The Compose card reads the
+     * **resource** (`R.string.ui_toolErrorCard_failed`) so the head follows the
+     * locale; this literal is what the pure helpers default to
+     * (`ToolText.errorHeadDetail`) and what a JVM test can assert without a
+     * `Context`.
+     */
     const val FAILED = "Failed"
 
     /** `oc_question_answer_none` <- `ui.question.answer.none` ("(no answer)"). */
@@ -175,10 +185,181 @@ internal fun dedicatedCardTitle(toolName: String?): String? = when (toolName) {
 // -------------------------------------------------------------- error card
 
 /**
+ * One English failure phrase the app knows how to say in the UI locale: [phrase]
+ * is the text **exactly** as it arrives — the server side has to stay English
+ * whatever the locale, so it cannot be read off the dictionary, and the client's
+ * own sentences are the same fixed strings the view model writes — and [res] is
+ * the `error.server.*` value that replaces it.
+ *
+ * A phrase whose dynamic part sits at the end (`<path>`, a command line) keys on
+ * the static half alone: [ToolText.localizeServerPhrases] is a literal substring
+ * swap, so the interpolated tail survives untouched. One phrase carries its
+ * dynamic part *mid-sentence* (`Could not find oldString in <path>. It must
+ * match …`), which takes two entries — one per static fragment. The
+ * longest-first order applies the sentence tail before the head, and the path
+ * between them is left verbatim.
+ */
+internal data class ServerErrorPhrase(val phrase: String, @StringRes val res: Int)
+
+/**
+ * Every server-composed failure phrase this shell can name in its own language,
+ * each with the upstream call site that writes it. All of them are
+ * `message:` / `new Error(\`…\`)` strings under
+ * `_upstream/packages/core/src`, where the server composes the sentence itself
+ * and sends no key the client could translate — the phrase table is the only
+ * hook ([ToolText.localizeServerPhrases]).
+ *
+ * Kept to phrases a user actually meets: the shell's workdir/exit failures, the
+ * edit/write tool's rejections (the most frequent tool failures), the search
+ * tools' path validation, the fetch/search cancellations, and the fixed failure
+ * sentences the client itself raises (`ChatViewModel`'s `RunStatusChanged(ERROR,
+ * …)` — the connection verdicts and the Stop that never reached the server; it
+ * has no `res`, and they reach the same card). The same table serves both the
+ * tool error card and [SessionErrorCard]'s summary line.
+ */
+internal val SERVER_ERROR_PHRASES: List<ServerErrorPhrase> = listOf(
+    // `tool/plugin/shell.ts:143-149` — the shell tool's `workdir` validation
+    // (`Environment.typeFollowing` → `NotFound` / a non-directory), which is what
+    // the next prompt after a deleted project directory fails with (v32 BUG-1).
+    ServerErrorPhrase(
+        "Working directory does not exist",
+        R.string.error_server_workingDirectoryMissing,
+    ),
+    ServerErrorPhrase(
+        "Working directory is not a directory",
+        R.string.error_server_workingDirectoryNotDirectory,
+    ),
+    // `shell.ts:269` — the execute blanket's `Unable to execute command: <cmd>`.
+    ServerErrorPhrase(
+        "Unable to execute command",
+        R.string.error_server_unableToExecuteCommand,
+    ),
+    // `shell.ts:261-262` — a foreground job that died or was cancelled.
+    ServerErrorPhrase("Command failed", R.string.error_server_commandFailed),
+    ServerErrorPhrase("Command cancelled", R.string.error_server_commandCancelled),
+    // `tool/plugin/edit.ts:151-222` — the edit tool's rejections.
+    ServerErrorPhrase("File not found", R.string.error_server_fileNotFound),
+    ServerErrorPhrase(
+        "Path is a directory, not a file",
+        R.string.error_server_pathIsDirectoryNotFile,
+    ),
+    // `edit.ts:190-193`: `Could not find oldString in <path>. It must match …` —
+    // the head/tail pair around the interpolated path (see [ServerErrorPhrase]).
+    ServerErrorPhrase(
+        "Could not find oldString in",
+        R.string.error_server_oldStringNotFoundHead,
+    ),
+    ServerErrorPhrase(
+        ". It must match exactly, including whitespace and indentation.",
+        R.string.error_server_oldStringNotFoundTail,
+    ),
+    ServerErrorPhrase(
+        "No changes to apply: oldString and newString are identical.",
+        R.string.error_server_editNoChanges,
+    ),
+    // `edit.ts:156,222` / `tool/plugin/write.ts:95` — `Unable to {edit,write} <path>`.
+    ServerErrorPhrase("Unable to edit", R.string.error_server_unableToEdit),
+    ServerErrorPhrase("Unable to write", R.string.error_server_unableToWrite),
+    // `tool/plugin/glob.ts:84-89` + `grep.ts:106` — the search tools' path check.
+    ServerErrorPhrase("Search path does not exist", R.string.error_server_searchPathMissing),
+    ServerErrorPhrase(
+        "Search path is not a directory",
+        R.string.error_server_searchPathNotDirectory,
+    ),
+    // `tool/plugin/webfetch.ts:148` / `tool/plugin/websearch.ts:101-143`.
+    ServerErrorPhrase("Request timed out", R.string.error_server_requestTimedOut),
+    ServerErrorPhrase("Web search cancelled", R.string.error_server_webSearchCancelled),
+    // The client-authored half: the fixed failure sentences `ChatViewModel`
+    // raises as `RunStatusChanged(ERROR, …)` when it cannot reach the server at
+    // all. They arrive in exactly the same card — the VM has no `res`, and these
+    // are whole sentences rather than a server payload — so the same table is
+    // their only display hook, and one table keeps the two sources from drifting
+    // apart. What the store holds stays English (the copy payload, the retry
+    // matcher's text, `BannerPolicy`'s classifier).
+    ServerErrorPhrase(
+        "Not connected — this server needs a username/password (save it in Servers).",
+        R.string.error_server_notConnectedNeedsCredentials,
+    ),
+    ServerErrorPhrase(
+        "Not connected — the server rejected the saved credentials.",
+        R.string.error_server_notConnectedBadCredentials,
+    ),
+    ServerErrorPhrase(
+        "Not connected — the server did not answer.",
+        R.string.error_server_notConnectedNoAnswer,
+    ),
+    ServerErrorPhrase(
+        "Not connected — this build requires an OpenCode 2.x server.",
+        R.string.error_server_notConnectedNotV2,
+    ),
+    ServerErrorPhrase(
+        "Not connected — open the Terminal tab once to load the server config.",
+        R.string.error_server_notConnectedNoConfig,
+    ),
+    // `reportStopUndelivered`: a Stop the server refused, with the reason the
+    // transport reported interpolated between the two static halves (see
+    // [ServerErrorPhrase]).
+    ServerErrorPhrase(
+        "Stop did not reach the server (",
+        R.string.error_server_stopUndeliveredHead,
+    ),
+    ServerErrorPhrase(
+        ") — the turn may still be running.",
+        R.string.error_server_stopUndeliveredTail,
+    ),
+    // The Stop's *reason* slot, which the two halves above interpolate: v78's
+    // bounded acknowledgment can end a Stop with no answer at all
+    // (`ChatViewModel.STOP_NO_ANSWER`, measured emulator-5554), and a fixed
+    // client sentence in that slot is the one the translator can actually
+    // reach — an exception's own message (the other shape the slot carries)
+    // stays in whatever language the transport wrote it in.
+    ServerErrorPhrase(
+        "the server did not answer",
+        R.string.error_server_stopUndeliveredNoAnswer,
+    ),
+)
+
+/**
+ * [SERVER_ERROR_PHRASES] resolved for the current locale. Built once per locale
+ * change; an English locale maps a phrase onto itself, which
+ * [ToolText.localizeServerPhrases] skips.
+ */
+@Composable
+internal fun serverErrorPhrases(): Map<String, String> {
+    val values = ArrayList<String>(SERVER_ERROR_PHRASES.size)
+    for (entry in SERVER_ERROR_PHRASES) values.add(stringResource(entry.res))
+    return remember(values) {
+        val map = LinkedHashMap<String, String>(SERVER_ERROR_PHRASES.size)
+        SERVER_ERROR_PHRASES.forEachIndexed { index, entry -> map[entry.phrase] = values[index] }
+        map
+    }
+}
+
+/**
+ * [SERVER_ERROR_PHRASES] resolved from a [Resources] — the legacy `ChatView`
+ * banner's half of the same rule. It is a plain `View` (no composition), so it
+ * cannot call [serverErrorPhrases]; the values are the same resources, resolved
+ * against the context's own locale.
+ */
+internal fun serverErrorPhrases(resources: Resources): Map<String, String> {
+    val map = LinkedHashMap<String, String>(SERVER_ERROR_PHRASES.size)
+    for (entry in SERVER_ERROR_PHRASES) map[entry.phrase] = resources.getString(entry.res)
+    return map
+}
+
+/**
  * `ToolErrorCard` (`components/tool-error-card.tsx:22-164`): the trigger shows
  * the tool title + subtitle + the `": "`-split summary head in danger colour;
  * expanding reveals the detail with a copy button (2 s check feedback, copying
  * the `Error:`-stripped text). `defaultOpen` is false upstream (`:25`).
+ *
+ * v32 BUG-1: the displayed half (head, detail, expanded body) is passed through
+ * [ToolText.localizeServerPhrases] with [serverErrorPhrases] first, so a
+ * server-authored English failure reads in the UI locale; the copy payload
+ * stays the server's own text (see the `cleaned` note in the body). The
+ * subtitle comes from [ToolPresentation.subtitle] alone — never from the error
+ * line, which the head already carries (that double-render is the other half of
+ * the same bug).
  *
  * @param jumpTarget child-session id for the subagent jump affordance
  *   (`href`/`onSubtitleClick`, `:111-122`). **Null until wired** -- the store
@@ -195,14 +376,34 @@ fun ToolErrorCard(
 ) {
     val c = OcTheme.colors
     var expanded by rememberSaveable(part.id) { mutableStateOf(false) }
-    // `cleaned` (`:65`): the copy payload is the `Error:`-stripped text.
+    // `cleaned` (`:65`): the copy payload is the `Error:`-stripped text — the
+    // server's own words, kept verbatim so a bug report carries what the server
+    // actually said (upstream copies `cleaned()` too, `:83-88`).
     val cleaned = remember(part.toolError) {
         part.toolError.orEmpty().replaceFirst(Regex("^Error:\\s*"), "").trim()
     }
-    val (head, detail) = remember(cleaned, part.toolName) {
-        ToolText.errorHeadDetail(cleaned, part.toolName, fallback = ToolRendererCopy.FAILED)
+    // v32 BUG-1: the server writes its errors in English, so the *displayed*
+    // half of the card goes through the locale table first — the trigger's head
+    // and the expanded detail are both derived from this text, and the
+    // `": "` split has to run on the localized line or the head would stay
+    // English while the body changed language.
+    val phrases = serverErrorPhrases()
+    val shown = remember(cleaned, phrases) { ToolText.localizeServerPhrases(cleaned, phrases) }
+    // The head's own fallback is localized too: a failed tool with no error text
+    // used to print the English "Failed" on an otherwise Chinese row
+    // (`ui.toolErrorCard.failed` was already in the dictionaries). Hoisted into
+    // the key so a locale switch re-derives the head.
+    val failedLabel = stringResource(R.string.ui_toolErrorCard_failed)
+    val (head, detail) = remember(shown, part.toolName, failedLabel) {
+        ToolText.errorHeadDetail(shown, part.toolName, fallback = failedLabel)
     }
-    val subtitle = ToolPresentation.subtitle(part, stringResource(R.string.oc_tool_error))
+    // A single-line error has no `": "` remainder (`detail` is empty), so a
+    // `detail`-only body expanded to a blank card. The body carries the human
+    // line too (mirroring `errorCardBody`'s merge), and the trigger is only
+    // expandable while there is an error to show — expandable ⇒ non-empty.
+    val fullBody = remember(head, detail) { toolErrorBody(head, detail) }
+    val expandable = cleaned.isNotEmpty()
+    val subtitle = ToolPresentation.subtitle(part)
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
 
@@ -212,11 +413,12 @@ fun ToolErrorCard(
             subtitle = subtitle,
             head = head,
             expanded = expanded,
+            expandable = expandable,
             onToggle = { expanded = !expanded },
             jumpTarget = jumpTarget,
             onJumpToSession = onJumpToSession,
         )
-        if (expanded && detail.isNotEmpty()) {
+        if (expanded && fullBody.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -225,14 +427,19 @@ fun ToolErrorCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        // Provider errors/stack traces can arrive as one huge
+                        // wall: cap the viewport like ShellBody/ToolBody or a
+                        // measure pass on the full detail janks the frame.
+                        .heightIn(max = TOOL_BODY_MAX_HEIGHT)
                         .clip(OcTheme.shapes.md)
                         .background(c.bgBase)
                         .border(0.5.dp, c.borderBase, OcTheme.shapes.md)
+                        .verticalScroll(rememberScrollState())
                         .padding(12.dp),
                 ) {
                     SelectionContainer {
                         Text(
-                            text = detail,
+                            text = fullBody,
                             color = c.textBase,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp,
@@ -268,13 +475,15 @@ private fun ErrorTriggerRow(
     jumpTarget: String?,
     onJumpToSession: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** False while there is no error text to expand into (mirrors the question card's gate). */
+    expandable: Boolean = true,
 ) {
     val c = OcTheme.colors
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(28.dp)
-            .clickable(role = Role.Button, onClick = onToggle),
+            .clickable(enabled = expandable, role = Role.Button, onClick = onToggle),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -346,16 +555,20 @@ internal fun CopyButton(
         kotlinx.coroutines.delay(2_000L)
         onCopiedConsumed()
     }
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // clickable Box, not the `Icon` inside it.
+    val label = if (copied) copiedDescription else copyDescription
     Box(
         modifier = modifier
             .size(24.dp)
             .clip(OcTheme.shapes.md)
-            .clickable(role = Role.Button, onClick = onCopy),
+            .clickable(role = Role.Button, onClick = onCopy)
+            .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(if (copied) R.drawable.ic_oc_check else R.drawable.ic_oc_copy),
-            contentDescription = if (copied) copiedDescription else copyDescription,
+            contentDescription = null,
             tint = c.iconMuted,
             modifier = Modifier.size(14.dp),
         )
@@ -363,6 +576,19 @@ internal fun CopyButton(
 }
 
 // ---------------------------------------------------------------- shell
+
+/**
+ * Expanded body of [ToolErrorCard]: the human summary line plus the `": "`-split
+ * remainder, de-duplicated when they match. Mirrors `errorCardBody` (blank
+ * halves dropped, segments joined): a single-line error has an empty `detail`,
+ * so a `detail`-only body expanded to a blank card — with the line merged in,
+ * an expandable trigger always has something to show.
+ */
+internal fun toolErrorBody(head: String, detail: String): String =
+    listOf(head.trim(), detail.trim())
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .joinToString("\n\n")
 
 /**
  * Shell/execute body (`ConsoleOutput`, `tool-renderer.tsx:1680-1718`): the
@@ -384,17 +610,30 @@ fun ShellBody(
     val c = OcTheme.colors
     val input = remember(part.toolInput) { ToolPresentation.parseObject(part.toolInput) }
     val command = remember(input) {
-        input?.optString("command", "").orEmpty()
-            .ifEmpty { input?.optString("code", "").orEmpty() }
+        input?.optStringOrNull("command").orEmpty()
+            .ifEmpty { input?.optStringOrNull("code").orEmpty() }
     }
     val snapshot = remember(part.toolOutput) { ToolText.shellOutput(part.toolOutput) }
     val running = part.toolStatus == "streaming" || part.toolStatus == "running"
     val output = if (running && liveOutput != null) ToolText.shellOutput(liveOutput) else snapshot
+    // U-4 fold threshold: the live tail stays visible while the command runs;
+    // a settled output longer than OUTPUT_FOLD_LINES renders the head plus an
+    // expander below the surface (the 240 px cap stays as the second limit).
+    val outLines = remember(output) { ToolPresentation.splitLines(output) }
+    val long = remember(outLines, running) { !running && TimelineFold.isLongBody(outLines.size) }
+    var showAll by rememberSaveable(part.id, "shell-more") { mutableStateOf(false) }
+    val visibleOutput = if (long && !showAll) {
+        outLines.take(TimelineFold.OUTPUT_FOLD_LINES).joinToString("\n")
+    } else {
+        output
+    }
+    val hidden = if (long && !showAll) outLines.size - TimelineFold.OUTPUT_FOLD_LINES else 0
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
 
+    Column(modifier = modifier.fillMaxWidth()) {
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
             .heightIn(max = TOOL_BODY_MAX_HEIGHT)
@@ -419,10 +658,10 @@ fun ShellBody(
                             lineHeight = 16.sp,
                         )
                     }
-                    if (output.isNotEmpty()) {
+                    if (visibleOutput.isNotEmpty()) {
                         if (command.isNotEmpty()) Spacer(Modifier.height(8.dp))
                         Text(
-                            text = output,
+                            text = visibleOutput,
                             color = c.textMuted,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp,
@@ -445,6 +684,15 @@ fun ShellBody(
                     }
                 },
                 onCopiedConsumed = { copied = false },
+            )
+        }
+    }
+        if (long) {
+            FoldToggleRow(
+                hiddenLines = hidden,
+                expanded = showAll,
+                onToggle = { showAll = it },
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp),
             )
         }
     }
@@ -475,14 +723,14 @@ fun SubagentCard(
     val c = OcTheme.colors
     val input = remember(part.toolInput) { ToolPresentation.parseObject(part.toolInput) }
     val rawAgent = remember(input, part.toolName) {
-        input?.optString("agent", "").orEmpty().ifEmpty { part.toolName }
+        input?.optStringOrNull("agent").orEmpty().ifEmpty { part.toolName }
     }
     val title = ToolModels.agentLabel(rawAgent)
         ?: stringResource(R.string.oc_step_agent)
     val tone = agentTone(rawAgent, c)
     val subtitle = remember(input, childSessionId, background) {
         ToolModels.subagentSubtitle(
-            description = input?.optString("description", "").orEmpty().takeIf { it.isNotEmpty() },
+            description = input?.optStringOrNull("description"),
             sessionId = childSessionId,
             background = background,
         )
@@ -524,7 +772,10 @@ fun SubagentCard(
             .height(28.dp)
             .clickable(enabled = clickable, role = Role.Button) {
                 childSessionId?.let(onJumpToSession)
-            },
+            }
+            // The label rides the clickable Row, not the chevron `Icon` inside it:
+            // only the node carrying ACTION_CLICK is announced as a button.
+            .semantics { contentDescription = ToolRendererCopy.OPEN_SESSION },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (running) {
@@ -563,7 +814,7 @@ fun SubagentCard(
             Spacer(Modifier.width(6.dp))
             Icon(
                 painter = painterResource(R.drawable.ic_oc_chevron_down),
-                contentDescription = ToolRendererCopy.OPEN_SESSION,
+                contentDescription = null,
                 tint = c.textFaint,
                 modifier = Modifier.size(16.dp),
             )
@@ -632,7 +883,7 @@ fun QuestionCard(
         buildList {
             for (i in 0 until arr.length()) {
                 val item = arr.optJSONObject(i) ?: continue
-                val q = item.optString("question", "")
+                val q = item.optStringOrNull("question").orEmpty()
                 if (q.isNotEmpty()) add(q)
             }
         }
@@ -898,7 +1149,13 @@ fun WebLinksBlock(
  *
  * @param running upstream's `status === "running"` shimmer (`compaction.running`).
  * @param error upstream's failed-status error card text (null = no error row).
- *   Both are caller-driven hooks: the store keeps no compaction status/error.
+ *   Both are driven by the part's own settled status through the store's one
+ *   reader ([ChatStore.compactionStatusOf]) — the caller passes
+ *   [ChatStore.compactionRunning] / [ChatStore.compactionErrorOf] — so the live
+ *   `session.compaction.*` row and the durable `type=compaction` message row
+ *   behave the same. A failed compaction must not render the "Session
+ *   compacted" fallback label, which is what the v19 and v21 over-limit sessions
+ *   showed for a compaction that had just been rejected.
  */
 @Composable
 fun CompactionBlock(
@@ -909,8 +1166,11 @@ fun CompactionBlock(
 ) {
     val c = OcTheme.colors
     val model = remember(part.id, part.text) { ToolModels.compaction(part) }
+    // A failed compaction's `part.text` is its readable error line
+    // (`V2EventAdapter` fills it from the frame's `error`), not a summary:
+    // rendering it as markdown *and* as the error row would print it twice.
+    val summary = model.summary?.takeIf { error == null }
     Column(modifier = modifier.fillMaxWidth()) {
-        val summary = model.summary
         if (summary != null) {
             OcMarkdown(
                 markdown = summary,
@@ -921,7 +1181,7 @@ fun CompactionBlock(
             )
         } else {
             Text(
-                text = stringResource(R.string.oc_compaction),
+                text = stringResource(compactionLabelRes(part)),
                 color = c.textFaint,
                 fontSize = 12.sp,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -941,28 +1201,72 @@ fun CompactionBlock(
                 )
             }
         }
-        if (!error.isNullOrEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .clip(OcTheme.shapes.md)
-                    .background(c.layer01)
-                    .border(0.5.dp, c.borderBase, OcTheme.shapes.md)
-                    .padding(12.dp),
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = error,
-                        color = c.stateDangerFg,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                    )
-                }
-            }
+        if (!error.isNullOrEmpty()) CompactionErrorDetail(part = part, error = error)
+    }
+}
+
+/**
+ * The rejected compaction's own line (`SessionCompactionMessage`'s error card,
+ * `message-content.tsx:466-470`) — the evidence for the failure. Shown whole
+ * for a short line; a provider wall (the v21 rejection was a multi-line
+ * `provider.invalid-request` 400 body) is clamped to one line with a tap to
+ * expand, the same trigger/body split `ToolErrorCard` uses. Selection stays
+ * available either way.
+ */
+@Composable
+private fun CompactionErrorDetail(part: ChatStore.UiPart, error: String) {
+    val c = OcTheme.colors
+    var expanded by rememberSaveable(part.id) { mutableStateOf(false) }
+    val clamp = !expanded && error.length > COMPACTION_ERROR_CLAMP
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clip(OcTheme.shapes.md)
+            .background(c.layer01)
+            .border(0.5.dp, c.borderBase, OcTheme.shapes.md)
+            .padding(12.dp)
+            // Last in the chain so the whole card — padding included — is the
+            // tap target; a one-line clamp would otherwise leave a 20 dp strip.
+            .then(
+                if (error.length > COMPACTION_ERROR_CLAMP) {
+                    Modifier.clickable(role = Role.Button) { expanded = !expanded }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
+        SelectionContainer {
+            Text(
+                text = error,
+                color = c.stateDangerFg,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                maxLines = if (clamp) 1 else Int.MAX_VALUE,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
+
+/**
+ * The outcome label of a compaction part — the one chooser both places that
+ * show it use (this block's fallback line and `TimelineSeparatorRow`'s
+ * `COMPACTION_END` divider), so one compaction can never read as completed in
+ * one place and rejected in the other. The decision itself is the store's
+ * ([ChatStore.compactionFailed]); this only maps it to the copy.
+ */
+@StringRes
+internal fun compactionLabelRes(part: ChatStore.UiPart): Int =
+    compactionLabelRes(ChatStore.compactionFailed(part))
+
+/** [compactionLabelRes] for a caller that already carries the decision (`TimelineRows.Row.Separator.failed`). */
+@StringRes
+internal fun compactionLabelRes(failed: Boolean): Int =
+    if (failed) R.string.oc_compaction_failed else R.string.oc_compaction
+
+/** Above this the failure detail is clamped to one line until tapped. */
+private const val COMPACTION_ERROR_CLAMP = 160
 
 // ------------------------------------------------------------ diagnostics
 

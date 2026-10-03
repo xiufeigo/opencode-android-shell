@@ -44,6 +44,7 @@
     <string name="oc_cursor">▍</string>
     <string name="oc_compaction">工作階段已壓縮</string>
     <string name="oc_composer_placeholder">隨便問點什麼，/ 檢視命令，@ 新增上下文…</string>
+    <string name="oc_composer_send_newline">長按換行</string>
     <string name="oc_timeline_empty">實現任何想法</string>
     <string name="oc_back">返回</string>
 
@@ -51,6 +52,18 @@
     <string name="oc_more_options">更多選項</string>
     <string name="oc_rename_session">重新命名</string>
     <string name="oc_delete_session">刪除</string>
+
+    <!-- v44 tC（P0「刪除靜默無效」，research/v44_verify/tC/v44_49_delete_confirm.png）：
+         Home 的「刪除」/「重新命名」報告伺服器答覆。刪除失敗時確認視窗保留，
+         同一個「刪除」可以直接重試。 -->
+    <string name="oc_delete_session_failed">未刪除——伺服器沒有確認。請檢查連線後重試。</string>
+    <string name="oc_rename_session_failed">未重新命名——伺服器沒有確認。請檢查連線後重試。</string>
+    <!-- v81 P1（5556，伺服器日誌 `07:04:47.171 PATCH … http.status=500`）：PATCH 被伺服器
+         自己拒絕——該工作階段的專案目錄（`/mnt/c/x`）在伺服器主機上不存在，其全部帶位置
+         的路由都回傳 500。這既不是連線問題，也不是重試能贏的，所以單獨給一條文案。 -->
+    <string name="oc_rename_session_refused">未重新命名——伺服器對該工作階段回傳了錯誤。它的專案目錄在伺服器上可能無法使用。</string>
+    <!-- v81 P1/P2：404 的那一半——伺服器已完全沒有該工作階段，項目直接移除，不再讓使用者重試。 -->
+    <string name="oc_rename_session_gone">該工作階段在伺服器上已不存在，其項目已被移除。</string>
     <!--
       W6：⋮ 選單的工作階段操作。項目與提示沿用 `strings_oc_i18n.xml` 中既有的
       上游 key（`command_session_undo` / `_redo` / `_fork` / `_share` /
@@ -104,7 +117,7 @@
     <!-- Settings dialog -->
     <string name="oc_settings_title">設定</string>
     <string name="oc_settings_close">關閉</string>
-    <string name="oc_settings_app_name">OpenCode 桌面版</string>
+    <string name="oc_settings_app_name">OpenCode 安卓版</string>
     <string name="oc_setting_section_desktop">桌面</string>
     <string name="oc_setting_section_server">伺服器</string>
     <string name="oc_setting_tab_general">一般</string>
@@ -188,7 +201,7 @@
     <string name="oc_servers_menu_default">設為預設</string>
     <string name="oc_servers_menu_delete">刪除</string>
     <string name="oc_server_address">伺服器位址</string>
-    <string name="oc_server_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_server_url_placeholder">http://10.0.2.2:4095</string>
     <string name="oc_server_name">伺服器名稱（選填）</string>
     <string name="oc_server_name_placeholder">本機伺服器</string>
     <string name="oc_server_username">使用者名稱（選填）</string>
@@ -199,7 +212,7 @@
     <string name="oc_server_error_connect">無法連線伺服器</string>
     <string name="oc_server_error_auth">伺服器需要驗證，請輸入使用者名稱與密碼。</string>
     <string name="oc_server_error_cors">無法連線。如果該位址在瀏覽器中可存取，請檢查使用者名稱/密碼。Android 原生代理 API 請求，不需要伺服器設定 CORS。</string>
-    <string name="oc_server_cors_hint">請輸入真實後端位址（例如 https://backend.example.com）。模擬器連接主機可用 10.0.2.2；若不通，執行 adb reverse tcp:4096 tcp:4096 後改用 http://127.0.0.1:4096（USB 裝置同樣適用）；Wi-Fi 裝置請使用電腦區域網路 IP。Android 原生代理 API/SSE，不需要 CORS。</string>
+    <string name="oc_server_cors_hint">請輸入真實後端位址（例如 https://backend.example.com）。模擬器連接主機可用 10.0.2.2；若不通，執行 adb reverse tcp:4095 tcp:4095 後改用 http://127.0.0.1:4095（USB 裝置同樣適用）；Wi-Fi 裝置請使用電腦區域網路 IP。Android 原生代理 API/SSE，不需要 CORS。</string>
     <string name="oc_common_cancel">取消</string>
     <string name="oc_common_save">儲存</string>
     <string name="oc_common_loading">載入中</string>
@@ -257,6 +270,8 @@
     <!-- command.project.open（zht.ts:128）、common.close（zht.ts:806）。 -->
     <string name="oc_command_project_open">開啟專案</string>
     <string name="oc_home_project_close">關閉</string>
+    <string name="oc_home_project_close_title">關閉專案？</string>
+    <string name="oc_home_project_close_message">「%1$s」將從此清單中移除。專案及其工作階段仍保留在伺服器上，不會刪除任何內容。</string>
     <string name="oc_home_sessions">最近工作階段</string>
     <string name="oc_home_search">搜尋工作階段</string>
     <!-- `home.sessions.search.placeholder.scoped` (`runtime/i18n/zht.ts:700`). -->
@@ -269,6 +284,7 @@
     <string name="oc_home_group_older">更早</string>
     <string name="oc_home_empty">這裡還沒有內容</string>
     <string name="oc_home_empty_description">建立一個工作階段以開始</string>
+    <string name="oc_home_sessions_load_failed">無法載入工作階段</string>
     <string name="oc_home_settings">設定</string>
     <string name="oc_home_help">說明</string>
     <string name="oc_home_tab_close">關閉分頁</string>
@@ -283,17 +299,84 @@
     <string name="oc_newsession_project_new">新專案</string>
     <string name="oc_newsession_default_directory">預設目錄（伺服器工作目錄）</string>
     <string name="oc_newsession_create_failed">建立工作階段失敗</string>
+    <!-- 新增工作階段的工作區選擇器（上游 `session.new.workspace.*`） -->
+    <string name="oc_new_session_create">建立工作階段</string>
+    <string name="oc_new_session_workspace_run_in">工作階段執行在</string>
+    <string name="oc_new_session_workspace_local">本機儲存庫</string>
+    <string name="oc_new_session_workspace_trigger_local">本機</string>
+    <string name="oc_new_session_workspace_search_placeholder">搜尋工作樹</string>
+    <string name="oc_new_session_workspace_search_empty">沒有符合的工作樹</string>
+    <string name="oc_new_session_workspace_empty">此伺服器上沒有工作樹</string>
+    <string name="oc_new_session_worktree_delete">刪除工作樹</string>
+    <string name="oc_new_session_worktree_delete_title">刪除此工作樹？</string>
+    <string name="oc_new_session_worktree_delete_message">%1$s 及其分支將被永久刪除。</string>
+    <string name="oc_new_session_worktree_delete_failed">無法刪除該工作樹：%1$s</string>
+    <string name="oc_new_session_worktree_delete_no_project">此伺服器上沒有任何專案擁有該工作樹</string>
+    <string name="oc_new_session_workspace_tooltip">選擇工作階段執行位置</string>
     <string name="oc_home_projects_choose_title">選擇專案目錄</string>
     <string name="oc_home_projects_select_directory">選擇此目錄</string>
-    <string name="oc_home_projects_parent">上層目錄</string>
+    <!-- v49 tD_59→61: the footer confirm's armed-stage label (see
+         `pickerConfirmLabelRes`) — the second tap that submits. -->
+    <string name="oc_home_projects_confirm_directory">確認選擇此目錄</string>
+    <string name="oc_home_projects_parent">上層</string>
+    <string name="oc_home_projects_root">根目錄</string>
+    <string name="oc_home_projects_home">主目錄</string>
+    <string name="oc_home_projects_load_failed">無法載入此目錄</string>
+    <string name="oc_home_projects_path_hint">輸入路徑或搜尋目錄</string>
+    <string name="oc_home_projects_escape_hint">此伺服器只允許瀏覽服務啟動目錄及其子目錄。你仍可在上方直接輸入任意路徑並選擇。</string>
     <string name="oc_home_projects_empty_dir">此目錄下沒有子目錄</string>
     <string name="oc_home_projects_loading">載入中…</string>
+
+    <!-- 目錄寫入 / 目錄詳情入口（上游 dialog.project.edit.* / project.settings.* /
+         settings agents / debug.location / 外掛程式 RPC）。三語 key 對齊。 -->
+    <string name="oc_home_project_edit">編輯專案</string>
+    <string name="oc_home_project_edit_name">專案名稱</string>
+    <string name="oc_home_project_edit_color">顏色</string>
+    <string name="oc_home_project_edit_color_none">無</string>
+    <string name="oc_home_project_edit_color_select">選擇%1$s顏色</string>
+    <string name="oc_home_project_edit_icon_pick">選擇圖片</string>
+    <string name="oc_home_project_edit_icon_clear">清除圖片</string>
+    <string name="oc_home_project_edit_icon_failed">無法讀取該圖片</string>
+    <string name="oc_home_project_edit_startup">工作區啟動腳本</string>
+    <string name="oc_home_project_edit_startup_placeholder">例如 bun install</string>
+    <string name="oc_home_project_edit_startup_hint">建立新工作區 (worktree) 後執行一次。</string>
+    <string name="oc_home_project_edit_startup_hint_base">用 $OPENCODE_WORKTREE_BASE 代表基底工作區。</string>
+    <string name="oc_home_project_edit_startup_hint_new">用 $OPENCODE_WORKTREE_PATH 代表新建的工作區。</string>
+    <string name="oc_home_project_edit_saved">專案已儲存</string>
+    <string name="oc_home_project_edit_load_failed">無法載入該專案</string>
+    <string name="oc_home_project_edit_missing">該專案未在伺服器註冊</string>
+    <string name="oc_home_project_refresh_worktrees">重新整理工作區</string>
+    <string name="oc_home_project_worktrees_refreshed">工作區已重新整理</string>
+    <string name="oc_home_project_edit_save_failed">儲存失敗：%1$s</string>
+    <string name="oc_home_project_worktrees_refresh_failed">重新整理工作區失敗：%1$s</string>
+    <string name="oc_home_no_server">未連接到伺服器</string>
+    <string name="oc_home_create_session_timeout">建立工作階段逾時</string>
+    <string name="oc_palette_agent_details">檢視 agent 詳細資料</string>
+    <string name="oc_palette_agent_details_title">Agent 詳細資料</string>
+    <string name="oc_palette_agent_empty">該伺服器沒有代理</string>
+    <string name="oc_palette_agent_system">系統提示詞</string>
+    <string name="oc_palette_debug_locations">偵錯位置</string>
+    <string name="oc_palette_debug_locations_title">偵錯位置</string>
+    <string name="oc_palette_debug_locations_empty">沒有已載入的位置</string>
+    <string name="oc_palette_debug_locations_evict">清除</string>
+    <string name="oc_palette_debug_locations_evicted">位置已清除</string>
+    <string name="oc_palette_plugin_rpc">呼叫外掛程式 RPC</string>
+    <string name="oc_palette_rpc_title">呼叫外掛程式 RPC</string>
+    <string name="oc_palette_rpc_id">RPC id</string>
+    <string name="oc_palette_rpc_method">方法</string>
+    <string name="oc_palette_rpc_input">輸入（JSON）</string>
+    <string name="oc_palette_rpc_call">呼叫</string>
+    <string name="oc_palette_rpc_invalid_input">輸入必須是合法 JSON</string>
+    <string name="oc_palette_rpc_output">輸出</string>
 
     <!-- Terminal -->
     <string name="oc_terminal_title">終端</string>
     <string name="oc_terminal_title_numbered">終端 %1$d</string>
     <string name="oc_terminal_new">新增終端</string>
     <string name="oc_terminal_close">關閉終端</string>
+    <string name="oc_terminal_cwd_stale">舊目錄</string>
+    <string name="oc_terminal_move_left">將分頁左移</string>
+    <string name="oc_terminal_move_right">將分頁右移</string>
     <string name="oc_terminal_loading">正在載入終端…</string>
     <string name="oc_terminal_connection_lost">連線已中斷</string>
     <string name="oc_terminal_abnormal_close">WebSocket 異常關閉：%1$d</string>
@@ -307,6 +390,23 @@
     <string name="oc_terminal_server_missing">尚未設定伺服器。請在 設定 → 伺服器 中新增。</string>
     <string name="oc_terminal_kernel_pending">VT 核心尚未接線，此槽位顯示原始 PTY 資料鏈路。</string>
     <string name="oc_terminal_raw_output">原始 PTY 輸出（尾部）</string>
+    <string name="oc_terminal_shells_title">背景 Shell</string>
+    <string name="oc_terminal_shells_empty">沒有 Shell 指令</string>
+    <string name="oc_terminal_shell_output_title">Shell 輸出</string>
+    <string name="oc_terminal_shell_kill">終止</string>
+    <string name="oc_terminal_shell_omitted">較早的輸出已省略 · 僅顯示最近輸出</string>
+    <string name="oc_terminal_shell_empty_output">沒有擷取到輸出。</string>
+    <string name="oc_terminal_shell_load_failed">無法讀取 Shell 輸出，正在重試…</string>
+    <string name="oc_terminal_shell_status_running">執行中</string>
+    <string name="oc_terminal_shell_status_exited">已結束</string>
+    <string name="oc_terminal_shell_status_timeout">已逾時</string>
+    <string name="oc_terminal_shell_status_killed">已終止</string>
+    <string name="oc_terminal_shell_exit_code">已結束 · 結束碼 %1$d</string>
+    <string name="oc_terminal_session_terminals">工作階段終端</string>
+    <string name="oc_terminal_session_terminals_empty">沒有工作階段終端</string>
+    <string name="oc_terminal_session_terminal_new">新增工作階段終端</string>
+    <string name="oc_terminal_session_create_failed">無法建立工作階段終端。</string>
+    <string name="oc_terminal_session_shutdown">關閉持久終端服務</string>
 
     <!-- 權限確認 dock（`SessionPermissionDock`）：上游 `notification.permission.title` / `ui.permission.*` / `settings.permissions.tool.*.description` -->
     <string name="oc_permission_title">需要權限</string>
@@ -371,9 +471,18 @@
     <string name="oc_review_resize_handle">拖曳可調整評審面板寬度，按兩下還原預設</string>
     <string name="oc_review_truncated_rows">… 已顯示 %1$d / %2$d 行差異</string>
 
-    <!-- B2 工作階段內容分頁（`ui/session/context`）：上游 `SessionContextTab` 的 16 項 `context.stats.*`、系統提示詞與原始訊息。 -->
+    <!-- 富檔案檢視器（`ui/session/review`，前綴 `oc_file_view_`，只追加）。上游 `file.view.*` / `session.files.*` / `session.header.open*`。 -->
+    <string name="oc_file_view_preview">預覽</string>
+    <string name="oc_file_view_source">原始碼</string>
+    <string name="oc_file_view_all_files">全部檔案</string>
+    <string name="oc_file_view_open_in_app">用其他應用程式開啟</string>
+    <string name="oc_file_view_copy_path">複製路徑</string>
+    <string name="oc_file_view_open_tabs">已開啟的分頁</string>
+    <string name="oc_file_view_table_truncated">… 已顯示 %1$d / %2$d 列</string>
+
+    <!-- B2 工作階段內容分頁（`ui/session/context`）：上游 `SessionContextTab` 的 16 項 `context.stats.*`、系統提示詞與原始訊息。「訊息數」= 上游 `counts().all`，即訊息清單的全部幀（含系統幀），不等於使用者 + 助手計數（真機 v20：Messages 17 對 User 1 / Assistant 8），故標籤寫明口徑。 -->
     <string name="oc_context_stats_session">工作階段</string>
-    <string name="oc_context_stats_messages">訊息數</string>
+    <string name="oc_context_stats_messages">訊息數（全部幀）</string>
     <string name="oc_context_stats_provider">提供者</string>
     <string name="oc_context_stats_model">模型</string>
     <string name="oc_context_stats_limit">上下文限制</string>
@@ -417,6 +526,9 @@
     </plurals>
     <string name="oc_step_agent">代理程式</string>
     <string name="oc_step_agent_changed">代理程式已切換</string>
+    <string name="oc_step_model_changed">模型已切換</string>
+    <string name="oc_step_location_changed">位置已切換</string>
+    <string name="oc_tool_skill">技能</string>
     <string name="oc_step_retrying">重試中</string>
     <string name="oc_step_retry_attempt">第 %1$d 次</string>
 
@@ -522,6 +634,9 @@
     <string name="oc_attach_preview_close">關閉預覽</string>
     <string name="oc_attach_uploading">正在讀取附件…</string>
     <string name="oc_attach_cancel">取消</string>
+    <!-- `composer/dropzone.tsx` `ui.promptInput.dropFiles`（image/pdf 變體依賴
+         `capabilities.input`，本 composer 尚未接入）。 -->
+    <string name="oc_composer_drop_files">拖放檔案以附加</string>
 
     <!--
       Wave 5-E1 首次啟動連線頁 + W5-D3 伺服器健康三態。
@@ -532,7 +647,7 @@
     <string name="oc_connect_title">連線到伺服器</string>
     <string name="oc_connect_description">輸入伺服器位址與密碼即可開始使用。</string>
     <string name="oc_connect_url_label">伺服器位址</string>
-    <string name="oc_connect_url_placeholder">http://10.0.2.2:4096</string>
+    <string name="oc_connect_url_placeholder">http://10.0.2.2:4095</string>
     <string name="oc_connect_password_label">密碼</string>
     <string name="oc_connect_button">連線</string>
     <string name="oc_connect_checking">檢查中…</string>
@@ -544,6 +659,52 @@
     <string name="oc_connect_error_unhealthy">伺服器有回應，但回報狀態不健康。</string>
     <string name="oc_connect_error_invalid_response">有服務回應，但它不是 OpenCode 伺服器。</string>
     <string name="oc_connect_error_status">伺服器回應 HTTP %1$s。</string>
+    <string name="oc_connect_scan_unavailable">本機沒有可用的 QR 碼掃描應用程式。請手動輸入連線資訊。</string>
+    <!-- 設定 · 配對頁（上游 `settings/pairing/pairing.tsx`；配對碼文字 + QR 渲染 + 系統掃描/相簿解碼） -->
+    <string name="oc_setting_tab_pairing">配對</string>
+    <string name="oc_pair_description">將另一台裝置連接到這台機器的 OpenCode 伺服器。</string>
+    <string name="oc_pair_connection">本機網路</string>
+    <string name="oc_pair_local_description">檢視連線資訊與 QR 碼，讓同一網路的裝置接入。</string>
+    <string name="oc_pair_unavailable">未連接伺服器，暫無配對資訊</string>
+    <string name="oc_pair_copy">複製連線資訊</string>
+    <string name="oc_pair_qr">配對 QR 碼</string>
+    <string name="oc_pair_qr_todo">配對 QR 碼將在後續版本提供</string>
+    <string name="oc_pair_scan">掃描 QR 碼</string>
+    <string name="oc_pair_scan_soon">相機掃描將在後續版本提供</string>
+    <string name="oc_pair_scan_description">將相機對準 opencode pair 顯示的 QR 碼。</string>
+    <string name="oc_pair_scan_unavailable">本機沒有可用的 QR 碼掃描應用程式。請手動輸入配對碼。</string>
+    <string name="oc_pair_scan_photo">從相簿掃碼</string>
+    <string name="oc_pair_scan_photo_description">選擇配對 QR 碼的圖片或截圖。</string>
+    <string name="oc_pair_scan_photo_failed">這張圖片裡沒有找到 QR 碼，請換一張。</string>
+    <string name="oc_pair_manual_title">輸入配對碼</string>
+    <string name="oc_pair_manual_description">貼上 opencode pair 顯示的配對碼以檢視連線資訊。</string>
+    <string name="oc_pair_manual_placeholder">配對碼</string>
+    <string name="oc_pair_invalid">這不是 OpenCode 配對碼。請使用 opencode pair 顯示的配對碼。</string>
+    <string name="oc_pair_manual_result">伺服器位址 %1$s</string>
+    <string name="oc_pair_manual_password">已包含密碼</string>
+
+    <!-- SSH 連線表單 + 通道（`ui/servers/SshDialog.kt`、`SshConnection.kt`；本地連接埠轉發遠端 opencode serve） -->
+    <string name="oc_ssh_title">新增 SSH 伺服器</string>
+    <string name="oc_ssh_target_label">主機或 SSH 指令</string>
+    <string name="oc_ssh_target_placeholder">ssh user@example.com</string>
+    <string name="oc_ssh_auth_label">驗證方式</string>
+    <string name="oc_ssh_auth_key">私鑰</string>
+    <string name="oc_ssh_key_path_label">金鑰檔案路徑</string>
+    <string name="oc_ssh_key_path_placeholder">~/.ssh/id_ed25519</string>
+    <string name="oc_ssh_passphrase_label">密語（選填）</string>
+    <string name="oc_ssh_error_input">請輸入主機或 SSH 指令。不允許遠端指令和不受支援的 SSH 選項。</string>
+    <string name="oc_ssh_error_password_required">請輸入此連線的密碼。</string>
+    <string name="oc_ssh_error_key_required">請輸入私鑰檔案路徑。</string>
+    <!-- F14a: Android-only error code (`SshErrorCode.KEY_FILE`) — the key file
+         cannot be read. Upstream has no such literal, so this is a hand-written
+         resource, NOT part of the generated `strings_oc_i18n.xml` family. -->
+    <string name="ssh_error_key_file">無法讀取私鑰檔案，請檢查路徑與讀取權限。</string>
+    <string name="oc_ssh_host_key_title">確認主機身分</string>
+    <string name="oc_ssh_fingerprint_md5">MD5 指紋</string>
+    <string name="oc_ssh_fingerprint_sha256">SHA256 指紋</string>
+    <string name="oc_ssh_host_key_hint">僅在指紋一致時信任此主機。</string>
+    <string name="oc_ssh_latency_label">延遲</string>
+    <string name="oc_ssh_last_handshake_label">上次交握</string>
     <string name="oc_health_healthy">伺服器正常</string>
     <string name="oc_health_unhealthy">伺服器無法連線</string>
     <string name="oc_health_unknown">伺服器健康狀態未知</string>
@@ -595,8 +756,10 @@
     <string name="oc_settings_extensions_description">管理此伺服器上可用的擴充功能</string>
     <string name="oc_settings_mcp_section">MCP 伺服器</string>
     <string name="oc_settings_mcp_empty">未設定 MCP 伺服器</string>
+    <string name="oc_settings_mcp_unsupported">此伺服器不支援切換 MCP 伺服器</string>
     <string name="oc_settings_skills_section">技能</string>
     <string name="oc_settings_skills_empty">沒有可用的技能</string>
+    <string name="oc_settings_plugins_empty">此伺服器上沒有外掛程式</string>
 
     <!-- 唯讀頁面狀態 -->
     <string name="oc_settings_page_reload">重新載入</string>
@@ -622,4 +785,374 @@
     <string name="oc_command_summary_toggle">工作階段摘要</string>
     <string name="oc_export_success">工作階段已匯出至 %1$s</string>
     <string name="oc_export_failed">匯出工作階段失敗</string>
+
+    <!-- Websearch 請求 dock（`ui/session/dock`；上游 `session/requests/session-websearch-dock.tsx`）。 -->
+    <string name="oc_websearch_title">第三方網路搜尋</string>
+    <string name="oc_websearch_description">選擇智慧體搜尋網路時使用的搜尋提供商</string>
+    <string name="oc_websearch_provider">搜尋提供商</string>
+    <string name="oc_websearch_any">任意</string>
+    <string name="oc_websearch_disable">不使用搜尋</string>
+    <string name="oc_websearch_enable">啟用</string>
+    <string name="oc_websearch_load_failed">無法載入搜尋提供商。</string>
+    <string name="oc_websearch_empty">沒有可用的搜尋提供商。</string>
+    <string name="oc_websearch_failed">無法儲存你的選擇，請重試。</string>
+
+    <!-- 訊息級復原（`ui/session/actions`；上游 `message-content.tsx:328-338`）。 -->
+    <string name="oc_meta_revert_message">復原此訊息</string>
+
+    <!-- 摘要服務子面板（`ui/session/summary`；上游 `server-panel.tsx`、`background.tsx`）。 -->
+    <string name="oc_summary_mcp">MCP</string>
+    <string name="oc_summary_mcp_title">已設定的 MCP 伺服器</string>
+    <string name="oc_summary_mcp_empty">未設定 MCP 伺服器</string>
+    <string name="oc_summary_plugins">外掛程式</string>
+    <string name="oc_summary_plugins_configured">已設定的外掛程式</string>
+    <string name="oc_summary_plugins_empty">未設定外掛程式</string>
+    <string name="oc_summary_skills">技能</string>
+    <string name="oc_summary_skills_configured">已設定的技能</string>
+    <string name="oc_summary_skills_empty">未設定技能</string>
+    <string name="oc_summary_lsp">LSP</string>
+    <string name="oc_summary_lsp_configured">已設定的 LSP</string>
+    <string name="oc_summary_lsp_empty">未設定 LSP 伺服器</string>
+    <string name="oc_summary_background">背景任務</string>
+    <string name="oc_summary_background_empty">沒有背景任務</string>
+    <!-- MCP 狀態標籤（上游 `session.summary.failed|connecting|needsAuth`） -->
+    <string name="oc_summary_status_failed">失敗</string>
+    <string name="oc_summary_status_connecting">連線中…</string>
+    <string name="oc_summary_status_needs_auth">需要登入</string>
+
+    <!-- 設定 Shell 與實驗性功能兩根 tab（`ui/settings`）。 -->
+    <string name="oc_setting_tab_shell">Shell</string>
+    <string name="oc_settings_shell_clear">清除</string>
+    <string name="oc_settings_shell_current">目前 Shell</string>
+    <string name="oc_settings_shell_edit">Shell 指令</string>
+    <string name="oc_settings_shell_edit_hint">留空即清除（自動）</string>
+    <string name="oc_settings_shell_options">可選 Shell</string>
+    <string name="oc_settings_shell_saved">Shell 設定已儲存</string>
+    <string name="oc_settings_shell_unsupported">此伺服器未回傳 Shell 設定</string>
+    <string name="oc_settings_shell_write_failed">無法儲存 Shell 指令（%1$s）</string>
+    <string name="oc_settings_shell_write_unsupported">此伺服器不支援修改 Shell</string>
+    <string name="oc_settings_experimental_description">試用實驗性功能</string>
+    <string name="oc_settings_experimental_unavailable">本用戶端暫不支援</string>
+    <string name="oc_settings_experimental_tabs">分頁</string>
+    <string name="oc_settings_experimental_tabs_description">選擇工作階段分頁的排列方式</string>
+    <string name="oc_settings_experimental_project_name">顯示專案名稱</string>
+    <string name="oc_settings_experimental_project_name_description">在縱向分頁與行動版分頁抽屜中顯示專案名稱</string>
+
+    <!-- 設定寫入面（憑證 / 連線流程 / MCP / 外掛程式 / Shell）。 -->
+    <string name="oc_settings_credentials_section">已儲存憑證</string>
+    <string name="oc_settings_credentials_empty">沒有已儲存憑證</string>
+    <string name="oc_settings_credentials_active">使用中</string>
+    <string name="oc_settings_credentials_activate">設為使用中</string>
+    <string name="oc_settings_credentials_rename_title">重新命名憑證</string>
+    <string name="oc_settings_credentials_label_hint">名稱</string>
+    <string name="oc_settings_connect_title">連線 %1$s</string>
+    <string name="oc_settings_connect_method">驗證方式</string>
+    <string name="oc_settings_connect_method_key">API 金鑰</string>
+    <string name="oc_settings_connect_method_oauth">OAuth</string>
+    <string name="oc_settings_connect_method_command">命令登入</string>
+    <string name="oc_settings_connect_label_hint">憑證名稱（選填）</string>
+    <string name="oc_settings_connect_form_unsupported">此驗證表單包含不受支援的欄位</string>
+    <string name="oc_settings_connect_open_url">開啟授權頁面</string>
+    <string name="oc_settings_connect_code_hint">授權碼</string>
+    <string name="oc_settings_connect_submit_code">提交授權碼</string>
+    <string name="oc_settings_connect_command_output">命令輸出</string>
+    <string name="oc_settings_connect_start_command">開始</string>
+    <string name="oc_settings_connect_pending">等待伺服器…</string>
+    <string name="oc_settings_connect_done">已連線</string>
+    <string name="oc_settings_connect_failed">連線失敗</string>
+    <string name="oc_settings_connect_expired">授權嘗試已過期</string>
+    <string name="oc_settings_mcp_add">新增伺服器</string>
+    <string name="oc_settings_mcp_add_title">新增 MCP 伺服器</string>
+    <string name="oc_settings_mcp_field_name">名稱</string>
+    <string name="oc_settings_mcp_field_command">命令</string>
+    <string name="oc_settings_mcp_field_url">伺服器 URL</string>
+    <string name="oc_settings_mcp_kind_local">本機命令</string>
+    <string name="oc_settings_mcp_kind_remote">遠端 URL</string>
+    <string name="oc_settings_mcp_runtime_hint">執行時變更在伺服器重啟後失效。</string>
+    <string name="oc_settings_mcp_resources">資源</string>
+    <string name="oc_settings_mcp_resources_title">MCP 資源</string>
+    <string name="oc_settings_mcp_resources_empty">已連線的伺服器沒有資源</string>
+    <string name="oc_settings_mcp_resources_templates">資源範本</string>
+    <string name="oc_settings_plugins_check">檢查更新</string>
+    <string name="oc_settings_plugins_update">更新</string>
+    <string name="oc_settings_plugins_outdated">可更新</string>
+    <string name="oc_settings_plugins_up_to_date">所有外掛程式皆為最新</string>
+    <string name="oc_settings_wellknown_section">Well-known 整合</string>
+    <string name="oc_settings_wellknown_hint">從 well-known URL 匯入整合。</string>
+    <string name="oc_settings_wellknown_add">匯入</string>
+    <string name="oc_settings_wellknown_url">Well-known URL</string>
+    <string name="oc_settings_migration_section">v1 歷史遷移</string>
+    <string name="oc_settings_migration_required">需要遷移</string>
+    <string name="oc_settings_migration_completed">遷移已完成</string>
+    <string name="oc_settings_migration_running">遷移進行中：%1$s</string>
+    <string name="oc_settings_migration_error">遷移失敗：%1$s</string>
+
+    <!-- /btw 側問面板（`ui/session/btw`；上游 `session/btw/{model,panel}.ts` — `command.session.btw`、`session.btw.*`）。 -->
+    <string name="oc_btw_ask">順便問一下</string>
+    <string name="oc_btw_description">取得一次性回答，不寫入會話記錄</string>
+    <string name="oc_btw_question_required">請在 /btw 後補充問題</string>
+    <string name="oc_btw_error">無法回答這個問題</string>
+    <string name="oc_btw_retry">重試</string>
+    <string name="oc_btw_copy">複製回答</string>
+
+    <!-- 會話域接線（匯出模式 / 指令 / 手動網路搜尋）。 -->
+    <string name="oc_session_export_official">官方格式匯出</string>
+    <string name="oc_session_export_sanitized">脫敏匯出</string>
+    <string name="oc_session_instructions_title">指令</string>
+    <string name="oc_session_instructions_empty">暫無指令條目</string>
+    <string name="oc_session_instructions_add">新增條目</string>
+    <string name="oc_session_instructions_key">鍵名</string>
+    <string name="oc_session_instructions_value">值</string>
+    <string name="oc_session_instructions_delete">刪除</string>
+    <string name="oc_session_instructions_key_invalid">鍵名僅可使用小寫字母、數字與 . _ -</string>
+    <string name="oc_session_instructions_failed">儲存指令條目失敗</string>
+    <string name="oc_session_websearch_title">網路搜尋</string>
+    <string name="oc_session_websearch_query">搜尋關鍵詞</string>
+    <string name="oc_session_websearch_run">搜尋</string>
+    <string name="oc_session_websearch_empty">沒有搜尋結果</string>
+    <string name="oc_session_websearch_failed">搜尋失敗</string>
+    <string name="oc_session_websearch_disabled">該伺服器已停用網路搜尋</string>
+    <string name="oc_session_websearch_provider_missing">找不到搜尋提供商</string>
+    <string name="oc_review_diff_base">相對 %1$s</string>
+    <string name="oc_summary_stats_title">統計</string>
+    <string name="oc_summary_stats_empty">暫無統計資料</string>
+    <string name="oc_summary_stats_sessions">工作階段數</string>
+    <string name="oc_summary_stats_subagents">子代理</string>
+    <string name="oc_summary_stats_prompts">提示詞數</string>
+    <string name="oc_summary_stats_steps">步數</string>
+    <string name="oc_summary_stats_active_days">活躍天數</string>
+    <string name="oc_summary_stats_streak">連續天數</string>
+    <string name="oc_summary_stats_tool_calls">工具呼叫</string>
+    <string name="oc_summary_stats_tool_failed">工具失敗</string>
+    <string name="oc_summary_reload">重新載入</string>
+    <string name="oc_summary_reload_done">設定已重新載入</string>
+    <string name="oc_summary_reload_failed">重新載入設定失敗</string>
+    <string name="oc_summary_skill_activate">啟用</string>
+    <string name="oc_summary_skill_failed">啟用技能失敗</string>
+    <string name="oc_session_import">匯入工作階段…</string>
+    <string name="oc_session_import_success">已匯入 %1$s</string>
+    <string name="oc_session_import_failed">匯入失敗</string>
+    <string name="oc_session_import_unreadable">匯入失敗：無法讀取該檔案</string>
+    <string name="oc_session_import_bad_file">匯入失敗：該檔案不是工作階段匯出檔</string>
+    <string name="oc_session_import_assembled">匯入失敗：本機匯出格式無法匯入，請改用官方格式匯出</string>
+    <string name="oc_session_import_rejected">匯入失敗：伺服器拒絕：%1$s</string>
+    <string name="oc_session_import_offline">匯入失敗：無法連線伺服器</string>
+    <string name="oc_session_import_no_server">匯入失敗：未設定伺服器</string>
+    <string name="oc_settings_disconnect_done">已中斷連線</string>
+    <string name="oc_settings_providers_popular_empty">沒有更多可連線的提供者</string>
+    <string name="oc_servers_add_ssh">新增 SSH 伺服器</string>
+    <string name="oc_servers_ssh_section">SSH 通道</string>
+    <string name="oc_ssh_delete_title">刪除 SSH 伺服器？</string>
+    <string name="oc_ssh_delete_message">將把「%1$s」從清單中移除，且無法復原。</string>
+    <string name="oc_ssh_delete_release_hint">將先中斷對應的通道。</string>
+    <string name="oc_context_export_waiting">工作階段資料載入中，資料到達後可匯出</string>
+    <string name="oc_context_export_load_failed">工作階段資料載入失敗：%1$s</string>
+    <string name="oc_error_quota_title">Token Plan 額度已用盡</string>
+    <string name="oc_error_quota_advice">Token Plan 用量已達上限。請升級方案、購買積分補充用量，或稍後重試。</string>
+    <string name="oc_error_region_title">該模型在你所在的地區無法使用</string>
+    <string name="oc_error_region_advice">目前的國家或網路環境無法使用此模型。請切換其他模型或更換網路環境後重試。</string>
+    <string name="oc_terminal_shell_create">新增 Shell</string>
+    <string name="oc_terminal_shell_command_hint">輸入要執行的命令</string>
+    <string name="oc_terminal_shell_run">執行</string>
+    <string name="oc_terminal_shell_create_failed">建立 shell 失敗</string>
+    <string name="oc_home_projects_drives">此電腦</string>
+    <string name="oc_settings_models_unconnected">未連線</string>
+    <string name="oc_model_picker_unconnected">未連線</string>
+    <string name="oc_usage_exceeded_free_tier_title">已達免費額度上限</string>
+    <string name="oc_usage_exceeded_free_tier_description">訂閱 OpenCode Go，可靠地使用最佳開源模型，每月 $5 起。</string>
+    <string name="oc_usage_exceeded_free_tier_action">訂閱</string>
+    <string name="oc_usage_exceeded_rate_limit_title">已達 Go 額度上限</string>
+    <string name="oc_usage_exceeded_rate_limit_description">已達使用額度上限。若要立即繼續使用此模型，請啟用可用餘額計費</string>
+    <string name="oc_usage_exceeded_rate_limit_action">開啟設定</string>
+    <string name="oc_usage_exceeded_quota_title">Token Plan 額度已用盡</string>
+    <string name="oc_usage_exceeded_quota_description">Token Plan 用量已達上限。請升級方案、購買積分補充用量，或查看用量等待重置。</string>
+    <string name="oc_usage_exceeded_close">知道了</string>
+    <string name="oc_usage_exceeded_dont_show_again">不再顯示</string>
+    <string name="oc_usage_exceeded_retry_after">約 %1$s 後恢復</string>
+    <!-- F-4：⋮ 中「移動到…」一列。上游在 workspace 選單中移動
+        （`session-workspace-menu.tsx`）；Android 沒有該選單，故由 W6 工作階段操作群組承載。
+         選擇器自帶標題，此處短標籤適配 120px 寬的 MenuV2。 -->
+    <string name="oc_move_session">移動到…</string>
+    <!-- F-2：review diff 行評論。上游模型（`composer/comments.tsx` +
+        `session/review/model.ts:206-230`）：評論錨定到 diff 行，傳送時彙整進
+        prompt 文字。 -->
+    <string name="oc_review_comment_add_title">新增行評論</string>
+    <string name="oc_review_comment_edit_title">編輯行評論</string>
+    <string name="oc_review_comment_hint">針對這一行寫下評論…</string>
+    <string name="oc_review_comment_send">將 %1$d 則評論加入輸入框</string>
+    <string name="oc_review_comment_edit">編輯</string>
+    <string name="oc_review_comment_delete">刪除</string>
+    <plurals name="oc_timeline_more_lines">
+        <item quantity="other">其餘 %1$d 行</item>
+    </plurals>
+    <string name="oc_timeline_show_less">收起</string>
+    <!-- U-1：外觀檔位。上游 UI/code 字型為自由 CSS 族名；Android 只提供內建/系統檔位，故選項文案為 Android 獨有。 -->
+    <string name="oc_setting_ui_font_option_default">Inter（預設）</string>
+    <string name="oc_setting_ui_font_option_system">系統字型</string>
+    <string name="oc_setting_code_font_option_default">系統等寬（預設）</string>
+    <string name="oc_setting_code_font_option_ui">跟隨介面字型</string>
+    <!-- v40：終端字型原為自由文字欄，夾在兩個正常下拉之間像壞掉的控制項；改為等寬字族下拉。 -->
+    <string name="oc_setting_terminal_font_option_default">系統等寬（預設）</string>
+    <string name="oc_copy_details_copied">配對詳情已複製</string>
+    <!-- F-3：內嵌瀏覽器面板（上游 `session/browser/pane.tsx`）。Android 獨有文案。 -->
+    <string name="oc_browser_close">關閉</string>
+    <string name="oc_browser_open_external">外部開啟</string>
+    <string name="oc_browser_reload">重新載入</string>
+    <string name="oc_browser_stop">停止</string>
+    <string name="oc_browser_go_back">上一頁</string>
+    <string name="oc_browser_go_forward">下一頁</string>
+    <string name="oc_browser_address">網頁地址</string>
+    <string name="oc_browser_secure">安全連線</string>
+    <string name="oc_browser_insecure">連線不安全</string>
+    <string name="oc_browser_empty_title">尚無頁面</string>
+    <string name="oc_browser_empty_description">智慧體開啟的頁面會顯示在這裡。</string>
+    <string name="oc_browser_failed_title">頁面載入失敗</string>
+    <string name="oc_browser_failed_description">檢查網址或網路連線後重試，也可以選擇外部開啟。</string>
+    <string name="oc_browser_retry">重試</string>
+    <!-- `/mcp` chooser (`ui/overlay/McpChooserDialog`，上游 `dialog.mcp.*` + `mcp.status.*`)。 -->
+    <string name="oc_mcp_title">MCP 伺服器</string>
+    <string name="oc_mcp_description">已啟用 %1$d / 共 %2$d</string>
+    <string name="oc_mcp_search">搜尋 MCP</string>
+    <string name="oc_mcp_empty">未設定 MCP 伺服器</string>
+    <string name="oc_mcp_status_connected">已連線</string>
+    <string name="oc_mcp_status_failed">連線失敗</string>
+    <string name="oc_mcp_status_needs_auth">需要授權</string>
+    <string name="oc_mcp_status_disabled">已停用</string>
+    <!-- 工作階段匯出回饋（`ui/session/SessionScreen.kt` 匯出流程，
+         `ui/session/export/SessionExportFeedback.kt`）：取數失敗原因、取消、
+         Download/ 後備、匯出進行中各自獨立文案，現場截圖即可定位分支。 -->
+    <string name="oc_export_cancelled">已取消匯出</string>
+    <string name="oc_export_fetch_failed">無法取得工作階段資料：%1$s</string>
+    <!-- v40 tC: the export fetch never reached the wire (no confirmed transport),
+         which used to arrive as a reason-less `Result.success(null)` and so read
+         as the bare 「导出会话失败」. -->
+    <string name="oc_export_no_transport">尚未連線到伺服器，無法讀取工作階段。請檢查伺服器連線後重試</string>
+    <string name="oc_export_saved_downloads">系統儲存面板無法使用，已寫入 Download/%1$s</string>
+    <string name="oc_export_in_progress">匯出進行中，請稍候…</string>
+    <!-- 評審「重新整理」（`ui/session/review/ReviewPanel.kt` /
+         `ReviewChangesTab.kt` → `ChatViewModel.reviewReprobeLocation`）：
+         使用者明確點擊後驅逐目前目錄的 location 快取（`DELETE /api/debug/location`）
+         並重新探測評審資料。成功文案寫明伺服端對該副作用的說明——該目錄進行中的
+         權限/表單會被取消，因此這個動作永遠不會靜默發生。 -->
+    <string name="oc_review_refresh">重新整理</string>
+    <string name="oc_review_refresh_done">已重建目錄狀態，進行中的權限/表單可能被取消</string>
+    <string name="oc_review_refresh_failed">重建目錄狀態失敗</string>
+    <string name="oc_export_fetch_timeout">%1$d 秒內未傳回任何資料</string>
+    <string name="oc_export_phase_fetch">正在讀取工作階段資料…</string>
+    <string name="oc_export_phase_save">正在等待儲存位置…</string>
+    <string name="oc_session_import_timeout">匯入逾時：伺服器未回應</string>
+
+    <!-- 時間軸（`ui/session/timeline`）：長時間無回應提示、排隊 steer 列的附件數，以及未投遞提示（BUG-2 v36 tB：伺服器始終未投遞的排隊 steer）。 -->
+    <string name="oc_timeline_no_response">已 %1$d 分鐘無回應</string>
+    <string name="oc_message_not_delivered">未投遞</string>
+    <string name="oc_queued_attachments_one">%1$d 個附件</string>
+    <string name="oc_queued_attachments_other">%1$d 個附件</string>
+
+    <!-- 評審「變更」失敗態（`ReviewChangesTab`）：本 scope 的 diff 請求逾時或失敗。與 `oc_review_changes_empty*`（宣告倉庫確實無變更）區分。 -->
+    <string name="oc_review_changes_failed">改動載入失敗</string>
+    <string name="oc_review_changes_failed_hint">diff 請求逾時或失敗，點「重新整理」重試。</string>
+
+    <!-- `/btw` 側問在本機被拒：沒有任何模型可用（輸入框未選、伺服器無預設、工作階段本身也沒有），`session.generate` 會回 503。 -->
+    <string name="oc_btw_no_model">尚未選擇模型 — 請先在輸入框選擇模型後重試</string>
+
+    <!-- 命令面板裡的 `/btw`（`ui/palette/SessionCommands` 的 `session.aside`）：上游原文 + 觸發詞，因為面板搜尋讀的是標題 + 描述 + 分類，而使用者輸入的是「btw」。 -->
+    <string name="oc_btw_palette_description">基於工作階段上下文的一次性回答，不寫入對話（/btw）</string>
+
+    <!-- 上下文頁匯出區（`ui/session/context/SessionContextPanel`）：訊息分頁讀取到達頁數上限，匯出只包含前 %1$d 頁（`V2Api.MessageDrain.truncated`）。 -->
+    <string name="oc_context_export_truncated">工作階段過長，匯出已截斷至前 %1$d 頁</string>
+    <!-- U-1 殘餘：UI/程式碼字型選擇器新增的系統字型族（`OcSystemFonts`）。通用別名配文案，真實字型族名是資料，按原名顯示（專有名詞，與主題名一致）。 -->
+    <string name="oc_setting_ui_font_option_serif">襯線體</string>
+    <string name="oc_setting_ui_font_option_sans_light">細體</string>
+    <string name="oc_setting_ui_font_option_sans_medium">中等</string>
+    <string name="oc_setting_ui_font_option_sans_condensed">窄體</string>
+    <string name="oc_setting_ui_font_option_sans_black">特粗</string>
+    <string name="oc_setting_ui_font_option_sans_smallcaps">小型大寫</string>
+    <string name="oc_setting_code_font_option_serif_mono">襯線等寬</string>
+    <string name="oc_review_no_git_done">已建立 Git 儲存庫</string>
+    <string name="oc_review_no_git_failed">建立 Git 儲存庫失敗</string>
+
+    <!-- A-4 路由級失敗頁（`ui/session/SessionNotFoundPanel`，上游 `session/route-error.tsx:31-61`）：路由指向的工作階段已不在此伺服器上。上游鍵為 `session.error.notFound` / `.description` / `.closeTab`；「關閉分頁」在本殼即返回。 -->
+    <string name="oc_session_not_found">找不到此工作階段</string>
+    <string name="oc_session_not_found_description">此分頁指向的工作階段已不存在於此伺服器上。</string>
+    <!-- 同一頁面上的 Android 專有第二個動作：404 latch 同時停掉了所有工作階段級重新整理，重試是回到該工作階段的入口。 -->
+    <string name="oc_session_not_found_retry">重試</string>
+    <!-- v81 P2「幽靈工作階段死巷」（research/v81_verify/5558/t4_s02_empty_session.png）：整頁只有返回/重試，
+         而重試對伺服器已丟棄的工作階段（07:07:54 起全部路由 404）只會再跑一遍同樣的 404——項目本身
+         （分頁 + 清單列）沒有出口。 -->
+    <string name="oc_session_not_found_delete">刪除該項目</string>
+
+    <!-- v82 BUG-A（research/v82_verify/5558/33_ghost_open.png）：同一頁面，但這次是伺服器
+         **拒絕**該工作階段（其自身的工作階段級路由 5xx），而不是已丟棄它。2.0.18/4095 實測（工作階段
+         建在伺服器主機上不存在的專案目錄裡）：列讀取與訊息清單 200，而 `GET …/permission`、
+         `GET …/form` 回傳 500——app 於是畫出一個看起來正常的空工作階段，而它的每個動作都失敗。
+         文案點出實測到的原因；動作沿用 not-found 頁自己的三個出口（返回 / 重試 / 刪除該項目）。 -->
+    <string name="oc_session_refused">該工作階段在伺服器上無法使用</string>
+    <string name="oc_session_refused_description">伺服器對該工作階段回傳了錯誤（HTTP 500）。它的專案目錄可能在伺服器上不存在。</string>
+
+    <!-- A-3 Home 專案列選單，上游 `sidebar.project.clearNotifications`（`home/projects/view.tsx:754-758`）。「匯入工作階段」列沿用指令面板自己的 `command_session_import`（上游兩處都用 `command.session.import`）。 -->
+    <string name="oc_home_project_clear_notifications">清除通知</string>
+
+    <!-- A-2 工作階段分頁指示（`ui/nav/SessionTabIndicator`，上游 `project-avatar-state.ts:26-49`）：未讀點與載入走馬燈的無障礙標籤。 -->
+    <string name="oc_tab_unread">有未讀</string>
+    <string name="oc_tab_working">執行中</string>
+
+    <!-- A-13 音訊預覽（`ui/session/review/ArtifactView`，上游 `components/file-media.tsx` 的 `<audio controls>`）：兩個傳輸控制標籤與解碼/播放失敗。 -->
+    <string name="oc_file_audio_play">播放</string>
+    <string name="oc_file_audio_pause">暫停</string>
+    <string name="oc_file_audio_failed">無法播放該音訊檔案</string>
+
+    <!-- A-12 應用內相機掃碼（`ui/settings/PairingPanel`，上游 `servers/connect/scanner.tsx`）：入口列與四條失敗文案。 -->
+    <string name="oc_pair_scan_camera">用相機掃碼</string>
+    <string name="oc_pair_scan_camera_description">開啟應用內預覽，對準配對 QR 碼。</string>
+    <string name="oc_pair_scan_camera_denied">未授予相機權限。請授予權限，或改用下方的相簿掃碼。</string>
+    <string name="oc_pair_scan_camera_unavailable">本機沒有可用的相機。請改用相簿掃碼或手動輸入配對碼。</string>
+    <string name="oc_pair_scan_camera_failed">相機啟動失敗。請改用相簿掃碼或手動輸入配對碼。</string>
+
+    <!-- F-1 `@` 選單來源（`ui/session/composer/MentionPopover`，上游 `composer/model.ts:146-190`）：引用 / MCP 資源兩個分類標籤（同時作為列的無障礙描述）。 -->
+    <string name="oc_composer_mention_reference">引用</string>
+    <string name="oc_composer_mention_resource">MCP 資源</string>
+
+    <!-- W4 MCP 面板批：新建工作階段頁（`NewSessionScreen`）。
+         A-11 `PromptGitStatus`：目錄不是倉庫時的文字。 -->
+    <string name="oc_new_session_git_none">無 Git</string>
+    <!-- v64：worktree 一律 detach 建出，`branch.current` 恆為空；舊判據印「無 Git」/留空。 -->
+    <string name="oc_new_session_git_detached">游離 HEAD</string>
+    <string name="oc_new_session_git_from_branch">來自 %1$s</string>
+    <!-- F-2 草稿態提示：上游說「worktree 建立時生效」，手機端不建立 worktree，工作階段本身就是草稿落地的那次建立。 -->
+    <string name="oc_new_session_mcp_on_creation">建立工作階段時生效</string>
+    <!-- A-11 tips（上游 `home.providerTip` / `home.workspaceTip`）；忽略按鈕複用既有 `common_dismiss`。 -->
+    <string name="oc_home_provider_tip">連線 75 個以上的提供者，使用包括 Claude、GPT、Gemini 等其他模型</string>
+    <string name="oc_home_workspace_tip">在新的工作區中開始下一個工作階段，讓變更保持隔離</string>
+    <!-- F-2 `apply()` 的四種落地失敗（上游 `session.summary.mcp.*`）。 -->
+    <string name="oc_summary_mcp_prepare_failed">無法準備 MCP 伺服器</string>
+    <string name="oc_summary_mcp_unavailable">MCP 伺服器 %1$s 在此工作樹中無法使用。</string>
+    <string name="oc_summary_mcp_sign_in_before_send">傳送提示前請先登入 %1$s。</string>
+    <string name="oc_summary_mcp_not_ready">MCP 伺服器 %1$s 尚未就緒，請先解決連線問題再傳送提示。</string>
+    <!-- F-3 summary MCP 列的寫入失敗提示。 -->
+    <string name="oc_summary_mcp_toggle_failed">無法切換 MCP 伺服器</string>
+    <!-- A-6 `ServiceConfigLink`：行動端只做「複製設定路徑」，缺失與複製成功的回饋。 -->
+    <string name="oc_summary_copy_config_path">複製設定檔路徑</string>
+    <string name="oc_summary_config_missing">找不到設定檔</string>
+    <string name="oc_summary_config_copied">已複製設定路徑</string>
+
+    <!-- F-4 時間軸留言卡（`ui/session/timeline/CommentCard`，上游 `message-content.tsx:194-198` 的 `ui.common.showMore`）：最多 5 張後的「顯示更多」。 -->
+    <string name="oc_common_show_more">顯示更多</string>
+
+    <!-- A-1 markdown 圖片（`ui/markdown/MarkdownImageView`，上游 `image-preview.tsx:11` 的 `ui.imagePreview.alt`）：markdown alt 為空時的無障礙標籤。 -->
+    <string name="oc_markdown_image_description">圖片</string>
+
+    <!-- v15 `@` 選單的目錄列（`ui/session/composer/MentionPopover`）：`/find/file` 把目錄與檔案回傳成同一種裸路徑，兩類都落在 `Category.FILE`，目錄列因此用這條文案作列標籤與 content-desc（圖示取 `ic_oc_folder`）。 -->
+    <string name="oc_composer_mention_directory">目錄</string>
+
+    <!-- v19 P2 超限救援（`ui/session/timeline/SessionErrorCard`）：把上下文灌過 1M 視窗後模型只回 `InvalidRequest`，工作階段卡死；卡片給兩條可行動恢復，分別複用 `ChatViewModel.compactSession`（`POST /api/session/{id}/compact`）與 `undoSession`（`session/revert`）既有鏈路。 -->
+    <string name="oc_error_overflow_title">上下文超限</string>
+    <string name="oc_error_overflow_advice">本次請求已超出該模型的上下文視窗，被伺服端拒絕。可壓縮工作階段；若壓縮仍失敗，復原本輪把這段內容移出上下文。</string>
+    <string name="oc_error_overflow_compact">壓縮工作階段</string>
+    <string name="oc_error_overflow_revert">復原本輪</string>
+    <!-- 壓縮失敗的落點（`ui/session/timeline/TimelineSeparator` 的 `COMPACTION_END`）：v19 截圖裡 compact 自身也因超限失敗，卻仍顯示「工作階段已壓縮」。 -->
+    <string name="oc_compaction_failed">工作階段壓縮失敗</string>
+    <!-- 目錄選擇器瀏覽失敗的分型文案（`ui/home/DirectoryPickerDialog.pickerFailureRes`）：連線失敗 / 伺服器無目錄介面 / 請求被拒 / 目標不存在或無權限，四類不再混用「未連接到伺服器」。 -->
+    <string name="oc_picker_error_unusable">伺服器可連線，但不支援目錄瀏覽介面</string>
+    <string name="oc_picker_error_request">伺服器拒絕列出此目錄</string>
+    <string name="oc_picker_error_missing">此目錄不存在或無存取權限</string>
 </resources>

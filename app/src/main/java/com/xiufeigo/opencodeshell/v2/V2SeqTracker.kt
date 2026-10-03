@@ -19,8 +19,14 @@ class V2SeqTracker {
     var maxSeq: Long? = null
         private set
 
-    /** `evt_` ids already applied (upstream: same id + type replays take-first). */
-    private val seenIDs = LinkedHashSet<String>()
+    /**
+     * `evt_` ids already applied (upstream: same id + type replays take-first),
+     * each with its durable seq (`null` for ephemeral frames). Bounded: an id
+     * at least [DEDUP_WINDOW] below [maxSeq] can never replay (`?after=` has
+     * moved past it) and is dropped; seq-less ids age out by no watermark,
+     * so the oldest are hard-capped away at [MAX_SEEN].
+     */
+    private val seenIDs = LinkedHashMap<String, Long?>()
 
     /** Last `log.synced` watermark seq, or null when not yet observed. */
     var syncedSeq: Long? = null
@@ -30,10 +36,41 @@ class V2SeqTracker {
     val synced: Boolean get() = syncedSeq != null
 
     /** Feed one frame; returns true when it is new work (not a replay duplicate). */
-    fun observe(id: String, seq: Long?): Boolean {
-        if (seq != null && (maxSeq == null || seq > maxSeq!!)) maxSeq = seq
+    fun observe(id: String, seq: Long?, aggregate: Boolean = true): Boolean {
+        // [aggregate] is what keeps `?after=` honest: the global `/api/event`
+        // stream carries **every** session, and each session's `durable.seq` is
+        // its own counter (`research/dupcap/*.sse`: two sessions at seq 15 in the
+        // same second). A foreign frame's id must still be remembered — the same
+        // event can arrive on this session's log and must not be applied twice —
+        // but its seq must not move the watermark: anchoring this session's log
+        // replay at another session's seq makes the server skip every durable
+        // frame this session missed while the stream was down (`session.execution
+        // .succeeded` → the turn-complete notification, `permission.asked` → the
+        // ask notification and its dot), which is exactly the gap the replay is
+        // for.
+        if (aggregate && seq != null && (maxSeq == null || seq > maxSeq!!)) maxSeq = seq
         if (id.isEmpty()) return true
-        return seenIDs.add(id)
+        if (seenIDs.containsKey(id)) return false
+        seenIDs[id] = seq
+        evictSeen()
+        return true
+    }
+
+    /** Drop ids that can no longer replay, then hard-cap the rest oldest-first. */
+    private fun evictSeen() {
+        val cutoff = (maxSeq ?: return) - DEDUP_WINDOW
+        val it = seenIDs.entries.iterator()
+        while (it.hasNext()) {
+            val seq = it.next().value
+            if (seq != null && seq <= cutoff) it.remove()
+        }
+        if (seenIDs.size > MAX_SEEN) {
+            val eldest = seenIDs.entries.iterator()
+            while (seenIDs.size > MAX_SEEN && eldest.hasNext()) {
+                eldest.next()
+                eldest.remove()
+            }
+        }
     }
 
     /** Record the opening `log.synced{seq}` watermark. */
@@ -64,5 +101,13 @@ class V2SeqTracker {
         maxSeq = null
         syncedSeq = null
         seenIDs.clear()
+    }
+
+    private companion object {
+        /** Durable ids this far below `maxSeq` sit past any `?after=` replay. */
+        const val DEDUP_WINDOW = 1024L
+
+        /** Hard cap on remembered ids; ephemeral (seq-less) ids hit no watermark. */
+        const val MAX_SEEN = 4096
     }
 }

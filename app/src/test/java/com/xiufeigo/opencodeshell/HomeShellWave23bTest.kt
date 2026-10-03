@@ -12,6 +12,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.time.Instant
 
 /**
@@ -19,7 +20,8 @@ import java.time.Instant
  * - A2 #1: [SessionTabs.footerHomePressed] (mobile drawer footer state);
  * - A2 #9: [HomeSessions.searchRows] (untruncated search source) +
  *   [HomeSessions.looksLikeSessionID] (session-ID direct lookup);
- * - A2 #4: [HomeRowMenu] (row menu + inline rename state machine);
+ * - A2 #4: [HomeRowMenu] (row menu + inline rename state machine) and the
+ *   `rememberHomeRowExportSaver` scope teardown (source wiring);
  * - A2 #7: [SessionTabs.draftTarget] (branch decision) +
  *   [NewSessionProject.resolve] (`newSessionProject()` fallback) +
  *   [SessionTabs.toggleHomeTarget] (`toggleHome`).
@@ -130,34 +132,42 @@ class HomeShellWave23bTest {
         val editor = HomeRowMenu.openEditor("Fix login", "a")
         // Blank draft → noop.
         val blank = HomeRowMenu.editDraft(editor, "a", "   ")!!
-        val (keptBlank, blankSubmit) = HomeRowMenu.submit(blank, "a", "Fix login")!!
+        val (keptBlank, blankSubmit) = HomeRowMenu.submit(blank, "Fix login")!!
         assertEquals(blank, keptBlank)
         assertEquals(HomeRowMenu.Submit.Noop, blankSubmit)
         // Unchanged (modulo trim) → noop.
-        val (keptSame, sameSubmit) = HomeRowMenu.submit(editor, "a", "Fix login")!!
+        val (keptSame, sameSubmit) = HomeRowMenu.submit(editor, "Fix login")!!
         assertEquals(HomeRowMenu.Submit.Noop, sameSubmit)
         assertEquals(editor, keptSame)
     }
 
     @Test
-    fun `submit marks saving and resolveSave closes or re-enables`() {
+    fun `submit marks saving and resolveSave closes on either answer`() {
         val editor = HomeRowMenu.openEditor("old", "a")
         val changed = HomeRowMenu.editDraft(editor, "a", "new")!!
-        val (saving, action) = HomeRowMenu.submit(changed, "a", "old")!!
+        val (saving, action) = HomeRowMenu.submit(changed, "old")!!
         assertEquals(HomeRowMenu.Submit.Save("new"), action)
         assertEquals(true, saving?.saving)
-        // Success closes; failure keeps the draft editable.
+        // Success closes; failure closes too (v84 P1 — the row goes back to the
+        // catalogue's own title, and an editor a phone cannot leave was the
+        // measured trap; see [HomeRenameFailureV83Test] and [HomeRenameExitV84Test]).
         assertNull(HomeRowMenu.resolveSave(saving, "a", true))
-        assertEquals(false, HomeRowMenu.resolveSave(saving, "a", false)?.saving)
-        assertEquals("new", HomeRowMenu.resolveSave(saving, "a", false)?.draft)
+        assertNull(HomeRowMenu.resolveSave(saving, "a", false))
+        // An answer that belongs to another row still moves nothing.
+        assertEquals(saving, HomeRowMenu.resolveSave(saving, "b", false))
     }
 
     @Test
-    fun `submit ignores other rows and a save in flight`() {
-        val editor = HomeRowMenu.openEditor("old", "a")
-        assertNull(HomeRowMenu.submit(editor, "b", "old"))
-        val saving = editor.copy(saving = true)
-        assertNull(HomeRowMenu.submit(saving, "a", "old"))
+    fun `submit refuses an idle-less editor and a save in flight`() {
+        // v44: the reporting row's id is no longer part of the decision - the
+        // open editor is the only rename in flight, and the field that raised
+        // the gesture is that editor's own. What is still refused is a submit
+        // with no editor at all, and a second gesture while the PATCH is out.
+        val editor = HomeRowMenu.editDraft(HomeRowMenu.openEditor("old", "a"), "a", "new")!!
+        val (saving, action) = HomeRowMenu.submit(editor, "old")!!
+        assertEquals(HomeRowMenu.Submit.Save("new"), action)
+        assertNull(HomeRowMenu.submit(null, "old"))
+        assertNull(HomeRowMenu.submit(saving, "old"))
     }
 
     @Test
@@ -255,5 +265,24 @@ class HomeShellWave23bTest {
         assertEquals(HomeToggle.GoHome, SessionTabs.toggleHomeTarget(true, null))
         assertEquals(HomeToggle.GoHome, SessionTabs.toggleHomeTarget(true, "  "))
         assertEquals(HomeToggle.GoHome, SessionTabs.toggleHomeTarget(false, "s1"))
+    }
+
+    // ------------------------------------------------- A2 #4 export scope
+
+    private fun homeRowActionsSource(): String =
+        listOf(
+            File("src/main/java/com/xiufeigo/opencodeshell/ui/home/HomeRowActions.kt"),
+            File("app/src/main/java/com/xiufeigo/opencodeshell/ui/home/HomeRowActions.kt"),
+        ).firstOrNull { it.exists() }?.readText() ?: error("HomeRowActions.kt not found")
+
+    @Test
+    fun `leaving Home cancels the remembered export scope`() {
+        // The scope is `remember`ed, so nothing but a DisposableEffect can
+        // cancel it — without that an in-flight export keeps toasting into a
+        // composition that is already gone.
+        val source = homeRowActionsSource()
+        assertTrue(source.contains("remember { CoroutineScope(Dispatchers.Main) }"))
+        assertTrue(source.contains("DisposableEffect(scope)"))
+        assertTrue(source.contains("onDispose { scope.cancel() }"))
     }
 }

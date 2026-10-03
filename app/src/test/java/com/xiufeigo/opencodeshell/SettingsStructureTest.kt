@@ -20,6 +20,7 @@ import com.xiufeigo.opencodeshell.ui.settings.appearancePanelActions
 import com.xiufeigo.opencodeshell.ui.settings.filterServers
 import com.xiufeigo.opencodeshell.ui.settings.generalPanelActions
 import com.xiufeigo.opencodeshell.ui.settings.groupForCommandId
+import com.xiufeigo.opencodeshell.ui.settings.keybindSignatures
 import com.xiufeigo.opencodeshell.ui.settings.headerTitleResId
 import com.xiufeigo.opencodeshell.ui.settings.icon
 import com.xiufeigo.opencodeshell.ui.settings.normalizeUrlInput
@@ -51,7 +52,10 @@ class SettingsStructureTest {
     fun leftNavMatchesUpstreamRootTabShape() {
         // Upstream groups (`settings/shell.tsx:39-57,218-246`): root-client,
         // server group, then two trailing single-item groups — none of them
-        // labelled, which is why every `titleResId` is null.
+        // labelled, which is why every `titleResId` is null. Wave-close added
+        // the read-only Shell page to the server group (upstream keeps that
+        // value on General), made Experimental a real tab, and Pairing is the
+        // fifth root-client tab (`shell.tsx:39-45`).
         assertEquals(4, SETTINGS_NAV.size)
         assertTrue(SETTINGS_NAV.all { it.titleResId == null })
         assertEquals(
@@ -60,27 +64,33 @@ class SettingsStructureTest {
                 SettingsTab.APPEARANCE,
                 SettingsTab.NOTIFICATIONS,
                 SettingsTab.SHORTCUTS,
+                SettingsTab.PAIRING,
                 SettingsTab.PROJECTS,
                 SettingsTab.WORKSPACES,
                 SettingsTab.PROVIDERS,
                 SettingsTab.MODELS,
                 SettingsTab.EXTENSIONS,
                 SettingsTab.SERVERS,
+                SettingsTab.SHELL,
+                SettingsTab.EXPERIMENTAL,
                 SettingsTab.ABOUT,
             ),
             SETTINGS_NAV_TABS,
         )
-        // Root-client group order: general, appearance, notifications, shortcuts.
+        // Root-client group order: general, appearance, notifications,
+        // shortcuts, pairing.
         assertEquals(
             listOf(
                 R.string.oc_setting_tab_general,
                 R.string.oc_setting_tab_appearance,
                 R.string.oc_setting_tab_notifications,
                 R.string.oc_setting_tab_shortcuts,
+                R.string.oc_setting_tab_pairing,
             ),
             SETTINGS_NAV[0].items.map { it.titleResId },
         )
-        // Server group: projects, workspaces, providers, models, extensions, servers.
+        // Server group: projects, workspaces, providers, models, extensions,
+        // servers, shell.
         assertEquals(
             listOf(
                 R.string.oc_setting_tab_projects,
@@ -89,6 +99,7 @@ class SettingsStructureTest {
                 R.string.oc_setting_tab_models,
                 R.string.oc_setting_tab_extensions,
                 R.string.oc_setting_tab_servers,
+                R.string.oc_setting_tab_shell,
             ),
             SETTINGS_NAV[1].items.map { it.titleResId },
         )
@@ -104,14 +115,11 @@ class SettingsStructureTest {
 
     @Test
     fun missingRootTabsAreDisabledEntriesNotSilentGaps() {
-        // `settings/pages.ts:5-18` has 12 root tabs. W5-S made every one a real
-        // page except `experimental`, whose four rows still have no consumer:
-        // it stays an explicitly disabled row with a reason rather than an empty
-        // page or a switch that writes a pref nobody reads.
-        assertEquals(
-            listOf(R.string.oc_setting_tab_experimental),
-            SETTINGS_NAV_DISABLED.map { it.titleResId },
-        )
+        // `settings/pages.ts:5-18` has 13 root tabs and this shell now has a
+        // real page for every one of them (plus the Android Shell page), so the
+        // disabled-placeholder list is empty — the shape still round-trips
+        // through [SETTINGS_NAV_DISABLED] in case a future tab regresses.
+        assertEquals(emptyList<Int>(), SETTINGS_NAV_DISABLED.map { it.titleResId })
         assertTrue(SETTINGS_NAV_DISABLED.none { it.enabled || it.tab != null })
     }
 
@@ -123,12 +131,15 @@ class SettingsStructureTest {
                 "appearance",
                 "notifications",
                 "shortcuts",
+                "pairing",
                 "projects",
                 "workspaces",
                 "providers",
                 "models",
                 "extensions",
                 "servers",
+                "shell",
+                "experimental",
                 "about",
             ),
             SettingsTab.entries.map { it.value },
@@ -154,6 +165,8 @@ class SettingsStructureTest {
         assertNull(SettingsTab.PROJECTS.icon())
         assertNull(SettingsTab.WORKSPACES.icon())
         assertNull(SettingsTab.EXTENSIONS.icon())
+        assertNull(SettingsTab.SHELL.icon())
+        assertNull(SettingsTab.EXPERIMENTAL.icon())
         assertNull(SettingsTab.ABOUT.icon())
     }
 
@@ -194,6 +207,9 @@ class SettingsStructureTest {
                 // untitled Preferences block
                 "settings-language",
                 "settings-auto-accept-permissions",
+                // B-9: `ShowCustomAgentsSetting` (`general.tsx:327-337`), the row
+                // between auto-approve and the terminal placement.
+                "settings-show-custom-agents",
                 // B3: upstream's `TerminalPlacementSetting` sits in this same
                 // untitled ("General") section, after the auto-approve row
                 // (`settings/general/general.tsx:327-339`).
@@ -205,6 +221,11 @@ class SettingsStructureTest {
                 "settings-workspace-destination",
                 "settings-reasoning-mode",
                 "settings-mobile-diff-wrap",
+                // B-16: the mobile-titlebar position switch
+                // (`general.tsx:369-381`), right after the diff-wrap row. It is
+                // `mobileOnly`, so it is listed here (the panel table) and only
+                // rendered on the mobile form (`visibleRows`).
+                "settings-mobile-titlebar-bottom",
                 // Timeline
                 "settings-timeline-detail",
                 "settings-feed-reasoning-summaries",
@@ -220,10 +241,17 @@ class SettingsStructureTest {
     @Test
     fun appearancePanelKeepsTheLiveRowsOnly() {
         // Upstream appearance.tsx:82-126 has color scheme, theme and three font
-        // inputs; only these two rows have a native consumer
-        // (`ui/App.kt` → `OcTheme(isDark)` and `TerminalPanelHost.terminalFont`).
+        // inputs; every one now has a native consumer (`ui/App.kt` →
+        // `OcTheme(isDark/themeId/uiFont/codeFont)` and
+        // `TerminalPanelHost.terminalFont`).
         assertEquals(
-            listOf("settings-color-scheme", "settings-terminal-font"),
+            listOf(
+                "settings-color-scheme",
+                "settings-theme",
+                "settings-ui-font",
+                "settings-code-font",
+                "settings-terminal-font",
+            ),
             appearancePanelActions(),
         )
         val panel = APPEARANCE_PANEL.single()
@@ -233,12 +261,21 @@ class SettingsStructureTest {
             assertEquals(listOf("system", "light", "dark"), row.options.map { it.value })
         }
         assertEquals(
-            SettingsControl.TEXT,
+            SettingsControl.SELECT,
+            panel.rows.first { it.action == "settings-theme" }.control,
+        )
+        assertEquals(
+            SettingsControl.SELECT,
+            panel.rows.first { it.action == "settings-ui-font" }.control,
+        )
+        assertEquals(
+            SettingsControl.SELECT,
+            panel.rows.first { it.action == "settings-code-font" }.control,
+        )
+        assertEquals(
+            SettingsControl.SELECT,
             panel.rows.first { it.action == "settings-terminal-font" }.control,
         )
-        assertTrue(appearancePanelActions().none { it == "settings-theme" })
-        assertTrue(appearancePanelActions().none { it == "settings-ui-font" })
-        assertTrue(appearancePanelActions().none { it == "settings-code-font" })
     }
 
     @Test
@@ -270,19 +307,19 @@ class SettingsStructureTest {
         // its consumer without losing the user's value…
         assertTrue(SettingsStore.BOOLEAN_KEYS.containsKey("settings-show-search"))
         // …and the hidden list covers exactly the rows upstream/the audit marks
-        // consumerless.
+        // consumerless (`settings-theme` / `settings-ui-font` /
+        // `settings-code-font` left it once the theme registry and the font
+        // families gave them consumers; B-9 removed
+        // `settings-show-custom-agents` once the composer's agent chip became
+        // its consumer).
         assertEquals(
             listOf(
-                "settings-theme",
-                "settings-ui-font",
-                "settings-code-font",
                 "settings-shell",
                 "settings-sounds-agent",
                 "settings-sounds-permissions",
                 "settings-sounds-errors",
                 "settings-show-search",
                 "settings-show-status",
-                "settings-show-custom-agents",
             ),
             HIDDEN_SETTINGS,
         )
@@ -351,8 +388,11 @@ class SettingsStructureTest {
         val grouped = shortcutsByGroup()
         // GROUPS order is General / Session / Navigation / Model and agent /
         // Terminal / Prompt (`settings-keybinds.tsx`), and only non-empty groups
-        // survive — WAVE 2.3a registers the full v2 registry, so every group is
-        // now non-empty.
+        // survive. B-5 left the Prompt group **empty** — its only id was
+        // `prompt.submit`, which is not an upstream command and whose Enter is
+        // hardcoded in the composer, so it was dropped rather than left
+        // editable-but-dead. B-19 gives it back its real members: upstream's
+        // `prompt.mode.shell` / `prompt.mode.normal` (`composer/model.ts:419-434`).
         assertEquals(
             listOf(
                 ShortcutGroup.GENERAL,
@@ -374,12 +414,10 @@ class SettingsStructureTest {
                 "settings.open",
                 "tab.new",
                 "input.focus",
-                "context.addSelection",
-                "project.copyID",
-                "project.select",
                 "tab.reopenClosed",
-                "browser.open",
-                "browser.reload",
+                // B-17: `debugBar.toggle` has no upstream prefix, so `groupForCommandId`
+                // files it under General — and it is declared last, so it lands at
+                // the end of that group.
                 "debugBar.toggle",
                 "session.new",
                 "review.toggle",
@@ -391,17 +429,16 @@ class SettingsStructureTest {
                 "session.fork",
                 "session.export",
                 "session.copyID",
-                "session.archive",
-                "session.import",
+                "session.aside",
                 "message.previous",
                 "message.next",
                 "permissions.autoaccept",
                 "session.location.cycle",
                 "session.search",
-                "steps.toggle",
                 "file.open",
                 "fileTree.toggle",
                 "file.close",
+                "file.attach",
                 "mcp.toggle",
                 "model.choose",
                 "model.variant.cycle",
@@ -409,31 +446,76 @@ class SettingsStructureTest {
                 "agent.cycle.reverse",
                 "terminal.toggle",
                 "terminal.new",
-                "terminal.close",
-                "prompt.submit",
+                "prompt.mode.shell",
+                "prompt.mode.normal",
             ),
             grouped.flatMap { it.second }.map { it.id },
         )
         // A subset keeps only the non-empty groups, in GROUPS order.
         assertEquals(
-            listOf(ShortcutGroup.SESSION, ShortcutGroup.PROMPT),
-            shortcutsByGroup(SHORTCUT_ROWS.filter { it.id == "prompt.submit" || it.id == "session.new" })
+            listOf(ShortcutGroup.SESSION, ShortcutGroup.TERMINAL),
+            shortcutsByGroup(SHORTCUT_ROWS.filter { it.id == "terminal.new" || it.id == "session.new" })
                 .map { it.first },
         )
         assertTrue(shortcutsByGroup(emptyList()).isEmpty())
     }
 
     @Test
+    fun everyShortcutRowIsWired() {
+        // B-5's contract: the settings panel lists a row **only** when the shell
+        // has a handler for it. Both directions matter — a wired id without a row
+        // would be a chord no user could re-bind, and a row without a handler is
+        // the「能改但无效」gap this wave closed.
+        assertEquals(
+            SHORTCUT_ROWS.map { it.id }.toSet(),
+            com.xiufeigo.opencodeshell.ui.settings.WIRED_SHORTCUT_IDS,
+        )
+        // The ids B-5 dropped must stay dropped until their action lands: each
+        // one is either not an upstream command, desktop-only, or has no
+        // implementation face in this shell (see `SHORTCUT_ROWS`'s KDoc).
+        // B-17 took `debugBar.toggle` out of this set — the debug bar landed
+        // (`ui/debug/DebugBar.kt`), so the row is wired like every other one.
+        val dropped = setOf(
+            "prompt.submit",
+            "terminal.close",
+            "session.archive",
+            "session.import",
+            "context.addSelection",
+            "project.copyID",
+            "project.select",
+            "steps.toggle",
+            "browser.open",
+            "browser.reload",
+        )
+        val ids = SHORTCUT_ROWS.map { it.id }.toSet()
+        for (id in dropped) assertFalse(id, id in ids)
+    }
+
+    @Test
+    fun noTwoDefaultRowsShareAChord() {
+        // The panel refuses to *record* a chord another row already uses
+        // (`keybindConflicts`), so two defaults sharing one would be a row the
+        // user can never re-record — and a chord whose action depends on the
+        // table's order. `file.close` / `terminal.close` used to collide on
+        // `Ctrl+W`; B-5 dropped the hidden duplicate.
+        val bySignature = mutableMapOf<String, MutableList<String>>()
+        for (row in SHORTCUT_ROWS) {
+            for (signature in keybindSignatures(row.keybind)) {
+                bySignature.getOrPut(signature) { mutableListOf() }.add(row.id)
+            }
+        }
+        val collisions = bySignature.filterValues { it.size > 1 }
+        assertTrue("duplicate default chords: $collisions", collisions.isEmpty())
+    }
+
+    @Test
     fun everyShortcutDeclaresTheBindingTheShellActuallyImplements() {
-        // WAVE 2.3a: wired rows carry the runtime chord; registry rows carry the
-        // upstream keybind for display/record (runtime wiring is `ui/App.kt`'s
-        // job — see `wave2.3a-notes.md` §3), and rows with no upstream keybind
-        // stay blank rather than inventing one.
+        // Every row is wired now, so every row with a default carries the chord
+        // the handler matches; the keybind-less rows (`session.undo`, …) stay
+        // blank rather than inventing one, and a recorded override gives them one.
         val wired = com.xiufeigo.opencodeshell.ui.settings.WIRED_SHORTCUT_IDS
         for (row in SHORTCUT_ROWS) {
-            if (row.id in wired || row.id == "prompt.submit") {
-                assertTrue(row.id, row.keybind.isNotBlank())
-            }
+            assertTrue(row.id, row.id in wired)
         }
         assertEquals("Ctrl+K / Ctrl+Shift+P", SHORTCUT_ROWS.first { it.id == "command.palette" }.keybind)
         assertEquals("Ctrl+,", SHORTCUT_ROWS.first { it.id == "settings.open" }.keybind)
@@ -501,8 +583,11 @@ class SettingsStructureTest {
     @Test
     fun addServerDialogDefaultsMatchUpstream() {
         assertEquals("opencode", DEFAULT_SERVER_USERNAME)
-        // Android deviation: emulator host loopback instead of upstream localhost.
-        assertEquals("http://10.0.2.2:4096", DEFAULT_SERVER_URL_PLACEHOLDER)
+        // Android deviation: emulator host loopback instead of upstream
+        // localhost. Port 4095 is the opencode 2.x default (`opencode serve`);
+        // 4096 has no listener and made every probe fail with "unexpected end
+        // of stream".
+        assertEquals("http://10.0.2.2:4095", DEFAULT_SERVER_URL_PLACEHOLDER)
     }
 
     @Test
@@ -562,14 +647,23 @@ class SettingsStructureTest {
         val switchActions = ALL_SETTINGS_PANELS.flatMap { it.rows }
             .filter { it.control == SettingsControl.SWITCH }
             .map { it.action }
+        // B-16: one switch does not write a boolean pref — the mobile-titlebar
+        // position writes the `appearance.tabLayout` enum (`vertical` = bottom),
+        // the same key and the same placement the Experimental Tabs select
+        // writes, through its own branch in `SettingsStore.update`. It is
+        // asserted there (`MobileTitlebarRowTest`) rather than through the
+        // boolean table, which must not carry an action whose write is a string.
+        val enumSwitches = setOf("settings-mobile-titlebar-bottom")
+        val booleanSwitches = switchActions.filterNot { it in enumSwitches }
         // Every rendered switch is writable…
-        assertTrue(switchActions.all { SettingsStore.BOOLEAN_KEYS.containsKey(it) })
+        assertTrue(booleanSwitches.all { SettingsStore.BOOLEAN_KEYS.containsKey(it) })
         // …and the map is exactly {rendered switches} ∪ {hidden switch rows},
         // so nothing silently writes a pref no row can reach.
         val hiddenSwitches = HIDDEN_SETTINGS.filter { SettingsStore.BOOLEAN_KEYS.containsKey(it) }
-        assertEquals(switchActions.toSet() + hiddenSwitches.toSet(), SettingsStore.BOOLEAN_KEYS.keys)
+        assertEquals(booleanSwitches.toSet() + hiddenSwitches.toSet(), SettingsStore.BOOLEAN_KEYS.keys)
         assertFalse(SettingsStore.BOOLEAN_KEYS.containsKey("settings-color-scheme"))
         assertFalse(SettingsStore.BOOLEAN_KEYS.containsKey("settings-sounds-agent"))
+        assertTrue(enumSwitches.all { SettingsStore.BOOLEAN_KEYS.containsKey(it).not() })
     }
 
     @Test

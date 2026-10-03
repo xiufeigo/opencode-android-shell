@@ -6,13 +6,14 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * MockWebServer coverage for the review panel's client additions:
- * `GET /session/:id/diff`, `GET /session/:id/todo`, `GET /file/content`,
- * `GET /vcs` — including the lenient parsing of partial payloads.
+ * `GET /api/session/:id/diff`, `GET /api/fs/read/<rel>`, `GET /api/vcs` —
+ * including the lenient parsing of partial payloads.
  */
 class OpenCodeClientReviewTest {
 
@@ -24,15 +25,15 @@ class OpenCodeClientReviewTest {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """[
+                    """{"data":[
                       {"file":"src/App.kt","patch":"@@ -1,2 +1,3 @@\n line\n+added","additions":1,"deletions":0,"status":"modified"},
                       {"file":"new.md","additions":12,"deletions":0,"status":"added"},
                       {"file":"gone.md","deletions":4,"status":"deleted"}
-                    ]""",
+                    ]}""",
                 ),
             )
             val c = client(server)
-            val diff = c.sessionDiff("ses_1", directory = "/w")
+            val diff = c.sessionDiff("ses_1")
             assertEquals(3, diff.size)
             assertEquals("src/App.kt", diff[0].file)
             assertEquals("@@ -1,2 +1,3 @@\n line\n+added", diff[0].patch)
@@ -43,82 +44,53 @@ class OpenCodeClientReviewTest {
             assertNull(diff[2].patch)
             val recorded = server.takeRequest()
             assertEquals("GET", recorded.method)
-            assertEquals("/session/ses_1/diff?directory=%2Fw", recorded.path)
+            assertEquals("/api/session/ses_1/diff", recorded.requestUrl!!.encodedPath)
             c.close()
         }
     }
 
     @Test
-    fun sessionDiffAppendsMessageIdQueryOnlyWhenGiven() {
+    fun sessionDiffRejectsPerMessageScope() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
             val c = client(server)
-            c.sessionDiff("ses_1", messageID = "msg_9")
-            c.sessionDiff("ses_1")
-            assertEquals("/session/ses_1/diff?messageID=msg_9", server.takeRequest().path)
-            assertEquals("/session/ses_1/diff", server.takeRequest().path)
+            // v2 scopes by commit/message range (from/to), not one messageID:
+            // passing one throws instead of silently returning the full diff.
+            assertThrows(UnsupportedOperationException::class.java) {
+                c.sessionDiff("ses_1", messageID = "msg_9")
+            }
+            assertEquals(0, server.requestCount)
             c.close()
         }
     }
 
     @Test
-    fun sessionTodosParsesLeniently() {
+    fun fileContentReadsRawBytesAsTextOrBinary() {
         MockWebServer().use { server ->
-            server.enqueue(
-                MockResponse().setResponseCode(200).setBody(
-                    """[
-                      {"content":"wire the panel","status":"in_progress","priority":"high"},
-                      {"content":"ship it"}
-                    ]""",
-                ),
-            )
-            val c = client(server)
-            val todos = c.sessionTodos("ses_2")
-            assertEquals(2, todos.size)
-            assertEquals("wire the panel", todos[0].content)
-            assertEquals("in_progress", todos[0].status)
-            assertEquals("high", todos[0].priority)
-            assertEquals("", todos[1].status)
-            assertEquals("/session/ses_2/todo", server.takeRequest().path)
-            c.close()
-        }
-    }
-
-    @Test
-    fun fileContentParsesTextAndBinaryShapes() {
-        MockWebServer().use { server ->
-            server.enqueue(
-                MockResponse().setResponseCode(200).setBody(
-                    """{"type":"text","content":"hello\nworld","patch":{"hunks":[]}}""",
-                ),
-            )
-            server.enqueue(
-                MockResponse().setResponseCode(200).setBody(
-                    """{"type":"binary","content":"","mimeType":"image/png","encoding":"base64"}""",
-                ),
-            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody("hello\nworld"))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(String(byteArrayOf(0x61, 0x62, 0x00, 0x63, 0x64), Charsets.UTF_8)))
             val c = client(server)
             val text = c.fileContent("/w/a.txt")
             assertFalse(text.binary)
             assertEquals("hello\nworld", text.content)
-            // Object patches are stringified, not dropped.
-            assertEquals("""{"hunks":[]}""", text.patch)
             val binary = c.fileContent("/w/logo.png")
             assertTrue(binary.binary)
-            assertEquals("image/png", binary.mimeType)
+            // v2 ships no server-side mime: binary rides base64, mime stays null.
+            assertEquals("YWIAY2Q=", binary.content)
             assertEquals("base64", binary.encoding)
-            assertEquals("/file/content?path=%2Fw%2Fa.txt", server.takeRequest().path)
+            assertNull(binary.mimeType)
+            assertEquals("/api/fs/read/w/a.txt", server.takeRequest().requestUrl!!.encodedPath)
             c.close()
         }
     }
 
     @Test
-    fun vcsInfoParsesBranchAndDefaultBranch() {
+    fun vcsInfoParsesNestedBranch() {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200)
-                    .setBody("""{"branch":"review-panel","default_branch":"main"}"""),
+                    .setBody(
+                        """{"location":{},"data":{"branch":{"current":"review-panel","default":"main"}}}""",
+                    ),
             )
             server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
             val c = client(server)
@@ -129,7 +101,7 @@ class OpenCodeClientReviewTest {
             val empty = c.vcsInfo()
             assertNull(empty.branch)
             assertNull(empty.defaultBranch)
-            assertEquals("/vcs", server.takeRequest().path)
+            assertEquals("/api/vcs", server.takeRequest().requestUrl!!.encodedPath)
             c.close()
         }
     }

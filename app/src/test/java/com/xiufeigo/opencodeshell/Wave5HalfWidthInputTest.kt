@@ -59,9 +59,10 @@ class Wave5HalfWidthInputTest {
             ComposerSuggestions.commandItems(fullWidth, commands),
         )
         // …and the popover is non-empty, which is what `popoverOpen` keys on:
-        // with an empty server catalog the two built-ins still have to be there.
+        // with an empty server catalog the two built-ins (and the locally-run
+        // `/btw`) still have to be there.
         assertEquals(
-            listOf("/model", "/agent"),
+            listOf("/model", "/agent", "/btw"),
             ComposerSuggestions.commandItems(fullWidth, emptyList()).map { it.label },
         )
     }
@@ -173,23 +174,50 @@ class Wave5HalfWidthInputTest {
     fun theComposerFoldsEveryTextEntryPointBeforeItReadsTheTriggers() {
         val composer = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/composer/Composer.kt")
 
-        // The guarded ordering: the editor value is folded first, and the `/`
-        // query / `@` anchor are derived from the folded value. This is the exact
-        // shape whose absence kept the menu closed on the device.
-        val fold = composer.indexOf("val updated = HalfWidthText.normalize(input)")
-        assertTrue("onValueChange folds the IME value", fold >= 0)
-        val query = composer.indexOf("ComposerSuggestions.commandQuery(updated.text)")
-        val anchor = composer.indexOf("MentionText.anchorAt(updated.text")
-        assertTrue("the `/` query is derived from the folded value", query > fold)
-        assertTrue("the `@` anchor is derived from the folded value", anchor > fold)
-        assertTrue("the folded value is what the editor stores", composer.contains("setText(updated)"))
+        // The guarded ordering: the IME value is folded into a *read view* first,
+        // and the `/` query / `@` anchor are derived from that view. This is the
+        // exact shape whose absence kept the menu closed on the device.
+        //
+        // v64: the fold is a read, never a write-back — folding the stored value
+        // is what made Compose `restartInput()` and parked the caret at 0
+        // (`research/v64_verify/5556/02_24…05_27`, `5558/01b*`, `21`).
+        val fold = composer.indexOf("val readable = ComposerImeCommit.readable(input.text)")
+        assertTrue("onValueChange folds the IME value for reading", fold >= 0)
+        // v67: the trigger derivation moved wholesale into
+        // `ComposerSuggestions.triggerAt`, which folds first and then reads the
+        // query/anchor off the folded view; the editor-side `live` is the single
+        // source (the old `trigger`/`slashQuery` mirrors are gone).
+        val suggestions = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/composer/ComposerSuggestions.kt")
+        val sFold = suggestions.indexOf("val ascii = HalfWidthText.toAscii(text)")
+        val sQuery = suggestions.indexOf("slashQuery = commandQuery(ascii)")
+        val sAnchor = suggestions.indexOf("MentionText.anchorAt(ascii, caret)")
+        assertTrue("triggerAt folds the text before it reads", sFold >= 0)
+        assertTrue("the `/` query is derived from the folded value", sQuery > sFold)
+        assertTrue("the `@` anchor is derived from the folded value", sAnchor > sFold)
+        assertTrue(
+            "the editor reads triggers through the single folded source",
+            composer.contains("ComposerSuggestions.triggerAt(value.text"),
+        )
+        assertTrue("the IME's own value is what the editor stores", composer.contains("setText(input)"))
+        assertFalse(
+            "the stored value is never rewritten",
+            composer.contains("HalfWidthText.normalize(input)"),
+        )
 
         // Every other way text enters: the `+`/paste insert, the draft restore,
         // the history recall and the outgoing payload.
         assertTrue("inserts are folded", composer.contains("val chunk = HalfWidthText.normalize(text)"))
         assertTrue("a restored draft is folded", composer.contains("HalfWidthText.normalize(restored)"))
         assertTrue("a recalled history entry is folded", composer.contains("val text = HalfWidthText.normalize(recalled)"))
-        assertTrue("the submitted text is folded", composer.contains("val outgoing = HalfWidthText.normalize(value.text).trim()"))
-        assertTrue("the shell trigger accepts the IME's `！`", composer.contains("HalfWidthText.isShellTrigger(updated.text)"))
+        assertTrue("the submitted text is folded", composer.contains("val outgoing = HalfWidthText.normalize(value.text)"))
+        // v75: the fold is 1:1 and the payload keeps the whitespace the IME
+        // committed; only the blank gate / the `/name` parsers read the trimmed
+        // shape (upstream `request.ts:128` sends `input.text` itself).
+        assertTrue("the gate trims, the payload does not", composer.contains("val trimmed = outgoing.trim()"))
+        assertTrue(
+            "a whitespace-terminated batch is not edited out of the payload",
+            composer.contains("ComposerSubmission.build(\n            text = outgoing,"),
+        )
+        assertTrue("the shell trigger accepts the IME's `！`", composer.contains("HalfWidthText.isShellTrigger(readable)"))
     }
 }

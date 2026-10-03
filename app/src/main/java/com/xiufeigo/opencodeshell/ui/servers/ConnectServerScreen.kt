@@ -1,5 +1,8 @@
 package com.xiufeigo.opencodeshell.ui.servers
 
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -66,13 +69,23 @@ import kotlinx.coroutines.withContext
  * `state-fg-danger`, the full-width 44 dp primary button, and the footer with
  * the `opencode pair` code block.
  *
- * **Not implemented on purpose**: the “Scan QR code” button and its camera
- * states. Upstream gates them behind `platform.platform === "web"`
- * (`screen.tsx:138-157`); there is no pairing flow on Android.
+ * **Scan QR code** (`screen.tsx:138-157`; gated `platform.platform === "web"`
+ * upstream — this shell stands in for that platform): the button hands the
+ * scan to a system scanner app via [QrScan], and a result fills the form and
+ * submits exactly like upstream's `onScan` (`screen.tsx:75-84`). Without a
+ * scanner app the button reports [R.string.oc_connect_scan_unavailable], the
+ * analog of upstream's `server.connect.camera.unavailable` note. The in-app
+ * camera preview (`servers/connect/scanner.tsx`) stays TODO — it needs a
+ * QR/camera library.
  *
  * On success the address is written through [ServerConfigStore.replaceAll] and
  * made active, which bumps the store revision and re-evaluates the gate in
  * `ui/App.kt` — the page replaces itself with the shell.
+ *
+ * The address field opens prefilled ([prefillUrl]) when the store already holds
+ * a password-less server: a fresh install that synced a bare URL then only
+ * asks for the Basic-auth password instead of a retyped address. With no such
+ * entry the form starts blank, exactly as before.
  */
 @Composable
 fun ConnectServerScreen(
@@ -85,10 +98,11 @@ fun ConnectServerScreen(
     val scope = rememberCoroutineScope()
     val probe = remember { ServerHealthProbe() }
 
-    var url by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf(prefillUrl(store.listServers()) ?: "") }
     var password by remember { mutableStateOf("") }
     var checking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<HealthMessage?>(null) }
+    var scanUnavailable by remember { mutableStateOf(false) }
 
     fun submit() {
         if (checking) return
@@ -120,6 +134,23 @@ fun ConnectServerScreen(
             )
             onConnected()
         }
+    }
+
+    val scanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val payload = QrScan.resultFrom(result.data) ?: return@rememberLauncherForActivityResult
+        val pairing = QrScan.pairingFromResult(payload)
+        if (pairing == null) {
+            // `server.connect.scan.invalid` (`scanner.tsx`).
+            error = HealthMessage(R.string.oc_pair_invalid)
+            return@rememberLauncherForActivityResult
+        }
+        // Upstream `onScan` (`screen.tsx:75-84`): fill the form, then connect.
+        url = pairing.urls.first()
+        password = pairing.password
+        scanUnavailable = false
+        submit()
     }
 
     Column(
@@ -229,6 +260,33 @@ fun ConnectServerScreen(
                 onClick = { submit() },
             )
 
+            // `screen.tsx:138-157`: the neutral `server.connect.scan` button
+            // (web-only upstream) and the availability note under it.
+            ConnectButton(
+                label = stringResource(R.string.oc_pair_scan),
+                // `disabled={request.isPending || !camera.available.latest}`
+                // (`screen.tsx:143`) — availability is discovered by launching,
+                // so the button stays enabled and reports on failure instead.
+                enabled = !checking,
+                primary = false,
+                onClick = {
+                    try {
+                        scanLauncher.launch(QrScan.scanIntent())
+                    } catch (_: ActivityNotFoundException) {
+                        scanUnavailable = true
+                    }
+                },
+            )
+            if (scanUnavailable) {
+                Text(
+                    text = stringResource(R.string.oc_connect_scan_unavailable),
+                    color = c.textMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight(440),
+                )
+            }
+
             // `<footer>` (`screen.tsx:158-161`): the pairing hint and the literal
             // command — a code token, never translated.
             Column(
@@ -318,21 +376,40 @@ private fun ConnectField(
     }
 }
 
-/** `variant="contrast" size="large"` submit button: full width, ≥44 dp (`screen.css:72-75`). */
+/** `variant="contrast"` (primary) or `variant="neutral"` button: full width, ≥44 dp (`screen.css:72-75`). */
 @Composable
-private fun ConnectButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun ConnectButton(
+    label: String,
+    enabled: Boolean,
+    primary: Boolean = true,
+    onClick: () -> Unit,
+) {
     val c = OcTheme.colors
     Box(
         Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = CONNECT_FIELD_HEIGHT)
-            .background(if (enabled) c.accent else c.layer03, RoundedCornerShape(6.dp))
+            .background(
+                when {
+                    !primary -> androidx.compose.ui.graphics.Color.Transparent
+                    enabled -> c.accent
+                    else -> c.layer03
+                },
+                RoundedCornerShape(6.dp),
+            )
+            .then(
+                if (primary) Modifier else Modifier.border(0.5.dp, c.borderBase, RoundedCornerShape(6.dp)),
+            )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            color = if (enabled) c.textInverse else c.textFaint,
+            color = when {
+                !primary -> c.textBase
+                enabled -> c.textInverse
+                else -> c.textFaint
+            },
             fontSize = 15.sp,
             fontWeight = FontWeight(530),
         )

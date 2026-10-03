@@ -500,9 +500,9 @@ class HomeProjectFilterTest {
         // `home/model.ts:20-21`: the store is the column's source…
         assertTrue(home.contains("homeProjectStore?.state?.collectAsStateWithLifecycle()"))
         assertTrue(home.contains("HomeProjects.openRows("))
-        assertTrue(home.contains("HomeProjects.closedRows(openedProjects.recentlyClosed)"))
+        assertTrue(home.contains("HomeProjects.closedRows(openedProjects.recentlyClosed, names = serverNames)"))
         // …and `GET /project` only feeds the enrichment lookup, never the list.
-        assertTrue(home.contains("known = HomeProjects.merge(serverProjects.orEmpty(), visibleSessions)"))
+        assertTrue(home.contains("known = HomeProjects.merge(serverProjects.orEmpty(), visibleSessions, names = serverNames)"))
         assertFalse(
             "the column must not render a project list built straight from GET /project",
             home.contains("recentlyClosed = HomeProjects.RECENTLY_CLOSED"),

@@ -35,6 +35,13 @@ class TerminalTabs(private val max: Int = PtyProtocol.MAX_TERMINAL_SESSIONS) {
      */
     private var lastNumber = 0
 
+    /**
+     * Highest `terminal.title.numbered` value issued so far (live tabs may all
+     * be closed while the counter must survive — it is what persistence
+     * snapshots).
+     */
+    val issuedNumber: Int get() = lastNumber
+
     var activeId: String? = null
         private set
 
@@ -52,7 +59,10 @@ class TerminalTabs(private val max: Int = PtyProtocol.MAX_TERMINAL_SESSIONS) {
      */
     fun add(id: String, title: String? = null, number: Int? = null, focus: Boolean = true): Tab? {
         if (id.isBlank() || items.any { it.id == id } || isFull) return null
-        val tab = Tab(id = id, number = number ?: nextNumber(), title = title)
+        val tab = Tab(id = id, number = number?.takeIf { it > 0 } ?: nextNumber(), title = title)
+        // An explicitly restored number still advances the counter: without
+        // this any revive path that forgets `seedNumber` reissues live numbers.
+        if (tab.number > lastNumber) lastNumber = tab.number
         items += tab
         if (focus || activeId == null) activeId = tab.id
         return tab
@@ -102,6 +112,16 @@ class TerminalTabs(private val max: Int = PtyProtocol.MAX_TERMINAL_SESSIONS) {
         items.clear()
         activeId = null
         lastNumber = 0
+    }
+
+    /**
+     * Restores the `terminal.title.numbered` counter after re-adopting
+     * persisted tabs (their numbers are passed explicitly to [add], which
+     * leaves the counter behind — without this the next fresh tab would reuse
+     * a revived tab's number).
+     */
+    fun seedNumber(number: Int) {
+        if (number > lastNumber) lastNumber = number
     }
 
     private fun nextNumber(): Int {

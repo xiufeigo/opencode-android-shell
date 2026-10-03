@@ -1,0 +1,158 @@
+{
+  "info": {
+    "id": "ses_f1e6cc8b5ffeObKZtUrGtJiwMl",
+    "projectID": "global",
+    "model": {
+      "id": "space-bunny-free",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 9096,
+      "output": 31,
+      "reasoning": 71,
+      "cache": {
+        "read": 18891,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1790490916705,
+      "updated": 1790493964863,
+      "idle": 1790491029334,
+      "viewed": 1790491029334
+    },
+    "title": "E2E_FORK_T1",
+    "revert": {
+      "messageID": "msg_0e193d875001W6IaNX1aHdxPFa",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "files": []
+    },
+    "location": {
+      "directory": "\/home\/xiufeigo\/v35projB"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_0e1933778001STAjLBKWgbR6JI",
+      "time": {
+        "created": 1790490916728
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go"
+      }
+    },
+    {
+      "id": "msg_0e193d875001W6IaNX1aHdxPFa",
+      "time": {
+        "created": 1790490958014
+      },
+      "text": "Reply with the single word E2E_FORK_T1",
+      "type": "user"
+    },
+    {
+      "id": "msg_0e193d8d8001ZXI7IIAVTL7Swo",
+      "time": {
+        "created": 1790490958151,
+        "streamed": 1790490960243,
+        "completed": 1790490960266
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "E2E_FORK_T1"
+        }
+      ],
+      "snapshot": {
+        "start": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "end": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "files": []
+      },
+      "finish": "stop",
+      "rawFinish": "stop",
+      "cost": 0,
+      "tokens": {
+        "input": 8586,
+        "output": 8,
+        "reasoning": 0,
+        "cache": {
+          "read": 491,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_0e193e195001wVPPh6EjeE1LTJ",
+      "time": {
+        "created": 1790490960277
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_0e194c85e001Cjawirkc4v2D4D",
+      "time": {
+        "created": 1790491019386
+      },
+      "text": "Reply with the single word E2E_FORK_T2",
+      "type": "user"
+    },
+    {
+      "id": "msg_0e194c888001SY9W57E0DF8NYJ",
+      "time": {
+        "created": 1790491019435,
+        "streamed": 1790491020565,
+        "completed": 1790491020589
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "E2E_FORK_T2"
+        }
+      ],
+      "snapshot": {
+        "start": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "end": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "files": []
+      },
+      "finish": "stop",
+      "rawFinish": "stop",
+      "cost": 0,
+      "tokens": {
+        "input": 24,
+        "output": 8,
+        "reasoning": 0,
+        "cache": {
+          "read": 9083,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_0e194cd3d001Ln6dcYsJxk09gE",
+      "time": {
+        "created": 1790491020605
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

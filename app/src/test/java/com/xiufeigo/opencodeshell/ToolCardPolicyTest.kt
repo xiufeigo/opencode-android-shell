@@ -163,4 +163,28 @@ class ToolCardPolicyTest {
                 .none { it.kind == ToolPresentation.LineKind.ERROR },
         )
     }
+
+    // ------------------------------------------------- precomputed body
+
+    @Test
+    fun policyQuestionsAcceptAPrecomputedBody() {
+        val edit = part("edit", input = """{"oldString":"a\nb","newString":""}""")
+        val lines = ToolPresentation.bodyLines(edit)
+        // Same answers as the parsing path — the card passes its remembered
+        // body so one recomposition parses JSON / runs Myers once, not per call.
+        assertEquals(ToolCardPolicy.deletionOnly(edit), ToolCardPolicy.deletionOnly(edit, lines))
+        assertEquals(ToolCardPolicy.canExpand(edit), ToolCardPolicy.canExpand(edit, lines))
+        assertEquals(
+            ToolCardPolicy.resolveOpen(edit, userOpen = null, editExpanded = true),
+            ToolCardPolicy.resolveOpen(edit, userOpen = null, editExpanded = true, lines = lines),
+        )
+        assertEquals(
+            ToolCardPolicy.defaultOpen(edit, editExpanded = true),
+            ToolCardPolicy.defaultOpen(edit, editExpanded = true, lines = lines),
+        )
+        // The precomputed path is what the UI relies on: a deletion-only edit
+        // stays collapsed even with the edit setting on.
+        assertTrue(ToolCardPolicy.deletionOnly(edit, lines))
+        assertFalse(ToolCardPolicy.resolveOpen(edit, userOpen = null, editExpanded = true, lines = lines))
+    }
 }

@@ -60,9 +60,41 @@ fun serverAddress(value: String): String? {
  * screen. `ServerConfigStore.listServers()` already drops incomplete entries, so
  * this only guards the "I re-parsed the raw JSON myself" path — it is the
  * documented predicate, and it is what the JVM test pins.
+ *
+ * Deliberately **not** extended to password-less servers: a complete URL with
+ * no password is legal upstream (a local server without auth), so
+ * `requiresConnectScreen` stays false there — `Wave5ConnectTest` pins that.
+ * The fresh-install 401 case (complete URL, empty password, server demanding
+ * Basic auth) is [serversMissingCredentials] instead, which the Home/overlay
+ * owners wire to an explicit prompt (see below).
  */
 fun requiresConnectScreen(servers: List<ServerConfigStore.Server>): Boolean =
     servers.none { it.isComplete }
+
+/**
+ * P1 fresh-install discovery: configured-looking servers (complete URL) that
+ * carry no password. A fresh install lands exactly here — the WebView syncs a
+ * URL with no secret, every protected call 401s, and the Home list sits empty
+ * with no hint. `HealthFailure.MissingCredentials` (a 401/403 with no
+ * `Authorization` on the wire) is the probe-side confirmation for the same
+ * state; either signal should surface `oc_server_error_auth` ("enter username
+ * and password") with a route to the Servers editor, never a bare empty list.
+ *
+ * Wiring lives outside `ui/servers` (the `App.kt` gate, Home, overlay), so
+ * this stays a pure predicate plus [prefillUrl] for the form.
+ */
+fun serversMissingCredentials(servers: List<ServerConfigStore.Server>): List<ServerConfigStore.Server> =
+    servers.filter { it.isComplete && it.password.isNullOrEmpty() }
+
+/**
+ * The address the connect page offers when it opens over an existing
+ * password-less entry: the user then types only the Basic-auth password
+ * (upstream `screen.tsx` always shows both fields, and the address is already
+ * known here). Null when there is nothing to offer — the form starts blank,
+ * exactly as before.
+ */
+fun prefillUrl(servers: List<ServerConfigStore.Server>): String? =
+    serversMissingCredentials(servers).firstOrNull()?.url
 
 /**
  * The row the connect page persists for a successful address.

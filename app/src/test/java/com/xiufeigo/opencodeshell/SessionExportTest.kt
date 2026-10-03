@@ -4,6 +4,7 @@ import com.xiufeigo.opencodeshell.ui.session.export.SessionExport
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,11 +19,15 @@ class SessionExportTest {
 
     @Test
     fun filenameComesFromTheTitleLikeUpstream() {
-        // export.test.ts:8-12
+        // export.test.ts:8-12, minus upstream's `.toLowerCase()` (v63 BUG-3):
+        // the device-tagged titles this shell uses (`E2ECHK5556-base`) have to
+        // survive into the file name, or a saved export cannot be matched back
+        // to the session it came from on a shared backend.
         assertEquals(
-            "clone-pr-in-worktree-from-fork.json",
+            "Clone-PR-in-worktree-from-fork.json",
             SessionExport.filename(id = "ses_123", title = "Clone PR in worktree from fork"),
         )
+        assertEquals("E2ECHK5556-base.json", SessionExport.filename("ses_1", title = "E2ECHK5556-base"))
     }
 
     @Test
@@ -39,8 +44,8 @@ class SessionExportTest {
 
     @Test
     fun normalizationCollapsesRunsAndTrimsEdges() {
-        assertEquals("a-b-c.json", SessionExport.filename("x", title = "A!!!B   C"))
-        assertEquals("hello-world.json", SessionExport.filename("x", title = "  --Hello World--  "))
+        assertEquals("A-B-C.json", SessionExport.filename("x", title = "A!!!B   C"))
+        assertEquals("Hello-World.json", SessionExport.filename("x", title = "  --Hello World--  "))
         // Non-ASCII titles collapse to dashes, so the id keeps the name usable.
         assertEquals("ses_42.json", SessionExport.filename("ses_42", title = "中文标题"))
         // Only runs of *disallowed* characters fold to one `-`; dashes the user
@@ -95,6 +100,44 @@ class SessionExportTest {
         assertEquals(0, parsed.getJSONArray("messages").length())
     }
 
+    /**
+     * A truncated message drain is written **into the file** — the export used
+     * to stop at the paging cap and look exactly like a complete one, which is
+     * a silent fidelity loss for whoever reads the JSON back.
+     */
+    @Test
+    fun aTruncatedDrainIsNotedInThePayload() {
+        val frame = SessionExport.Frame(
+            info = JSONObject("""{"id":"ses_1"}"""),
+            messages = listOf(JSONObject("""{"id":"msg_1"}""")),
+            truncated = true,
+            truncatedPages = 128,
+        )
+        val parsed = JSONObject(SessionExport.serialize(frame))
+
+        assertEquals(setOf("info", "messages", SessionExport.TRUNCATED_KEY), parsed.keys().asSequence().toSet())
+        val note = parsed.getJSONObject(SessionExport.TRUNCATED_KEY)
+        assertTrue(note.getBoolean("messages"))
+        assertEquals(128, note.getInt("pages"))
+        // The transcript itself is untouched: the note is additive metadata.
+        assertEquals(1, parsed.getJSONArray("messages").length())
+    }
+
+    @Test
+    fun aCompleteDrainKeepsTheUpstreamRootExactly() {
+        // Byte-compatibility with upstream's `{info, messages}` is the point of
+        // the export: no note, no metadata, when nothing was cut.
+        val complete = JSONObject(
+            SessionExport.serialize(
+                SessionExport.Frame(JSONObject("""{"id":"ses_1"}"""), listOf(JSONObject("""{"id":"msg_1"}"""))),
+            ),
+        )
+        assertEquals(setOf("info", "messages"), complete.keys().asSequence().toSet())
+
+        val default = JSONObject(SessionExport.serialize(JSONObject("""{"id":"ses_1"}"""), emptyList()))
+        assertEquals(setOf("info", "messages"), default.keys().asSequence().toSet())
+    }
+
     // -------------------------------------------------------------- adapter
 
     @Test
@@ -133,8 +176,7 @@ class SessionExportTest {
     }
 
     @Test
-    fun adapterOmitsAbsentOptionalFieldsInsteadOfWritingNulls() {
-        val message = OpenCodeClient.Message(
+    fun adapterOmitsAbsentOptionalFieldsInsteadOfWritingNulls() {        val message = OpenCodeClient.Message(
             id = "msg_2",
             sessionID = "ses_1",
             role = "user",
@@ -148,5 +190,50 @@ class SessionExportTest {
         assertFalse(info.has("agent"))
         assertFalse(info.getJSONObject("time").has("completed"))
         assertEquals(0, row.getJSONArray("parts").length())
+    }
+
+    // ------------------------------------------------------------ frame title
+
+    @Test
+    fun frameTitleReadsTheServerFreshSessionTitle() {
+        // The export filename prefers the just-fetched frame's title over any
+        // cached one: a rename that landed after the Home list / tab / nav
+        // argument was read still pre-fills the new name (5554/5560:
+        // renamed to `E2ECHK5560-Stream-Stop`, export pre-filled
+        // `Untitled.json`).
+        val frame = SessionExport.Frame(
+            info = JSONObject("""{"id":"ses_1","title":"E2ECHK5560-Stream-Stop"}"""),
+            messages = emptyList(),
+        )
+        assertEquals("E2ECHK5560-Stream-Stop", SessionExport.frameTitle(frame))
+        assertEquals(
+            "E2ECHK5560-Stream-Stop.json",
+            SessionExport.filename("ses_1", SessionExport.frameTitle(frame)),
+        )
+    }
+
+    @Test
+    fun frameTitleTreatsMissingAndNullTitlesAsAbsent() {
+        // org.json's `optString` coerces a JSON null to the literal `"null"`,
+        // which would sail through `isNotBlank` into the filename — and a
+        // missing/blank title must fall back to the caller's cached title, not
+        // to `null.json`.
+        assertNull(SessionExport.frameTitle(SessionExport.Frame(JSONObject("""{"id":"ses_1"}"""), emptyList())))
+        assertNull(
+            SessionExport.frameTitle(
+                SessionExport.Frame(JSONObject("""{"id":"ses_1","title":null}"""), emptyList()),
+            ),
+        )
+        assertNull(
+            SessionExport.frameTitle(
+                SessionExport.Frame(JSONObject("""{"id":"ses_1","title":"   "}"""), emptyList()),
+            ),
+        )
+        assertNull(
+            "a server-sent literal \"null\" is absent, not a filename",
+            SessionExport.frameTitle(
+                SessionExport.Frame(JSONObject("""{"id":"ses_1","title":"null"}"""), emptyList()),
+            ),
+        )
     }
 }

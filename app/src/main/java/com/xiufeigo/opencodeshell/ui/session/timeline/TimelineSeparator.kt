@@ -81,6 +81,14 @@ private fun SeparatorRule(modifier: Modifier) {
  * | `COMPACTION_START` | `oc_sep_compaction_started` | `ui.messagePart.compaction.started` (`en.ts:107`) |
  * | `COMPACTION_END` | `oc_compaction` | `ui.messagePart.compaction` (`en.ts:106`, "Session compacted") |
  *
+ * One addition to that table: a `COMPACTION_END` whose compaction settled as
+ * rejected ([TimelineRows.Row.Separator.failed]) reads `oc_compaction_failed`
+ * instead — upstream has no such branch, but upstream also never labels a
+ * rejected compaction "Session compacted", and the v19 over-limit session
+ * showed exactly that. The failed/completed decision itself lives in the row
+ * model ([ChatStore.compactionFailed]), so this divider and the part body
+ * inside `CompactionBlock` can never disagree about one compaction.
+ *
  * Upstream wraps every one of these in `py-2` (`session-timeline-row.tsx:510,647`,
  * `message-content.tsx:436,462`); the timeline's `Arrangement.spacedBy(TURN_GAP)`
  * already separates the rows, so no extra vertical padding is added here.
@@ -99,7 +107,7 @@ internal fun TimelineSeparatorRow(
         TimelineRows.SeparatorKind.COMPACTION_START ->
             stringResource(R.string.oc_sep_compaction_started)
 
-        TimelineRows.SeparatorKind.COMPACTION_END -> stringResource(R.string.oc_compaction)
+        TimelineRows.SeparatorKind.COMPACTION_END -> stringResource(compactionLabelRes(separator.failed))
     }
     TimelineSeparator(label = label, modifier = modifier.padding(vertical = 2.dp))
 }

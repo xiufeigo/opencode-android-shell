@@ -1,0 +1,61 @@
+diff --git "a/C:\\Users\\xiufe\\AppData\\Local\\Temp\\AgentChip_before.kt" "b/app\\src\\main\\java\\com\\xiufeigo\\opencodeshell\\ui\\session\\composer\\AgentChip.kt"
+index 814c5b5..34c671d 100644
+--- "a/C:\\Users\\xiufe\\AppData\\Local\\Temp\\AgentChip_before.kt"
++++ "b/app\\src\\main\\java\\com\\xiufeigo\\opencodeshell\\ui\\session\\composer\\AgentChip.kt"
+@@ -108,6 +108,17 @@ fun AgentChip(
+ ) {
+     val c = OcTheme.colors
+     val options = remember(agents) { OpenCodeClient.Agent.selectable(agents) }
++    // v97 P2（照 `ModelChip` 的 v75 P2 修法）：本实例**已经消费过**的 `/agent` 请求
++    // 计数。宿主那条 `agentOpenRequest`（`Composer.kt:467`）是单向闩、永不回落，
++    // v74 却让 chip 在**每次挂载**时重读它 —— 用户敲过一次 `/agent` 之后，此后
++    // 任何重建（点 composer 文本区让键盘与布局跟着变、进出 shell 模式
++    // `Composer.kt:1726`、会话切换）都会「凭空」再弹一次 agent 菜单。重建出来的
++    // 实例把挂载时那个值当作已见过，只有真正**新**到的值才开
++    // （`agentOpenRequestArrived`）。
++    // 刻意放在下一行早退的**之上**：chip 不可见 / agent 列表还没到时这个 composable
++    // 整段 return（`agentPickerVisible` 的初值就是 false，`ChatViewModel.kt:581`），
++    // 闩仍然活着 —— 那之前敲的 `/agent` 在 chip 可见之后照样开，正路径不破。
++    var seenRequest by remember { mutableStateOf(openRequest) }
+     if (!visible || options.isEmpty()) return
+     var expanded by remember { mutableStateOf(false) }
+     // v97（v57 移交项）：关闭原因。弹层内容卸载的那一刻才知道该不该把焦点还
+@@ -141,8 +152,14 @@ fun AgentChip(
+     // ACTION_CLICK is announced as a button.
+     val chooseLabel = stringResource(R.string.oc_composer_choose_agent)
+ 
++    // `/agent` from the command menu: open the menu on the next composition.
++    //
++    // v97 P2: 只有**新**请求才开（[agentOpenRequestArrived]）。与
++    // [modelOpenRequestArrived]（v75 P2）同款：重建出的实例把挂载时那个值当作
++    // 已见过，所以「重建」不再等于「再弹一次」。
+     LaunchedEffect(openRequest) {
+-        if (openRequest > 0) openMenu()
++        if (agentOpenRequestArrived(seenRequest, openRequest)) openMenu()
++        seenRequest = openRequest
+     }
+     // v49: ESC 关闭 + 外点穿透，宿主窗口在 Popup 之外取（见 `OcPopoverDismiss`）。
+     val hostView = LocalView.current
+@@ -275,6 +292,22 @@ fun AgentChip(
+     }
+ }
+ 
++/**
++ * v97 P2: whether [current] is a request this chip instance has not seen yet.
++ * The host's counter (`agentOpenRequest`, `Composer.kt:467`) is a one-way latch
++ * that never falls back, and v74 let the chip re-read it on **every** mount — so
++ * once the user had typed `/agent`, any later rebuild of the composer re-opened
++ * the menu out of nowhere (a tap on the composer's text area moves the keyboard
++ * and the layout, which is exactly a rebuild). A rebuilt instance now treats the
++ * value it mounts with as already seen, and only a genuinely **new** value opens
++ * the menu — the same shape as [modelOpenRequestArrived] (v75 P2).
++ *
++ * @param seen the value this instance has already seen (its mount value).
++ * @param current the value the host publishes now.
++ */
++internal fun agentOpenRequestArrived(seen: Int, current: Int): Boolean =
++    current > 0 && current != seen
++
+ /** `[data-slot=menu-v2-item]` — name + muted description, check on the active row. */
+ @Composable
+ private fun AgentRow(

@@ -1,5 +1,8 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.v2.V2Api
+import com.xiufeigo.opencodeshell.v2.fileContentFromBytes
+import com.xiufeigo.opencodeshell.v2.v2VcsDiffMode
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -16,9 +19,32 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
+ * NULL-safe string read for every `fromJson` in this file.
+ *
+ * org.json's `optString` coerces JSON null to the literal `"null"` (and
+ * stringifies non-string values), so `optString("title", "")` on
+ * `{"title":null}` yields `"null"` — which then sails through
+ * `takeIf { it.isNotEmpty() }` / `ifEmpty { … }` guards and ends up on
+ * screen (the header chip once printed "null"; Cursor hit the same trap).
+ * [JSONObject.isNull] covers both a missing key and JSON null, and a
+ * server-sent literal `"null"` string is treated as absent, matching the
+ * VcsInfo precedent. Anything else keeps `optString` coercion verbatim, so
+ * this is only a narrowing of the `"null"`-producing inputs.
+ */
+private fun JSONObject.optStr(key: String, default: String = ""): String {
+    if (isNull(key)) return default
+    return optString(key, default).takeIf { it != "null" } ?: default
+}
+
+/**
  * Minimal native OpenCode REST client (M1): sessions, messages, prompt, abort,
  * file search. Talks **directly** to the user's server URL (no loopback
  * gateway hop) with Basic auth mirrored from the WebView config.
+ *
+ * Every route targets the **v2** `/api/…` namespace. The unprefixed v1 paths
+ * this client used historically answer `200` + the SPA shell (HTML, not JSON)
+ * on a v2 server — measured on 2.0.11 — so requesting one is always a parse
+ * crash, never data.
  */
 class OpenCodeClient(
     private val baseHttpUrl: HttpUrl,
@@ -40,19 +66,33 @@ class OpenCodeClient(
 
     // ------------------------------------------------------------------ wire
 
-    private fun url(directory: String?, path: String): HttpUrl {
-        val builder = baseHttpUrl.newBuilder()
-        if (!directory.isNullOrBlank()) builder.addQueryParameter("directory", directory)
+    /**
+     * `/api/<path>` on the server root. [configure] appends query parameters
+     * (location scope, limit); path segments are added one by one so an id can
+     * never re-root the URL.
+     */
+    private fun apiUrl(path: String, configure: (HttpUrl.Builder) -> Unit = {}): HttpUrl {
+        val builder = baseHttpUrl.newBuilder().addPathSegment("api")
         for (seg in path.trim('/').split('/').filter { it.isNotEmpty() }) {
             builder.addPathSegment(seg)
         }
+        configure(builder)
         return builder.build()
     }
 
-    private fun builder(directory: String?, path: String): Request.Builder {
-        val builder = Request.Builder().url(url(directory, path))
+    private fun apiBuilder(path: String, configure: (HttpUrl.Builder) -> Unit = {}): Request.Builder {
+        val builder = Request.Builder().url(apiUrl(path, configure))
         basicAuthorization()?.let { builder.header("Authorization", it) }
         return builder
+    }
+
+    /**
+     * `?location[directory]=` for the location-scoped catalog/file routes (the
+     * deepObject `location` key, the only scope name the server honours).
+     * Session-scoped routes take no location parameter and never call this.
+     */
+    private fun located(builder: HttpUrl.Builder, directory: String?) {
+        if (!directory.isNullOrBlank()) builder.addQueryParameter(LOCATION_DIRECTORY_QUERY, directory)
     }
 
     /**
@@ -74,20 +114,22 @@ class OpenCodeClient(
      */
     private fun basicAuthorization(): String? = basicAuthorizationHeader(username, password)
 
-    /**
-     * [url] plus `?limit=` when [limit] is positive. Both v1 list endpoints
-     * accept it (`GET /session`, `research/04:209`; `GET /session/:id/message`,
-     * `research/04:215`) and both answer with the **most recent** entries in
-     * chronological order — verified against opencode 1.18.31, where
-     * `?limit=2` on a 16-message session returned exactly the last two. A
-     * non-positive [limit] is omitted (`limit=0` means "everything" to the
-     * server, and leaving the parameter off says the same thing more clearly).
-     */
-    private fun pagedUrl(directory: String?, path: String, limit: Int?): HttpUrl {
-        val builder = url(directory, path).newBuilder()
-        if (limit != null && limit > 0) builder.addQueryParameter("limit", limit.toString())
-        return builder.build()
+    /** The v2 read surface: catalogs answer `{location, data:[…]}` and session
+     * reads `{data:…}` without `location`; a bare array (the v1 shape) still
+     * parses so a lenient body never fails the screen. */
+    private fun dataRows(body: String): List<JSONObject> {
+        val trimmed = body.trim()
+        if (trimmed.startsWith("{")) {
+            JSONObject(trimmed).optJSONArray("data")?.let { arr ->
+                return (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+            }
+        }
+        return parseJsonArray(body)
     }
+
+    /** `{data:{…}}`; `{}` when the envelope carries no object. */
+    private fun dataObject(body: String): JSONObject =
+        JSONObject(body).optJSONObject("data") ?: JSONObject()
 
     private fun call(request: Request): String {
         http.newCall(request).execute().use { response ->
@@ -99,15 +141,30 @@ class OpenCodeClient(
         }
     }
 
-    private fun post(directory: String?, path: String, json: JSONObject): String {
-        val body: RequestBody = json.toString().toRequestBody(jsonMedia)
-        return call(builder(directory, path).post(body).build())
+    private fun callBytes(request: Request): ByteArray {
+        http.newCall(request).execute().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) {
+                throw ApiException(response.code, "HTTP ${response.code} ${bytes.toString(Charsets.UTF_8).take(200)}")
+            }
+            return bytes
+        }
     }
 
-    private fun patch(directory: String?, path: String, json: JSONObject): String {
+    private fun apiPost(path: String, json: JSONObject, configure: (HttpUrl.Builder) -> Unit = {}): String {
         val body: RequestBody = json.toString().toRequestBody(jsonMedia)
-        return call(builder(directory, path).patch(body).build())
+        return call(apiBuilder(path, configure).post(body).build())
     }
+
+    private fun apiPatch(path: String, json: JSONObject): String {
+        val body: RequestBody = json.toString().toRequestBody(jsonMedia)
+        return call(apiBuilder(path).patch(body).build())
+    }
+
+    /** This client's view of the v2 API: same root, credentials and shared
+     * HTTP client, so catalog reads can delegate to [V2Api]'s measured
+     * methods instead of re-implementing their envelopes. */
+    private fun v2(): V2Api = V2Api(baseHttpUrl, username, password, http)
 
     // ------------------------------------------------------------------ model
 
@@ -125,18 +182,18 @@ class OpenCodeClient(
         companion object {
             fun fromJson(obj: JSONObject): Part = Part(
                 id = optId(obj),
-                type = obj.optString("type", "unknown"),
-                text = obj.optString("text", "").takeIf { it.isNotEmpty() && obj.has("text") },
-                toolName = obj.optString("tool", "").takeIf { it.isNotEmpty() },
-                toolStatus = obj.optJSONObject("state")?.optString("status", "")?.takeIf { it.isNotEmpty() },
-                mime = obj.optString("mime", "").takeIf { it.isNotEmpty() },
-                filename = obj.optString("filename", "").takeIf { it.isNotEmpty() },
-                url = obj.optString("url", "").takeIf { it.isNotEmpty() },
+                type = obj.optStr("type", "unknown"),
+                text = obj.optStr("text").takeIf { it.isNotEmpty() && obj.has("text") },
+                toolName = obj.optStr("tool").takeIf { it.isNotEmpty() },
+                toolStatus = obj.optJSONObject("state")?.optStr("status")?.takeIf { it.isNotEmpty() },
+                mime = obj.optStr("mime").takeIf { it.isNotEmpty() },
+                filename = obj.optStr("filename").takeIf { it.isNotEmpty() },
+                url = obj.optStr("url").takeIf { it.isNotEmpty() },
                 raw = obj,
             )
 
             private fun optId(obj: JSONObject): String =
-                obj.optString("id", "").ifEmpty { "part:${obj.hashCode()}" }
+                obj.optStr("id").ifEmpty { "part:${obj.hashCode()}" }
         }
     }
 
@@ -186,21 +243,74 @@ class OpenCodeClient(
                 // under `model:{providerID,modelID}` (`v1/session.ts:347-351`).
                 val nestedModel = info.optJSONObject("model")
                 return Message(
-                    id = info.optString("id"),
-                    sessionID = info.optString("sessionID"),
-                    role = info.optString("role", "user"),
+                    id = info.optStr("id"),
+                    sessionID = info.optStr("sessionID"),
+                    role = info.optStr("role", "user"),
                     timeCreated = time?.optLong("created", 0L) ?: 0L,
                     parts = parts,
                     tokens = tokenTotal(info.optJSONObject("tokens")),
-                    providerID = info.optString("providerID", "")
-                        .ifEmpty { nestedModel?.optString("providerID", "").orEmpty() }
+                    providerID = info.optStr("providerID")
+                        .ifEmpty { nestedModel?.optStr("providerID").orEmpty() }
                         .takeIf { it.isNotEmpty() },
-                    modelID = info.optString("modelID", "")
-                        .ifEmpty { nestedModel?.optString("modelID", "").orEmpty() }
+                    modelID = info.optStr("modelID")
+                        .ifEmpty { nestedModel?.optStr("modelID").orEmpty() }
                         .takeIf { it.isNotEmpty() },
-                    agent = info.optString("agent", "").takeIf { it.isNotEmpty() },
+                    agent = info.optStr("agent").takeIf { it.isNotEmpty() },
                     timeCompleted = time?.optLong("completed", 0L)?.takeIf { it > 0L },
                     interrupted = ChatStore.isInterrupted(info.optJSONObject("error")),
+                )
+            }
+
+            /**
+             * v2 `GET /api/session/:id/message` row: a flat tagged union on
+             * `type` (`user` | `assistant` | `system` | `shell` | …), not v1's
+             * `{info, parts}` pair. [sessionID] comes from the request — the
+             * row carries none. Rows of unknown type keep their type as the
+             * role and whatever text/content they carry, so nothing is dropped.
+             */
+            fun fromV2Json(obj: JSONObject, sessionID: String): Message {
+                val type = obj.optStr("type", "unknown")
+                val time = obj.optJSONObject("time")
+                val model = obj.optJSONObject("model")
+                val content = obj.optJSONArray("content")
+                val parts = when {
+                    content != null -> buildList {
+                        for (i in 0 until content.length()) {
+                            content.optJSONObject(i)?.let { add(Part.fromJson(it)) }
+                        }
+                    }
+                    obj.has("text") -> listOf(
+                        Part(
+                            id = "text:${obj.optStr("id")}",
+                            type = "text",
+                            text = obj.optStr("text").takeIf { it.isNotEmpty() },
+                            toolName = null,
+                            toolStatus = null,
+                            mime = null,
+                            filename = null,
+                            url = null,
+                            raw = obj,
+                        ),
+                    )
+                    else -> emptyList()
+                }
+                return Message(
+                    id = obj.optStr("id"),
+                    sessionID = sessionID,
+                    role = when (type) {
+                        "user" -> "user"
+                        "assistant" -> "assistant"
+                        else -> type
+                    },
+                    timeCreated = time?.optLong("created", 0L) ?: 0L,
+                    parts = parts,
+                    tokens = tokenTotal(obj.optJSONObject("tokens")),
+                    providerID = model?.optStr("providerID")?.takeIf { it.isNotEmpty() },
+                    modelID = (model?.optStr("id")?.takeIf { it.isNotEmpty() }
+                        ?: model?.optStr("modelID")?.takeIf { it.isNotEmpty() }),
+                    agent = obj.optStr("agent").takeIf { it.isNotEmpty() },
+                    timeCompleted = time?.optLong("completed", 0L)?.takeIf { it > 0L },
+                    interrupted = ChatStore.isInterrupted(obj.optJSONObject("error")),
                 )
             }
         }
@@ -246,20 +356,45 @@ class OpenCodeClient(
          * hide the session forever. See `HomeSessions.isArchived`.
          */
         val archivedAt: Long? = null,
+        /**
+         * v54 P1 「子路径会话在 Home 列表与搜索里双双缺失」: the session's
+         * **subpath** inside its `location.directory` (`SessionV2Info.subpath` —
+         * measured rows carry `location.directory=/repo` with
+         * `subpath=app/src`). A window bound to a subpath creates its sessions
+         * there, so the server answers with the **project root** as
+         * [directory] and the subpath here — which used to be dropped on the
+         * way in ([ChatViewModel.toUiSession]), leaving Home to match a session
+         * whose real home is `<root>/app/src` against a scope that only knows
+         * `<root>/app/src`: the row and its search hit both disappeared
+         * (`research/v54_verify/tB/tB_50_home.png`, `tB_82_home_search.png`).
+         *
+         * Null/blank when the server reports none (every v1 row, and a v2
+         * session created at the project root).
+         */
+        val subpath: String? = null,
     ) {
         companion object {
+            /**
+             * v1 `Session.Info` (`{id,title,directory,time{updated},…}`) and the
+             * v2 row (`{id,title,location{directory},time{updated},…}` — v2 nests
+             * the workspace under `location` and carries no `share` object).
+             */
             fun fromJson(obj: JSONObject): Session = Session(
-                id = obj.optString("id"),
-                title = obj.optString("title", "").ifEmpty { "Untitled" },
-                // Same org.json trap as VcsInfo: literal "null" is not a path.
-                directory = obj.optString("directory", "")
-                    .takeIf { it.isNotEmpty() && it != "null" },
+                id = obj.optStr("id"),
+                title = obj.optStr("title").ifEmpty { "Untitled" },
+                // Same org.json trap as VcsInfo: literal "null" is not a path,
+                // and `optString` on an object returns its `toString` — read
+                // type-strictly so a nested `location` object never leaks in.
+                directory = (obj.opt("directory") as? String)
+                    ?.takeIf { it.isNotEmpty() && it != "null" }
+                    ?: (obj.optJSONObject("location")?.opt("directory") as? String)
+                        ?.takeIf { it.isNotEmpty() && it != "null" },
                 updatedAt = obj.optJSONObject("time")?.optLong("updated", 0L) ?: 0L,
                 cost = obj.optDouble("cost", Double.NaN).takeIf { !it.isNaN() },
-                shareUrl = obj.optJSONObject("share")?.optString("url", "")
-                    ?.takeIf { it.isNotEmpty() && it != "null" },
-                revertMessageID = obj.optJSONObject("revert")?.optString("messageID", "")
-                    ?.takeIf { it.isNotEmpty() && it != "null" },
+                shareUrl = obj.optJSONObject("share")?.optStr("url")
+                    ?.takeIf { it.isNotEmpty() },
+                revertMessageID = obj.optJSONObject("revert")?.optStr("messageID")
+                    ?.takeIf { it.isNotEmpty() },
                 // `optLong` cannot distinguish "absent" from `0`, and the two
                 // mean different things here (never archived vs. unarchived).
                 archivedAt = obj.optJSONObject("time")
@@ -272,11 +407,15 @@ class OpenCodeClient(
     class ApiException(val code: Int, message: String) : IOException(message)
 
     /**
-     * `GET /project` entry (`research/04` §3): a server-known project. The v1
-     * server discovers projects implicitly (git roots it has seen); the
-     * display name is the worktree's last path segment (see
-     * `HomeSessions.projectName`). Lenient: entries without a `worktree` are
-     * dropped — they can never be scoped to a session.
+     * `GET /api/project` entry: v2 answers a bare array of
+     * `{id,canonical,name,time,sandboxes,icon?}` — the workspace moved from v1's
+     * `worktree` key to `canonical` (read as the fallback, mirroring
+     * `v2ProjectRow`). `icon` is optional on both shapes and carries
+     * `{url,override,color}` (`schema/src/project.ts:20-25`), of which this DTO
+     * keeps the two the shell can draw: [iconColor] and [iconOverride].
+     *
+     * The v1 shape (`{id,worktree,vcs,icon,…}`) still parses: entries without a
+     * usable worktree are dropped — they can never be scoped to a session.
      */
     data class Project(
         val id: String,
@@ -295,19 +434,41 @@ class OpenCodeClient(
          * the DTO must not make Home's read fail over an extra field.
          */
         val sandboxes: List<String> = emptyList(),
+        /**
+         * The display name from `GET /api/project` (`name`): Home's projects
+         * column and the new-session draft's picker read this instead of
+         * deriving a second source. Absent or JSON null reads as `""`
+         * (unknown) — never the literal `"null"`. Appended last (with a
+         * default) so every existing named/positional construction compiles
+         * unchanged.
+         */
+        val name: String = "",
+        /**
+         * `project.icon.override` — the custom icon image as the `data:` URL the
+         * editor PATCHes (`HomeProjectEdit` / `ProjectIconImage`). Null when the
+         * project has none, when the field is JSON null, or when the value is
+         * the literal `"null"` `org.json` hands back for a null (`optStr`).
+         * The avatar draws this before [iconColor].
+         */
+        val iconOverride: String? = null,
     ) {
         companion object {
             fun fromJson(obj: JSONObject): Project? {
-                val worktree = obj.optString("worktree", "").trim()
+                val worktree = obj.optStr("worktree").trim()
+                    .ifEmpty { obj.optStr("canonical").trim() }
                 if (worktree.isEmpty()) return null
                 return Project(
-                    id = obj.optString("id", ""),
+                    id = obj.optStr("id"),
                     worktree = worktree,
-                    vcs = obj.optString("vcs", "").takeIf { it.isNotEmpty() },
+                    vcs = obj.optStr("vcs").takeIf { it.isNotEmpty() },
                     iconColor = obj.optJSONObject("icon")
-                        ?.optString("color", "")
+                        ?.optStr("color")
                         ?.takeIf { it.isNotEmpty() },
                     sandboxes = stringList(obj.optJSONArray("sandboxes")),
+                    name = obj.optStr("name"),
+                    iconOverride = obj.optJSONObject("icon")
+                        ?.optStr("override")
+                        ?.takeIf { it.isNotEmpty() },
                 )
             }
 
@@ -326,10 +487,11 @@ class OpenCodeClient(
     }
 
     /**
-     * `GET /file?path=` entry (`research/04` §3): one directory-listing node,
-     * `{name,path,absolute,type:"file"|"directory",ignored}`. Only
-     * [directory] nodes are surfaced by the add-project browser; [absolute]
-     * is the path that gets passed back as `?directory=`.
+     * One `GET /api/fs/list` entry: `{path,type}` with the path **relative**
+     * to the request's location directory (v1's `GET /file?path=` answered
+     * absolute `{name,path,absolute,…}` nodes). [absolute] is the location
+     * directory joined onto the relative path; [ignored] has no v2 counterpart
+     * and stays false.
      */
     data class FileNode(
         val name: String,
@@ -340,26 +502,53 @@ class OpenCodeClient(
     ) {
         companion object {
             fun fromJson(obj: JSONObject): FileNode? {
-                val absolute = obj.optString("absolute", "").trim()
-                    .ifEmpty { obj.optString("path", "").trim() }
+                val absolute = obj.optStr("absolute").trim()
+                    .ifEmpty { obj.optStr("path").trim() }
                 if (absolute.isEmpty()) return null
                 return FileNode(
-                    name = obj.optString("name", ""),
-                    path = obj.optString("path", ""),
+                    name = obj.optStr("name"),
+                    path = obj.optStr("path"),
                     absolute = absolute,
                     directory = obj.optString("type", "") == "directory",
                     ignored = obj.optBoolean("ignored", false),
+                )
+            }
+
+            /**
+             * v2 `fs/list` row (`{path` relative `,type}`) against [base], the
+             * response's `location.directory`. The join keeps the base's own
+             * separator so a Windows worktree stays a Windows path.
+             */
+            fun fromV2Json(obj: JSONObject, base: String): FileNode? {
+                val rel = obj.optStr("path").trim().trim('/', '\\')
+                if (rel.isEmpty()) return null
+                val absolute = if (base.isEmpty()) {
+                    rel
+                } else {
+                    val sep = if (base.contains('\\')) '\\' else '/'
+                    base.trimEnd('\\', '/') + sep + rel.map { c ->
+                        if (c == '/' || c == '\\') sep else c
+                    }.joinToString("")
+                }
+                return FileNode(
+                    name = rel.trimEnd('/', '\\').split('/', '\\').lastOrNull().orEmpty(),
+                    path = rel,
+                    absolute = absolute,
+                    directory = obj.optString("type", "") == "directory",
+                    ignored = false,
                 )
             }
         }
     }
 
     /**
-     * `PermissionV1.Request` (`_upstream/packages/schema/src/v1/permission.ts`
-     * `:27-35`): one pending permission prompt. `permission` is the tool/action
-     * name ("bash", "edit", "external_directory", ...), `patterns` the matched
-     * resources, `always` the patterns an "always" reply would persist,
-     * `tool` the originating tool call when the ask came from one.
+     * One pending permission prompt. v1 (`GET /permission`) names the fields
+     * `permission`/`patterns`/`always` with the tool under
+     * `tool:{messageID,callID}`; v2 (`GET /api/permission/request`) names them
+     * `action`/`resources`/`save` with the tool under
+     * `source:{type:"tool",messageID,id}` — the v2 source keys its call id `id`
+     * (`schema/src/permission.ts` `Permission.Source`), which is why [Tool]
+     * reads both. Both shapes parse into this one DTO.
      */
     data class PermissionRequest(
         val id: String,
@@ -372,128 +561,59 @@ class OpenCodeClient(
     ) {
         data class Tool(val messageID: String, val callID: String) {
             companion object {
+                /**
+                 * `id` wins over `callID`: the v2 source object carries the call
+                 * id under `id`, a v1 `tool` (and a hybrid v2 payload) under
+                 * `callID`. Same dual-key read as `V2Api.PermissionRequest`
+                 * and `V2EventAdapter.v2Permission`.
+                 */
                 fun fromJson(obj: JSONObject): Tool = Tool(
-                    messageID = obj.optString("messageID"),
-                    callID = obj.optString("callID"),
+                    messageID = obj.optStr("messageID"),
+                    callID = obj.optStr("id").ifEmpty { obj.optStr("callID") },
                 )
             }
         }
 
         companion object {
-            /** Lenient: missing fields fall back to empty lists/nulls. */
-            fun fromJson(obj: JSONObject): PermissionRequest = PermissionRequest(
-                id = obj.optString("id"),
-                sessionID = obj.optString("sessionID"),
-                permission = obj.optString("permission"),
-                patterns = stringList(obj.optJSONArray("patterns")),
-                always = stringList(obj.optJSONArray("always")),
-                tool = obj.optJSONObject("tool")?.let(Tool::fromJson),
-                metadata = obj.optJSONObject("metadata"),
-            )
+            /** Lenient: missing fields fall back to empty lists/nulls, v1 or v2 key names. */
+            fun fromJson(obj: JSONObject): PermissionRequest {
+                val source = obj.optJSONObject("source")
+                val toolSource = source?.takeIf { it.optString("type", "") == "tool" }
+                return PermissionRequest(
+                    id = obj.optStr("id"),
+                    sessionID = obj.optStr("sessionID"),
+                    permission = obj.optStr("permission")
+                        .ifEmpty { obj.optStr("action") },
+                    patterns = stringList(obj.optJSONArray("patterns") ?: obj.optJSONArray("resources")),
+                    always = stringList(obj.optJSONArray("always") ?: obj.optJSONArray("save")),
+                    tool = obj.optJSONObject("tool")?.let(Tool::fromJson)
+                        ?: toolSource?.let(Tool::fromJson),
+                    metadata = obj.optJSONObject("metadata"),
+                )
+            }
 
             private fun stringList(arr: JSONArray?): List<String> {
                 if (arr == null) return emptyList()
                 return (0 until arr.length()).mapNotNull { i ->
-                    arr.optString(i, "").takeIf { it.isNotEmpty() }
+                    (arr.opt(i) as? String)?.takeIf { it.isNotEmpty() && it != "null" }
                 }
             }
         }
     }
 
     /**
-     * `QuestionV1.Request` (`_upstream/packages/schema/src/v1/question.ts`
-     * `:15-40`): one pending question prompt. `questions` are answered in
-     * order, each by an array of selected option **labels** (options carry no
-     * separate value); `multiple` allows toggling several options, `custom`
-     * (wire default `true`) allows a free-text answer. `tool` is the
-     * originating tool call when the ask came from one.
-     */
-    data class QuestionRequest(
-        val id: String,
-        val sessionID: String,
-        val questions: List<Info>,
-        val tool: Tool?,
-    ) {
-        data class Option(val label: String, val description: String) {
-            companion object {
-                fun fromJson(obj: JSONObject): Option = Option(
-                    label = obj.optString("label"),
-                    description = obj.optString("description"),
-                )
-            }
-        }
-
-        data class Info(
-            val question: String,
-            val header: String,
-            val options: List<Option>,
-            val multiple: Boolean,
-            /** `custom` is optional on the wire and defaults to `true`. */
-            val custom: Boolean,
-        ) {
-            companion object {
-                fun fromJson(obj: JSONObject): Info {
-                    val optionsJson = obj.optJSONArray("options")
-                    val options = if (optionsJson == null) {
-                        emptyList()
-                    } else {
-                        (0 until optionsJson.length()).mapNotNull { i ->
-                            optionsJson.optJSONObject(i)?.let(Option::fromJson)
-                                ?.takeIf { it.label.isNotEmpty() }
-                        }
-                    }
-                    return Info(
-                        question = obj.optString("question"),
-                        header = obj.optString("header"),
-                        options = options,
-                        multiple = obj.optBoolean("multiple", false),
-                        custom = obj.optBoolean("custom", true),
-                    )
-                }
-            }
-        }
-
-        data class Tool(val messageID: String, val callID: String) {
-            companion object {
-                fun fromJson(obj: JSONObject): Tool = Tool(
-                    messageID = obj.optString("messageID"),
-                    callID = obj.optString("callID"),
-                )
-            }
-        }
-
-        companion object {
-            /** Lenient: missing fields fall back to empty lists/null. */
-            fun fromJson(obj: JSONObject): QuestionRequest {
-                val questionsJson = obj.optJSONArray("questions")
-                val questions = if (questionsJson == null) {
-                    emptyList()
-                } else {
-                    (0 until questionsJson.length()).mapNotNull { i ->
-                        questionsJson.optJSONObject(i)?.let(Info::fromJson)
-                    }
-                }
-                return QuestionRequest(
-                    id = obj.optString("id"),
-                    sessionID = obj.optString("sessionID"),
-                    questions = questions,
-                    tool = obj.optJSONObject("tool")?.let(Tool::fromJson),
-                )
-            }
-        }
-    }
-
-    /**
-     * `GET /provider` response (`research/04` §3.1):
-     * `{all: Provider[], default: {providerID: modelID}, connected: string[]}`.
+     * The provider/model catalog behind the composer's model picker.
+     *
+     * v1 served it as one `GET /provider` document
+     * (`{all, default, connected}` with `models` as a `Record<modelID,
+     * Model>`); v2 splits provider and model into `GET /api/provider` + `GET
+     * /api/model` (+ `GET /api/integration` for the connected set) and
+     * [providers] folds the three reads back into this shape. Both document
+     * shapes parse here.
      *
      * Parsing is deliberately lenient: the catalog only feeds the composer's
      * model picker, so a missing/extra field degrades to a fallback instead of
-     * failing the screen. `Provider.models` is a `Record<modelID, Model>` on
-     * the wire; an array of model objects is tolerated as well. `all` is an
-     * **array** on every server seen so far (opencode 1.18.31 included); an
-     * id→provider map is accepted too because the model catalog next to it uses
-     * that shape.
+     * failing the screen.
      */
     data class Providers(
         val all: List<Provider>,
@@ -508,11 +628,11 @@ class OpenCodeClient(
             companion object {
                 /** [fallbackId] = the map key when the provider list came as an object. */
                 fun fromJson(obj: JSONObject, fallbackId: String? = null): Provider? {
-                    val id = obj.optString("id", "").ifEmpty { fallbackId.orEmpty() }
+                    val id = obj.optStr("id").ifEmpty { fallbackId.orEmpty() }
                     if (id.isEmpty()) return null
                     return Provider(
                         id = id,
-                        name = obj.optString("name", "").ifEmpty { id },
+                        name = obj.optStr("name").ifEmpty { id },
                         models = parseModels(obj.opt("models")),
                     )
                 }
@@ -546,8 +666,31 @@ class OpenCodeClient(
              * `model.limit.context` — the context window the server advertises
              * for this model. The context ring needs it as its denominator;
              * without it the ring can only draw an empty track.
+             *
+             * v20: the ring's denominator is the entry's **effective window**
+             * `min(limit.input, limit.context)` (`ContextUsage.windowOf`), not
+             * this raw value — the server compacts on the input half
+             * (`_upstream/packages/core/src/session/compaction.ts:742-763`). See
+             * [limitInput].
              */
             val limitContext: Int? = null,
+            /**
+             * `model.limit.input` — the **prompt ceiling** of this entry, the
+             * half the server's own compaction trigger subtracts its buffer from
+             * (`min(limit.input - buffer, context - max(output, buffer))`). It is
+             * **optional on the wire** (measured on the live v20 catalog: 74 of
+             * 129 entries omit it, 4 report `0` — a placeholder, not a window),
+             * so `null` means "no separate input ceiling" and consumers fall back
+             * to [limitContext] alone. `ContextUsage.windowOf` is the one place
+             * that reading lives.
+             *
+             * Folded here rather than in a side table keyed by model ref: the
+             * value belongs to the same catalog entry as [limitContext] /
+             * [limitOutput], and a separate map could be read half-applied (a
+             * ring dividing one model's context while holding another's input
+             * ceiling).
+             */
+            val limitInput: Int? = null,
             /** `model.limit.output` — advertised output ceiling, if any. */
             val limitOutput: Int? = null,
             /**
@@ -560,28 +703,76 @@ class OpenCodeClient(
              * An array of strings is tolerated as well; empty = "no variants".
              */
             val variants: List<String> = emptyList(),
+            /**
+             * The **catalog entry** id — the wire `Model.Info.id`. A provider's
+             * catalog may hold several entries under one [id] (measured on the
+             * live v2 backend: `openai` ships `gpt-5.6`, `gpt-5.6-fast` and
+             * `gpt-5.6-pro` as three entries that all report
+             * `modelID: "gpt-5.6"`, differing only in `body.serviceTier` /
+             * `body.reasoning.mode`), so [id] alone is **not** a row identity.
+             * This is the id the server matches a session's `Model.Ref.id`
+             * against (`_upstream/packages/core/src/session/runner/model.ts`:
+             * `available().find(model => model.providerID === ref.providerID &&
+             * model.id === ref.id)`), and what upstream's app keys its picker
+             * rows by (`providers/models/selection.tsx`: `{providerID, modelID:
+             * model.id}`). Falls back to [id] for v1 documents, whose model maps
+             * carry no separate entry id.
+             */
+            val entryID: String = id,
         ) {
             companion object {
                 /** [fallbackId] = the map key when `models` came as an object. */
                 fun fromJson(obj: JSONObject, fallbackId: String? = null): Model? {
-                    val id = obj.optString("id", "").ifEmpty { fallbackId.orEmpty() }
+                    val id = obj.optStr("id").ifEmpty { fallbackId.orEmpty() }
                     if (id.isEmpty()) return null
                     val limit = obj.optJSONObject("limit")
                     return Model(
                         id = id,
-                        name = obj.optString("name", "").ifEmpty { id },
+                        name = obj.optStr("name").ifEmpty { id },
                         capabilities = obj.optJSONObject("capabilities")?.let(Capabilities::fromJson),
                         limitContext = limit?.optInt("context", 0)?.takeIf { it > 0 },
+                        limitInput = limit?.optInt("input", 0)?.takeIf { it > 0 },
                         limitOutput = limit?.optInt("output", 0)?.takeIf { it > 0 },
                         variants = variantKeys(obj.opt("variants")),
                     )
                 }
 
                 /**
-                 * `Record<variant, object>` on the wire (v1 `/provider`); a plain
-                 * string array is accepted for forward compatibility. Order is the
-                 * server's own key order, so the picker shows `none, low, …` the
-                 * way the catalog declares them.
+                 * v2 fold of one `GET /api/model` row: `Model.Info.modelID` →
+                 * [id], `Model.Info.id` → [entryID]. Both halves matter — see
+                 * [entryID] for why a fold that keeps only `modelID` collapses
+                 * `gpt-5.6`/`gpt-5.6-fast`/`gpt-5.6-pro` into one row and sends
+                 * the base entry's ref whichever one the user tapped.
+                 *
+                 * `limit.input` is read off the row's own [V2Api.ModelInfo.raw]
+                 * document: `V2Api.ModelInfo` folds `limit.context` /
+                 * `limit.output` into fields but has no input half, and the raw
+                 * `JSONObject` is right here — the same "parse it where the
+                 * document is in hand" rule [fromJson] follows.
+                 */
+                fun fromV2(info: V2Api.ModelInfo): Model = Model(
+                    id = info.modelID,
+                    name = info.name,
+                    capabilities = Capabilities(
+                        reasoning = null,
+                        attachment = null,
+                        toolCall = info.tools,
+                    ),
+                    limitContext = info.limitContext,
+                    limitInput = info.raw.optJSONObject("limit")
+                        ?.optInt("input", 0)
+                        ?.takeIf { it > 0 },
+                    limitOutput = info.limitOutput,
+                    variants = info.variants,
+                    entryID = info.id.ifEmpty { info.modelID },
+                )
+
+                /**
+                 * v1's `Record<variant, object>`; v2's `[{id,…}]` array (the
+                 * object form is reduced to its `id`); a plain string array is
+                 * accepted for forward compatibility. Order is the server's own
+                 * order, so the picker shows `none, low, …` the way the catalog
+                 * declares them.
                  */
                 private fun variantKeys(raw: Any?): List<String> = when (raw) {
                     is JSONObject -> {
@@ -595,7 +786,11 @@ class OpenCodeClient(
                     }
 
                     is JSONArray -> (0 until raw.length()).mapNotNull { i ->
-                        raw.optString(i, "").takeIf { it.isNotEmpty() }
+                        when (val element = raw.opt(i)) {
+                            is JSONObject -> element.optStr("id").takeIf { it.isNotEmpty() }
+                            is String -> element.takeIf { it.isNotEmpty() && it != "null" }
+                            else -> null
+                        }
                     }
 
                     else -> emptyList()
@@ -634,8 +829,21 @@ class OpenCodeClient(
             return all.filter { it.id in connectedSet }
         }
 
-        fun model(providerID: String, modelID: String): Model? =
-            all.firstOrNull { it.id == providerID }?.models?.firstOrNull { it.id == modelID }
+        /**
+         * The entry a session/model ref points at, by its **ref id**: the
+         * catalog [Model.entryID] first (that is what the picker, the persisted
+         * override and a session's `Model.Ref.id` carry), falling back to the
+         * wire [Model.id] so a ref that names a plain `modelID` still resolves —
+         * legacy overrides saved before entry ids were kept, and the message /
+         * config strings that predate them. The fallback lands on the entry the
+         * catalog lists first for that `modelID`, which for every duplicated
+         * group is the base entry (`gpt-5.6`, not `-fast`/`-pro`).
+         */
+        fun model(providerID: String, refID: String): Model? {
+            val models = all.firstOrNull { it.id == providerID }?.models ?: return null
+            return models.firstOrNull { it.entryID == refID }
+                ?: models.firstOrNull { it.id == refID }
+        }
 
         companion object {
             fun fromJson(obj: JSONObject): Providers {
@@ -645,7 +853,7 @@ class OpenCodeClient(
                     emptyList()
                 } else {
                     (0 until connectedRaw.length()).mapNotNull { i ->
-                        connectedRaw.optString(i, "").takeIf { it.isNotEmpty() }
+                        (connectedRaw.opt(i) as? String)?.takeIf { it.isNotEmpty() && it != "null" }
                     }
                 }
                 val defaultRaw = obj.optJSONObject("default")
@@ -654,7 +862,7 @@ class OpenCodeClient(
                     val keys = defaultRaw.keys()
                     while (keys.hasNext()) {
                         val key = keys.next()
-                        val value = defaultRaw.optString(key, "")
+                        val value = defaultRaw.optStr(key)
                         if (key.isNotEmpty() && value.isNotEmpty()) default[key] = value
                     }
                 }
@@ -662,11 +870,11 @@ class OpenCodeClient(
             }
 
             /**
-             * `all` is a JSON **array** on the wire — verified against
-             * opencode 1.18.31, whose `/provider` answers
-             * `{"all":[{id,name,models,…},…]}`. An `id → Provider` map is
-             * tolerated as well (the map key is then the provider id), mirroring
-             * how `Provider.models` arrives as a `Record<modelID, Model>`.
+             * `all` is a JSON **array** on the v1 wire (whose `/provider`
+             * answered `{"all":[{id,name,models,…},…]}`). An `id → Provider`
+             * map is tolerated as well (the map key is then the provider id),
+             * mirroring how `Provider.models` arrives as a `Record<modelID,
+             * Model>`.
              */
             private fun parseProviders(raw: Any?): List<Provider> = when (raw) {
                 is JSONArray -> (0 until raw.length()).mapNotNull { i ->
@@ -704,11 +912,11 @@ class OpenCodeClient(
     ) {
         companion object {
             fun fromJson(obj: JSONObject): FileDiff = FileDiff(
-                file = obj.optString("file", "").takeIf { it.isNotEmpty() },
-                patch = obj.optString("patch", "").takeIf { it.isNotEmpty() },
+                file = obj.optStr("file").takeIf { it.isNotEmpty() },
+                patch = obj.optStr("patch").takeIf { it.isNotEmpty() },
                 additions = obj.optInt("additions", 0),
                 deletions = obj.optInt("deletions", 0),
-                status = obj.optString("status", "").takeIf { it.isNotEmpty() },
+                status = obj.optStr("status").takeIf { it.isNotEmpty() },
             )
 
             fun listFromJson(arr: JSONArray): List<FileDiff> =
@@ -730,9 +938,9 @@ class OpenCodeClient(
     ) {
         companion object {
             fun fromJson(obj: JSONObject): TodoInfo = TodoInfo(
-                content = obj.optString("content", ""),
-                status = obj.optString("status", ""),
-                priority = obj.optString("priority", ""),
+                content = obj.optStr("content"),
+                status = obj.optStr("status"),
+                priority = obj.optStr("priority"),
             )
 
             fun listFromJson(arr: JSONArray): List<TodoInfo> =
@@ -743,11 +951,10 @@ class OpenCodeClient(
     }
 
     /**
-     * `GET /file/content?path=` (`research/04` §3.1):
-     * `{type:"text"|"binary", content, diff?, patch?, encoding?, mimeType?}`.
-     * `patch` is a `{hunks[]}` object on the wire; a string patch (older
-     * servers) is tolerated and kept verbatim, an object is stringified so no
-     * information is lost.
+     * The bytes of one `GET /api/fs/read/<rel>` response, folded back into
+     * the `FileContent` shape via [fileContentFromBytes]: any NUL byte ⇒
+     * binary (base64 content, `encoding="base64"`), otherwise UTF-8 text.
+     * `diff`/`patch` have no v2 file-read counterpart and stay null.
      */
     data class FileContent(
         val binary: Boolean,
@@ -760,50 +967,65 @@ class OpenCodeClient(
         companion object {
             fun fromJson(obj: JSONObject): FileContent = FileContent(
                 binary = obj.optString("type", "") == "binary",
-                content = obj.optString("content", ""),
-                diff = obj.optString("diff", "").takeIf { it.isNotEmpty() },
+                content = obj.optStr("content"),
+                diff = obj.optStr("diff").takeIf { it.isNotEmpty() },
                 patch = when (val raw = obj.opt("patch")) {
                     is String -> raw.takeIf { it.isNotEmpty() }
                     is JSONObject -> raw.toString()
                     else -> null
                 },
-                encoding = obj.optString("encoding", "").takeIf { it.isNotEmpty() },
-                mimeType = obj.optString("mimeType", "").takeIf { it.isNotEmpty() },
+                encoding = obj.optStr("encoding").takeIf { it.isNotEmpty() },
+                mimeType = obj.optStr("mimeType").takeIf { it.isNotEmpty() },
             )
         }
     }
 
-    /** `GET /vcs` (`research/04` §3.1) → `{branch?, default_branch?}`. */
+    /** v2 `GET /api/vcs` → `{location, data:{branch:{current?,default?}}}`
+     * (v1's flat `{branch, default_branch}` strings still parse — but only
+     * when they really are strings: `optString` on an object returns its
+     * `toString`, so the flat keys are read type-strictly). */
     data class VcsInfo(
         val branch: String?,
         val defaultBranch: String?,
     ) {
         companion object {
-            fun fromJson(obj: JSONObject): VcsInfo = VcsInfo(
-                // `optString` returns the literal "null" for JSON null —
-                // filter it or the header chip prints "null".
-                branch = obj.optString("branch", "").takeIf { it.isNotEmpty() && it != "null" },
-                defaultBranch = obj.optString("default_branch", "").takeIf { it.isNotEmpty() && it != "null" },
-            )
+            fun fromJson(obj: JSONObject): VcsInfo {
+                val nested = obj.optJSONObject("branch")
+                return VcsInfo(
+                    // `optStr` (file-top) already maps JSON null and the
+                    // literal "null" to "" — filter it or the header chip
+                    // prints "null".
+                    branch = (obj.opt("branch") as? String)
+                        ?.takeIf { it.isNotEmpty() && it != "null" }
+                        ?: nested?.optStr("current")?.takeIf { it.isNotEmpty() },
+                    defaultBranch = (obj.opt("default_branch") as? String)
+                        ?.takeIf { it.isNotEmpty() && it != "null" }
+                        ?: nested?.optStr("default")?.takeIf { it.isNotEmpty() },
+                )
+            }
         }
     }
 
     /**
-     * `GET /agent` entry (W5-C B4). Verified against opencode 1.18.31:
-     * `[{name, description, mode, native, hidden, topP, temperature, color,
-     * permission, variant, prompt, options, steps}, …]` — 275 entries in that
-     * workspace, of which 5 are `mode == "primary"` (build, plan, …) and 270 are
-     * `subagent`s.
-     *
-     * Only `mode == "primary"` agents can own a session (`Session.Info.agent`),
-     * so [selectable] is what the composer's agent chip lists; [hidden] ones
-     * (title/summary/compaction helpers) are never offered.
+     * One `GET /api/agent` entry: `{id,name,description,mode,hidden,…}`. v2
+     * adds `mode == "all"` (usable as a session agent alongside `"primary"`,
+     * mirroring `V2Api.AgentInfo.selectable`); `selectable` keeps the
+     * composer's rule — named, runnable, not hidden, in server order.
      */
     data class Agent(
         val name: String,
         val description: String,
         val mode: String,
-        val native: Boolean,
+        /**
+         * `agent.native` **as the server declared it** — `null` when the wire
+         * carried no `native` key at all (v2's normalized rows never do).
+         *
+         * B-9 made this tri-state: upstream's `hasCustomAgent`
+         * (`providers/models/agent.ts:1-3`) is `native === false`, so "absent"
+         * must not read as "custom" — a payload without the key would otherwise
+         * light up the agent picker on every server.
+         */
+        val native: Boolean? = null,
         val hidden: Boolean,
         /** `agent.variant` — the reasoning effort the agent configures. */
         val variant: String? = null,
@@ -811,23 +1033,24 @@ class OpenCodeClient(
         val providerID: String? = null,
         val modelID: String? = null,
     ) {
-        /** `mode == "primary"` — the agents a session can run. */
-        val primary: Boolean get() = mode == "primary"
+        /** `mode == "primary"` (or v2's `"all"`) — the agents a session can run. */
+        val primary: Boolean get() = mode == "primary" || mode == "all"
 
         companion object {
             fun fromJson(obj: JSONObject): Agent {
                 val model = obj.optJSONObject("model")
                 return Agent(
-                    name = obj.optString("name", ""),
-                    description = obj.optString("description", ""),
-                    mode = obj.optString("mode", ""),
-                    // `native`/`hidden` are optional on the wire: absent means
-                    // "not a built-in" / "visible", never a fabricated true.
-                    native = obj.optBoolean("native", false),
+                    name = obj.optStr("name").ifEmpty { obj.optStr("id") },
+                    description = obj.optStr("description"),
+                    mode = obj.optStr("mode"),
+                    // Optional on the wire, and the two meanings are different:
+                    // absent = "unclassified" (never a fabricated `true`, and
+                    // never the `false` that would read as a custom agent).
+                    native = if (obj.has("native")) obj.optBoolean("native") else null,
                     hidden = obj.optBoolean("hidden", false),
-                    variant = obj.optString("variant", "").takeIf { it.isNotEmpty() },
-                    providerID = model?.optString("providerID", "")?.takeIf { it.isNotEmpty() },
-                    modelID = model?.optString("modelID", "")?.takeIf { it.isNotEmpty() },
+                    variant = obj.optStr("variant").takeIf { it.isNotEmpty() },
+                    providerID = model?.optStr("providerID")?.takeIf { it.isNotEmpty() },
+                    modelID = model?.optStr("modelID")?.takeIf { it.isNotEmpty() },
                 )
             }
 
@@ -844,18 +1067,33 @@ class OpenCodeClient(
             fun defaultName(agents: List<Agent>): String =
                 selectable(agents).firstOrNull()?.name ?: FALLBACK_AGENT
 
+            /**
+             * B-9: upstream `hasCustomAgent` (`providers/models/agent.ts:1-3`) —
+             * an agent the server **explicitly** reports as not native
+             * (`native === false`). A built-in (`true`) and an unclassified
+             * entry (`null`, the key absent) both count as "no custom agent",
+             * exactly like upstream's `native?: boolean`.
+             */
+            fun hasCustomAgent(agents: List<Agent>): Boolean = agents.any { it.native == false }
+
+            /**
+             * B-9: upstream `agentsVisible` (`providers/models/selection.tsx:94`)
+             * — `settings.general.showCustomAgents` **or** a server that really
+             * has a custom agent. False = the composer hides the agent control
+             * and runs the session's own agent (upstream's `"build"` fallback).
+             */
+            fun visible(agents: List<Agent>, showCustomAgents: Boolean): Boolean =
+                showCustomAgents || hasCustomAgent(agents)
+
             const val FALLBACK_AGENT = "build"
         }
     }
 
     /**
-     * `GET /command` entry (W5-C B1). Verified against opencode 1.18.31:
-     * `[{name, description, source, template, hints}, …]` with `source ∈
-     * {"command", "skill"}` (2 user commands + 73 skills in that workspace).
-     * `template` is the prompt the command expands to; `$ARGUMENTS` inside it is
-     * the placeholder for the typed arguments
-     * (`_upstream/packages/core` command loader; the app only forwards
-     * `{command, arguments}` to `POST /session/:id/command`).
+     * One `GET /api/command` entry: `{name, description}` (v2 carries no
+     * `template`/`source`, so client-side template expansion stays v1-only).
+     * `template` is the prompt the command expands to on a v1 server;
+     * `$ARGUMENTS` inside it is the placeholder for the typed arguments.
      */
     data class CommandInfo(
         val name: String,
@@ -865,22 +1103,22 @@ class OpenCodeClient(
     ) {
         companion object {
             fun fromJson(obj: JSONObject): CommandInfo? {
-                val name = obj.optString("name", "").trim()
+                val name = obj.optStr("name").trim()
                 if (name.isEmpty()) return null
                 return CommandInfo(
                     name = name,
-                    description = obj.optString("description", ""),
-                    source = obj.optString("source", ""),
-                    template = obj.optString("template", ""),
+                    description = obj.optStr("description"),
+                    source = obj.optStr("source"),
+                    template = obj.optStr("template"),
                 )
             }
         }
     }
 
     /**
-     * `GET /skill` entry (W5-C B9). Verified against opencode 1.18.31:
-     * `[{name, description, location, content}, …]`. Only name/description are
-     * read — the `@`-mention popover lists skills, it never sends their body.
+     * One `GET /api/skill` entry: `{id,name,description,path,…}` (v1's
+     * `location` key is `path` here). Only name/description are read — the
+     * `@`-mention popover lists skills, it never sends their body.
      */
     data class SkillInfo(
         val name: String,
@@ -889,12 +1127,13 @@ class OpenCodeClient(
     ) {
         companion object {
             fun fromJson(obj: JSONObject): SkillInfo? {
-                val name = obj.optString("name", "").trim()
+                val name = obj.optStr("name").trim()
                 if (name.isEmpty()) return null
                 return SkillInfo(
                     name = name,
-                    description = obj.optString("description", ""),
-                    location = obj.optString("location", "").takeIf { it.isNotEmpty() },
+                    description = obj.optStr("description"),
+                    location = (obj.opt("path") as? String)?.takeIf { it.isNotEmpty() }
+                        ?: (obj.opt("location") as? String)?.takeIf { it.isNotEmpty() },
                 )
             }
         }
@@ -903,81 +1142,155 @@ class OpenCodeClient(
     // ------------------------------------------------------------------ api
 
     /**
-     * `GET /session` → `Session.Info[]`. [limit] maps to the v1 `limit` query
-     * (see [pagedUrl]); `null` keeps the previous full-list behaviour, so every
+     * `GET /api/session` → `{data:[SessionInfo…]}`. [directory] is the plain
+     * `directory` filter (not the location scope); [limit] caps the page,
+     * newest first. `null` keeps the previous full-list behaviour, so every
      * existing caller compiles and behaves unchanged.
      */
     fun listSessions(directory: String? = null, limit: Int? = null): List<Session> {
-        val listUrl = pagedUrl(directory, "/session", limit)
-        return parseJsonArray(call(builder(directory, "/session").get().url(listUrl).build()))
-            .map(Session::fromJson)
+        val body = call(
+            apiBuilder("session") {
+                if (!directory.isNullOrBlank()) it.addQueryParameter("directory", directory)
+                if (limit != null && limit > 0) it.addQueryParameter("limit", limit.toString())
+            }.get().build(),
+        )
+        return dataRows(body).map(Session::fromJson)
     }
 
-    /** `GET /config` — used for the default model shown on the composer chip. */
-    fun config(): JSONObject = JSONObject(call(builder(null, "/config").get().build()))
+    /**
+     * `GET /api/config` — the server's config documents (a bare array of
+     * `{type,path,info}`, not an object). Returns the first document's `info`
+     * (the JSON config itself); v1's top-level `model` key is overlaid from
+     * `GET /api/model/default` when the server names one, so the composer
+     * chip's default-model read keeps working. A missing default degrades to
+     * "no model key", never a failure.
+     */
+    fun config(): JSONObject {
+        val info = parseJsonArray(call(apiBuilder("config").get().build()))
+            .firstOrNull()?.optJSONObject("info") ?: JSONObject()
+        val out = JSONObject(info.toString())
+        try {
+            val def = dataObject(call(apiBuilder("model/default").get().build()))
+            val providerID = def.optStr("providerID")
+            val id = def.optStr("modelID").ifEmpty { def.optStr("id") }
+            if (providerID.isNotEmpty() && id.isNotEmpty()) out.put("model", "$providerID/$id")
+        } catch (_: Exception) {
+            // No named default on this server — the chip falls back to the
+            // session-derived model, same as a v1 config without `model`.
+        }
+        return out
+    }
 
     /**
-     * `GET /provider` (`research/04` §3.1) — the provider/model catalog behind
-     * the composer model picker.
+     * The provider/model catalog behind the composer model picker. v2 splits
+     * v1's `GET /provider` into three location-scoped reads — `GET
+     * /api/provider` + `GET /api/model` + `GET /api/integration` — folded back
+     * into the `Providers` shape the picker already renders. `connected` =
+     * providers whose linked integration reports a stored connection (via
+     * [v2ConnectedProviderIds], one list read, no per-integration fan-out);
+     * `default` is empty (v2 names no per-provider default); model entries
+     * keep `limit.context` / `limit.input` for the context ring, variant ids for
+     * the effort picker and the entry-level id for row identity
+     * ([Providers.Model.fromV2]).
+     * The three reads delegate to [V2Api]'s measured methods; only the
+     * fold lives here. Return type and callers are unchanged.
      */
-    fun providers(directory: String? = null): Providers =
-        Providers.fromJson(JSONObject(call(builder(directory, "/provider").get().build())))
+    fun providers(directory: String? = null): Providers {
+        val api = v2()
+        try {
+            val providerRows = api.providers(directory)
+            val modelRows = api.models(directory)
+            if (providerRows.isEmpty()) return Providers(emptyList(), emptyList(), emptyMap())
+            val connectedIds = v2ConnectedProviderIds(providerRows, api.integrations(directory))
+            val all = providerRows.map { p ->
+                Providers.Provider(
+                    id = p.id,
+                    name = p.name,
+                    models = modelRows.filter { it.providerID == p.id }
+                        .map(Providers.Model::fromV2),
+                )
+            }
+            return Providers(
+                all = all,
+                connected = all.filter { it.id in connectedIds }.map { it.id },
+                default = emptyMap(),
+            )
+        } catch (e: V2Api.ApiException) {
+            throw ApiException(e.code, e.message ?: "HTTP ${e.code}")
+        }
+    }
 
+    /**
+     * `POST /api/session` `{title?, location{directory}?}` →
+     * `{data:SessionInfo}`.
+     */
     fun createSession(directory: String? = null, title: String? = null): Session {
         val body = JSONObject()
         if (!title.isNullOrBlank()) body.put("title", title)
-        return Session.fromJson(JSONObject(post(directory, "/session", body)))
+        if (!directory.isNullOrBlank()) {
+            body.put("location", JSONObject().put("directory", directory))
+        }
+        return Session.fromJson(dataObject(apiPost("session", body)))
     }
 
     /**
-     * `GET /project` (`research/04` §3): the server's known projects. Used by
-     * Home's projects column and the new-session draft's project selector.
-     * Entries without a usable `worktree` are dropped by [Project.fromJson].
+     * `GET /api/project` → a bare array of `{id,canonical,time,sandboxes}`
+     * (no envelope). Used by Home's projects column and the new-session
+     * draft's project selector; entries without a usable worktree are dropped
+     * by [Project.fromJson].
      */
     fun projects(): List<Project> = parseJsonArray(
-        call(builder(null, "/project").get().build()),
+        call(apiBuilder("project").get().build()),
     ).mapNotNull(Project::fromJson)
 
     /**
-     * `GET /path` (`research/04` §3) → `{home,state,config,worktree,directory}`.
-     * The shell only needs `directory` (the server's cwd), which is the new
-     * session's default location and the directory browser's initial path.
+     * `GET /api/location` → the bare `{directory, project}` object (v1's `GET
+     * /path` is gone with no successor). The shell only ever needed
+     * `directory` — the server's cwd, the new session's default location and
+     * the directory browser's initial path — and that key survives verbatim.
      */
-    fun serverPath(): JSONObject = JSONObject(call(builder(null, "/path").get().build()))
+    fun serverPath(): JSONObject = JSONObject(call(apiBuilder("location").get().build()))
 
     /**
-     * `GET /file?path=` (`research/04` §3): one directory's immediate children.
-     * The add-project browser keeps [FileNode.directory] entries only; the
-     * call itself is unfiltered so the payload stays faithful to the wire.
+     * `GET /api/fs/list?path=` → `{location, data:[{path, type}]}` with paths
+     * **relative** to the location directory. The add-project browser keeps
+     * [FileNode.directory] entries only; the call itself is unfiltered so the
+     * payload stays faithful to the wire.
      */
     fun listFiles(path: String, directory: String? = null): List<FileNode> {
-        val listUrl = url(directory, "/file").newBuilder()
-            .addQueryParameter("path", path)
-            .build()
-        return parseJsonArray(call(builder(directory, "/file").get().url(listUrl).build()))
-            .mapNotNull(FileNode::fromJson)
+        val body = call(
+            apiBuilder("fs/list") {
+                located(it, directory)
+                if (path.isNotBlank()) it.addQueryParameter("path", path)
+            }.get().build(),
+        )
+        val root = JSONObject(body)
+        val base = root.optJSONObject("location")?.optStr("directory").orEmpty()
+        val rows = root.optJSONArray("data") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { FileNode.fromV2Json(it, base) }
+        }
     }
 
     /**
-     * `PATCH /session/:sessionID` `{title}` → `Session.Info` (`research/04` §3).
-     * The only write this client gained for M2; every other method is
-     * unchanged, and the returned session is the server's authoritative state
-     * (title + updated time).
+     * `PATCH /api/session/:sessionID` `{title}` → **204** (no body). The
+     * authoritative row is re-read afterwards, preserving the "the returned
+     * session is the server's state" contract. [directory] is accepted for
+     * source compatibility and ignored — the route takes no location.
      */
-    fun renameSession(sessionID: String, title: String, directory: String? = null): Session =
-        Session.fromJson(
-            JSONObject(patch(directory, "/session/$sessionID", JSONObject().put("title", title))),
-        )
+    fun renameSession(sessionID: String, title: String, directory: String? = null): Session {
+        apiPatch("session/$sessionID", JSONObject().put("title", title))
+        return session(sessionID)
+    }
 
     /**
-     * `DELETE /session/:sessionID` (upstream `session/timeline/controller.tsx`
-     * `deleteSession` → `client.session.delete({path:{id}})`;
-     * `_upstream/packages/app/src/session/timeline/controller.tsx:210,272`).
-     * The server answers `true`; like every other write here a non-2xx throws
-     * [ApiException], so a `true` return means the delete reached the server.
+     * `DELETE /api/session/:sessionID` → **204**. Like every other write here
+     * a non-2xx throws [ApiException], so a `true` return means the delete
+     * reached the server. [directory] is accepted for source compatibility
+     * and ignored — the route takes no location.
      */
     fun deleteSession(sessionID: String, directory: String? = null): Boolean {
-        call(builder(directory, "/session/$sessionID").delete().build())
+        call(apiBuilder("session/$sessionID").delete().build())
         return true
     }
 
@@ -991,390 +1304,233 @@ class OpenCodeClient(
     // re-reading (`ChatViewModel.applySessionInfo`).
 
     /**
-     * `POST /session/:sessionID/revert` `{messageID, partID?}` →
-     * `Session.Info` with `revert.messageID` set.
-     *
-     * Upstream's revert boundary is the **user message** the session is rewound
-     * to: that message's prompt is replayed into the composer and every message
-     * after it is hidden (`session/revert.ts:49-90` `stage()`,
-     * `session/session-domain.ts:16-18`). `partID` narrows the boundary to one
-     * part of the message (openapi `^prt`, optional here — the app only reverts
-     * whole messages).
-     *
-     * Measured on 1.18.31 (openapi `session.revert`, verified live): the route
-     * accepts an unknown `messageID` and answers `200` with **no** `revert` field
-     * — a bogus target is a silent no-op, not an error, so callers must read the
-     * returned session rather than assume the write happened.
+     * Revert the session to [messageID]. v1's single
+     * `POST /session/:sessionID/revert` became a stage/commit pair —
+     * `POST /api/session/:sessionID/revert/stage` `{messageID}` then
+     * `POST …/revert/commit` (both 204) — and staging alone changes nothing
+     * visible, so the commit is part of this call: the observable effect stays
+     * "the session is reverted", matching the old contract. v1's `partID` has
+     * no v2 counterpart and is not sent; [directory] is accepted for source
+     * compatibility and ignored. Returns the re-read session.
      */
     fun sessionRevert(
         sessionID: String,
         messageID: String,
         partID: String? = null,
         directory: String? = null,
-    ): Session = Session.fromJson(
-        JSONObject(post(directory, "/session/$sessionID/revert", revertPayload(messageID, partID))),
-    )
+    ): Session {
+        apiPost("session/$sessionID/revert/stage", revertPayload(messageID))
+        apiPost("session/$sessionID/revert/commit", JSONObject())
+        return session(sessionID)
+    }
 
     /**
-     * `POST /session/:sessionID/unrevert` (no body) → `Session.Info` without the
-     * `revert` field. Upstream's `revert.clear` (`session/revert.ts:115`) — the
-     * "redo past the last undone message" branch. Idempotent: a second call on an
-     * unreverted session answers `200` and changes nothing (verified live).
+     * `DELETE /api/session/:sessionID/revert` (204) — the "redo past the last
+     * undone message" branch. Idempotent: a second call on an unreverted
+     * session answers `204` and changes nothing. Returns the re-read session.
      */
-    fun sessionUnrevert(sessionID: String, directory: String? = null): Session = Session.fromJson(
-        JSONObject(call(builder(directory, "/session/$sessionID/unrevert").post(EMPTY_BODY).build())),
-    )
+    fun sessionUnrevert(sessionID: String, directory: String? = null): Session {
+        call(apiBuilder("session/$sessionID/revert").delete().build())
+        return session(sessionID)
+    }
 
     /**
-     * `POST /session/:sessionID/fork` `{messageID?}` → the **new** `Session.Info`
-     * (`session/commands/fork-dialog.tsx:71-89`; the SDK's `before` maps to this
-     * body's `messageID`).
-     *
-     * [messageID] is the message the fork is cut **before**: verified live, a
-     * fork at the second of three messages carries exactly the first one, and a
-     * fork at the first message carries none. `null` forks the whole session as
-     * it stands. The parent is not recorded in `Session.Info`, so the new session
-     * is reached by id only (`GET /session/:id/children` answers `[]` for it —
-     * verified live).
+     * `POST /api/session/:sessionID/fork` `{before?}` → the **new**
+     * `{data:SessionInfo}`. v1's `{messageID?}` key is silently ignored by v2
+     * — same value, new name — so [messageID] is sent as `before`. `null`
+     * forks the whole session as it stands.
      */
     fun sessionFork(
         sessionID: String,
         messageID: String? = null,
         directory: String? = null,
     ): Session = Session.fromJson(
-        JSONObject(post(directory, "/session/$sessionID/fork", forkPayload(messageID))),
+        dataObject(apiPost("session/$sessionID/fork", forkPayload(messageID))),
     )
 
-    /**
-     * `POST /session/:sessionID/share` (no body) → `Session.Info` carrying
-     * `share.url`. Upstream copies that URL to the clipboard
-     * (`session/commands/use-session-commands.tsx:123-141` is the sibling
-     * `copySessionID` flow with the same toast contract; the share command itself
-     * lives in the desktop menu, `runtime/i18n/en.ts:632-635`).
-     */
-    fun sessionShare(sessionID: String, directory: String? = null): Session = Session.fromJson(
-        JSONObject(call(builder(directory, "/session/$sessionID/share").post(EMPTY_BODY).build())),
-    )
-
-    /**
-     * `DELETE /session/:sessionID/share` (no body) → `Session.Info`.
-     *
-     * Measured on 1.18.31: the call succeeds (`200`) but the payload **still
-     * reports the `share` object**, and so does every later `GET /session/:id`
-     * (three consecutive DELETEs in a row, same URL; the only field that moves is
-     * `time.updated`). Only the remote link is revoked, so the caller cannot use
-     * the response to decide whether the session is private — `ChatViewModel`
-     * keeps that bit locally for the session it just unshared.
-     */
-    fun sessionUnshare(sessionID: String, directory: String? = null): Session = Session.fromJson(
-        JSONObject(call(builder(directory, "/session/$sessionID/share").delete().build())),
-    )
-
-    /**
-     * `PATCH /session/:sessionID` `{"time":{"archived": <epoch millis>}}` →
-     * `Session.Info` with `time.archived` set.
-     *
-     * The archive is a **list filter on the client**, not a server-side
-     * exclusion: `GET /session` keeps returning the archived row (verified live,
-     * 1.18.31) and upstream drops it while building Home
-     * (`home/sessions/index.ts:51` `typeof session.time.archived !== "number"`,
-     * `workspaces/paths.ts:38`). Passing `0` is the un-archive write — the server
-     * stores the literal `0`; a JSON `null` is ignored and leaves the previous
-     * timestamp in place (verified live). See [Session.archivedAt].
-     */
-    fun sessionArchive(
-        sessionID: String,
-        archivedMillis: Long,
-        directory: String? = null,
-    ): Session = Session.fromJson(
-        JSONObject(patch(directory, "/session/$sessionID", archivePayload(archivedMillis))),
-    )
-
-    /** `GET /session/:sessionID` → one `Session.Info` (title refresh on snapshot). */
+    /** `GET /api/session/:sessionID` → `{data:SessionInfo}` (title refresh on snapshot). */
     fun session(sessionID: String, directory: String? = null): Session =
-        Session.fromJson(JSONObject(call(builder(directory, "/session/$sessionID").get().build())))
+        Session.fromJson(dataObject(call(apiBuilder("session/$sessionID").get().build())))
 
     /**
-     * `GET /session/:sessionID/message` → `WithParts[]`. [limit] keeps only the
-     * most recent N messages (see [pagedUrl]); the snapshot path passes one so a
-     * long transcript is not re-downloaded and re-parsed in full on every
-     * reconnect. `null` = full history, the previous behaviour.
+     * `GET /api/session/:sessionID/message` → `{data:[…]}` of flat tagged-union
+     * rows, newest first. [limit] keeps only the most recent N; the rows are
+     * reversed into chronological order before returning, so the v1 "most
+     * recent N in reading order" contract holds. `null` = full history.
+     * [directory] is accepted for source compatibility and ignored — the route
+     * takes no location.
      */
-    fun messages(sessionID: String, directory: String? = null, limit: Int? = null): List<Message> {
-        val listUrl = pagedUrl(directory, "/session/$sessionID/message", limit)
-        return parseJsonArray(
-            call(builder(directory, "/session/$sessionID/message").get().url(listUrl).build()),
-        ).map(Message::fromJson)
+    fun messages(sessionID: String, directory: String? = null, limit: Int? = null): List<Message> =
+        messageRows(sessionID, limit).map { Message.fromV2Json(it, sessionID) }
+
+    /** One `message` page as raw rows, chronological (see [messages]). */
+    private fun messageRows(sessionID: String, limit: Int?): List<JSONObject> {
+        val body = call(
+            apiBuilder("session/$sessionID/message") {
+                if (limit != null && limit > 0) it.addQueryParameter("limit", limit.toString())
+            }.get().build(),
+        )
+        return dataRows(body).reversed()
     }
 
     // ---------------------------------------------------------------- raw JSON
     //
     // A8 (session export) needs the payload **exactly as the server sent it**:
-    // `session.get` returns one `Session.Info` object, `message.list` an array of
-    // `WithParts`. These two are additive — the parsing paths above are untouched
-    // and share `url`/`builder`/`call`/`pagedUrl` with them — and they are the only
+    // `session.get` returns one `SessionInfo` object, `message.list` an array of
+    // message rows. These two are additive — the parsing paths above are untouched
+    // and share `apiBuilder`/`call`/`messageRows` with them — and they are the only
     // reason the export never re-serializes a parsed model (which would drop
     // fields; `research/wave6_export.md` §2.1 option ① vs ②).
 
     /**
-     * `GET /session/:sessionID` → the **raw** `Session.Info` object (export
+     * `GET /api/session/:sessionID` → the **raw** `SessionInfo` object (export
      * payload's `info` key). Same request as [session], no parsing.
      */
     fun sessionJson(sessionID: String, directory: String? = null): JSONObject =
-        JSONObject(call(builder(directory, "/session/$sessionID").get().build()))
+        dataObject(call(apiBuilder("session/$sessionID").get().build()))
 
     /**
-     * `GET /session/:sessionID/message` → the **raw** `WithParts[]` rows (export
-     * payload's `messages` key). [limit] behaves exactly as in [messages]:
-     * `null` = full history, because v1 has no cursor pagination
-     * (`research/wave6_export.md` §2.1/§5).
+     * `GET /api/session/:sessionID/message` → the **raw** message rows
+     * (export payload's `messages` key), chronological like [messages].
+     * [limit] behaves exactly as in [messages].
      */
-    fun messagesJson(sessionID: String, directory: String? = null, limit: Int? = null): List<JSONObject> {
-        val listUrl = pagedUrl(directory, "/session/$sessionID/message", limit)
-        return parseJsonArray(call(builder(directory, "/session/$sessionID/message").get().url(listUrl).build()))
-    }
-
-    fun abort(sessionID: String, directory: String? = null) {
-        call(builder(directory, "/session/$sessionID/abort").post(EMPTY_BODY).build())
-    }
+    fun messagesJson(sessionID: String, directory: String? = null, limit: Int? = null): List<JSONObject> =
+        messageRows(sessionID, limit)
 
     /**
-     * `/find/file` returns a bare JSON array of path strings
-     * (`["a/b.md", ...]`); tolerate object entries with a `path` field too.
+     * `GET /api/fs/find?query=` → `{location, data:[{path, type}]}` with paths
+     * **relative** to the location directory (the matcher is fuzzy/ranked, so
+     * callers must not assume a literal match). A bare string array (the v1
+     * shape) still parses.
      */
     fun findFiles(query: String, directory: String? = null): List<String> {
-        val queryUrl = url(directory, "/find/file").newBuilder()
-            .addQueryParameter("query", query)
-            .build()
-        val arr = JSONArray(call(builder(directory, "/find/file").get().url(queryUrl).build()))
+        val body = call(
+            apiBuilder("fs/find") {
+                located(it, directory)
+                it.addQueryParameter("query", query)
+            }.get().build(),
+        )
+        val trimmed = body.trim()
+        if (trimmed.startsWith("{") && JSONObject(trimmed).has("data")) {
+            return dataRows(body).mapNotNull { it.optStr("path").takeIf { s -> s.isNotEmpty() } }
+        }
+        val arr = JSONArray(trimmed)
         return (0 until arr.length()).mapNotNull { i ->
             when (val element = arr.opt(i)) {
-                is String -> element.takeIf { it.isNotEmpty() }
-                is JSONObject -> element.optString("path", "").takeIf { it.isNotEmpty() }
+                is String -> element.takeIf { it.isNotEmpty() && it != "null" }
+                is JSONObject -> element.optStr("path").takeIf { it.isNotEmpty() }
                 else -> null
             }
         }
     }
 
     /**
-     * prompt_async body mirroring the upstream composer:
-     * `parts: [{type:"text"},{type:"file",mime,url,filename}...]`.
-     * Attachments are data URLs (SAF content:// is not readable by the server).
-     *
-     * [model] (`providerID` to `modelID`) adds `"model":{"providerID":…,
-     * "modelID":…}` to the payload (PromptPayload, `research/04` §3.1); null
-     * leaves the field out and the server uses its configured default.
-     *
-     * W5-C: [agent] / [variant] / [system] are additive and all optional — the
-     * openapi `session.prompt_async` body is
-     * `{messageID?, model?, agent?, noReply?, tools?, format?, system?, variant?,
-     * parts}` with `required: [parts]`, so every existing caller keeps sending
-     * exactly what it sent before. Verified live against 1.18.31: a body with
-     * `agent` + `variant` answers 204 and the created assistant message echoes
-     * both (`info.agent`, `info.variant`).
+     * `GET /api/agent` → `{location, data:[…]}` — the composer's agent chip.
+     * Entries without a name are dropped.
      */
-    fun promptAsync(
-        sessionID: String,
-        text: String,
-        attachments: List<ChatStore.UiPart> = emptyList(),
-        directory: String? = null,
-        model: Pair<String, String>? = null,
-        agent: String? = null,
-        variant: String? = null,
-        system: String? = null,
-    ) {
-        post(
-            directory,
-            "/session/$sessionID/prompt_async",
-            promptPayload(text, attachments, model, agent, variant, system),
-        )
-    }
+    fun agents(directory: String? = null): List<Agent> =
+        dataRows(call(apiBuilder("agent") { located(it, directory) }.get().build()))
+            .map(Agent::fromJson).filter { it.name.isNotEmpty() }
 
     /**
-     * `POST /session/:sessionID/shell` — the **real** shell-mode route (W5-C B3).
-     * `{agent (required), command (required), messageID?, model?}`; answers the
-     * created assistant message, whose `parts[0]` is the `bash` tool result.
-     * Verified live against opencode 1.18.31 (`{agent:"build", command:"echo hi"}`
-     * → 200 with `tool: "bash"`, `state.output: "hi"`).
-     *
-     * This is what upstream calls for shell mode
-     * (`composer/submit.ts:296-298` → `session.api.shell`), **not** a
-     * `mode:"shell"` field on `prompt_async`: that field is not in the
-     * `prompt_async` schema and is silently ignored (measured: 204, and the
-     * created message carries `mode: ""`/`agent: "build"`).
+     * `GET /api/command` → `{location, data:[{name, description}]}` — the
+     * server's slash-command catalog (v2 carries no template/source).
      */
-    fun shellCommand(
-        sessionID: String,
-        command: String,
-        agent: String,
-        directory: String? = null,
-        model: Pair<String, String>? = null,
-    ) {
-        post(
-            directory,
-            "/session/$sessionID/shell",
-            shellPayload(command, agent, model),
-        )
-    }
+    fun commands(directory: String? = null): List<CommandInfo> =
+        dataRows(call(apiBuilder("command") { located(it, directory) }.get().build()))
+            .mapNotNull(CommandInfo::fromJson)
+
+    /** `GET /api/skill` → `{location, data:[…]}` — the `@`-mention skill category. */
+    fun skills(directory: String? = null): List<SkillInfo> =
+        dataRows(call(apiBuilder("skill") { located(it, directory) }.get().build()))
+            .mapNotNull(SkillInfo::fromJson)
 
     /**
-     * `POST /session/:sessionID/command` — run a server command (W5-C B1).
-     * Body `{command (required), arguments (required), agent?, model?, variant?,
-     * messageID?, parts?}`; note `model` is a **string** here
-     * (`"providerID/modelID"`), unlike `prompt_async`'s nested object — measured
-     * from the 1.18.31 openapi document.
-     * Upstream: `composer/submit.ts:309-322` `sendCommand`.
+     * `GET /api/permission/request` → `{location, data:[…]}`: every pending
+     * permission ask in the directory. Entries without an `id` are dropped —
+     * they can never be replied to.
      */
-    fun runCommand(
-        sessionID: String,
-        command: String,
-        arguments: String,
-        directory: String? = null,
-        agent: String? = null,
-        model: Pair<String, String>? = null,
-        variant: String? = null,
-    ) {
-        post(
-            directory,
-            "/session/$sessionID/command",
-            commandPayload(command, arguments, agent, model, variant),
-        )
-    }
+    fun listPermissions(directory: String? = null): List<PermissionRequest> =
+        dataRows(call(apiBuilder("permission/request") { located(it, directory) }.get().build()))
+            .map(PermissionRequest::fromJson).filter { it.id.isNotEmpty() }
 
     /**
-     * `GET /agent` (`[{name, description, mode, native, hidden, variant, …}]`) —
-     * the composer's agent chip (W5-C B4). Entries without a name are dropped.
-     */
-    fun agents(directory: String? = null): List<Agent> = parseJsonArray(
-        call(builder(directory, "/agent").get().build()),
-    ).map(Agent::fromJson).filter { it.name.isNotEmpty() }
-
-    /**
-     * `GET /command` — the server's slash-command catalog (W5-C B1), mixed
-     * `command` + `skill` sources.
-     */
-    fun commands(directory: String? = null): List<CommandInfo> = parseJsonArray(
-        call(builder(directory, "/command").get().build()),
-    ).mapNotNull(CommandInfo::fromJson)
-
-    /** `GET /skill` — the `@`-mention skill category (W5-C B9). */
-    fun skills(directory: String? = null): List<SkillInfo> = parseJsonArray(
-        call(builder(directory, "/skill").get().build()),
-    ).mapNotNull(SkillInfo::fromJson)
-
-    /**
-     * `GET /global/health` → `{"healthy":true,"version":"1.18.31"}`. Additive
-     * liveness probe for the composer's command/skill/agent catalog refresh (and
-     * useful for the report evidence); nothing else calls it.
-     */
-    fun health(): JSONObject = JSONObject(call(builder(null, "/global/health").get().build()))
-
-
-    /**
-     * `GET /permission` → `PermissionV1.Request[]` (`research/04` §3): every
-     * pending permission ask in the directory. Entries without an `id` are
-     * dropped — they can never be replied to.
-     */
-    fun listPermissions(directory: String? = null): List<PermissionRequest> = parseJsonArray(
-        call(builder(directory, "/permission").get().build()),
-    ).map(PermissionRequest::fromJson).filter { it.id.isNotEmpty() }
-
-    /**
-     * `POST /permission/:requestID/reply` body `{"reply": reply}`
-     * (`research/04` §3), reply ∈ "once" | "always" | "reject"
-     * (`PermissionV1.Reply`). Returns the server body (usually `true`).
+     * No v2 successor exists with this signature: `POST
+     * /api/session/:sessionID/permission/:requestID/reply` needs the session
+     * the ask belongs to (`{decision: once|always|reject, message?}`), which
+     * this call never carried. Fails loudly instead of posting to a route the
+     * server no longer serves — use
+     * [V2Api.replyPermission].
      */
     fun replyPermission(requestID: String, reply: String, directory: String? = null): String =
-        post(directory, "/permission/$requestID/reply", JSONObject().put("reply", reply))
+        throw UnsupportedOperationException(
+            "replyPermission has no v2 equivalent without a sessionID; " +
+                "use V2Api.replyPermission(sessionID, requestID, decision).",
+        )
 
     /**
-     * `GET /question` → `QuestionV1.Request[]` (`research/04` §3): every
-     * pending question ask in the directory. Entries without an `id` are
-     * dropped — they can never be replied to.
-     */
-    fun listQuestions(directory: String? = null): List<QuestionRequest> = parseJsonArray(
-        call(builder(directory, "/question").get().build()),
-    ).map(QuestionRequest::fromJson).filter { it.id.isNotEmpty() }
-
-    /**
-     * `POST /question/:requestID/reply` body `{"answers": [[label, ...], ...]}`
-     * (`QuestionV1.Reply`): one string array per question, in question order.
-     */
-    fun replyQuestion(requestID: String, answers: List<List<String>>, directory: String? = null): String {
-        val outer = JSONArray()
-        for (answer in answers) {
-            val inner = JSONArray()
-            for (label in answer) inner.put(label)
-            outer.put(inner)
-        }
-        return post(directory, "/question/$requestID/reply", JSONObject().put("answers", outer))
-    }
-
-    /**
-     * `POST /question/:requestID/reject` — dismisses the ask; the request
-     * carries no body (`research/04` §3.1).
-     */
-    fun rejectQuestion(requestID: String, directory: String? = null): String =
-        call(builder(directory, "/question/$requestID/reject").post(EMPTY_BODY).build())
-
-    /**
-     * `GET /session/:sessionID/diff?messageID?` → `Snapshot.FileDiff[]`
-     * (`research/04` §3.1). The review side panel's Changes tab data source;
-     * [messageID] scopes the diff to one message when given.
+     * `GET /api/session/:sessionID/diff` → `{data:[FileDiff…]}` — the review
+     * side panel's Changes tab data source. v2 scopes by commit/message range
+     * (`from`/`to`), not one `messageID`: passing [messageID] throws instead
+     * of silently returning the unscoped diff — use
+     * [V2Api.sessionDiff] for a ranged read.
      */
     fun sessionDiff(sessionID: String, messageID: String? = null, directory: String? = null): List<FileDiff> {
-        val diffUrl = url(directory, "/session/$sessionID/diff").newBuilder().apply {
-            if (!messageID.isNullOrBlank()) addQueryParameter("messageID", messageID)
-        }.build()
-        return parseJsonArray(call(builder(directory, "/session/$sessionID/diff").get().url(diffUrl).build()))
+        if (!messageID.isNullOrBlank()) {
+            throw UnsupportedOperationException(
+                "V2 session diff has no per-message scope; use V2Api.sessionDiff(sessionID, from, to).",
+            )
+        }
+        return dataRows(call(apiBuilder("session/$sessionID/diff").get().build()))
             .map(FileDiff::fromJson)
     }
 
     /**
-     * `GET /session/:sessionID/todo` → `Todo.Info[]` (`research/04` §3.1).
-     * Read-only exposure; rendering is a separate workflow.
-     */
-    fun sessionTodos(sessionID: String, directory: String? = null): List<TodoInfo> = parseJsonArray(
-        call(builder(directory, "/session/$sessionID/todo").get().build()),
-    ).map(TodoInfo::fromJson)
-
-    /**
-     * `GET /file/content?path=` (`research/04` §3.1): text content for the
-     * review panel's file preview, or a binary descriptor ([FileContent.binary]).
+     * `GET /api/fs/read/<rel>` → the raw file bytes for the review panel's
+     * file preview, folded into [FileContent] via [fileContentFromBytes].
+     * [path] is relative to [directory] (a leading slash is stripped); the
+     * route answers bytes, never JSON.
      */
     fun fileContent(path: String, directory: String? = null): FileContent {
-        val contentUrl = url(directory, "/file/content").newBuilder()
-            .addQueryParameter("path", path)
-            .build()
-        return FileContent.fromJson(
-            JSONObject(call(builder(directory, "/file/content").get().url(contentUrl).build())),
+        val relative = path.replace('\\', '/').trimStart('/')
+        return fileContentFromBytes(
+            callBytes(
+                apiBuilder("fs/read/$relative") { located(it, directory) }.get().build(),
+            ),
         )
     }
 
-    /** `GET /vcs` → `{branch?, default_branch?}` (`research/04` §3.1). */
+    /** `GET /api/vcs` → `{location, data:{branch:{current?,default?}}}`. */
     fun vcsInfo(directory: String? = null): VcsInfo =
-        VcsInfo.fromJson(JSONObject(call(builder(directory, "/vcs").get().build())))
+        VcsInfo.fromJson(
+            dataObject(call(apiBuilder("vcs") { located(it, directory) }.get().build())),
+        )
 
     /**
-     * `GET /vcs/diff?mode=` → `FileDiff[]` (upstream `vcs.diff({mode})`,
-     * `_upstream/packages/app/src/session/review/model.ts:23`). **Verified**
-     * against opencode 1.18.31: `mode=git` and `mode=branch` return JSON,
-     * `mode=working` is rejected with 400, so the review panel's Git / Branch
-     * scopes are backed by the server after all (the earlier "endpoint missing"
-     * note was a wrong `mode` value, not a missing route).
+     * `GET /api/vcs/diff?mode=` → `{location, data:[FileDiff…]}`. v2 accepts
+     * `working|branch|committed` and 400s v1's `git` — the one name is
+     * translated via [v2VcsDiffMode] (`git` and `working` are the same scope:
+     * uncommitted working-tree changes), everything else passes through.
      */
     fun vcsDiff(mode: String, directory: String? = null): List<FileDiff> {
-        val diffUrl = url(directory, "/vcs/diff").newBuilder()
-            .addQueryParameter("mode", mode)
-            .build()
-        return parseJsonArray(call(builder(directory, "/vcs/diff").get().url(diffUrl).build()))
-            .map(FileDiff::fromJson)
+        val body = call(
+            apiBuilder("vcs/diff") {
+                located(it, directory)
+                it.addQueryParameter("mode", v2VcsDiffMode(mode))
+            }.get().build(),
+        )
+        return dataRows(body).map(FileDiff::fromJson)
     }
 
     companion object {
-        private val EMPTY_BODY: RequestBody = ByteArray(0).toRequestBody(null)
-
         private val TAG = "OpenCodeClient"
+
+        /**
+         * The scope key for location-scoped v2 reads: the OpenAPI document
+         * declares `location` with `style: deepObject, explode: true`, so the
+         * literal `location[directory]` is the only name the server honours.
+         */
+        private const val LOCATION_DIRECTORY_QUERY = "location[directory]"
 
         /**
          * Basic-auth username upstream hardcodes when a server password is set
@@ -1383,6 +1539,28 @@ class OpenCodeClient(
          */
         private const val DEFAULT_BASIC_USERNAME = "opencode"
 
+        /**
+         * The REST client every native surface shares (the ViewModel's
+         * `sharedClient`, the catalog reads, the probe).
+         *
+         * Connection management, and why it is deliberately left at OkHttp's
+         * defaults (v32 BUG-1 audit):
+         * - `retryOnConnectionFailure` stays at its default `true`: OkHttp
+         *   re-dials once when an **idle pooled** connection turns out to be
+         *   dead, which is the cheap half of the problem.
+         * - `pingInterval` is not set — it only keeps *WebSocket* connections
+         *   warm (`NativeWebSocketHub` sets its own 20 s), never pooled HTTP
+         *   ones.
+         * - the pool keeps OkHttp's 5-minute idle lifetime / 5 idle
+         *   connections: shortening it only moves the cost from a rare re-dial
+         *   to a handshake on every read.
+         * - what no client setting can cover is a **failed connect** — the
+         *   measured `Failed to connect to /127.0.0.1:4095` while `adb reverse`
+         *   and the backend were both up. Nothing was listening for that
+         *   instant, so the fix is one level up: idempotent reads retry with
+         *   backoff and evict the dead pool ([com.xiufeigo.opencodeshell.v2.TransportRetry],
+         *   `ChatViewModel.readTransport`).
+         */
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -1451,129 +1629,23 @@ class OpenCodeClient(
             return "${ref.first}/${ref.second}"
         }
 
-        // ------------------------------------------------------------ payloads
-        //
-        // W5-C: the write bodies are built by these pure functions so the exact
-        // JSON the server receives is JVM-assertable (`OpenCodeClientWave5Test`)
-        // without a socket. Every field is optional except the ones the openapi
-        // document marks required.
-
         /**
-         * `prompt_async` body: `{parts[required], model?, agent?, variant?,
-         * system?}`. `parts` always leads with the text part (when non-blank)
-         * followed by the file parts, exactly the order the M1 client sent.
+         * `revert/stage` body: `{messageID}` (`^msg`). v1's optional `partID`
+         * (`^prt`) has no v2 counterpart and is not sent.
          */
-        fun promptPayload(
-            text: String,
-            attachments: List<ChatStore.UiPart> = emptyList(),
-            model: Pair<String, String>? = null,
-            agent: String? = null,
-            variant: String? = null,
-            system: String? = null,
-        ): JSONObject {
-            val parts = JSONArray()
-            if (text.isNotEmpty()) parts.put(JSONObject().put("type", "text").put("text", text))
-            for (attachment in attachments) {
-                val filePart = JSONObject()
-                    .put("type", "file")
-                    .put("mime", attachment.mime ?: "application/octet-stream")
-                    .put("filename", attachment.filename ?: "file")
-                    .put("url", attachment.url ?: "")
-                parts.put(filePart)
-            }
-            val payload = JSONObject().put("parts", parts)
-            if (model != null) {
-                payload.put(
-                    "model",
-                    JSONObject()
-                        .put("providerID", model.first)
-                        .put("modelID", model.second),
-                )
-            }
-            // Blank agent/variant are omitted: the server then applies its own
-            // default instead of being handed an empty selection.
-            agent?.takeIf { it.isNotBlank() }?.let { payload.put("agent", it) }
-            variant?.takeIf { it.isNotBlank() }?.let { payload.put("variant", it) }
-            system?.takeIf { it.isNotEmpty() }?.let { payload.put("system", it) }
-            return payload
-        }
+        fun revertPayload(messageID: String): JSONObject =
+            JSONObject().put("messageID", messageID)
 
         /**
-         * `session.shell` body: `{agent[required], command[required], model?}`.
-         * `model` is the nested `{providerID, modelID}` object here (the
-         * `/command` route is the one that takes a flat string).
-         */
-        fun shellPayload(
-            command: String,
-            agent: String,
-            model: Pair<String, String>? = null,
-        ): JSONObject {
-            val payload = JSONObject()
-                .put("command", command)
-                .put("agent", agent)
-            if (model != null) {
-                payload.put(
-                    "model",
-                    JSONObject()
-                        .put("providerID", model.first)
-                        .put("modelID", model.second),
-                )
-            }
-            return payload
-        }
-
-        /**
-         * `session.command` body: `{command[required], arguments[required],
-         * agent?, model?, variant?}`. `model` is the flat `"providerID/modelID"`
-         * string this route expects.
-         */
-        fun commandPayload(
-            command: String,
-            arguments: String,
-            agent: String? = null,
-            model: Pair<String, String>? = null,
-            variant: String? = null,
-        ): JSONObject {
-            val payload = JSONObject()
-                .put("command", command)
-                .put("arguments", arguments)
-            agent?.takeIf { it.isNotBlank() }?.let { payload.put("agent", it) }
-            formatModelRef(model)?.let { payload.put("model", it) }
-            variant?.takeIf { it.isNotBlank() }?.let { payload.put("variant", it) }
-            return payload
-        }
-
-        /**
-         * `session.revert` body: `{messageID[required], partID?}` (openapi; both
-         * are `^msg` / `^prt` strings and the object rejects extra properties).
-         * A blank [partID] is omitted: the app reverts whole messages, and the
-         * server would otherwise be handed an empty id.
-         */
-        fun revertPayload(messageID: String, partID: String? = null): JSONObject {
-            val payload = JSONObject().put("messageID", messageID)
-            partID?.takeIf { it.isNotBlank() }?.let { payload.put("partID", it) }
-            return payload
-        }
-
-        /**
-         * `session.fork` body: `{messageID?}`. The whole body is optional
-         * (`requestBody` is not `required` in the openapi document and an empty
-         * object was accepted live), so `null` sends `{}` — "fork the session as
-         * it stands" rather than a body the server has to ignore.
+         * `session.fork` body: `{before?}` (`^msg`, optional). v1's
+         * `{messageID?}` key is silently ignored by v2 — same value, new name
+         * — so `null` still means "fork the session as it stands".
          */
         fun forkPayload(messageID: String?): JSONObject {
             val payload = JSONObject()
-            messageID?.takeIf { it.isNotBlank() }?.let { payload.put("messageID", it) }
+            messageID?.takeIf { it.isNotBlank() }?.let { payload.put("before", it) }
             return payload
         }
-
-        /**
-         * `session.update` body: `{"time":{"archived": millis}}`. The nested
-         * `time` object accepts only `archived` (openapi
-         * `additionalProperties: false`).
-         */
-        fun archivePayload(archivedMillis: Long): JSONObject = JSONObject()
-            .put("time", JSONObject().put("archived", archivedMillis))
 
         fun forServer(server: ServerConfigStore.Server, http: OkHttpClient = defaultClient()): OpenCodeClient? {            val parsed = server.url.toHttpUrlOrNull() ?: return null
             return OpenCodeClient(parsed, server.username, server.password, http)

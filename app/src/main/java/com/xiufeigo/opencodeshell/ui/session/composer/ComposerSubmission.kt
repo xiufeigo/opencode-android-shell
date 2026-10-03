@@ -60,6 +60,31 @@ object ComposerSubmission {
     )
 
     /**
+     * P1-C: the failed queue-edit confirm hands the replacement back through
+     * the draft handoff, so an embeddable `data:` entry converts to a draft
+     * attachment; `file://` mention refs carry no bytes and stay text-only
+     * (null). The mime falls back to the data-URL prefix, then to a generic
+     * binary type — never blank, so the preview strip can always label it.
+     */
+    fun FileEntry.toDraftAttachment(): ComposerDrafts.DraftAttachment? {
+        if (!uri.startsWith("data:")) return null
+        val mime = this.mime?.takeIf { it.contains('/') } ?: mimeOfDataUrl(uri)
+        return ComposerDrafts.DraftAttachment(
+            mime = mime,
+            filename = name?.takeIf { it.isNotBlank() } ?: "file",
+            dataUrl = uri,
+        )
+    }
+
+    /** Mime prefix of a `data:<mime>;…` URL, or binary when it carries none. */
+    fun mimeOfDataUrl(dataUrl: String): String {
+        if (!dataUrl.startsWith("data:")) return "application/octet-stream"
+        val end = dataUrl.indexOf(';').takeIf { it > 5 } ?: dataUrl.indexOf(',').takeIf { it > 5 }
+        return end?.let { dataUrl.substring(5, it) }?.takeIf { it.contains('/') }
+            ?: "application/octet-stream"
+    }
+
+    /**
      * What the composer hands over on submit: the display text plus the
      * structured fields the transports need.
      *

@@ -81,7 +81,7 @@ class Wave24bComposerWiringTest {
         val composer = composer()
         assertTrue("onSubmit fallback", composer.contains("submitPayload"))
         assertTrue("onSend fallback", composer.contains("onSend(outgoing, attachments)"))
-        assertTrue("shell/command routing", composer.contains("ComposerSuggestions.invocation(outgoing, known)"))
+        assertTrue("shell/command routing", composer.contains("ComposerSuggestions.invocation(trimmed, known)"))
         assertTrue("history records plain submits", composer.contains("history.add(outgoing, shellMode)"))
     }
 }

@@ -38,4 +38,26 @@ class NativeWebSocketJsTest {
         assertTrue(bridge.contains("fun wsOpen"))
         assertTrue(bridge.contains("fun wsSendBinary"))
     }
+
+    @Test
+    fun closeReasonTruncatesByUtf8BytesForOkkios123ByteLimit() {
+        // OkHttp `RealWebSocket.close` requires reason.encodeUtf8().size ≤ 123;
+        // the old `take(120)` counted chars, so ≥42 CJK chars threw
+        // IllegalArgumentException *after* `sockets.remove(id)` — crash + leak.
+        assertEquals("abc", NativeWebSocketHub.closeReason("abc"))
+        assertEquals(123, NativeWebSocketHub.closeReason("a".repeat(500)).length)
+
+        val cjk = NativeWebSocketHub.closeReason("终".repeat(100))
+        assertEquals("终".repeat(41), cjk) // 41×3 = 123 bytes exactly
+        assertTrue(cjk.toByteArray(Charsets.UTF_8).size <= NativeWebSocketHub.CLOSE_REASON_MAX_BYTES)
+
+        // Astral-plane chars are one surrogate pair / 4 bytes: never split.
+        val emoji = NativeWebSocketHub.closeReason("🙂".repeat(50))
+        assertEquals("🙂".repeat(30), emoji) // 30×4 = 120; the 31st would make 124
+        assertEquals(60, emoji.length)
+
+        // A multi-byte char never straddles the cut.
+        assertEquals("a".repeat(122), NativeWebSocketHub.closeReason("a".repeat(122) + "中"))
+        assertEquals("", NativeWebSocketHub.closeReason(""))
+    }
 }

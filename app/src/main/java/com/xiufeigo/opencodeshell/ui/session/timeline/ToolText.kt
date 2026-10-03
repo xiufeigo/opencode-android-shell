@@ -16,6 +16,11 @@ import org.json.JSONTokener
  * - failed tool text: `ToolErrorCard`'s head/detail split
  *   (`components/tool-error-card.tsx:65-83`): `Error:` prefix strip, optional
  *   `{tool} ` prefix strip, then `": "` split into summary head + detail.
+ *
+ * One native addition with no upstream counterpart: [localizeServerPhrases]
+ * swaps the server's English failure phrases for the UI locale's words, because
+ * the server composes those messages itself and never sends a key the client
+ * could translate (`shell.ts:145`).
  */
 object ToolText {
 
@@ -73,6 +78,33 @@ object ToolText {
     }
 
     /**
+     * Server-authored English text with the known phrases swapped for the UI
+     * locale's words — the display half of a failure the app can name in its own
+     * language.
+     *
+     * [phrases] maps the **English** phrase as the server writes it to the
+     * localized one (`Working directory does not exist` →
+     * `error.server.workingDirectoryMissing`); the caller builds it with
+     * `stringResource`, so this stays pure and unit-testable. Matching is
+     * case-insensitive on the whole phrase — the server composes these messages
+     * itself (`shell.ts:145`), so there is no id or code to key off.
+     *
+     * An English locale maps every phrase onto itself: those pairs are skipped,
+     * so the text is returned untouched and the copy/verbatim paths cannot drift
+     * through a no-op replace. Longer phrases are applied first so a short one
+     * cannot eat the prefix of a longer one.
+     */
+    fun localizeServerPhrases(text: String, phrases: Map<String, String>): String {
+        if (text.isEmpty() || phrases.isEmpty()) return text
+        var out = text
+        for ((from, to) in phrases.entries.sortedByDescending { it.key.length }) {
+            if (from.isEmpty() || from == to) continue
+            out = out.replace(from, to, ignoreCase = true)
+        }
+        return out
+    }
+
+    /**
      * `ToolErrorCard`'s `cleaned`/`tail`/`summary`/`detail`
      * (`tool-error-card.tsx:65-83`): `Error:` prefix strip, `{tool} ` prefix
      * strip, then the first `": "`-delimited segment (capitalised) is the head
@@ -100,7 +132,8 @@ object ToolText {
 
     /** First non-blank line of [text], capped at [max] chars (card subtitles). */
     fun firstLine(text: String, max: Int = ToolPresentation.SUBTITLE_MAX): String? =
-        text.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(max)
+        text.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }
+            ?.let { ToolPresentation.capChars(it, max) }
 
     // --------------------------------------------------------------- internals
 
@@ -136,9 +169,28 @@ object ToolText {
             null
         }
     }
+}
 
-    private fun JSONObject.optStringOrNull(key: String): String? {
-        if (!has(key) || isNull(key)) return null
-        return optString(key, "").takeIf { it.isNotEmpty() }
-    }
+/**
+ * NULL-safe read of an optional string field of a tool input / part payload —
+ * the one reader for the whole timeline package ([RawParts], [ToolPresentation],
+ * [ToolRenderers], [TurnChanges] and this file's own text helpers).
+ *
+ * `JSONObject.optString(name, fallback)` is not the trap-free form it looks
+ * like: on Android it funnels the value through `JSON.toString`, so the JSON
+ * `null` sentinel comes back as the **literal string `"null"`** (only a missing
+ * key reaches the fallback), while the `org.json:json` jar the unit tests run on
+ * returns the fallback for the same payload. A tool card would therefore render
+ * the word `null` on a device — as a bash command, a `write` body, one side of
+ * an old/new diff, a question line — with every JVM test green. Same divergence
+ * as the cursor `400 InvalidCursorError` and the error card's `null` header.
+ *
+ * `isNull` is the half both builds agree on (missing key and JSON `null` alike);
+ * a server-sent literal `"null"` counts as absent too, since no field this
+ * package reads uses `"null"` as a value. A `null` receiver answers `null`, so
+ * `input?.optStringOrNull("command")` needs no extra guard.
+ */
+internal fun JSONObject?.optStringOrNull(key: String): String? {
+    if (this == null || !has(key) || isNull(key)) return null
+    return optString(key, "").takeIf { it.isNotEmpty() && it != "null" }
 }

@@ -1,0 +1,111 @@
+diff --git "a/research\\v97_fix\\_SessionHeader.pre.kt" "b/app\\src\\main\\java\\com\\xiufeigo\\opencodeshell\\ui\\session\\header\\SessionHeader.kt"
+index f19bbaf..0a3712f 100644
+--- "a/research\\v97_fix\\_SessionHeader.pre.kt"
++++ "b/app\\src\\main\\java\\com\\xiufeigo\\opencodeshell\\ui\\session\\header\\SessionHeader.kt"
+@@ -208,8 +208,17 @@ fun SessionHeader(
+     // not a parameter: the header is rendered outside the timeline on the mobile
+     // form and inside its sticky slot on the desktop one).
+     val searching = TimelineSearch.open
+     val canSearch = TimelineSearch.available
++    // v97 (`research/v97_verify/5562_sweepB/REPORT_v97b.md` §3.5, Q4–Q10): the
++    // 🔍 / 「Ask a side question」 entries exist **only** outside the two editing
++    // states, and the row early-returns above while the search bar is up, so
++    // "these two nodes are gone" is exactly the predicate below being false.
++    // It was read off the wire as a permanently stuck header; the device dumps
++    // say the state was the **inline title editor** (see
++    // `research/v97_fix/SESSION_SEARCH_FIX.md`). The predicate is named and pure
++    // so the exit-path reset is pinned on the JVM instead of on a device.
++    val trailingActionsVisible = sessionHeaderActionsVisible(searching, editing)
+     // W6: the session-action rows (撤销 / 重做 / 分叉 / 移动到…). The host is
+     // published by `ui/App.kt`; without it (a preview, the legacy chat tab) the
+     // four rows are simply absent and the menu keeps its three M2/A8 entries.
+     // Both reads happen before the Row so the search/rename early-outs below
+@@ -316,10 +325,28 @@ fun SessionHeader(
+                 fontSize = 13.sp,
+                 fontWeight = FontWeight(530),
+                 maxLines = 1,
+                 overflow = TextOverflow.Ellipsis,
++                // v97 HIGH-1 (data loss), the *actual* defect behind the
++                // "the search box renamed my session" report. The clickable box
++                // is this Text's own bounds, so sizing it with `width(...)` made
++                // it swallow **every** pixel the trailing cluster did not claim:
++                // on the 1366 px / 160 dpi window of `emulator-5562` that is
++                // `[84,110][1118,158]` — 1034 x 48 px of invisible hit area
++                // behind a 90 px string (`v97b_002_session01.xml`), and the
++                // 🔍 `Search session` entry is the 40 px at its right edge
++                // (`[1118,110][1158,158]`). A tap anywhere in that band landed on
++                // the **rename editor**, and Enter there is `saveTitleEditor` —
++                // so a mis-aimed tap rewrote the session title on the server.
++                //
++                // Upstream's title is `w-fit` (`message-timeline.tsx:451`:
++                // `truncate … w-fit rounded-[6px] px-1 py-1 hover:bg-…`), i.e.
++                // the hit area is the text. `widthIn(max = …)` restores that and
++                // keeps the v49 narrow-window clamp: [metrics] still caps the box
++                // at the leftover width, and a title longer than the cap ellipsises
++                // inside it exactly as before.
+                 modifier = Modifier
+-                    .width(metrics.titleWidth)
++                    .widthIn(max = metrics.titleWidth)
+                     .clip(OcTheme.shapes.md)
+                     .clickable(role = Role.Button) { editing = true }
+                     .padding(horizontal = 6.dp, vertical = 4.dp),
+             )
+@@ -332,17 +359,17 @@ fun SessionHeader(
+ 
+         // A2 entry: same slot the open bar takes, i.e. in front of the ring
+         // (`message-timeline.tsx:544-548`). Upstream reaches the search through
+         // `mod+f` only; a touch shell needs a visible button.
+-        if (canSearch && !editing) {
++        if (canSearch && trailingActionsVisible) {
+             TimelineSearchEntry(modifier = Modifier.size(metrics.iconButtonSize))
+         }
+ 
+         // `/btw` side-question entry (`ui/session/btw`): upstream opens the panel
+         // through the hidden `/btw` slash command (`session/btw/model.ts`
+         // `command.register`), which no composer route reaches here yet — the
+         // button is the entry until it does. Renders nothing without a host.
+-        if (!editing) SessionBtwEntry(modifier = Modifier.size(metrics.iconButtonSize))
++        if (trailingActionsVisible) SessionBtwEntry(modifier = Modifier.size(metrics.iconButtonSize))
+ 
+         // A1: the summary trigger, in front of the ring — upstream renders the
+         // `window-analytics` icon button in the same trailing cluster
+         // (`session/summary/popover.tsx:17-34`); Android's own asset set has no
+@@ -1009,9 +1036,11 @@ internal fun sessionOverflowMenuOffset(
+ private const val DISABLED_ALPHA = 0.5f
+ 
+ /**
+  * The v49 BUG-1 row budget: the touch-target size the header's icon buttons take
+- * at this window width, and the width the title is measured at.
++ * at this window width, and the **ceiling** for the title's box. Since v97 the
++ * title is laid out with `widthIn(max = titleWidth)` — upstream's `w-fit` — so
++ * this is the clamp the title ellipsises inside, not a width it is stretched to.
+  */
+ internal data class SessionHeaderMetrics(
+     val iconButtonSize: Dp,
+     val titleWidth: Dp,
+@@ -1069,4 +1098,25 @@ private val HEADER_ICON_SIZES = listOf(40.dp, 32.dp, 24.dp)
+  * not the title — the title is how the user knows which session is open.
+  */
+ private val SESSION_TITLE_MIN_WIDTH = 64.dp
+ 
++/**
++ * Whether the header's **trailing action entries** — 🔍 `Search session` and
++ * 「Ask a side question」 — are on the row.
++ *
++ * They step aside for the two editing states and nothing else:
++ *
++ * - [editing] — the inline title editor has the title slot (`v32`/`InlineTitleEdit`),
++ *   and `trailingIconCount` already budgets the two entries out of the row so the
++ *   editor gets their width;
++ * - [searching] — the bar *replaces* the title **and** the ring / ⋮ cluster
++ *   (`return@Row` above), so the entries are unreachable rather than merely
++ *   crowded. Stated here so the exit path is a checkable predicate: closing the
++ *   search must put both back, and the v97 sweep read their absence as a
++ *   permanently wedged header (`research/v97_verify/5562_sweepB/REPORT_v97b.md`
++ *   Q4–Q6) when the state that had removed them was the *rename editor*, which
++ *   resets on its own.
++ *
++ * Pure so `SessionSearchStateV97Test` can pin the reset on the JVM.
++ */
++internal fun sessionHeaderActionsVisible(searching: Boolean, editing: Boolean): Boolean =
++    !searching && !editing

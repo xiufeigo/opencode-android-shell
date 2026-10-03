@@ -32,18 +32,33 @@ class OpenCodeClientWave4Test {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """
-                    {"all":[{"id":"anthropic","name":"Anthropic","models":{
-                      "claude-sonnet-4":{"id":"claude-sonnet-4","name":"Claude Sonnet 4",
-                        "limit":{"context":200000,"output":8192}},
-                      "claude-haiku-3.5":{"id":"claude-haiku-3.5","name":"Claude Haiku 3.5"}}}],
-                     "connected":["anthropic"],"default":{"anthropic":"claude-sonnet-4"}}
-                    """.trimIndent(),
+                    """{"location":{},"data":[
+                        {"id":"anthropic","name":"Anthropic","integrationID":"int-a"}]}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{},"data":[
+                        {"id":"claude-sonnet-4","modelID":"claude-sonnet-4",
+                         "providerID":"anthropic","name":"Claude Sonnet 4",
+                         "limit":{"context":200000,"output":8192}},
+                        {"id":"claude-haiku-3.5","modelID":"claude-haiku-3.5",
+                         "providerID":"anthropic","name":"Claude Haiku 3.5"}]}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{},"data":[
+                        {"id":"int-a","name":"A","methods":[],"connections":[{}]}]}""",
                 ),
             )
             val c = client(server)
             val providers = c.providers()
-            assertEquals("/provider", server.takeRequest().requestUrl!!.encodedPath)
+            assertEquals(
+                listOf("/api/provider", "/api/model", "/api/integration"),
+                listOf(server.takeRequest(), server.takeRequest(), server.takeRequest())
+                    .map { it.requestUrl!!.encodedPath },
+            )
 
             val sonnet = providers.model("anthropic", "claude-sonnet-4")!!
             assertEquals(200_000, sonnet.limitContext)
@@ -115,11 +130,11 @@ class OpenCodeClientWave4Test {
     @Test
     fun messageListSendsTheSnapshotLimit() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
             val c = client(server)
             assertTrue(c.messages("ses_1", limit = 200).isEmpty())
             val url = server.takeRequest().requestUrl!!
-            assertEquals("/session/ses_1/message", url.encodedPath)
+            assertEquals("/api/session/ses_1/message", url.encodedPath)
             assertEquals("200", url.queryParameter("limit"))
             c.close()
         }
@@ -128,9 +143,9 @@ class OpenCodeClientWave4Test {
     @Test
     fun limitQueryIsOmittedForNullOrNonPositiveValues() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
             val c = client(server)
 
             // Default arguments keep every existing caller on the full-history
@@ -149,11 +164,11 @@ class OpenCodeClientWave4Test {
     @Test
     fun sessionListSendsLimitNextToDirectory() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
             val c = client(server)
             assertTrue(c.listSessions(directory = "/w", limit = 50).isEmpty())
             val url = server.takeRequest().requestUrl!!
-            assertEquals("/session", url.encodedPath)
+            assertEquals("/api/session", url.encodedPath)
             assertEquals("50", url.queryParameter("limit"))
             assertEquals("/w", url.queryParameter("directory"))
             c.close()
@@ -222,15 +237,17 @@ class OpenCodeClientWave4Test {
     // ------------------------------------------------------------ delete call
 
     @Test
-    fun deleteSessionSendsDeleteWithDirectory() {
+    fun deleteSessionSendsDeleteWithoutLocationScope() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("true"))
+            server.enqueue(MockResponse().setResponseCode(204))
             val c = client(server)
             assertTrue(c.deleteSession("ses_1", directory = "/w"))
             val recorded = server.takeRequest()
             assertEquals("DELETE", recorded.method)
-            assertEquals("/session/ses_1", recorded.requestUrl!!.encodedPath)
-            assertEquals("/w", recorded.requestUrl!!.queryParameter("directory"))
+            assertEquals("/api/session/ses_1", recorded.requestUrl!!.encodedPath)
+            // Session-scoped routes take no location: the directory is ignored.
+            assertNull(recorded.requestUrl!!.queryParameter("directory"))
+            assertNull(recorded.requestUrl!!.queryParameter("location[directory]"))
             c.close()
         }
     }

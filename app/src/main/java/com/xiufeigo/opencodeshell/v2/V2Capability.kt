@@ -6,45 +6,32 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.io.IOException
 
 /**
- * Runtime decision "which generation does this server speak?" plus the
- * **coverage table** the Android shell wires against.
+ * Runtime decision "does this server speak v2?" plus the **coverage table**
+ * (documentation only — the runtime entry points are [probe]/[probeUrl]).
  *
- * Probe rule (A5 §0.1, verified live 2026-09-21):
- * - `GET /api/info` → JSON with `version` starting with `"2."` ⇒ [ServerGeneration.V2].
- *   (2.0.11 answers `{"version":"2.0.11",…}`; `/api/health` is 404 there and
- *   every v1 endpoint returns SPA HTML on a v2 server — never v2 signals.)
- * - else `GET /global/health` → JSON with a `version` field ⇒ [ServerGeneration.V1].
- *   (1.18.31 answers `{"healthy":true,"version":"1.18.31"}`; on a v1 server
- *   `/api/info` is `200 text/html` — the SPA shell, never a v1 signal.)
- * - else [ServerGeneration.UNKNOWN] (offline, proxy HTML, auth wall): the
- *   caller keeps prior behavior and retries the probe on the next connect.
+ * Probe rule: `GET /api/info` → JSON with `version` starting with `"2."`
+ * ⇒ [ServerGeneration.V2]; anything else ⇒ [ServerGeneration.UNKNOWN]
+ * (offline, proxy HTML, auth wall, non-2.x server): the caller surfaces an
+ * honest error and retries the probe on the next connect.
  *
- * ## Why the probe cannot be a status code
+ * **B-7:** one of those negatives is not like the others — a server that
+ * answered with a real, non-2.x version. The generation stays
+ * [ServerGeneration.UNKNOWN] (nothing downstream changes), but
+ * [ProbeResult.incompatibleVersion] carries the version so the session route can
+ * render upstream's `IncompatibleServerPanel` (`session/route-error.tsx:26-28`)
+ * instead of a generic failure.
  *
- * On a v1 server every unimplemented `/api/…` path answers **`200` +
- * `text/html`** (the SPA shell), not a JSON 404 — measured for `/api/info`
- * itself. On a v2 server the v1 surface is equally SPA HTML. So "200" means
- * nothing and "404" means nothing on either generation. The only reliable
- * discriminator is the **body**: JSON with a `version` field, and which route
- * served it decides the generation — a `V1Transport` must never be selected
- * for a v2 server and vice versa.
- *
- * [decideInfo]/[decideHealth] are pure functions of (status, content-type,
- * body) so the rule is unit-testable without a network; [probe] bolts the two
- * HTTP calls on top.
+ * [decideInfo] is a pure function of (status, content-type, body) so the rule
+ * is unit-testable without a network; [probe] bolts the HTTP calls on top.
  */
 object V2Capability {
 
-    /** Whether a shell capability is reachable over v2, only over v1, or not at all. */
+    /** Whether a shell capability is reachable over v2 or not at all. */
     enum class Support {
         /** A live v2 route exists; see [Capability.v2Route]. */
         V2,
-
-        /** The server has no v2 route; the v1 route is the only transport. */
-        V1_ONLY,
 
         /** Neither face exposes it (or the v2 route does not exist yet). */
         UNSUPPORTED,
@@ -72,16 +59,10 @@ object V2Capability {
     )
 
     /**
-     * The shell's capability → transport table, re-probed live against
-     * **2.0.11** (`127.0.0.1:4095`, GET-only) plus the live `/openapi.json`
-     * route table (113 paths). The old table rested on the 1.18.31 hybrid,
-     * where every unimplemented v2 path answered SPA HTML — on 2.0.11 those
-     * routes exist.
-     *
-     * This is the contract the Lead wires against: exactly the rows marked
-     * [Support.V2] may be switched to [V2Api], the [Support.V1_ONLY] rows must
-     * keep their current v1 call, and the [Support.UNSUPPORTED] rows have no v2
-     * substitute at all.
+     * Documentation table: the shell's capability → route map, measured live
+     * against **2.0.11** (`127.0.0.1:4095`, GET-only) plus the live
+     * `/openapi.json` route table (113 paths). Not consulted at runtime —
+     * the live wiring goes through [probe]/[probeUrl] and `V2Api` directly.
      */
     val COVERAGE: List<Capability> = listOf(
         // --- health / discovery ------------------------------------------------
@@ -91,14 +72,9 @@ object V2Capability {
             "Measured: {\"version\":\"2.0.11\",…} on 4095; v2 iff version starts with \"2.\".",
         ),
         Capability(
-            "probe.health", "Server generation detection (v1)", Support.V1_ONLY,
-            "—", "GET /global/health",
-            "Measured: {\"healthy\":true,\"version\":\"1.18.31\"} on 4096; v1 iff a version field is present.",
-        ),
-        Capability(
             "health", "Server liveness", Support.V2,
             "GET /api/info", "GET /global/health",
-            "Liveness only — the generation decision is probe.info/probe.health, never /api/health (404 on 2.0.11).",
+            "Liveness only — the generation decision is probe.info, never /api/health (404 on 2.0.11).",
         ),
         Capability(
             "path", "Server cwd / default directory", Support.V2,
@@ -160,11 +136,6 @@ object V2Capability {
             "Measured {data:[]} live; params are from&to&context (messageID is gone).",
         ),
         Capability(
-            "session.todo", "Session todos", Support.V1_ONLY,
-            "—", "GET /session/{id}/todo",
-            "No todo route in openapi.json; v2 derives todos from todowrite tool state in the transcript.",
-        ),
-        Capability(
             "message.single", "One message", Support.V2,
             "GET /api/session/{id}/message/{messageID}", "—",
             "Measured 200 {data:{…}}; v1 has no equivalent (export uses the full list).",
@@ -175,11 +146,6 @@ object V2Capability {
             "session.prompt", "Send a prompt", Support.V2,
             "POST /api/session/{id}/prompt", "POST /session/{id}/prompt_async",
             "Measured: FLAT body {text(required),files?,agents?,skills?,metadata?,delivery?,resume?} → {data:{id,sessionID,time,type:\"user\",payload,delivery}}; the old {prompt:{text}} wrapper is 400 InvalidRequestError. model/agent/variant travel via their own switch routes (steer only).",
-        ),
-        Capability(
-            "session.prompt_async", "Fire-and-forget prompt", Support.V1_ONLY,
-            "—", "POST /session/{id}/prompt_async",
-            "No prompt_async route in openapi.json; v1-only body shape.",
         ),
         Capability(
             "session.shell", "Shell command turn", Support.V2,
@@ -238,18 +204,7 @@ object V2Capability {
             "POST /api/session/{id}/fork", "POST /session/{id}/fork",
             "Measured {data:{id,fork:{sessionID,boundary}}}; body field is {before?(^msg_)}, not v1's {messageID?}; fork of an empty session is 400 empty_session.",
         ),
-        Capability(
-            "session.share", "Share a session", Support.V1_ONLY,
-            "—", "POST/DELETE /session/{id}/share",
-            "No share route in openapi.json; v2 shares via export/snapshot instead (Wave 2).",
-        ),
-        Capability(
-            "session.archive", "Archive a session", Support.V1_ONLY,
-            "—", "PATCH /session/{id} {time:{archived}}",
-            "v2 Session.Info carries time.archived read-only; no archive write route.",
-        ),
-
-        // --- permission / question --------------------------------------------
+        // --- permission --------------------------------------------------------
         Capability(
             "permission.list", "Pending permissions (location)", Support.V2,
             "GET /api/permission/request", "GET /permission",
@@ -280,31 +235,6 @@ object V2Capability {
             "GET/DELETE /api/permission/saved(/{id})", "—",
             "Measured {data:[]} for GET; the DELETE is UNVERIFIED (nothing to delete).",
         ),
-        // --- question: gone in v2 (A5 §0.4) ------------------------------------
-        // Every /api/question* and /api/session/{id}/question* route 404s on
-        // 2.0.11 and is absent from openapi.json. The carrier is the form
-        // system below; the old rows stay V1_ONLY so v1 servers keep working.
-        Capability(
-            "question.list", "Pending questions (location)", Support.V1_ONLY,
-            "—", "GET /question",
-            "404 on 2.0.11; absent from openapi.json. v2 carrier: GET /api/form.",
-        ),
-        Capability(
-            "question.session", "Pending questions (session)", Support.V1_ONLY,
-            "—", "GET /question",
-            "404 on 2.0.11; absent from openapi.json. v2 carrier: GET …/form.",
-        ),
-        Capability(
-            "question.reply", "Answer a question ask", Support.V1_ONLY,
-            "—", "POST /question/{requestID}/reply",
-            "No v2 route; v2 carrier: POST …/form/{formID}/reply{answer}.",
-        ),
-        Capability(
-            "question.reject", "Dismiss a question ask", Support.V1_ONLY,
-            "—", "POST /question/{requestID}/reject",
-            "No v2 route; v2 forms retire via form.replied/form.cancelled.",
-        ),
-
         // --- forms (v2 replaces question REST) ---------------------------------
         Capability(
             "form.global", "Pending forms (location)", Support.V2,
@@ -327,9 +257,12 @@ object V2Capability {
             "Measured 204 for {answer:{key:value}}.",
         ),
         Capability(
-            "form.delete", "Dismiss a form", Support.UNSUPPORTED,
-            "—", "—",
-            "DELETE …/form/{id} answers 409 once replied; no dismiss route exists.",
+            "form.delete", "Dismiss a form", Support.V2,
+            "DELETE /api/session/{id}/form/{formID}", "—",
+            "Measured 2026-09-22 on 2.0.11: the route exists — a bogus session " +
+                "answers SessionNotFoundError, not the SPA catch-all. It answers " +
+                "409 FormAlreadySettledError once the form is replied (the old " +
+                "verdict was a post-reply probe and wrongly read that as \"no route\").",
         ),
 
         // --- catalogs ----------------------------------------------------------
@@ -445,6 +378,21 @@ object V2Capability {
             "PUT …/environment, POST …/move, POST …/view", "—",
             "All three in openapi.json ({variables}, {directory,delivery?}, {idle}); v1 has none.",
         ),
+        Capability(
+            "session.background", "Background blocking session tools", Support.V2,
+            "POST /api/session/{id}/background", "—",
+            "openapi.json only (204, empty body); idle requests are a no-op. UNVERIFIED live.",
+        ),
+        Capability(
+            "session.generate", "Generate text from session context", Support.V2,
+            "POST /api/session/{id}/generate", "—",
+            "openapi.json only ({prompt} → {data:{text}}); never mutates history. UNVERIFIED live.",
+        ),
+        Capability(
+            "session.synthetic", "Add synthetic message", Support.V2,
+            "POST /api/session/{id}/synthetic", "—",
+            "openapi.json only ({id?,text,description?,metadata?,delivery?,resume?}); UNVERIFIED live.",
+        ),
 
         // --- filesystem --------------------------------------------------------
         Capability(
@@ -538,6 +486,11 @@ object V2Capability {
      * @param contentType the response content-type as received, `null` on failure.
      * @param detail human-readable evidence for logs and the report.
      * @param directory `GET /api/location`'s `directory` once confirmed (v2 only).
+     * @param authWall the server answered `401`/`403` — an auth problem, not a
+     *   generation verdict. A real 1.x / SPA / proxy answer never sets this.
+     * @param credentialsSent whether the probe offered a Basic credential; with
+     *   [authWall] this splits "no password was on the wire" (fix the saved
+     *   server) from "the server rejected what we sent" (fix the secret).
      */
     data class ProbeResult(
         val generation: ServerGeneration,
@@ -547,9 +500,37 @@ object V2Capability {
         val contentType: String?,
         val detail: String,
         val directory: String? = null,
+        val authWall: Boolean = false,
+        val credentialsSent: Boolean = true,
     ) {
         /** Back-compat: true only for a confirmed v2 server. */
         val v2: Boolean get() = generation == ServerGeneration.V2
+
+        /**
+         * B-7: the version of a server that answered `/api/info` with a
+         * **real OpenCode version that is not 2.x** — the one UNKNOWN that is a
+         * positive identification rather than a failed measurement (auth wall,
+         * SPA HTML, unreachable and non-JSON all leave [version] null).
+         *
+         * Upstream carries the same distinction on its health row
+         * (`runtime/server/health.ts:8` `{ healthy: false, incompatible: true }`)
+         * and renders the full-screen `IncompatibleServerPanel` from it
+         * (`session/route-error.tsx:26-28`), which is why the version travels
+         * with the verdict: the panel names it.
+         */
+        val incompatibleVersion: String?
+            get() = version?.takeIf { generation != ServerGeneration.V2 }
+
+        /** [incompatibleVersion] as a boolean — the panel's mount condition. */
+        val incompatible: Boolean get() = incompatibleVersion != null
+
+        /**
+         * A fresh probe round could still change the verdict: the server never
+         * answered (`httpStatus == null`) or it answered with an auth wall
+         * (credentials may since have been fixed). Any other UNKNOWN is a
+         * definitive negative — the host is up and it is not 2.x.
+         */
+        val isRetryable: Boolean get() = authWall || httpStatus == null
     }
 
     /** Convenience: the shell's wiring switch only needs the boolean. */
@@ -561,24 +542,47 @@ object V2Capability {
     /** Rows the shell can move to [V2Api] today. */
     fun v2Capabilities(): List<Capability> = COVERAGE.filter { it.support == Support.V2 }
 
-    /** Rows that must keep their existing v1 call. */
-    fun v1OnlyCapabilities(): List<Capability> = COVERAGE.filter { it.support == Support.V1_ONLY }
-
     /**
      * Pure decision for the `GET /api/info` probe (v2 signal). No network, so
      * the whole rule is unit-testable — see `V2ApiTest`.
      *
      * The measured cases this encodes (2026-09-21):
      * - v2 server (2.0.11) → `200`, JSON, `{"version":"2.0.11",…}` ⇒ V2.
-     * - v1 server (1.18.31) → `200`, `text/html`, SPA shell ⇒ UNKNOWN here
-     *   (the v1 leg, [decideHealth], decides V1 vs UNKNOWN).
+     * - v1 server (1.18.31) → `200`, `text/html`, SPA shell ⇒ UNKNOWN.
      * - v2 `/api/health` → `404` empty: never a v2 signal (kept only as a
      *   regression pin — see the test).
-     * - any other non-200 (401/500/…) ⇒ UNKNOWN, reason carries the status.
+     * - `401`/`403` ⇒ UNKNOWN with [ProbeResult.authWall] — the server is up
+     *   and wants a credential, which is **not** a generation verdict (3-device
+     *   logcat 2026-09-24: the probe had sent no `Authorization`, curl with the
+     *   stored Basic secret got `200 {"version":"2.0.11"}` on the same URL).
+     *   [credentialsSent] splits "none was on the wire" from "rejected".
+     * - any other non-200 (500/…) ⇒ UNKNOWN, reason carries the status.
      */
-    fun decideInfo(statusCode: Int, contentType: String?, body: String?): ProbeResult {
+    fun decideInfo(
+        statusCode: Int,
+        contentType: String?,
+        body: String?,
+        credentialsSent: Boolean = true,
+    ): ProbeResult {
         val ctype = contentType?.lowercase().orEmpty()
         val trimmed = body?.trim().orEmpty()
+        if (statusCode == 401 || statusCode == 403) {
+            val detail = if (credentialsSent) {
+                "HTTP $statusCode — the server rejected the credential (not a generation verdict)"
+            } else {
+                "HTTP $statusCode — auth required and no credential was on the wire (not a generation verdict)"
+            }
+            return ProbeResult(
+                ServerGeneration.UNKNOWN,
+                null,
+                null,
+                statusCode,
+                contentType,
+                detail,
+                authWall = true,
+                credentialsSent = credentialsSent,
+            )
+        }
         if (statusCode != 200) {
             return ProbeResult(ServerGeneration.UNKNOWN, null, null, statusCode, contentType, "HTTP $statusCode, not a v2 info response")
         }
@@ -604,50 +608,14 @@ object V2Capability {
     }
 
     /**
-     * Pure decision for the `GET /global/health` probe (v1 signal). A JSON
-     * body with a `version` field ⇒ V1 (1.18.31 answers
-     * `{"healthy":true,"version":"1.18.31"}`); SPA HTML / non-JSON / missing
-     * version ⇒ UNKNOWN. On a v2 server this route is SPA HTML, so V1Transport
-     * is never selected for a v2 server through this leg either.
-     */
-    fun decideHealth(statusCode: Int, contentType: String?, body: String?): ProbeResult {
-        val ctype = contentType?.lowercase().orEmpty()
-        val trimmed = body?.trim().orEmpty()
-        if (statusCode != 200) {
-            return ProbeResult(ServerGeneration.UNKNOWN, null, null, statusCode, contentType, "HTTP $statusCode, not a v1 health response")
-        }
-        if (ctype.contains("text/html") || trimmed.startsWith("<")) {
-            return ProbeResult(ServerGeneration.UNKNOWN, null, null, statusCode, contentType, "text/html — the SPA shell, so /global/health is not served")
-        }
-        val json = runCatching { JSONObject(trimmed) }.getOrNull()
-            ?: return ProbeResult(ServerGeneration.UNKNOWN, null, null, statusCode, contentType, "body is not JSON")
-        val version = json.optString("version", "")
-        if (version.isEmpty()) {
-            return ProbeResult(ServerGeneration.UNKNOWN, null, null, statusCode, contentType, "JSON without the `version` marker")
-        }
-        return ProbeResult(
-            ServerGeneration.V1,
-            version = version,
-            healthy = json.optBoolean("healthy", true),
-            httpStatus = statusCode,
-            contentType = contentType,
-            detail = "v1 /global/health answered version=$version",
-        )
-    }
-
-    /**
-     * Live probe: `GET /api/info` first (V2 iff JSON `version` starts with
-     * `"2."`); otherwise `GET /global/health` (V1 iff JSON carries `version`);
+     * Live probe: `GET /api/info` (V2 iff JSON `version` starts with `"2."`),
      * otherwise UNKNOWN. On V2 only, a confirming `GET /api/location` captures
      * the server's default directory — its failure never demotes the verdict.
      *
-     * A 401/403 on `/api/info` is *not* UNKNOWN-by-default: an auth-walled v2
-     * server answers 401 with a JSON body, which still carries no version, so
-     * the v1 leg runs and (on SPA HTML) also yields UNKNOWN — the caller then
-     * surfaces "check credentials" instead of silently picking v1.
-     *
      * Network errors are `UNKNOWN` with `httpStatus == null`, so a caller can
-     * distinguish them from a negative verdict.
+     * distinguish them from a negative verdict. An auth wall (`401`/`403`) is
+     * `UNKNOWN` with [ProbeResult.authWall] set — callers retry with a
+     * credential rather than reporting "not a 2.x server".
      */
     fun probe(
         baseHttpUrl: HttpUrl,
@@ -662,7 +630,12 @@ object V2Capability {
             password,
             http,
         ) ?: return ProbeResult(ServerGeneration.UNKNOWN, null, null, null, null, "unreachable: network error", null)
-        val v2 = decideInfo(info.status, info.contentType, info.body)
+        val v2 = decideInfo(
+            info.status,
+            info.contentType,
+            info.body,
+            credentialsSent = basicAuthorizationHeader(username, password) != null,
+        )
         if (v2.generation == ServerGeneration.V2) {
             val location = get(
                 baseHttpUrl.newBuilder()
@@ -692,14 +665,7 @@ object V2Capability {
                 },
             )
         }
-
-        val health = get(
-            baseHttpUrl.newBuilder().addPathSegment("global").addPathSegment("health").build(),
-            username,
-            password,
-            http,
-        ) ?: return ProbeResult(ServerGeneration.UNKNOWN, null, null, null, null, "unreachable: network error", null)
-        return decideHealth(health.status, health.contentType, health.body)
+        return v2
     }
 
     private class Raw(val status: Int, val contentType: String?, val body: String)
@@ -722,7 +688,7 @@ object V2Capability {
             http.newCall(request).execute().use { response ->
                 Raw(response.code, response.header("Content-Type"), response.body?.string().orEmpty())
             }
-        } catch (_: IOException) {
+        } catch (_: Exception) {
             null
         }
     }

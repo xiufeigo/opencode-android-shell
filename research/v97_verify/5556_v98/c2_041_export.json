@@ -1,0 +1,45 @@
+{
+  "info": {
+    "id": "ses_f0325ead9ffe1ipET5d1fHerY2",
+    "projectID": "d403b696fef2d49dc6ec599000b63a4fc41f6d1b",
+    "model": {
+      "id": "space-bunny-free",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "cost": 5.8800000000000006E-5,
+    "tokens": {
+      "input": 8561,
+      "output": 110,
+      "reasoning": 140,
+      "cache": {
+        "read": 8834,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1790948545842,
+      "updated": 1790949005670,
+      "idle": 1790948786991,
+      "viewed": 1790948786991
+    },
+    "title": "E2ECHK5556c2 RENAME",
+    "location": {
+      "directory": "\/mnt\/c\/sensorsdata\/main\/program\/e2echk5556v98"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_0fcda15410017lKMTPZg41XD42",
+      "time": {
+        "created": 1790948545857
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go"
+      }
+    }
+  ]
+}

@@ -115,7 +115,7 @@ object TurnChanges {
         val paths = LinkedHashSet<String>()
         paths += fileArrayPaths(input)
         for (key in PATH_KEYS) {
-            val value = input.optString(key, "").trim()
+            val value = input.optStringOrNull(key)?.trim().orEmpty()
             if (value.isNotEmpty()) paths += value
         }
         if (paths.isEmpty()) {
@@ -131,7 +131,7 @@ object TurnChanges {
         for (i in 0 until files.length()) {
             val entry = files.optJSONObject(i) ?: continue
             for (key in PATH_KEYS) {
-                val value = entry.optString(key, "").trim()
+                val value = entry.optStringOrNull(key)?.trim().orEmpty()
                 if (value.isNotEmpty()) {
                     paths += value
                     break
@@ -144,11 +144,11 @@ object TurnChanges {
     /** `apply_patch`'s unified diff text: `patchText`, or each `files[].patch`. */
     private fun patchTexts(input: JSONObject): List<String> {
         val texts = ArrayList<String>(1)
-        val direct = input.optString("patchText", "").trim()
+        val direct = input.optStringOrNull("patchText")?.trim().orEmpty()
         if (direct.isNotEmpty()) texts += direct
         val files = input.optJSONArray(FILES_KEY) ?: return texts
         for (i in 0 until files.length()) {
-            val patch = files.optJSONObject(i)?.optString("patch", "").orEmpty().trim()
+            val patch = files.optJSONObject(i)?.optStringOrNull("patch")?.trim().orEmpty()
             if (patch.isNotEmpty()) texts += patch
         }
         return texts

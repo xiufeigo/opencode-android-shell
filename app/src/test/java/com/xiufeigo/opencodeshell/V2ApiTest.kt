@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.v2.ServerGeneration
+import com.xiufeigo.opencodeshell.v2.ShellCommandInfo
 import com.xiufeigo.opencodeshell.v2.V2Api
 import com.xiufeigo.opencodeshell.v2.V2Capability
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -12,6 +13,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,17 +58,78 @@ class V2ApiTest {
     // ------------------------------------------------------------ health / location
 
     @Test
-    fun healthBuildsTheApiRouteAndNeverSendsALocationParameter() {
+    fun healthProbesInfoAndNeverSendsALocationParameter() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.HEALTH))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.INFO_V2))
             // A configured directory must NOT leak into a non-location route.
             val result = api(server, directory = """C:\w""").health()
 
             val request = server.takeRequest()
             assertEquals("GET", request.method)
-            assertEquals("/api/health", request.requestUrl!!.encodedPath)
+            assertEquals("/api/info", request.requestUrl!!.encodedPath)
             assertEquals(0, request.requestUrl!!.querySize)
             assertTrue(result.healthy)
+            // The 2.0.x document carries no `healthy` flag — the version is the signal.
+            assertEquals("2.0.11", result.version)
+        }
+    }
+
+    @Test
+    fun healthFallsBackToTheLegacyRouteWhenInfoIsNotJson() {
+        MockWebServer().use { server ->
+            // 1.18.x: /api/info is the SPA shell, /api/health carries the flag.
+            server.enqueue(
+                MockResponse().setResponseCode(200)
+                    .setHeader("Content-Type", "text/html")
+                    .setBody(V2ApiFixtures.SPA_HTML),
+            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.HEALTH))
+
+            val result = api(server).health()
+
+            assertEquals("/api/info", server.takeRequest().requestUrl!!.encodedPath)
+            assertEquals("/api/health", server.takeRequest().requestUrl!!.encodedPath)
+            assertTrue(result.healthy)
+            assertNull(result.version)
+        }
+    }
+
+    @Test
+    fun healthFallsBackToTheLegacyRouteOnA404AndKeepsOtherFailures() {
+        MockWebServer().use { server ->
+            // 2.0.11 answers /api/info 200, but a proxy in between may not.
+            server.enqueue(MockResponse().setResponseCode(404).setBody(""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.HEALTH))
+            assertTrue(api(server).health().healthy)
+            assertEquals("/api/info", server.takeRequest().requestUrl!!.encodedPath)
+            assertEquals("/api/health", server.takeRequest().requestUrl!!.encodedPath)
+
+            // A 401/500 is a real answer about the server: no fallback, no retry.
+            server.enqueue(MockResponse().setResponseCode(500).setBody("""{"_tag":"InternalError"}"""))
+            val failed = try {
+                api(server).health()
+                null
+            } catch (e: V2Api.ApiException) {
+                e
+            }
+            assertEquals(500, failed?.code)
+            assertEquals("/api/info", server.takeRequest().requestUrl!!.encodedPath)
+        }
+    }
+
+    @Test
+    fun healthReadsAJsonNullVersionAsAbsent() {
+        MockWebServer().use { server ->
+            // The wire's JSON `null` must never read as the literal string "null":
+            // Android's optString would stringify the sentinel, the JVM returns the
+            // fallback — that split is what the isNull guard closes.
+            server.enqueue(
+                MockResponse().setResponseCode(200)
+                    .setBody("""{"version":null,"pid":1}"""),
+            )
+            val result = api(server).health()
+            assertNull(result.version)
+            assertFalse(result.healthy)
         }
     }
 
@@ -92,12 +155,12 @@ class V2ApiTest {
     @Test
     fun basicAuthUsesTheOpencodeUserAndIsOmittedWithoutAPassword() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.HEALTH))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.INFO_V2))
             api(server, password = "secret").health()
             val expected = "Basic " + Base64.getEncoder().encodeToString("opencode:secret".toByteArray())
             assertEquals(expected, server.takeRequest().getHeader("Authorization"))
 
-            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.HEALTH))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.INFO_V2))
             api(server).health()
             assertNull(server.takeRequest().getHeader("Authorization"))
         }
@@ -183,10 +246,138 @@ class V2ApiTest {
             assertEquals("openai", body.getJSONObject("model").getString("providerID"))
             // No variant was supplied, so it must not be invented.
             assertFalse(body.getJSONObject("model").has("variant"))
+            // `Location.PublicRef` is `{directory}` alone — no `workspace` key
+            // exists upstream (`schema/src/location.ts:13-17`).
+            assertEquals(1, body.getJSONObject("location").length())
+            assertFalse(body.getJSONObject("location").has("workspace"))
 
             assertEquals("ses_f3d84f9d4ffeoLtv5OmiMrU6yO", created.id)
             assertEquals("New session - 2026-09-21T05:40:37.710Z", created.title)
             assertEquals(0.0, created.cost, 0.0)
+        }
+    }
+
+    @Test
+    fun sessionsSendsParentIDAndNeverSendsAWorkspaceKey() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
+            val api = api(server)
+
+            api.sessions(parentID = "ses_parent")
+            val filtered = server.takeRequest()
+            assertEquals("/api/session", filtered.requestUrl!!.encodedPath)
+            assertEquals("ses_parent", filtered.requestUrl!!.queryParameter("parentID"))
+            // Upstream SessionsQuery has no `workspace` key — never sent.
+            assertNull(filtered.requestUrl!!.queryParameter("workspace"))
+
+            // The `"null"` literal selects root sessions only (ParentIDFilter).
+            api.sessions(parentID = "null")
+            assertEquals("null", server.takeRequest().requestUrl!!.queryParameter("parentID"))
+        }
+    }
+
+    @Test
+    fun createSessionPostsMetadataAndPermissionsOnlyWhenSupplied() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.SESSION_CREATED))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.SESSION_CREATED))
+            val api = api(server)
+
+            api.createSession(
+                title = "t",
+                metadata = JSONObject().put("branch", "work"),
+                permissions = JSONArray().put(
+                    JSONObject().put("action", "read").put("resource", "*").put("effect", "allow"),
+                ),
+            )
+            val full = server.takeRequest().json()
+            assertEquals("work", full.getJSONObject("metadata").getString("branch"))
+            assertEquals("allow", full.getJSONArray("permissions").getJSONObject(0).getString("effect"))
+
+            api.createSession(title = "t")
+            val bare = server.takeRequest().json()
+            assertFalse(bare.has("metadata"))
+            assertFalse(bare.has("permissions"))
+        }
+    }
+
+    @Test
+    fun commandPostsAgentsAndSkillsLikePrompt() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(204))
+            server.enqueue(MockResponse().setResponseCode(204))
+            val api = api(server)
+
+            api.command(
+                "ses_1",
+                name = "review",
+                text = "look",
+                agents = listOf(JSONObject().put("name", "build")),
+                skills = listOf(JSONObject().put("id", "skill-1")),
+                delivery = "queue",
+            )
+            val full = server.takeRequest()
+            assertEquals("POST", full.method)
+            assertEquals("/api/session/ses_1/command", full.requestUrl!!.encodedPath)
+            val fullBody = full.json()
+            assertEquals("review", fullBody.getString("name"))
+            assertEquals("build", fullBody.getJSONArray("agents").getJSONObject(0).getString("name"))
+            assertEquals("skill-1", fullBody.getJSONArray("skills").getJSONObject(0).getString("id"))
+            assertEquals("queue", fullBody.getString("delivery"))
+
+            api.command("ses_1", name = "review", text = "look")
+            val bare = server.takeRequest().json()
+            assertFalse(bare.has("agents"))
+            assertFalse(bare.has("skills"))
+        }
+    }
+
+    @Test
+    fun renameSessionPatchesTitleAndPermissions() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(204))
+            server.enqueue(MockResponse().setResponseCode(204))
+            val api = api(server)
+
+            api.renameSession(
+                "ses_1",
+                "New",
+                permissions = JSONArray().put(
+                    JSONObject().put("action", "write").put("resource", "/tmp").put("effect", "ask"),
+                ),
+            )
+            val patched = server.takeRequest()
+            assertEquals("PATCH", patched.method)
+            assertEquals("/api/session/ses_1", patched.requestUrl!!.encodedPath)
+            val patchedBody = patched.json()
+            assertEquals("New", patchedBody.getString("title"))
+            assertEquals("ask", patchedBody.getJSONArray("permissions").getJSONObject(0).getString("effect"))
+
+            api.renameSession("ses_1", "New")
+            assertFalse(server.takeRequest().json().has("permissions"))
+        }
+    }
+
+    /**
+     * `session.update`'s `title` is an optional **string** — JSON `null` is a
+     * 400, so a null title must omit the key (permissions may still ride).
+     */
+    @Test
+    fun renameSessionOmitsANullTitleInsteadOfSendingJsonNull() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(204))
+            api(server).renameSession(
+                "ses_1",
+                null,
+                permissions = JSONArray().put(
+                    JSONObject().put("action", "write").put("resource", "/tmp").put("effect", "ask"),
+                ),
+            )
+
+            val body = server.takeRequest().json()
+            assertFalse(body.has("title"))
+            assertTrue(body.has("permissions"))
         }
     }
 
@@ -263,6 +454,93 @@ class V2ApiTest {
         }
     }
 
+    /**
+     * A `type:"shell"` row carries `output` as the `Shell.Output` **object**
+     * `{output, cursor, size, truncated}` (`schema/src/shell.ts:73-80`), so the
+     * parser must unwrap the inner string: reading the outer key as a string
+     * would put the whole object's JSON text into the notice row.
+     */
+    @Test
+    fun shellMessageOutputUnwrapsTheShellOutputObject() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[
+                       {"id":"msg_shell","type":"shell","command":"ls","status":"exited",
+                        "output":{"output":"a\nb\n","cursor":4,"size":4,"truncated":false},
+                        "time":{"created":1,"completed":2}}]}""",
+                ),
+            )
+            val shell = api(server).messages("ses_1").data.single()
+
+            assertEquals(V2Api.Message.TYPE_SHELL, shell.type)
+            assertEquals("ls", shell.command)
+            assertEquals("a\nb\n", shell.output)
+            // The wrapper keys never leak into the output string.
+            assertFalse(shell.output!!.contains("cursor"))
+        }
+    }
+
+    /** A hybrid server still sending the plain string keeps working. */
+    @Test
+    fun shellMessageOutputAcceptsThePlainStringShape() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_shell","type":"shell","command":"ls",
+                       "output":"plain","time":{"created":1}}]}""",
+                ),
+            )
+            assertEquals("plain", api(server).messages("ses_1").data.single().output)
+        }
+    }
+
+    /**
+     * `{"output":null}` and a missing key both answer null — never the literal
+     * `"null"` (the Android `org.json` trap) and never `{…}` text.
+     */
+    @Test
+    fun shellMessageOutputNullAndMissingKeysAreNull() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[
+                       {"id":"msg_a","type":"shell","output":null,"time":{"created":1}},
+                       {"id":"msg_b","type":"shell","time":{"created":1}},
+                       {"id":"msg_c","type":"shell",
+                        "output":{"output":null,"cursor":0,"size":0,"truncated":false},
+                        "time":{"created":1}}]}""",
+                ),
+            )
+            val rows = api(server).messages("ses_1").data
+            assertNull(rows[0].output)
+            assertNull(rows[1].output)
+            assertNull(rows[2].output)
+        }
+    }
+
+    /**
+     * The read exposes exactly the three params this client issues
+     * (`limit`/`order`/`cursor`). Upstream's `type` filter is deliberately not
+     * among them: it narrows the page *before* pagination, and every caller
+     * here folds the whole tagged union into the store, so a stray `type=`
+     * would silently shorten the transcript instead of narrowing a view.
+     */
+    @Test
+    fun messagesSendOnlyTheParamsTheClientIssues() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(200).setBody(V2ApiFixtures.MESSAGES))
+            api(server).messages("ses_1", limit = 1, order = "desc", cursor = "cur")
+
+            val request = server.takeRequest()
+            assertEquals(
+                setOf("limit", "order", "cursor"),
+                request.requestUrl!!.queryParameterNames,
+            )
+            assertNull(request.requestUrl!!.queryParameter("type"))
+        }
+    }
+
     @Test
     fun anEmptyMessagePageIsValidWithNullCursors() {
         MockWebServer().use { server ->
@@ -273,6 +551,229 @@ class V2ApiTest {
             assertNotNull(page.cursor)
             assertNull(page.cursor!!.previous)
             assertNull(page.cursor!!.next)
+        }
+    }
+
+    /**
+     * `messagesRaw` drains `cursor.next` with `cursor=` **alone** on every
+     * follow-up: measured 2026-09-24 on 4095 that `order=asc&cursor=…` answers
+     * `400 {"_tag":"InvalidCursorError","message":"Cursor cannot be combined
+     * with order"}` while `cursor=…` alone answers 200 (upstream
+     * `server/src/handlers/message.ts:36` rejects `cursor && order` and derives
+     * the order from the decoded cursor instead).
+     */
+    @Test
+    fun messagesRawFollowsCursorAloneAcrossPages() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_1","time":{"created":1},"text":"hi","type":"user"}],""" +
+                        """"cursor":{"previous":null,"next":"cur_2"}}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_2","time":{"created":2},"text":"yo","type":"user"}],""" +
+                        """"cursor":{"previous":"cur_2","next":null}}""",
+                ),
+            )
+            val rows = api(server).messagesRaw("ses_1")
+
+            assertEquals(listOf("msg_1", "msg_2"), rows.map { it.getString("id") })
+
+            val first = server.takeRequest()
+            assertEquals("GET", first.method)
+            assertEquals("/api/session/ses_1/message", first.requestUrl!!.encodedPath)
+            assertEquals("asc", first.requestUrl!!.queryParameter("order"))
+            assertNull(first.requestUrl!!.queryParameter("cursor"))
+
+            // The follow-up must NOT re-send `order` — that combination 400s.
+            val second = server.takeRequest()
+            assertEquals("GET", second.method)
+            assertEquals("/api/session/ses_1/message", second.requestUrl!!.encodedPath)
+            assertEquals("cur_2", second.requestUrl!!.queryParameter("cursor"))
+            assertNull(second.requestUrl!!.queryParameter("order"))
+        }
+    }
+
+    @Test
+    fun messagesRawSurfacesTheCursorOrderConflictAsInvalidCursor() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(400).setBody(
+                    """{"_tag":"InvalidCursorError","message":"Cursor cannot be combined with order"}""",
+                ),
+            )
+            try {
+                api(server).messagesRaw("ses_1")
+                fail("expected ApiException")
+            } catch (e: V2Api.ApiException) {
+                assertEquals(400, e.code)
+                assertTrue(e.message!!, e.message!!.contains("InvalidCursorError"))
+            }
+        }
+    }
+
+    /**
+     * `messagesRaw` round-trips live-shaped opaque cursors **verbatim**: page 1
+     * carries a `cursor` object with a real previous AND next (base64url JSON
+     * `{"id","order","direction"}` — captured 2026-09-25 off 4095), the
+     * follow-up re-sends `next` byte-identical with no `order`/`limit` beside
+     * it. Regression pin for the VM `InvalidCursorError: Invalid cursor`
+     * (Context tab + Export): that arm fires only when the `cursor` value
+     * fails base64url→JSON→schema validation upstream, so any mangling
+     * between pages (wrong key, truncation, re-encoding) kills the whole
+     * drain — this test fails on exactly that.
+     */
+    @Test
+    fun messagesRawRoundTripsLiveShapedCursorsVerbatim() {
+        // Live-captured 2026-09-25 (36-row session, page 1): previous decodes
+        // to {"id":"msg_f…","order":"asc","direction":"previous"}, next to
+        // {"id":"msg_0…","order":"asc","direction":"next"}.
+        val livePrevious =
+            "eyJpZCI6Im1zZ19mMTI2OTZlNjUwMDFWMFpvb2pPMGM4VmhPTiIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ"
+        val liveNext =
+            "eyJpZCI6Im1zZ18wYzM4Y2M3ZTIwMDFMc0JaMHM0QjdENWtJTSIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_1","time":{"created":1},"text":"hi","type":"user"}],""" +
+                        """"cursor":{"previous":"$livePrevious","next":"$liveNext"}}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_2","time":{"created":2},"text":"yo","type":"user"}],""" +
+                        """"cursor":{"previous":"$liveNext","next":null}}""",
+                ),
+            )
+            val rows = api(server).messagesRaw("ses_1")
+
+            assertEquals(listOf("msg_1", "msg_2"), rows.map { it.getString("id") })
+
+            val first = server.takeRequest()
+            assertEquals("/api/session/ses_1/message", first.requestUrl!!.encodedPath)
+            assertEquals("asc", first.requestUrl!!.queryParameter("order"))
+            assertNull(first.requestUrl!!.queryParameter("cursor"))
+            assertNull(first.requestUrl!!.queryParameter("limit"))
+            assertEquals(1, first.requestUrl!!.querySize)
+
+            // The follow-up echoes `next` byte-identical, riding alone.
+            val second = server.takeRequest()
+            assertEquals("/api/session/ses_1/message", second.requestUrl!!.encodedPath)
+            assertEquals(liveNext, second.requestUrl!!.queryParameter("cursor"))
+            assertNull(second.requestUrl!!.queryParameter("order"))
+            assertNull(second.requestUrl!!.queryParameter("limit"))
+            assertEquals(1, second.requestUrl!!.querySize)
+
+            // …and the echoed value is a well-formed cursor the server can
+            // decode (order derived from it, no `order` param needed).
+            val decoded = JSONObject(
+                String(Base64.getUrlDecoder().decode(second.requestUrl!!.queryParameter("cursor"))),
+            )
+            assertEquals("asc", decoded.getString("order"))
+            assertEquals("next", decoded.getString("direction"))
+            assertTrue(decoded.getString("id"), decoded.getString("id").isNotEmpty())
+        }
+    }
+
+    /**
+     * `maxPages` is a safety cap, and hitting it must be **visible**:
+     * `messagesRawPage` reports `truncated` (only when the server still offered
+     * a cursor at the cap) and `pages`, while `messagesRaw` keeps returning the
+     * plain row list for the callers that only derive state. The export writes
+     * the flag into its payload (`SessionExport.Frame.truncated`).
+     */
+    @Test
+    fun messagesRawPageReportsTheCapAndStaysQuietOnACompleteDrain() {
+        MockWebServer().use { server ->
+            // Page 1 offers more; the cap (1) stops the drain with a cursor left.
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_1","time":{"created":1},"text":"hi","type":"user"}],""" +
+                        """"cursor":{"previous":null,"next":"cur_2"}}""",
+                ),
+            )
+            val capped = api(server).messagesRawPage("ses_1", maxPages = 1)
+
+            assertEquals(1, capped.pages)
+            assertTrue("stopping at the cap with a cursor left is truncation", capped.truncated)
+            assertEquals(listOf("msg_1"), capped.messages.map { it.getString("id") })
+            assertEquals(1, server.requestCount)
+
+            // The same body through the row-list overload stays a plain list.
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_1","time":{"created":1},"text":"hi","type":"user"}],""" +
+                        """"cursor":{"previous":null,"next":"cur_2"}}""",
+                ),
+            )
+            assertEquals(listOf("msg_1"), api(server).messagesRaw("ses_1", maxPages = 1).map { it.getString("id") })
+
+            // A drain the server itself ends (no `next`) is complete.
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"data":[{"id":"msg_9","time":{"created":1},"text":"hi","type":"user"}],""" +
+                        """"cursor":{"previous":null,"next":null}}""",
+                ),
+            )
+            val complete = api(server).messagesRawPage("ses_1", maxPages = 1)
+
+            assertFalse(complete.truncated)
+            assertEquals(1, complete.pages)
+        }
+    }
+
+    /**
+     * `Cursor.fromJson` keeps the opaque values byte-identical: explicit JSON
+     * `null` previous → null (never the literal `"null"` string, which the
+     * server cannot decode and answers `InvalidCursorError: Invalid cursor`
+     * for), and `-`/`_` base64url alphabet passes through untouched.
+     */
+    @Test
+    fun cursorFromJsonPreservesOpaqueValues() {
+        val cursor = V2Api.Cursor.fromJson(
+            JSONObject("""{"previous":null,"next":"eyJpZCI6Im1zZ19hLWI_fjEyMyJ9"}"""),
+        )!!
+        assertNull(cursor.previous)
+        assertEquals("eyJpZCI6Im1zZ19hLWI_fjEyMyJ9", cursor.next)
+        assertNull(V2Api.Cursor.fromJson(null))
+        val empty = V2Api.Cursor.fromJson(JSONObject("""{"previous":null,"next":null}"""))!!
+        assertNull(empty.previous)
+        assertNull(empty.next)
+    }
+    /**
+     * `GET /api/shell` carries `location[directory]` and answers
+     * `{location,data:[Shell.Info…]}` (measured 2026-09-24 on 4095:
+     * `{"location":{"directory":"…"},"data":[]}` idle, and the location key
+     * echoes a `?location[directory]=` override). An empty `data` is the
+     * normal idle state — upstream lists running commands only.
+     */
+    @Test
+    fun shellsListSendsLocationDirectoryAndParsesRunningRows() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/w"},"data":[{""" +
+                        """"id":"sh_1","status":"running","command":"sleep 60","cwd":"/w",""" +
+                        """"shell":"/bin/sh","file":"/tmp/out","pid":7,"metadata":{},""" +
+                        """"time":{"started":1789990000000}}]}""",
+                ),
+            )
+            val rows = api(server, directory = "/w").shells("/w").map(ShellCommandInfo::fromJson)
+
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/api/shell", request.requestUrl!!.encodedPath)
+            assertEquals("/w", request.requestUrl!!.queryParameter("location[directory]"))
+
+            assertEquals(1, rows.size)
+            assertEquals("sh_1", rows.single().id)
+            assertTrue(rows.single().running)
+            assertEquals("sleep 60", rows.single().command)
+
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"location":{"directory":"/w"},"data":[]}"""))
+            assertTrue(api(server, directory = "/w").shells("/w").isEmpty())
         }
     }
 
@@ -528,6 +1029,46 @@ class V2ApiTest {
         }
     }
 
+    /**
+     * `GET /api/worktree?projectID=` answers a bare `Worktree.Directory[]` —
+     * measured live 2026-09-23 (`[{"directory":"…"}]`), no `{data:[…]}`
+     * envelope (openapi `Worktree.List` is an array type).
+     */
+    @Test
+    fun worktreesParseTheBareDirectoryArrayNotADataEnvelope() {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(200)
+                    .setBody("""[{"directory":"/mnt/c/sensorsdata/main/program/opencode-android-shell"}]"""),
+            )
+            val rows = api(server, directory = "/w").worktrees("p1")
+
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/api/worktree", request.requestUrl!!.encodedPath)
+            assertEquals("p1", request.requestUrl!!.queryParameter("projectID"))
+            assertEquals("/w", request.requestUrl!!.queryParameter("location[directory]"))
+            assertEquals(1, rows.size)
+            assertEquals(
+                "/mnt/c/sensorsdata/main/program/opencode-android-shell",
+                rows.single().optString("directory"),
+            )
+
+            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            assertTrue(api(server).worktrees("p1").isEmpty())
+
+            // A `{data:[…]}` envelope is NOT this route — same guard as projects().
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"data":[]}"""))
+            try {
+                api(server).worktrees("p1")
+                fail("expected ApiException")
+            } catch (e: V2Api.ApiException) {
+                assertEquals(V2Api.JSON_BODY_CODE, e.code)
+                assertTrue(e.message!!, e.message!!.contains("not a bare array"))
+            }
+        }
+    }
+
     @Test
     fun sessionScopedPermissionAndFormListsHaveNoLocationEnvelope() {
         MockWebServer().use { server ->
@@ -550,7 +1091,7 @@ class V2ApiTest {
     /**
      * The permission element shape pins the parser's field names — `action`/
      * `resources`/`save`/`source{id}` — against a document or server rename.
-     * (Question shapes live in v1's OpenCodeClient.QuestionRequest, untouched.)
+     * (Question shapes are gone — forms replace them on v2.)
      */
     @Test
     fun unverifiedPermissionElementShapeParsesAsDocumented() {
@@ -878,8 +1419,7 @@ class V2ApiTest {
         assertEquals("2.0.11", v2.version)
         assertEquals(200, v2.httpStatus)
 
-        // The v1 server answers the same route with the SPA shell — never V2,
-        // and V1Transport must never be skipped because of it.
+        // The v1 server answers the same route with the SPA shell — never V2.
         val spa = V2Capability.decideInfo(200, "text/html", V2ApiFixtures.SPA_HTML)
         assertEquals(ServerGeneration.UNKNOWN, spa.generation)
         assertFalse(spa.v2)
@@ -927,38 +1467,6 @@ class V2ApiTest {
     }
 
     @Test
-    fun theHealthProbeAcceptsOnlyAV1VersionMarker() {
-        val v1 = V2Capability.decideHealth(200, "application/json", V2ApiFixtures.HEALTH_V1)
-        assertEquals(ServerGeneration.V1, v1.generation)
-        assertFalse(v1.v2)
-        assertEquals("1.18.31", v1.version)
-        assertEquals(true, v1.healthy)
-
-        // On a v2 server /global/health is SPA HTML — never V1, so V1Transport
-        // is never selected for a v2 server through this leg either.
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideHealth(200, "text/html", V2ApiFixtures.SPA_HTML).generation,
-        )
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideHealth(200, "application/json", V2ApiFixtures.SPA_HTML).generation,
-        )
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideHealth(404, "application/json", V2ApiFixtures.SESSION_NOT_FOUND).generation,
-        )
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideHealth(200, "application/json", V2ApiFixtures.HEALTH).generation,
-        )
-        assertEquals(
-            ServerGeneration.UNKNOWN,
-            V2Capability.decideHealth(200, "application/json", "not json").generation,
-        )
-    }
-
-    @Test
     fun theCoverageTableIsInternallyConsistent() {
         val rows = V2Capability.COVERAGE
         assertTrue("coverage table must not be empty", rows.isNotEmpty())
@@ -973,16 +1481,10 @@ class V2ApiTest {
         assertEquals("non-V2 rows must not name a v2 route: $offenders", emptyList<Any>(), offenders)
         val missing = rows.filter { it.support == V2Capability.Support.V2 && it.v2Route == "—" }
         assertEquals("V2 rows must name a route: $missing", emptyList<Any>(), missing)
-        // A V1_ONLY row is only meaningful when the v1 route is named.
-        assertTrue(
-            "V1-only rows must name the v1 route",
-            rows.filter { it.support == V2Capability.Support.V1_ONLY }.all { it.v1Route != "—" },
-        )
 
         // The verdicts the Lead must not get wrong.
         fun support(id: String) = rows.single { it.id == id }.support
         assertEquals(V2Capability.Support.V2, support("probe.info"))
-        assertEquals(V2Capability.Support.V1_ONLY, support("probe.health"))
         assertEquals(V2Capability.Support.V2, support("health"))
         assertEquals(V2Capability.Support.V2, support("session.list"))
         assertEquals(V2Capability.Support.V2, support("session.prompt"))
@@ -995,18 +1497,12 @@ class V2ApiTest {
         assertEquals(V2Capability.Support.V2, support("fs.read"))
         assertEquals(V2Capability.Support.V2, support("pty.connect"))
         assertEquals(V2Capability.Support.V2, support("event.session"))
-        assertEquals(V2Capability.Support.V1_ONLY, support("session.todo"))
-        assertEquals(V2Capability.Support.V1_ONLY, support("question.reply"))
         assertEquals(V2Capability.Support.V2, support("defaultModel"))
         assertEquals(V2Capability.Support.V2, support("project.list"))
         assertEquals(V2Capability.Support.V2, support("vcs.branch"))
         assertEquals(V2Capability.Support.V2, support("mcp.status"))
 
         assertEquals(rows.count { it.support == V2Capability.Support.V2 }, V2Capability.v2Capabilities().size)
-        assertEquals(
-            rows.count { it.support == V2Capability.Support.V1_ONLY },
-            V2Capability.v1OnlyCapabilities().size,
-        )
     }
 
     // ------------------------------------------------------------------ helpers

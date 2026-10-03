@@ -212,6 +212,22 @@ object TimelineSearch {
     /** True while a session timeline is on screen: gates the header entry. */
     val available: Boolean get() = mounted.value
 
+    /**
+     * A search that is actually *running* — the bar is up **and** the query has a
+     * needle in it.
+     *
+     * Upstream splits the two the same way: `setValue()` returns early on
+     * `!value.trim()` (`search-controller.ts:211-215`), so an empty box holds no
+     * matches and drives no navigation, and `collectRanges` is gated on
+     * `query()` (`search-controller.ts:19`). Android needs one predicate for it
+     * because the timeline derives several things from the search — the hit
+     * count it publishes, the reveal scroll it runs, and whether the floating
+     * 「回到最新」 button owns the viewport — and every one of them must fall back
+     * to the idle behaviour the moment the needle goes away, not one
+     * recomposition later.
+     */
+    val isLive: Boolean get() = open && normalize(query).isNotEmpty()
+
     fun toggle() {
         if (opened.value) close() else open()
     }
@@ -221,16 +237,50 @@ object TimelineSearch {
         opened.value = true
     }
 
-    /** `close()` (`:202-205`): value, active and visibility all reset. */
+    /**
+     * `close()` (`:202-205`): value, active and visibility all reset.
+     *
+     * The published count resets here too. Upstream recomputes `count()` from
+     * the match list, which an empty value empties (`search-controller.ts:96`),
+     * so a closed search has no count to show; the Android shell caches the count
+     * in [total] because the timeline that produces it is a sibling subtree of
+     * the bar, so without this a `0/n` or a stale `n` survives into the next
+     * `open()` — before the timeline has recomposed once to republish `0`.
+     */
     fun close() {
         opened.value = false
         needle.value = ""
-        cursor.value = 0
+        resetDerived()
     }
 
-    /** `setValue()` (`:207-219`): a new value restarts the cursor at the first hit. */
+    /**
+     * The values a search *derives* — the cursor and the published count — back
+     * to the idle state. Split out of [close] so the ✕ (clear-the-box) path and
+     * the ✕✕ (close) path cannot drift: a search that clears its box is no more
+     * live than one that was closed, and the timeline gates on exactly that
+     * ([isLive]).
+     */
+    private fun resetDerived() {
+        cursor.value = 0
+        total.value = 0
+    }
+
+    /**
+     * `setValue()` (`:207-219`): a new value restarts the cursor at the first hit.
+     *
+     * A blank or whitespace-only value drops the derived state outright:
+     * upstream bails out of the rest of the `setValue` body on `!value.trim()`
+     * (`:211`), so the cursor and the match list go back to empty in the same
+     * step. Android must also drop [total] here, because until the timeline
+     * republishes the header would keep counting matches for a needle that no
+     * longer exists.
+     */
     fun setQuery(value: String) {
         needle.value = value
+        if (normalize(value).isEmpty()) {
+            resetDerived()
+            return
+        }
         cursor.value = 0
     }
 

@@ -1,9 +1,13 @@
 package com.xiufeigo.opencodeshell.ui.palette
 
+import android.content.res.Configuration
+import android.content.res.Resources
+import android.os.LocaleList
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -13,20 +17,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,17 +48,26 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.components.OcSearchIcon
+import com.xiufeigo.opencodeshell.ui.overlay.DialogSize
+import com.xiufeigo.opencodeshell.ui.overlay.LocalDialogController
+import com.xiufeigo.opencodeshell.ui.overlay.LocalDialogScrimState
+import com.xiufeigo.opencodeshell.ui.overlay.dialogCardBounds
 import com.xiufeigo.opencodeshell.ui.settings.OcTextField
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 import androidx.compose.ui.geometry.Offset
+import java.util.Locale
 
 /**
  * `DialogCommandPaletteV2` / `DialogHomeCommandPaletteV2`
@@ -84,13 +100,28 @@ fun CommandPalette(
 ) {
     val c = OcTheme.colors
     val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val density = LocalDensity.current
     val viewportWidth = config.screenWidthDp.dp
-    val viewportHeight = config.screenHeightDp.dp
-    val width = minOf(viewportWidth - 24.dp, 640.dp)
-    val maxHeight = minOf(viewportHeight - 96.dp, 480.dp)
-    val topMargin = maxOf(48.dp, (viewportHeight - 480.dp) / 2)
+    // `100vh` (§6.3) is the *window*, not the display: the keyboard is drawn
+    // *over* the composition (`OcActivity` is edge-to-edge), so the usable height
+    // is the window minus the IME inset — the same read `SessionScreen` uses to
+    // lift its composer. `screenHeightDp` alone does not shrink with the
+    // keyboard, and sizing the shell against it put the results area (and every
+    // row below the head of the list) behind the IME.
+    val windowHeight = config.screenHeightDp.dp
+    val imeBottom = with(density) { WindowInsets.ime.getBottom(this).toDp() }
+    val visibleHeight = (windowHeight - imeBottom).coerceAtLeast(PALETTE_MIN_HEIGHT.dp)
+    val shell = paletteShell(viewportWidth.value, visibleHeight.value)
+    val width = shell.width.dp
+    val maxHeight = shell.maxHeight.dp
 
-    var query by remember { mutableStateOf("") }
+    // v54 (`tB_71` → `tB_73`): every open starts blank —
+    // `PALETTE_OPEN_QUERY`, never the previous open's text. The state is
+    // dialog-local: `DialogHost` keys each layer by its entry id, so a reopened
+    // palette is a new composition and cannot inherit the last one's `remember`
+    // (the query, the active-row anchor, the results scroll, the autofocus
+    // effect) the way it did while the layer loop was unkeyed.
+    var query by remember { mutableStateOf(PALETTE_OPEN_QUERY) }
     var active by remember { mutableStateOf(0) }
     // Autofocus the search field on open (upstream `shell/commands/dialog.tsx`
     // `autofocus`). `requestFocus` throws if the field is not laid out yet, so
@@ -98,9 +129,67 @@ fun CommandPalette(
     val searchFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
 
-    val rows = remember(sources, query) { visibleEntries(sources, query) }
+    // Builtin self-sufficient panels ([BuiltinCommands]) ride the command list
+    // after the host's registered rows and are intercepted here — they need no
+    // `ui/App.kt` side effect, only a dialog layer. FILES_ONLY keeps its
+    // upstream contract (no commands at all).
+    val hostDialog = LocalDialogController.current
+    // v98: the box the layer's scrim guards is the box the host *measured* as
+    // this layer's content ([DialogScrimState.contentBounds]) unless the layer
+    // reports its own card. The palette's content box is the §6.3 layout box
+    // below — `fillMaxWidth` wide and `paletteBoxHeight` tall, i.e. up to
+    // `windowHeight - topMargin` from the window top, which with the keyboard up
+    // (this composable autofocuses its search field, so the IME is up by
+    // default) collapses `topMargin` to its 48 dp floor and swallows the whole
+    // bottom tab strip. A tap in that band was answered "inside the content
+    // box" by [scrimTapDismisses]: the layer neither dismissed nor handed the
+    // event down, so the strip got nothing at all — the palette's dead zone
+    // (`research/v97_verify/5564_v98/REPORT_PERF.md` §6.3, both form factors).
+    // Reporting the card itself is the fix every other modal already uses
+    // (`DialogScrimResidueTest.everyHandRolledModalRoutesThroughTheSharedScrim`).
+    val scrim = LocalDialogScrimState.current
+    val builtinRows = builtinCommandEntries()
+    val effectiveSources = remember(sources, builtinRows, kind) {
+        if (kind == PaletteHostKind.FILES_ONLY) sources
+        else BuiltinCommands.withBuiltinCommands(sources, builtinRows)
+    }
+    val handleSelect: (PaletteEntry) -> Unit = select@{ entry ->
+        when (entry.id) {
+            BuiltinCommands.entryId(BuiltinCommands.AGENT_DETAILS) -> {
+                onClose()
+                val dialog = hostDialog ?: return@select
+                dialog.show(DialogSize.FIT) { controller ->
+                    AgentDetailsDialog(onClose = { controller.close() })
+                }
+            }
+            BuiltinCommands.entryId(BuiltinCommands.DEBUG_LOCATIONS) -> {
+                onClose()
+                val dialog = hostDialog ?: return@select
+                dialog.show(DialogSize.FIT) { controller ->
+                    DebugLocationsDialog(onClose = { controller.close() })
+                }
+            }
+            BuiltinCommands.entryId(BuiltinCommands.PLUGIN_RPC) -> {
+                onClose()
+                val dialog = hostDialog ?: return@select
+                dialog.show(DialogSize.FIT) { controller ->
+                    PluginRpcDialog(onClose = { controller.close() })
+                }
+            }
+            else -> onSelect(entry)
+        }
+    }
+
+    // Blank query → the whole catalog ([browseEntries]); a query keeps
+    // upstream's search semantics. The browse list is what makes the results
+    // area a scroller on the phone: the preferred rows alone are shorter than
+    // the shell's 280dp minimum, so there was nothing to scroll.
+    val rows = remember(effectiveSources, query) { paletteRows(effectiveSources, query) }
     val grouped = remember(rows) { groupEntries(rows) }
     val flat = remember(grouped) { flattenRows(grouped) }
+    // `active` indexes `flat`; the lazy list counts a group-title item per
+    // group, so the follow-scroll below needs the slot map.
+    val lazyIndices = remember(grouped) { lazyRowIndices(grouped) }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // WAVE 2.3a (A4 #5): id-anchored active row (`dialog.tsx:73-100`). The old
@@ -114,21 +203,48 @@ fun CommandPalette(
         onHighlight(flat.getOrNull(active))
     }
     // `block:nearest` follow (`dialog.tsx:93-95`): keep the active row visible.
+    // Upstream scrolls only when the row left the viewport, and it scrolls to
+    // the *row* — `active` indexes `flat`, while the lazy list counts a
+    // group-title item before each group. The row's `scroll-margin: 6px 0`
+    // keeps it 6px inside the viewport edge, so the snap is followed by a 6dp
+    // nudge ([paletteRowScrollNudgePx]).
     LaunchedEffect(active, flat) {
-        if (flat.isNotEmpty()) runCatching { listState.scrollToItem(active) }
+        val slot = flat.getOrNull(active)?.let { lazyIndices[it.id] } ?: return@LaunchedEffect
+        if (listState.layoutInfo.visibleItemsInfo.none { it.index == slot }) {
+            runCatching {
+                listState.scrollToItem(slot)
+                listState.scrollBy(paletteRowScrollNudgePx(density.density))
+            }
+        }
     }
 
     // §6.5: `@media (max-width: 640px)` stacks title over description.
     val stacked = viewportWidth <= 640.dp
 
+    // The dialog layer centres its content box in the window (`DialogHost`'s
+    // `Alignment.Center`), so this box is sized against the *window* instead of
+    // its content: at `windowHeight - 2 * topMargin` the centring offset is
+    // exactly §6.3's `margin-top` — the card's top edge — which is what keeps the
+    // whole results area above the keyboard. A content-sized box was centred
+    // lower and, with the keyboard up, lost every row below its head behind the
+    // IME.
+    val shellBoxHeight = paletteBoxHeight(windowHeight.value, shell.topMargin).dp
     Box(
-        modifier.fillMaxWidth().padding(top = topMargin),
+        modifier.fillMaxWidth().height(shellBoxHeight),
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(
             Modifier
                 .width(width)
-                .heightIn(min = 280.dp, max = maxHeight)
+                .heightIn(min = PALETTE_MIN_HEIGHT.dp, max = maxHeight)
+                // After the size modifiers, before the card's own decoration —
+                // the placement rule in [DialogScrim]. This is the *card* (the
+                // shadowed, bordered box), not the full-width layout box above,
+                // so everything the user sees dimmed around it is backdrop again
+                // and a tap there closes the palette.
+                .then(
+                    if (scrim != null) Modifier.dialogCardBounds(scrim) else Modifier,
+                )
                 .shadow(16.dp, RoundedCornerShape(12.dp))
                 .background(c.bgBase, RoundedCornerShape(12.dp))
                 .border(0.5.dp, c.borderBase, RoundedCornerShape(12.dp))
@@ -152,7 +268,7 @@ fun CommandPalette(
                             }
 
                             Key.Enter, Key.NumPadEnter -> {
-                                flat.getOrNull(active)?.let(onSelect)
+                                flat.getOrNull(active)?.let(handleSelect)
                                 true
                             }
 
@@ -195,21 +311,34 @@ fun CommandPalette(
                 }
             } else {
                 // `.command-palette-v2-results` → `gap:16px; padding: 6px 6px 8px`;
-                // `.command-palette-v2-group` → `gap:1px`.
+                // `.command-palette-v2-group` → `gap:1px`. The list's own
+                // arrangement is uniform, so both gaps are applied per item
+                // ([paletteSlotSpacings]) instead. `.command-palette-v2-scroll`
+                // is `min-height:0; flex:1` inside the 280..480dp shell: this list
+                // stays the one bounded scroller — touch drags and wheel events
+                // scroll it (`scrollable` handles `PointerEventType.Scroll`) rather
+                // than growing the dialog.
+                val slotSpacings = remember(grouped) { paletteSlotSpacings(grouped) }
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxWidth().padding(PaddingValues(start = 6.dp, end = 6.dp, bottom = 8.dp)),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(PaddingValues(start = 6.dp, top = 6.dp, end = 6.dp, bottom = 8.dp)),
                 ) {
+                    var slot = 0
                     for ((category, entries) in grouped) {
-                        item(key = "group:$category") { GroupTitle(category) }
-                        items(entries, key = { it.id }) { entry ->
+                        val titleSlot = slot
+                        slot += 1 + entries.size
+                        item(key = "group:$category") {
+                            GroupTitle(category, topSpacing = slotSpacings[titleSlot].dp)
+                        }
+                        itemsIndexed(entries, key = { _, entry -> entry.id }) { offset, entry ->
                             val index = flat.indexOfFirst { it.id == entry.id }
                             PaletteRow(
                                 entry = entry,
                                 active = index == active,
                                 stacked = stacked,
-                                onClick = { onSelect(entry) },
+                                topSpacing = slotSpacings[titleSlot + 1 + offset].dp,
+                                onClick = { handleSelect(entry) },
                                 onHover = {
                                     // WAVE 2.3a: hover-activates (`dialog.tsx`
                                     // mouse handlers) — keeps keyboard and
@@ -271,44 +400,66 @@ private fun SearchField(
     }
 }
 
-/** `.command-palette-v2-group-title` — 13px/440 muted, `margin: 6px 0`, `padding: 0 12px`. */
+/**
+ * `.command-palette-v2-group-title` — 13px/440 muted, `margin: 6px 0`,
+ * `padding: 0 12px`. [topSpacing] is the group's own gap (0 for the first one,
+ * `gap:16px` between groups), kept outside the title's margin.
+ */
 @Composable
-private fun GroupTitle(category: String) {
+private fun GroupTitle(category: String, topSpacing: Dp) {
     Text(
         text = paletteGroupLabel(category),
         color = OcTheme.colors.textMuted,
         fontSize = 13.sp,
         fontWeight = FontWeight(440),
         lineHeight = 16.sp,
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier
+            .padding(top = topSpacing)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }
 
 /**
  * Group labels come from the entry's `category` — and session rows carry
- * `command.category.session` ("Session"), NOT `palette.group.*` (§6.2).
+ * `command.category.session` ("Session"), NOT `palette.group.*` (§6.2). The
+ * session registry's own groups ("View", "Model", …) resolve through the
+ * `command.category.*` strings upstream registers them with; a category the
+ * shell does not know keeps the raw literal.
  */
 @Composable
-private fun paletteGroupLabel(category: String): String = when (category) {
-    CATEGORY_COMMANDS -> stringResource(R.string.oc_palette_group_commands)
-    CATEGORY_FILES -> stringResource(R.string.oc_palette_group_files)
-    CATEGORY_SESSION -> stringResource(R.string.oc_palette_group_session)
-    else -> category
-}
+private fun paletteGroupLabel(category: String): String =
+    paletteGroupLabelResId(category)?.let { stringResource(it) } ?: category
 
-/** `.command-palette-v2-row` — `h-36`, `r-6`, `padding 0 12px`, active = overlay-hover. */
+/**
+ * `.command-palette-v2-row` — `h-36`, `r-6`, `padding 0 12px`, active =
+ * overlay-hover. [topSpacing] is the group's inner `gap:1px`, applied outside
+ * the row so the active highlight still covers exactly 36dp.
+ */
 @Composable
 private fun PaletteRow(
     entry: PaletteEntry,
     active: Boolean,
     stacked: Boolean,
+    topSpacing: Dp,
     onClick: () -> Unit,
     onHover: () -> Unit = {},
 ) {
     val c = OcTheme.colors
+    val density = LocalDensity.current
+    // The row's own measured width, for the trailing hint's budget below.
+    //
+    // v77 P0: kept in px and converted with this composition's density, not as a
+    // `Dp` frozen at the callback's creation — a density change that leaves the
+    // row's px the same (a `wm density` override, a display-size setting) froze
+    // the old configuration's width into the hint's budget. The same sweep
+    // applies to the session pane's three mirrors (`SessionScreen`).
+    var rowWidthPx by remember { mutableIntStateOf(0) }
+    val rowWidth: Dp = with(density) { rowWidthPx.toDp() }
     Row(
         Modifier
+            .padding(top = topSpacing)
             .fillMaxWidth()
+            .onSizeChanged { rowWidthPx = it.width }
             .height(if (stacked) 48.dp else 36.dp)
             .background(if (active) c.overlayHover else Color.Transparent, RoundedCornerShape(6.dp))
             .clickable(
@@ -382,17 +533,46 @@ private fun PaletteRow(
                 }
             }
         }
-        entry.keybind?.let { keybind ->
-            Text(
-                text = keybind,
-                color = c.textFaint,
-                fontSize = 11.sp,
-                fontWeight = FontWeight(530),
-            )
-        }
-        entry.meta?.let { meta ->
-            Spacer(Modifier.width(8.dp))
-            Text(text = meta, color = c.textMuted, fontSize = 13.sp, maxLines = 1)
+        // Trailing hint column (v43: it was being clipped by the card's right
+        // edge). Both halves live in one bounded box that keeps
+        // [PALETTE_ROW_EDGE_INSET] of clearance from that edge, so a long chord
+        // ellipsises inside its own share instead of running under the card's
+        // rounded corner — and the label column, which is weighted, keeps
+        // [PALETTE_LABEL_MIN_WIDTH] of the row for itself.
+        if (entry.keybind != null || entry.meta != null) {
+            val hintMaxWidth = with(density) {
+                paletteHintMaxWidth(rowWidthDp = rowWidth.value - 2f * PALETTE_ROW_PADDING).dp
+            }
+            Row(
+                Modifier
+                    .widthIn(max = hintMaxWidth)
+                    .padding(end = PALETTE_ROW_EDGE_INSET.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                entry.keybind?.let { keybind ->
+                    Text(
+                        text = keybind,
+                        color = c.textFaint,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight(530),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                entry.meta?.let { meta ->
+                    Text(
+                        text = meta,
+                        color = c.textMuted,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+            }
         }
     }
 }
@@ -415,9 +595,16 @@ private fun FileGlyph(tint: Color) {
  * Compose-side catalogue resolution: turns the registered [PaletteCommand]s into
  * list rows with real strings. Kept here (not in `PaletteModel.kt`) so that file
  * stays Compose-free and JVM-testable.
+ *
+ * Each row also carries its English copy ([PaletteEntry.searchTerms]) so the
+ * search keeps working by the upstream name on a translated device.
  */
 @Composable
 fun stringResolvedEntries(commands: List<PaletteCommand>): List<PaletteEntry> {
+    val english = englishStrings()
+    val englishTerm: (Int) -> String? = remember(english) {
+        { resId -> runCatching { english.getString(resId) }.getOrNull() }
+    }
     val resolved = commands.map { command ->
         Triple(
             command,
@@ -427,8 +614,29 @@ fun stringResolvedEntries(commands: List<PaletteCommand>): List<PaletteEntry> {
     }
     return resolved.filterNot { (command, _, _) -> command.hidden }
         .map { (command, title, description) ->
-            command.toEntry().copy(title = title, description = description)
+            command.toEntry().copy(
+                title = title,
+                description = ocPaletteRowDescription(title, description),
+                searchTerms = commandEnglishTerms(command, englishTerm),
+            )
         }
+}
+
+/**
+ * The `values/` string table — the resource default, i.e. **English** (English
+ * is the source copy; `values-zh-rCN` / `values-zh-rTW` hold the translations).
+ * `stringResource` resolves the *UI* locale, so a locale-forced table is the
+ * only way to read a command's upstream name back on a translated device — the
+ * dimension that makes `debug` find 「切换调试栏」 ([matchesEntry]).
+ */
+@Composable
+internal fun englishStrings(): Resources {
+    val context = LocalContext.current
+    return remember(context) {
+        val configuration = Configuration(context.resources.configuration)
+        configuration.setLocales(LocaleList(Locale.ENGLISH))
+        context.createConfigurationContext(configuration).resources
+    }
 }
 
 /**

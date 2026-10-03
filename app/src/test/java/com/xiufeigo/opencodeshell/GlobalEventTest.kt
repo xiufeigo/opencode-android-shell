@@ -8,81 +8,57 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * `/global/event` envelope handling (research/04 §2.2): frames arrive as
- * `{directory, payload:{id,type,properties}}` and must be unwrapped before the
- * regular v1 parsing, then gated so foreign sessions never touch the tracked
- * screen's state.
+ * v2 frame routing: session ownership of an event payload (`data.sessionID`,
+ * else the durable aggregate — `session-event.ts` `Base`, `event.ts:27`) and
+ * the gate that keeps a foreign session from touching the tracked screen's
+ * state. The v1 `/global/event` `{directory, payload:{…, properties}}` envelope
+ * is gone with `parseEvent`/`unwrapGlobal`.
  */
 class GlobalEventTest {
 
     @Test
-    fun `unwrapGlobal returns inner payload of a global frame`() {
-        val frame = JSONObject(
-            """{"directory":"C:\\proj","payload":{"id":"e1","type":"message.updated","properties":{"info":{"sessionID":"ses_a"}}}}""",
-        )
-        val inner = ChatStore.unwrapGlobal(frame)
-        assertEquals("message.updated", inner?.optString("type"))
-        assertEquals("ses_a", inner?.optJSONObject("properties")?.optJSONObject("info")?.optString("sessionID"))
-    }
-
-    @Test
-    fun `unwrapGlobal passes on instance-shaped frames`() {
-        val frame = JSONObject("""{"id":"e1","type":"session.status","properties":{"sessionID":"ses_a","status":{"type":"busy"}}}""")
-        assertNull(ChatStore.unwrapGlobal(frame))
-    }
-
-    @Test
-    fun `unwrapGlobal ignores payload without type`() {
-        val frame = JSONObject("""{"directory":"C:\\proj","payload":{"id":"e1"}}""")
-        assertNull(ChatStore.unwrapGlobal(frame))
-    }
-
-    @Test
-    fun `eventSessionId reads properties sessionID`() {
-        val data = JSONObject("""{"type":"session.status","properties":{"sessionID":"ses_1","status":{"type":"idle"}}}""")
+    fun `eventSessionId reads data sessionID`() {
+        val data = JSONObject("""{"id":"evt_1","type":"session.status","data":{"sessionID":"ses_1","status":{"type":"idle"}}}""")
         assertEquals("ses_1", ChatStore.eventSessionId(data))
     }
 
     @Test
-    fun `eventSessionId reads message info sessionID`() {
-        val data = JSONObject("""{"type":"message.updated","properties":{"info":{"id":"m1","sessionID":"ses_2","role":"assistant"}}}""")
-        assertEquals("ses_2", ChatStore.eventSessionId(data))
-    }
-
-    @Test
-    fun `eventSessionId reads part sessionID`() {
-        val data = JSONObject("""{"type":"message.part.updated","properties":{"part":{"id":"p1","sessionID":"ses_3","messageID":"m1","type":"text"}}}""")
-        assertEquals("ses_3", ChatStore.eventSessionId(data))
+    fun `eventSessionId falls back to the durable aggregate`() {
+        val data = JSONObject(
+            """{"id":"evt_2","type":"session.text.ended","data":{"assistantMessageID":"msg_1"},
+               "durable":{"aggregateID":"ses_agg","seq":7,"version":1}}""",
+        )
+        assertEquals("ses_agg", ChatStore.eventSessionId(data))
     }
 
     @Test
     fun `eventSessionId null for session-less frames`() {
-        assertNull(ChatStore.eventSessionId(JSONObject("""{"type":"server.heartbeat","properties":{}}""")))
+        assertNull(ChatStore.eventSessionId(JSONObject("""{"id":"evt_3","type":"server.connected","data":{}}""")))
     }
 
     @Test
     fun `acceptsSession drops foreign sessions when tracking`() {
-        val foreign = JSONObject("""{"type":"message.part.delta","properties":{"sessionID":"ses_other","messageID":"m","partID":"p","delta":"x"}}""")
+        val foreign = JSONObject("""{"id":"evt_4","type":"session.text.delta","data":{"sessionID":"ses_other","delta":"x"}}""")
         assertFalse(ChatStore.acceptsSession("ses_mine", foreign))
     }
 
     @Test
     fun `acceptsSession keeps tracked and unrouted events`() {
-        val mine = JSONObject("""{"type":"message.part.delta","properties":{"sessionID":"ses_mine","messageID":"m","partID":"p","delta":"x"}}""")
+        val mine = JSONObject("""{"id":"evt_5","type":"session.text.delta","data":{"sessionID":"ses_mine","delta":"x"}}""")
         assertTrue(ChatStore.acceptsSession("ses_mine", mine))
-        assertTrue(ChatStore.acceptsSession("ses_mine", JSONObject("""{"type":"server.heartbeat","properties":{}}""")))
-        // Nothing tracked yet (legacy shell) accepts everything.
+        assertTrue(ChatStore.acceptsSession("ses_mine", JSONObject("""{"id":"evt_6","type":"server.connected","data":{}}""")))
+        // Nothing tracked yet accepts everything.
         assertTrue(ChatStore.acceptsSession(null, mine))
     }
 
     @Test
-    fun `parseEvent consumes an unwrapped global payload`() {
+    fun `a routed v2 frame adapts and keeps its session`() {
         val frame = JSONObject(
-            """{"directory":"D:\\w","payload":{"id":"e9","type":"session.status","properties":{"sessionID":"ses_g","status":{"type":"busy"}}}}""",
+            """{"id":"evt_7","type":"session.status","data":{"sessionID":"ses_g","status":{"type":"busy"}}}""",
         )
-        val inner = ChatStore.unwrapGlobal(frame) ?: error("global frame must unwrap")
-        val event = ChatStore.parseEvent(inner.optString("type"), inner)
+        val event = com.xiufeigo.opencodeshell.v2.V2EventAdapter.adapt("session.status", frame).single()
         assertTrue(event is ChatStore.Event.RunStatusChanged)
         assertEquals(ChatStore.RunStatus.RUNNING, (event as ChatStore.Event.RunStatusChanged).status)
+        assertEquals("ses_g", ChatStore.eventSessionId(frame))
     }
 }

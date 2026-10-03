@@ -20,11 +20,13 @@ class OpenCodeClientRenameTest {
         OpenCodeClient(server.url("/").toString().toHttpUrlOrNull()!!, null, null)
 
     @Test
-    fun renameSessionPatchesTheSessionTitle() {
+    fun renameSessionPatchesTitleThenReReadsTheSession() {
         MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(204))
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """{"id":"ses_1","title":"Renamed","directory":"/w","time":{"updated":77}}""",
+                    """{"data":{"id":"ses_1","title":"Renamed","location":{"directory":"/w"},""" +
+                        """"time":{"updated":77}}}""",
                 ),
             )
             val c = client(server)
@@ -33,23 +35,33 @@ class OpenCodeClientRenameTest {
             assertEquals("Renamed", session.title)
             assertEquals(77L, session.updatedAt)
 
-            val recorded = server.takeRequest()
-            assertEquals("PATCH", recorded.method)
-            assertEquals("/session/ses_1", recorded.path)
-            assertEquals("Renamed", JSONObject(recorded.body.readUtf8()).getString("title"))
+            val patch = server.takeRequest()
+            assertEquals("PATCH", patch.method)
+            assertEquals("/api/session/ses_1", patch.requestUrl!!.encodedPath)
+            assertEquals("Renamed", JSONObject(patch.body.readUtf8()).getString("title"))
+
+            val reread = server.takeRequest()
+            assertEquals("GET", reread.method)
+            assertEquals("/api/session/ses_1", reread.requestUrl!!.encodedPath)
             c.close()
         }
     }
 
     @Test
-    fun renameSessionCarriesTheDirectoryQueryWhenKnown() {
+    fun renameSessionSendsNoLocationScope() {
         MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(204))
             server.enqueue(
-                MockResponse().setResponseCode(200).setBody("""{"id":"ses_1","title":"T"}"""),
+                MockResponse().setResponseCode(200)
+                    .setBody("""{"data":{"id":"ses_1","title":"T"}}"""),
             )
             val c = client(server)
             c.renameSession("ses_1", "T", directory = "/workspace")
-            assertEquals("/workspace", server.takeRequest().requestUrl!!.queryParameter("directory"))
+            repeat(2) {
+                val recorded = server.takeRequest()
+                assertNull(recorded.requestUrl!!.queryParameter("location[directory]"))
+                assertNull(recorded.requestUrl!!.queryParameter("directory"))
+            }
             c.close()
         }
     }
@@ -71,14 +83,14 @@ class OpenCodeClientRenameTest {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """[{"info":{"id":"msg_1","sessionID":"ses_1","role":"assistant",""" +
-                        """"time":{"created":1},"tokens":{"input":10,"output":2,"cache":{"read":1}}},""" +
-                        """"parts":[{"id":"p1","type":"text","text":"hi"}]}]""",
+                    """{"data":[{"id":"msg_1","time":{"created":1},"type":"assistant",""" +
+                        """"tokens":{"input":10,"output":2},""" +
+                        """"content":[{"id":"p1","type":"text","text":"hi"}]}]}""",
                 ),
             )
             val c = client(server)
             val messages = c.messages("ses_1")
-            assertEquals(13L, messages[0].tokens)
+            assertEquals(12L, messages[0].tokens)
 
             // The store parses the same payload (SSE `message.updated` carries
             // the full info object, so a streaming update keeps the usage).

@@ -142,6 +142,21 @@ class SettingsStore(context: Context) {
          * draft's initial workspace location.
          */
         val workspaceDefaultDestination: String = DEFAULT_WORKSPACE_DESTINATION,
+        /**
+         * B-11/B-16: upstream `appearance.tabLayout` (`model.tsx:257`, default
+         * `horizontal`) — `horizontal` | `vertical`. Consumer:
+         * [com.xiufeigo.opencodeshell.ui.nav.AppearancePrefs] →
+         * `OcApp.bottomTabStrip` → [com.xiufeigo.opencodeshell.ui.nav.BottomTabStrip]
+         * (the mobile bottom title bar, `titlebar.tsx:64-65`) or, on the other
+         * stop, [com.xiufeigo.opencodeshell.ui.nav.DesktopTabStrip] at the top.
+         *
+         * The value is read once per launch (the nav layer has no store of its
+         * own). Two rows write it: the Experimental page's Tabs select
+         * (`horizontal`/`vertical`) and B-16's General-page「底部导航」switch
+         * (`settings.general.row.mobileTitlebarBottom`, `general.tsx:369-381`),
+         * which is the same pref seen as "bottom = `vertical`".
+         */
+        val tabLayout: String = DEFAULT_TAB_LAYOUT,
     ) {
         /**
          * `oc-theme-preload.js`: `isDark = scheme=="dark" ||
@@ -179,7 +194,12 @@ class SettingsStore(context: Context) {
         showFileTree = prefs.getBoolean(KEY_SHOW_FILE_TREE, true),
         showSearch = prefs.getBoolean(KEY_SHOW_SEARCH, true),
         showStatus = prefs.getBoolean(KEY_SHOW_STATUS, true),
-        showCustomAgents = prefs.getBoolean(KEY_SHOW_CUSTOM_AGENTS, true),
+        // B-9: upstream `general.showCustomAgents` defaults to **false**
+        // (`settings/model.tsx:249`). The row used to be hidden, so the old
+        // `true` default was never observable; the composer's agent chip reads
+        // it now, and `false` means "hide the agent picker unless the server
+        // has a custom agent" — upstream's `agentsVisible`.
+        showCustomAgents = prefs.getBoolean(KEY_SHOW_CUSTOM_AGENTS, false),
         keybinds = parseKeybinds(prefs.getString(KEY_KEYBINDS, null)),
         terminalPlacement = readEnum(KEY_TERMINAL_PLACEMENT, PLACEMENTS, DEFAULT_TERMINAL_PLACEMENT),
         followUpBehavior = readEnum(KEY_FOLLOW_UP_BEHAVIOR, FOLLOW_UP_BEHAVIORS, DEFAULT_FOLLOW_UP_BEHAVIOR),
@@ -190,6 +210,7 @@ class SettingsStore(context: Context) {
             WORKSPACE_DESTINATIONS,
             DEFAULT_WORKSPACE_DESTINATION,
         ),
+        tabLayout = readEnum(KEY_TAB_LAYOUT, TAB_LAYOUTS, DEFAULT_TAB_LAYOUT),
     )
 
     private fun readEnum(key: String, allowed: Set<String>, fallback: String): String =
@@ -224,18 +245,22 @@ class SettingsStore(context: Context) {
             // WAVE 2.3a: `workspaces.defaultDestination` — where new sessions start.
             "settings-workspace-destination" ->
                 if (value in WORKSPACE_DESTINATIONS) editor.putString(KEY_WORKSPACE_DEFAULT_DESTINATION, value)
+            // B-11: `appearance.tabLayout` — the Experimental page's Tabs row
+            // (`experimental.tsx:26-44`), consumed by `AppearancePrefs`.
+            "settings-tab-layout" -> if (value in TAB_LAYOUTS) editor.putString(KEY_TAB_LAYOUT, value)
+            // B-16: the General page's「底部导航」switch (`general.tsx:369-381`).
+            // It is the *same* placement the Tabs row above writes, seen as a
+            // boolean — checked = the strip at the bottom = `vertical` — so the
+            // two rows cannot disagree and the nav layer keeps one decoder
+            // (`ui/nav/TabLayout.bottomStrip`).
+            "settings-mobile-titlebar-bottom" ->
+                editor.putString(
+                    KEY_TAB_LAYOUT,
+                    if (value == "true") TAB_LAYOUT_VERTICAL else TAB_LAYOUT_HORIZONTAL,
+                )
             "settings-sounds-agent" -> if (value in SOUNDS) editor.putString(KEY_SOUND_AGENT, value)
             "settings-sounds-permissions" -> if (value in SOUNDS) editor.putString(KEY_SOUND_PERMISSIONS, value)
             "settings-sounds-errors" -> if (value in SOUNDS) editor.putString(KEY_SOUND_ERRORS, value)
-            // W5-S (D5): one preset row writes the three v1 booleans the timeline
-            // actually consumes, exactly like upstream's `TimelineDetailControl`
-            // replaces the whole `general.timelineDetail` object at once.
-            "settings-timeline-detail" -> TIMELINE_DETAIL_PRESETS[value]?.let { preset ->
-                editor.putBoolean(KEY_SHELL_EXPANDED, preset[0])
-                editor.putBoolean(KEY_EDIT_EXPANDED, preset[1])
-                editor.putBoolean(KEY_REASONING_SUMMARIES, preset[2])
-            }
-
             else -> {
                 val boolKey = BOOLEAN_KEYS[action]
                 if (boolKey == null || (value != "true" && value != "false")) return
@@ -283,12 +308,20 @@ class SettingsStore(context: Context) {
     }
 
     /**
-     * The model picker's explicit selection, encoded `"providerID/modelID"`
-     * ([OpenCodeClient.parseModelRef]); null/blank removes the key so the
-     * server's `config.model` default applies again (「使用服务器默认」).
-     * Deliberately NOT part of [Settings]: it is a per-user picker override,
-     * not a settings-panel field, so it neither needs nor wants a `state`
-     * emission.
+     * The model picker's last explicit selection, encoded `"providerID/modelID"`
+     * ([OpenCodeClient.parseModelRef]); null/blank removes the key (「使用服务器默认」).
+     *
+     * It is the **draft's** model and the picker memory, not a pin on every
+     * session: upstream keeps the per-session pick under the session's own id
+     * (`providers/models/selection.tsx:139-143`) and only falls back to the recent
+     * picks for a session that names no model of its own (`:163-178`), so a value
+     * read here must never relabel an opened session
+     * (`ChatViewModel.effectiveModelRef` — the v28 bug). Per-session picks are
+     * in-memory only, because the pick is also written onto the session itself
+     * (`POST /api/session/{id}/model`), which is where reopening reads it back.
+     *
+     * Deliberately NOT part of [Settings]: it is a per-user picker memory, not a
+     * settings-panel field, so it neither needs nor wants a `state` emission.
      */
     var selectedModelOverride: String?
         get() = prefs.getString(KEY_SELECTED_MODEL, null)?.takeIf { it.isNotBlank() }
@@ -301,6 +334,35 @@ class SettingsStore(context: Context) {
                 }
             }
         }
+
+    /**
+     * v73: the per-session reasoning-effort pins (`sessionID` → variant label),
+     * the Android durable half of upstream's `saved.session[sessionID].variant`
+     * (`providers/models/selection.tsx:286-299`).
+     *
+     * The model pick does not need this: it is written onto the session itself
+     * (`POST /api/session/{id}/model`) and read back from `Session.Info.model`.
+     * The effort is written the same way, but the *chip* must also survive a
+     * session whose variant write never reached the server (offline, a failed
+     * switch), so the pick is mirrored here and restored on open
+     * (`ChatViewModel.observeSession`). Like [selectedModelOverride], it is a
+     * per-session picker memory rather than a settings field, so it neither
+     * needs nor wants a [state] emission.
+     */
+    fun sessionVariant(sessionID: String): String? {
+        if (sessionID.isBlank()) return null
+        return parseSessionVariants(prefs.getString(KEY_SESSION_VARIANTS, null))[sessionID]
+    }
+
+    fun setSessionVariant(sessionID: String, variant: String?) {
+        if (sessionID.isBlank()) return
+        val current = parseSessionVariants(prefs.getString(KEY_SESSION_VARIANTS, null))
+        val next = withSessionVariant(current, sessionID, variant)
+        // Reopening a session re-pins what it already stored; that is not a
+        // change worth a disk write (the table is rewritten whole).
+        if (next == current) return
+        prefs.edit { putString(KEY_SESSION_VARIANTS, encodeSessionVariants(next)) }
+    }
 
     /**
      * WAVE 2.3a: per-model visibility overrides (`providerID/modelID` →
@@ -383,6 +445,14 @@ class SettingsStore(context: Context) {
         const val KEY_SELECTED_MODEL = "opencode.android.selectedModel"
 
         /**
+         * v73: the per-session effort table, encoded as a JSON object
+         * (`{"ses_1":"max"}`) — upstream keeps the same pair in
+         * `saved.session[id]` (a `variant` per session), which is what makes a
+         * reopened session show the effort its chip showed before.
+         */
+        const val KEY_SESSION_VARIANTS = "opencode.android.sessionVariants"
+
+        /**
          * B3 terminal placement, stored under an Android-only key like the rest of
          * this block (upstream keeps it in the `settings.v3` localStorage blob as
          * `general.terminalPlacement`). The value is the upstream literal
@@ -410,6 +480,14 @@ class SettingsStore(context: Context) {
          * `last-used`.
          */
         const val KEY_WORKSPACE_DEFAULT_DESTINATION = "opencode.android.workspaceDefaultDestination"
+
+        /**
+         * B-11: upstream `appearance.tabLayout` (`model.tsx:257`) — the literal
+         * key name `ui/nav/TabLayout.KEY` spells, stored in **this** store's
+         * prefs file since the Experimental page's row became its writer
+         * (`AppearancePrefs` reads the same pair).
+         */
+        const val KEY_TAB_LAYOUT = "appearance.tabLayout"
 
         /**
          * WAVE 2.3a: per-model visibility overrides (`providers/models/models.tsx`),
@@ -464,6 +542,13 @@ class SettingsStore(context: Context) {
         /** Upstream default `workspaces.defaultDestination` (`model.tsx:260`). */
         const val DEFAULT_WORKSPACE_DESTINATION = "last-used"
 
+        /** B-11/B-16: the two stops, shared by both placement rows. */
+        const val TAB_LAYOUT_HORIZONTAL = "horizontal"
+        const val TAB_LAYOUT_VERTICAL = "vertical"
+
+        /** Upstream default `appearance.tabLayout` (`model.tsx:257`). */
+        const val DEFAULT_TAB_LAYOUT = TAB_LAYOUT_HORIZONTAL
+
         val SCHEMES = setOf("system", "light", "dark")
         val LANGUAGES = setOf("en", "zh", "zht")
         val SHELLS = setOf("auto", "sh", "bash", "zsh")
@@ -472,6 +557,9 @@ class SettingsStore(context: Context) {
         val FOLLOW_UP_BEHAVIORS = setOf("queue", "steer")
         val REASONING_MODES = setOf("hidden", "compact", "full")
         val WORKSPACE_DESTINATIONS = setOf("last-used", "local", "new")
+
+        /** B-11: `appearance.tabLayout` stops (`experimental.tsx:8`). */
+        val TAB_LAYOUTS = setOf(TAB_LAYOUT_HORIZONTAL, TAB_LAYOUT_VERTICAL)
 
         /**
          * WAVE 2.3a: upstream `general.reasoningMode` fallback when the field is
@@ -528,22 +616,6 @@ class SettingsStore(context: Context) {
         )
 
         /**
-         * W5-S (D5): `settings-timeline-detail` preset id → the three stored
-         * booleans, in write order `[shellExpanded, editExpanded,
-         * reasoningSummaries]`.
-         *
-         * Kept as plain data (no `ui.settings` import) because [SettingsStore]
-         * needs an Android `Context` and therefore is not JVM-unit-testable;
-         * `Wave5SettingsTest` asserts this table equals
-         * `TimelineDetailPreset.Options`' projection, so the two cannot drift.
-         */
-        val TIMELINE_DETAIL_PRESETS: Map<String, List<Boolean>> = mapOf(
-            "everything" to listOf(true, true, true),
-            "compact" to listOf(false, false, true),
-            "quiet" to listOf(false, false, false),
-        )
-
-        /**
          * Pure encoder for the keybind override table. Keys and values are
          * written verbatim; a blank value is dropped (it means "use the default",
          * which is the absence of an override).
@@ -575,5 +647,50 @@ class SettingsStore(context: Context) {
             }
             return out
         }
+
+        /**
+         * Pure encoder for the per-session effort table ([KEY_SESSION_VARIANTS]).
+         * Blank halves are dropped, like the keybind table above.
+         */
+        fun encodeSessionVariants(variants: Map<String, String>): String {
+            val obj = JSONObject()
+            for ((id, variant) in variants) {
+                if (id.isBlank() || variant.isBlank()) continue
+                obj.put(id, variant)
+            }
+            return obj.toString()
+        }
+
+        /** Inverse of [encodeSessionVariants]; malformed input reads as "no pins". */
+        fun parseSessionVariants(raw: String?): Map<String, String> = parseKeybinds(raw)
+
+        /**
+         * One entry of the table: `sessionID` → `variant`, with a blank/null
+         * `variant` *removing* the entry (「默认」 is the absence of a pin, not a
+         * stored label). The id is re-inserted at the end so [MAX_SESSION_VARIANTS]
+         * drops the least recently pinned session, not the newest one.
+         */
+        fun withSessionVariant(
+            variants: Map<String, String>,
+            sessionID: String,
+            variant: String?,
+        ): Map<String, String> {
+            if (sessionID.isBlank()) return variants
+            val next = linkedMapOf<String, String>()
+            for ((id, value) in variants) {
+                if (id != sessionID && id.isNotBlank() && value.isNotBlank()) next[id] = value
+            }
+            if (!variant.isNullOrBlank()) next[sessionID] = variant
+            if (next.size <= MAX_SESSION_VARIANTS) return next
+            return next.entries.drop(next.size - MAX_SESSION_VARIANTS).associate { it.key to it.value }
+        }
+
+        /**
+         * How many sessions the effort table keeps. A pin is a few bytes, but an
+         * install that opens sessions for months must not grow the prefs file
+         * without bound (`TerminalStateStore` caps its per-workspace tabs the
+         * same way).
+         */
+        const val MAX_SESSION_VARIANTS = 200
     }
 }

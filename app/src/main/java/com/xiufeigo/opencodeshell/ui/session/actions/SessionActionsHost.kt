@@ -1,7 +1,5 @@
 package com.xiufeigo.opencodeshell.ui.session.actions
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.runtime.Composable
@@ -16,14 +14,14 @@ import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.v2.ServerGeneration
 
 /**
- * Which of the three non-menu surfaces a ⋮ row opened, if any.
+ * Which of the surfaces a ⋮ row opened, if any.
  */
-enum class SessionActionsDialog { FORK, SHARE, ARCHIVE }
+enum class SessionActionsDialog { FORK, MOVE }
 
 /**
  * The behaviour half of the session's ⋮ actions (W6): the header renders the
- * five rows and calls [start], everything else — the dialog state, the
- * `OpenCodeClient.session*` writes, the clipboard and the toasts — happens here.
+ * rows and calls [start], everything else — the dialog state, the
+ * `SessionTransport` writes and the toasts — happens here.
  *
  * Why a host object instead of parameters on `SessionHeader`: `SessionScreen`
  * (owned elsewhere) calls that composable with a fixed argument list, and the
@@ -71,22 +69,10 @@ class SessionActionsHost(
         private set
 
     /**
-     * Runs one ⋮ row. 撤销 / 重做 / 分叉 are immediate (the last one opens the
-     * picker first); 分享会话 is a **toggle** like upstream's share
-     * command — while the session is private it publishes, copies and shows the
-     * link, while it is public it revokes; 归档会话 confirms first.
+     * Runs one ⋮ row. 撤销 / 重做 are immediate; 分叉 opens the picker first;
+     * 移动到… (F-4) opens the directory picker first.
      */
     fun start(item: SessionActionsMenuItem) {
-        // Wave 2.4a: share/archive are v1-only routes (no v2 equivalent). The
-        // menu hides these rows on v2 (`SessionActionsModel.menu` visibility
-        // flags); this guard is the backstop for callers that bypass the menu,
-        // and for the header until it adopts the flags.
-        if ((item == SessionActionsMenuItem.SHARE || item == SessionActionsMenuItem.ARCHIVE) &&
-            viewModel.generation.value != ServerGeneration.V1
-        ) {
-            failed()
-            return
-        }
         when (item) {
             SessionActionsMenuItem.UNDO -> viewModel.undoSession { ok ->
                 if (!ok) failed()
@@ -101,12 +87,9 @@ class SessionActionsHost(
                 dialog = SessionActionsDialog.FORK
             }
 
-            SessionActionsMenuItem.SHARE -> if (viewModel.shareUrl.value.isNullOrEmpty()) {
-                share()
-            } else {
-                unshare()
+            SessionActionsMenuItem.MOVE -> {
+                dialog = SessionActionsDialog.MOVE
             }
-            SessionActionsMenuItem.ARCHIVE -> dialog = SessionActionsDialog.ARCHIVE
         }
     }
 
@@ -129,73 +112,31 @@ class SessionActionsHost(
     }
 
     /**
-     * 分享会话: publishes the session, copies the returned URL and opens the
-     * confirmation surface that holds the link — copying is the whole point of
-     * the row (`toast.session.share.success.description`: "Share URL copied to
-     * clipboard!").
+     * Move the tracked session to [directory] (F-4:
+     * `POST /api/session/{id}/move`, upstream
+     * `session/timeline/session-workspace-menu.tsx:59-87`) and close the picker.
+     *
+     * The failure toast mirrors upstream's `workspace.move.failed`
+     * (`common.requestFailed` fallback included there); a success needs no
+     * toast — the moved location is re-adopted from the server's next
+     * `GET /session/:id` (`ChatViewModel.refreshSnapshot` re-reads
+     * `info.directory` into `currentDirectory`, which the Review tree and REST
+     * scoping already read live).
+     *
+     * [busy] guards a second submit while the first POST is still in flight:
+     * every submit writes one durable `location-switched` row server-side, so
+     * a double tap would duplicate the timeline row. The flag always resets —
+     * `moveSessionTo` settles its promise on every path, including the
+     * no-transport one — so a failure cannot wedge the row.
      */
-    fun share() {
+    fun confirmMove(directory: String) {
+        if (busy) return
         busy = true
-        viewModel.shareSession { url ->
-            busy = false
-            if (url == null) {
-                toast(R.string.toast_session_share_failed_title)
-                return@shareSession
-            }
-            copy(url)
-            dialog = SessionActionsDialog.SHARE
-        }
-    }
-
-    /**
-     * 取消分享: revokes the link and reports it (`toast.session.unshare.*`).
-     * The DELETE response keeps carrying the old `share.url` (measured live), so
-     * the session stops reading as public because the view model cleared its own
-     * flow — nothing here may trust that payload.
-     */
-    fun unshare() {
         dismiss()
-        busy = true
-        viewModel.unshareSession { ok ->
+        viewModel.moveSessionTo(directory) { ok ->
             busy = false
-            if (ok) {
-                toast(R.string.toast_session_unshare_success_title)
-            } else {
-                toast(R.string.toast_session_unshare_failed_title)
-            }
+            if (!ok) failed()
         }
-    }
-
-    /**
-     * 归档会话: archives and leaves the screen. The row disappears from Home
-     * because `HomeSessions.isArchived` filters it there — the server keeps
-     * returning the archived row from `GET /session` (verified live).
-     */
-    fun archive() {
-        busy = true
-        viewModel.archiveSession { ok ->
-            busy = false
-            dismiss()
-            if (ok) {
-                toast(R.string.oc_toast_session_archive_success)
-                onLeaveSession()
-            } else {
-                failed()
-            }
-        }
-    }
-
-    /** `session.share.copy.copyLink`: the link on the clipboard, with a toast. */
-    fun copyShareLink(url: String) = copy(url)
-
-    private fun copy(url: String) {
-        val clipboard = appContext.getSystemService(ClipboardManager::class.java)
-        if (clipboard == null) {
-            toast(R.string.toast_session_share_copyFailed_title)
-            return
-        }
-        clipboard.setPrimaryClip(ClipData.newPlainText(SHARE_CLIP_LABEL, url))
-        toast(R.string.toast_session_share_success_description)
     }
 
     /** A failed write: upstream's `common.requestFailed` (`fork-dialog.tsx:80-83`). */
@@ -206,11 +147,6 @@ class SessionActionsHost(
     private fun toast(text: String) {
         Toast.makeText(appContext, text, Toast.LENGTH_SHORT).show()
     }
-
-    private companion object {
-        /** Clip label; Android shows it to clipboard previews. */
-        const val SHARE_CLIP_LABEL = "opencode share url"
-    }
 }
 
 /**
@@ -220,7 +156,7 @@ class SessionActionsHost(
 val LocalSessionActionsHost = compositionLocalOf<SessionActionsHost?> { null }
 
 /**
- * Enablement of the five rows, straight from `SessionActionsModel.menu`.
+ * Enablement of the four rows, straight from `SessionActionsModel.menu`.
  *
  * `ChatViewModel.state` is handed in rather than its raw transcript: the
  * projection already dropped everything at or after the revert boundary, and
@@ -231,10 +167,7 @@ val LocalSessionActionsHost = compositionLocalOf<SessionActionsHost?> { null }
 fun rememberSessionActionsMenuState(host: SessionActionsHost): SessionActionsMenuState {
     val state by host.viewModel.state.collectAsState()
     val revert by host.viewModel.revertMessageID.collectAsState()
-    val share by host.viewModel.shareUrl.collectAsState()
-    // Wave 2.4a: the v1-only rows (share/archive) hide on a v2 server.
-    val generation by host.viewModel.generation.collectAsState()
-    return remember(state.messages, revert, share, generation) {
-        SessionActionsModel.menu(state.messages, revert, share, generation)
+    return remember(state.messages, revert) {
+        SessionActionsModel.menu(state.messages, revert)
     }
 }

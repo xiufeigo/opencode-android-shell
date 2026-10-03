@@ -1,19 +1,22 @@
 package com.xiufeigo.opencodeshell
 
+import com.xiufeigo.opencodeshell.v2.V2EventAdapter
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Permission chain (`PermissionV1`, `research/04` §2/§3): SSE parse + store
+ * Permission chain: v2 frame adaptation (`permission.asked/replied`) + store
  * reduce + REST wire. Store semantics mirror the upstream single-request dock
  * (`sessionPermissionRequest` returns the session's first pending ask), with
- * events for other sessions ignored at reduce time.
+ * events for other sessions ignored at reduce time. v2 field names
+ * (`action/resources/save/source{id}`) are renamed in `V2EventAdapter.v2Permission`.
  */
 class PermissionFlowTest {
 
@@ -32,20 +35,20 @@ class PermissionFlowTest {
         metadata = null,
     )
 
+    private fun adapt(type: String, data: String): List<ChatStore.Event> =
+        V2EventAdapter.adapt(type, JSONObject("""{"id":"evt_1","type":"$type","created":1,"data":$data}"""))
+
     // ------------------------------------------------------------------ parse
 
     @Test
-    fun parseAskedReadsEnvelopeProperties() {
-        val event = ChatStore.parseEvent(
+    fun parseAskedReadsTheV2RequestShape() {
+        val event = adapt(
             "permission.asked",
-            JSONObject(
-                """{"type":"permission.asked","properties":
-                   {"id":"per_1","sessionID":"ses_1","permission":"bash",
-                    "patterns":["git status","ls -la"],"always":["git *"],
-                    "metadata":{"reason":"test"},
-                    "tool":{"messageID":"msg_1","callID":"call_1"}}}""",
-            ),
-        ) as ChatStore.Event.PermissionAsked
+            """{"id":"per_1","sessionID":"ses_1","action":"bash",
+               "resources":["git status","ls -la"],"save":["git *"],
+               "metadata":{"reason":"test"},
+               "source":{"type":"tool","messageID":"msg_1","id":"call_1"}}""",
+        ).single() as ChatStore.Event.PermissionAsked
         val req = event.request
         assertEquals("per_1", req.id)
         assertEquals("ses_1", req.sessionID)
@@ -58,11 +61,11 @@ class PermissionFlowTest {
     }
 
     @Test
-    fun parseAskedToleratesFlatPayloadAndMissingFields() {
-        val event = ChatStore.parseEvent(
+    fun parseAskedToleratesMissingOptionalFields() {
+        val event = adapt(
             "permission.asked",
-            JSONObject("""{"type":"permission.asked","id":"per_2","sessionID":"ses_1","permission":"edit"}"""),
-        ) as ChatStore.Event.PermissionAsked
+            """{"id":"per_2","sessionID":"ses_1","action":"edit"}""",
+        ).single() as ChatStore.Event.PermissionAsked
         assertEquals("per_2", event.request.id)
         assertEquals(emptyList<String>(), event.request.patterns)
         assertEquals(emptyList<String>(), event.request.always)
@@ -70,39 +73,21 @@ class PermissionFlowTest {
         assertNull(event.request.metadata)
 
         // An ask without a usable id can never be answered: drop, don't crash.
-        assertNull(
-            ChatStore.parseEvent(
-                "permission.asked",
-                JSONObject("""{"type":"permission.asked","properties":{"sessionID":"ses_1"}}"""),
-            ),
-        )
+        assertTrue(adapt("permission.asked", """{"sessionID":"ses_1"}""").isEmpty())
     }
 
     @Test
     fun parseRepliedReadsRequestID() {
-        val event = ChatStore.parseEvent(
+        val event = adapt(
             "permission.replied",
-            JSONObject(
-                """{"type":"permission.replied","properties":
-                   {"sessionID":"ses_1","requestID":"per_1","reply":"once"}}""",
-            ),
-        )
+            """{"sessionID":"ses_1","requestID":"per_1","reply":"once"}""",
+        ).single()
         // W5-E3: the frame's `reply` is kept alongside the removal.
         assertEquals(ChatStore.Event.PermissionReplied("per_1", "once"), event)
 
-        assertNull(
-            ChatStore.parseEvent(
-                "permission.replied",
-                JSONObject("""{"type":"permission.replied","properties":{"sessionID":"ses_1"}}"""),
-            ),
-        )
-        // Unknown events still fall through to null.
-        assertNull(
-            ChatStore.parseEvent(
-                "permission.unknown",
-                JSONObject("""{"type":"permission.unknown","properties":{}}"""),
-            ),
-        )
+        assertTrue(adapt("permission.replied", """{"sessionID":"ses_1"}""").isEmpty())
+        // Unknown events fall through to nothing on the v2 path.
+        assertTrue(adapt("permission.unknown", """{}""").isEmpty())
     }
 
     // ----------------------------------------------------------------- reduce
@@ -202,6 +187,50 @@ class PermissionFlowTest {
         assertEquals("", partial.tool?.callID)
     }
 
+    @Test
+    fun permissionRequestFromJsonReadsTheV2ToolSourceCallID() {
+        // v2 keys the tool call id `id` inside `source` (`Permission.Source`);
+        // v1 and hybrid payloads keep `callID`. `id` wins when both are there.
+        val v2 = OpenCodeClient.PermissionRequest.fromJson(
+            JSONObject(
+                """{"id":"per_1","sessionID":"ses_1","action":"bash",
+                   "resources":["ls"],"save":["ls"],
+                   "source":{"type":"tool","messageID":"msg_1","id":"call_1"}}""",
+            ),
+        )
+        assertEquals("bash", v2.permission)
+        assertEquals(listOf("ls"), v2.patterns)
+        assertEquals("msg_1", v2.tool?.messageID)
+        assertEquals("call_1", v2.tool?.callID)
+
+        val v1 = OpenCodeClient.PermissionRequest.fromJson(
+            JSONObject(
+                """{"id":"per_2","sessionID":"ses_1","permission":"edit",
+                   "source":{"type":"tool","messageID":"msg_2","callID":"call_2"}}""",
+            ),
+        )
+        assertEquals("call_2", v1.tool?.callID)
+
+        val both = OpenCodeClient.PermissionRequest.fromJson(
+            JSONObject("""{"id":"per_3","source":{"type":"tool","id":"call_v2","callID":"call_v1"}}"""),
+        )
+        assertEquals("call_v2", both.tool?.callID)
+
+        // JSON null on either key is absent, not the literal "null".
+        val nulled = OpenCodeClient.PermissionRequest.fromJson(
+            JSONObject("""{"id":"per_4","source":{"type":"tool","messageID":null,"id":null,"callID":"call_4"}}"""),
+        )
+        assertEquals("", nulled.tool?.messageID)
+        assertEquals("call_4", nulled.tool?.callID)
+
+        // A non-tool source is not a tool request (v2 `source.type` discriminates).
+        assertNull(
+            OpenCodeClient.PermissionRequest.fromJson(
+                JSONObject("""{"id":"per_5","source":{"type":"plugin","id":"call_9"}}"""),
+            ).tool,
+        )
+    }
+
     // ------------------------------------------------------------------- wire
 
     private fun client(server: MockWebServer) =
@@ -212,9 +241,12 @@ class PermissionFlowTest {
         MockWebServer().use { server ->
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
-                    """[{"id":"per_1","sessionID":"ses_1","permission":"bash",
-                        "patterns":["ls"],"always":["ls"],"metadata":{}},
-                       {"sessionID":"ses_1","permission":"edit"}]""",
+                    """{"location":{"directory":"/w"},"data":[
+                        {"id":"per_1","sessionID":"ses_1","action":"bash",
+                         "resources":["ls"],"save":["ls"],
+                         "source":{"type":"tool","messageID":"msg_1","callID":"call_1"},
+                         "metadata":{}},
+                        {"sessionID":"ses_1","action":"edit"}]}""",
                 ),
             )
             val c = client(server)
@@ -222,26 +254,31 @@ class PermissionFlowTest {
             // The id-less entry is dropped: it can never be replied to.
             assertEquals(1, list.size)
             assertEquals("per_1", list[0].id)
+            assertEquals("bash", list[0].permission)
             assertEquals(listOf("ls"), list[0].patterns)
+            assertEquals(listOf("ls"), list[0].always)
+            assertEquals("msg_1", list[0].tool?.messageID)
+            assertEquals("call_1", list[0].tool?.callID)
             val recorded = server.takeRequest()
             assertEquals("GET", recorded.method)
-            assertEquals("/permission", recorded.requestUrl!!.encodedPath)
-            assertEquals("/w", recorded.requestUrl!!.queryParameter("directory"))
+            assertEquals("/api/permission/request", recorded.requestUrl!!.encodedPath)
+            assertEquals("/w", recorded.requestUrl!!.queryParameter("location[directory]"))
             c.close()
         }
     }
 
     @Test
-    fun replyPermissionPostsReplyBodyToReplyPath() {
+    fun replyPermissionThrowsAndPointsAtV2Api() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("true"))
             val c = client(server)
-            c.replyPermission("per_1", "always", "/w")
-            val recorded = server.takeRequest()
-            assertEquals("POST", recorded.method)
-            assertEquals("/permission/per_1/reply", recorded.requestUrl!!.encodedPath)
-            assertEquals("/w", recorded.requestUrl!!.queryParameter("directory"))
-            assertEquals("always", JSONObject(recorded.body.readUtf8()).getString("reply"))
+            // No v1-compatible reply route exists on v2 (the reply needs the
+            // sessionID this signature never carried): fail loudly and point
+            // at V2Api.replyPermission instead of posting to a dead route.
+            val e = assertThrows(UnsupportedOperationException::class.java) {
+                c.replyPermission("per_1", "always", "/w")
+            }
+            assertTrue(e.message!!.contains("V2Api.replyPermission"))
+            assertEquals(0, server.requestCount)
             c.close()
         }
     }

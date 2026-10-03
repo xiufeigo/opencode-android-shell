@@ -1,7 +1,6 @@
 package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.composer.ComposerQueue
-import com.xiufeigo.opencodeshell.v2.V1Transport
 import com.xiufeigo.opencodeshell.v2.V2Api
 import com.xiufeigo.opencodeshell.v2.V2Transport
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -22,8 +21,7 @@ import org.junit.Test
  *   `V2Api.cancelInbox` DELETEs it (both new; `sessionInbox` GET already existed);
  * - the prompt payload carries mentions-first `files`, `agents[]`, `skills[]`,
  *   `metadata.displayText` and `delivery` (and still omits `resume`);
- * - `V2Transport.sendStructuredPrompt` returns the admitted `msg_` id while
- *   `V1Transport.sendPrompt` stays id-less (null);
+ * - `V2Transport.sendStructuredPrompt` returns the admitted `msg_` id;
  * - [ComposerQueueHolder.rowFromJson] maps inbox items to panel rows and the
  *   holder publishes add/remove/replace/clear.
  *
@@ -158,17 +156,6 @@ class Wave24bQueueWiringTest {
             val body = request.json()
             assertEquals("queue", body.getString("delivery"))
             assertEquals("file:///w/a.kt", body.getJSONArray("files").getJSONObject(0).getString("uri"))
-        }
-    }
-
-    @Test
-    fun v1SendPromptAdmitsWithoutAnId() {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
-            val client = OpenCodeClient(server.url("/").toString().toHttpUrlOrNull()!!, null, null)
-            val transport = V1Transport(client, server.url("/"), directory = "/w")
-            val admitted = transport.sendPrompt("ses_1", "hi", emptyList(), null, null, null)
-            assertNull(admitted)
         }
     }
 

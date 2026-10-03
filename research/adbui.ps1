@@ -21,7 +21,7 @@
 # 嵌套数组（输出 `tapped ,` 空参数）；把 `$nodes[0].bounds` 作为实参传给函数也会绑成空串。
 
 param(
-    [ValidateSet('texts', 'summary', 'tap', 'desc', 'shot', 'size', 'swipe', 'key')]
+    [ValidateSet('texts', 'summary', 'tap', 'desc', 'shot', 'size', 'swipe', 'key', 'type')]
     [string]$Action = 'summary',
     [string]$Serial = 'emulator-5556',
     [string]$Text = '',
@@ -39,12 +39,94 @@ $adb = 'C:\Users\xiufe\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 $tmp = Join-Path $env:TEMP 'adbui.xml'
 
 function Get-Ui([string]$serial) {
-    & $adb -s $serial shell uiautomator dump /sdcard/adbui.xml | Out-Null
-    & $adb -s $serial pull /sdcard/adbui.xml $tmp | Out-Null
+    # Fail loudly instead of serving the previous dump: a device that went
+    # offline mid-run used to leave $tmp in place, and the stale nodes read
+    # back "as if" the UI were unchanged — which reads as "tap did nothing".
+    if (Test-Path $tmp) { Remove-Item $tmp -Force }
+    & $adb -s $serial shell rm -f /sdcard/adbui.xml 2>&1 | Out-Null
+    $dump = (& $adb -s $serial shell uiautomator dump /sdcard/adbui.xml 2>&1) -join ' '
+    if ($LASTEXITCODE -ne 0 -or $dump -notmatch 'dumped to') {
+        throw "uiautomator dump failed on ${serial}: $dump"
+    }
+    & $adb -s $serial pull /sdcard/adbui.xml $tmp 2>&1 | Out-Null
+    if (-not (Test-Path $tmp)) {
+        throw "adb pull of the UI dump failed on ${serial} (device offline?)"
+    }
     return [xml](Get-Content $tmp -Raw)
 }
 
+# Text entry that survives a composing IME. `adb shell input text` is rewritten
+# deterministically by Gboard's pinyin mode (measured: "opencode" -> "open code",
+# "http://127.0.0.1:4095" -> "htt//1..7.001:495"), and disabling the IME does
+# not help while it stays the default. So the fast path is verified against the
+# uiautomator dump and, on mismatch, redone as per-character KEYCODEs, which
+# never enter IME composition.
+function Test-UiText([string]$serial, [string]$value) {
+    $doc = Get-Ui $serial
+    return [bool]($doc.SelectNodes("//*[@text]") | Where-Object { $_.GetAttribute('text') -eq $value })
+}
+
+function Send-UiChar([string]$serial, [char]$ch) {
+    if ($ch -cmatch '^[a-z]$') { & $adb -s $serial shell input keyevent "KEYCODE_$($ch.ToString().ToUpper())" 2>&1 | Out-Null; return }
+    if ($ch -cmatch '^[A-Z]$') { & $adb -s $serial shell input keycombination KEYCODE_SHIFT_LEFT "KEYCODE_$ch" 2>&1 | Out-Null; return }
+    if ($ch -cmatch '^[0-9]$') { & $adb -s $serial shell input keyevent "KEYCODE_$ch" 2>&1 | Out-Null; return }
+    $plain = @{
+        '.' = 'KEYCODE_PERIOD'; ',' = 'KEYCODE_COMMA'; '/' = 'KEYCODE_SLASH'
+        '\' = 'KEYCODE_BACKSLASH'; '-' = 'KEYCODE_MINUS'; '=' = 'KEYCODE_EQUALS'
+        ' ' = 'KEYCODE_SPACE'; '@' = 'KEYCODE_AT'; "'" = 'KEYCODE_APOSTROPHE'
+        '[' = 'KEYCODE_LEFT_BRACKET'; ']' = 'KEYCODE_RIGHT_BRACKET'; '`' = 'KEYCODE_GRAVE'
+    }
+    $shifted = @{
+        ':' = @('KEYCODE_SEMICOLON'); '_' = @('KEYCODE_MINUS'); '~' = @('KEYCODE_GRAVE')
+        '+' = @('KEYCODE_EQUALS'); '?' = @('KEYCODE_SLASH'); '#' = @('KEYCODE_3')
+        '$' = @('KEYCODE_4'); '%' = @('KEYCODE_5'); '&' = @('KEYCODE_7'); '*' = @('KEYCODE_8')
+        '(' = @('KEYCODE_9'); ')' = @('KEYCODE_0'); '!' = @('KEYCODE_1'); '"' = @('KEYCODE_APOSTROPHE')
+    }
+    $s = $ch.ToString()
+    if ($plain.ContainsKey($s)) { & $adb -s $serial shell input keyevent $plain[$s] 2>&1 | Out-Null; return }
+    if ($shifted.ContainsKey($s)) { & $adb -s $serial shell input keycombination KEYCODE_SHIFT_LEFT $shifted[$s] 2>&1 | Out-Null; return }
+    throw "Set-UiText: no keycode mapping for '$s'"
+}
+
+function Set-UiText([string]$serial, [string]$value) {
+    # Clear the focused field first: `input text` only *inserts*, and the old DEL
+    # budget was sized off the typed value rather than what was already there
+    # (measured: prefilled "C:\Users\xiufe" + "abc123" -> "C:\Uabc123").
+    $existing = 0
+    try {
+        $focused = (Get-Ui $serial).SelectNodes("//*[@focused='true']") | Select-Object -First 1
+        if ($focused) { $existing = $focused.GetAttribute('text').Length }
+    } catch { }
+    & $adb -s $serial shell input keyevent KEYCODE_MOVE_END 2>&1 | Out-Null
+    $clear = [Math]::Min([Math]::Max($existing, $value.Length) + 12, 200)
+    for ($i = 0; $i -lt $clear; $i++) { & $adb -s $serial shell input keyevent KEYCODE_DEL 2>&1 | Out-Null }
+    if (Test-UiText $serial '') { } # field is empty now; continue either way
+
+    & $adb -s $serial shell input text ($value -replace ' ', '%s') 2>&1 | Out-Null
+    Start-Sleep -Milliseconds 350
+    if (Test-UiText $serial $value) { return $true }
+
+    # A composing IME (Gboard pinyin) rewrites or drops characters. Redo as
+    # per-character KEYCODEs, which at least keep the sent code points intact.
+    for ($i = 0; $i -lt $clear; $i++) { & $adb -s $serial shell input keyevent KEYCODE_DEL 2>&1 | Out-Null }
+    foreach ($ch in $value.ToCharArray()) { Send-UiChar $serial $ch }
+    Start-Sleep -Milliseconds 400
+    return (Test-UiText $serial $value)
+}
+
 switch ($Action) {
+    'type' {
+        # Gboard rewrites `input text` (measured: "http://127.0.0.1:4095" ->
+        # "ht:/127.0.0.1:4095"), so this verifies the field and exits 2 when the
+        # injected text does not match — a silent rewrite is indistinguishable
+        # from "the field rejected my input" otherwise.
+        if (Set-UiText $Serial $Text) {
+            "typed ok: $Text"
+        } else {
+            "TYPE MISMATCH on ${Serial}: wanted '$Text'"
+            exit 2
+        }
+    }
     'size' {
         "serial : $Serial"
         "wm size: $(((& $adb -s $Serial shell wm size) -join ' ').Trim())"

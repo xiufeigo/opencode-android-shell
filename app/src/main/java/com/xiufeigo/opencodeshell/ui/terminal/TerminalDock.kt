@@ -62,7 +62,8 @@ import com.xiufeigo.opencodeshell.ui.theme.OcTheme
  * @param placement which slot this call is; the pane renders only when the
  *   stored setting names it.
  * @param sessionId key of the remembered size (a session switch must not carry
- *   the previous session's split over).
+ *   the previous session's split over) and the session whose bound terminals
+ *   the panel can list/create/attach (`sessionTerminals` & friends).
  */
 @Composable
 fun TerminalDock(
@@ -71,6 +72,8 @@ fun TerminalDock(
     directory: String?,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** B-5: `terminal.new` — forwarded to the pane (see [TerminalPanelHost]). */
+    newTabRequest: Int = 0,
 ) {
     val configuration = LocalConfiguration.current
     // `isDesktop()` gate + the setting, in one pure projection.
@@ -114,6 +117,8 @@ fun TerminalDock(
             handle(Modifier.fillMaxWidth().height(PANE_HANDLE_DP.dp))
             EmbeddedTerminalPanel(
                 directory = directory,
+                sessionID = sessionId,
+                newTabRequest = newTabRequest,
                 onClose = onClose,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
@@ -123,6 +128,8 @@ fun TerminalDock(
             handle(Modifier.fillMaxHeight().width(PANE_HANDLE_DP.dp))
             EmbeddedTerminalPanel(
                 directory = directory,
+                sessionID = sessionId,
+                newTabRequest = newTabRequest,
                 onClose = onClose,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )

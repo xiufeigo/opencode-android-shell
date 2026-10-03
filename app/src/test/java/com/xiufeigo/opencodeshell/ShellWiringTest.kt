@@ -243,14 +243,15 @@ class ShellWiringTest {
         assertEquals(2, rows[0].modelCount)
         assertEquals("z1", rows[0].defaultModelID)
         assertEquals(1, connectedProviderCount(providers))
-        assertEquals(2, connectedModelCount(providers))
+        // Full-caliber count: every cataloged model, not just connected ones.
+        assertEquals(3, connectedModelCount(providers))
         // Nothing fetched yet.
         assertTrue(providerRows(null).isEmpty())
         assertEquals(0, connectedProviderCount(null))
     }
 
     @Test
-    fun modelRowsListConnectedProvidersOnlyAndTagTheCurrentOne() {
+    fun modelRowsListEveryProviderAndFlagConnected() {
         val providers = OpenCodeClient.Providers(
             all = listOf(
                 OpenCodeClient.Providers.Provider(
@@ -264,13 +265,15 @@ class ShellWiringTest {
                     models = listOf(model("a1")),
                 ),
             ),
-            connected = listOf("alpha", "zeta"),
+            connected = listOf("zeta"),
             default = emptyMap(),
         )
         val rows = modelRows(providers, selected = "zeta" to "z2")
-        // Catalog order is preserved, disconnected providers are not listed.
+        // Catalog order is preserved; unconnected providers stay listed —
+        // `connected` only marks the row (v2 divergence, see ModelRow).
         assertEquals(listOf("zeta/z1", "zeta/z2", "alpha/a1"), rows.map { it.ref })
         assertEquals(listOf(false, true, false), rows.map { it.current })
+        assertEquals(listOf(true, true, false), rows.map { it.connected })
         assertEquals(200_000, rows[1].limitContext)
         assertEquals(3, connectedModelCount(providers))
     }

@@ -17,13 +17,18 @@ internal object V2ApiFixtures {
 
     // ------------------------------------------------------------------ health
 
-    /** `GET /api/info` — measured on 2.0.11: the v2 probe signal. */
+    /** `GET /api/info` — measured on 2.0.11: the v2 probe signal **and** the liveness route. */
     const val INFO_V2 = """{"version":"2.0.11","pid":67503,"urls":["http://127.0.0.1:4095"],"paths":{"tmp":"/tmp/opencode"}}"""
 
     /** `GET /global/health` — measured on 1.18.31: the v1 probe signal. */
     const val HEALTH_V1 = """{"healthy":true,"version":"1.18.31"}"""
 
-    /** `GET /api/health` — measured: exactly one key, no envelope, no version. */
+    /**
+     * `GET /api/health` — the **legacy/v1** liveness document (measured on
+     * 1.18.31/4096): exactly one key, no envelope, no version. On 2.0.11 this
+     * route answers `404` with an empty body (measured 2026-09-25), which is why
+     * `V2Api.health()` probes `/api/info` first and only falls back here.
+     */
     const val HEALTH = """{"healthy":true}"""
 
     /** The SPA fallback every unimplemented `/api/…` path answers: `200` + this. */

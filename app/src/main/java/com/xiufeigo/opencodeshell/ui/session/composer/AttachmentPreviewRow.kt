@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -65,6 +66,11 @@ import java.util.Base64
  * - file: `layer02`, radius 6, 46 dp tall, 14 dp icon + 12 sp name
  * - remove: 16 dp circle pinned to the chip's top-end corner (the View shell
  *   pinned it at `END or TOP` inside the 58×46 frame, `ChatView` L662-686)
+ *
+ * Which of the two shapes a pending attachment gets is
+ * [AttachmentPolicy.chip]: the 58×46 thumbnail only while it carries a
+ * decodable `data:` payload, so a pick that was never written — or one Android
+ * refuses to decode — shows as a named file chip instead of an empty frame.
  *
  * W5-C B5/B6 additions:
  * - the two **24 dp edge fades** of `composer-attachments-fade-left/right`
@@ -157,11 +163,18 @@ private fun AttachmentChip(
     onRemove: () -> Unit,
     onOpen: () -> Unit,
 ) {
+    // A thumbnail needs a payload *and* a decode that succeeds. Anything else —
+    // a pick whose bytes were never written, a draft restored without its
+    // payload, a format Android cannot decode — falls back to the named file
+    // chip instead of an empty 58×46 frame that nothing would ever fill (the
+    // decode is not retried).
+    var decodeFailed by remember(attachment.dataUrl) { mutableStateOf(false) }
     // The badge overhangs the chip by 4 dp (upstream `-top-1 -end-1`): reserve
     // that space inside the row so the scroll container cannot clip it.
     Box(modifier = Modifier.padding(top = BADGE_OVERHANG, end = BADGE_OVERHANG)) {
-        if (AttachmentMime.isImage(attachment.mime)) {
-            ImageThumbnail(attachment, onClick = onOpen)
+        val chip = AttachmentPolicy.chip(attachment.mime, attachment.dataUrl, decodeFailed)
+        if (chip == AttachmentPolicy.Chip.IMAGE) {
+            ImageThumbnail(attachment, onClick = onOpen, onFailed = { decodeFailed = true })
         } else {
             FileChip(attachment)
         }
@@ -172,9 +185,17 @@ private fun AttachmentChip(
     }
 }
 
-/** Image data URL → `layer02` frame while decoding, `ContentScale.Crop` once decoded. */
+/**
+ * Image data URL → `layer02` frame while decoding, `ContentScale.Crop` once
+ * decoded. [onFailed] reports a payload that is missing or that Android cannot
+ * decode, so the chip can switch to the file chip rather than stay blank.
+ */
 @Composable
-private fun ImageThumbnail(attachment: ChatViewModel.Attachment, onClick: () -> Unit) {
+private fun ImageThumbnail(
+    attachment: ChatViewModel.Attachment,
+    onClick: () -> Unit,
+    onFailed: () -> Unit,
+) {
     val c = OcTheme.colors
     val payload = remember(attachment.dataUrl) {
         AttachmentPolicy.imagePayload(attachment.mime, attachment.dataUrl)
@@ -182,11 +203,14 @@ private fun ImageThumbnail(attachment: ChatViewModel.Attachment, onClick: () -> 
     var bitmap by remember(payload) { mutableStateOf(AttachmentThumbs.get(payload)) }
 
     LaunchedEffect(payload) {
-        if (payload == null || bitmap != null) return@LaunchedEffect
-        val decoded = withContext(Dispatchers.IO) { decodeThumbnail(payload) }
-        if (decoded != null) {
-            AttachmentThumbs.put(payload, decoded)
+        if (bitmap != null) return@LaunchedEffect
+        val bytes = payload
+        val decoded = bytes?.let { withContext(Dispatchers.IO) { decodeThumbnail(it) } }
+        if (bytes != null && decoded != null) {
+            AttachmentThumbs.put(bytes, decoded)
             bitmap = decoded
+        } else {
+            onFailed()
         }
     }
 
@@ -195,12 +219,16 @@ private fun ImageThumbnail(attachment: ChatViewModel.Attachment, onClick: () -> 
             .size(width = THUMB_WIDTH, height = CHIP_HEIGHT)
             .clip(OcTheme.shapes.md)
             .background(c.layer02)
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            // The name rides the clickable Box, not the `Image` inside it: only
+            // the node carrying ACTION_CLICK is announced as a button, and
+            // Compose reads `contentDescription` from a node's own config.
+            .semantics { contentDescription = attachment.filename },
     ) {
         bitmap?.let { image ->
             Image(
                 bitmap = image.asImageBitmap(),
-                contentDescription = attachment.filename,
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -235,13 +263,17 @@ private fun AttachmentPreviewOverlay(
         if (payload == null) return@LaunchedEffect
         bitmap = withContext(Dispatchers.IO) { decodePreview(payload) }
     }
+    // Hoisted: `semantics {}` is not a composable scope. The ✕ and the scrim it
+    // shares a dismiss action with both announce this label.
+    val closeLabel = stringResource(R.string.oc_attach_preview_close)
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = PREVIEW_SCRIM_ALPHA))
-                .clickable(onClick = onDismiss),
+                .clickable(onClick = onDismiss)
+                .semantics { contentDescription = closeLabel },
             contentAlignment = Alignment.Center,
         ) {
             bitmap?.let { image ->
@@ -262,12 +294,13 @@ private fun AttachmentPreviewOverlay(
                     .size(BADGE_SIZE * 2)
                     .clip(CircleShape)
                     .background(c.layer01)
-                    .clickable(onClick = onDismiss),
+                    .clickable(onClick = onDismiss)
+                    .semantics { contentDescription = closeLabel },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_oc_close),
-                    contentDescription = stringResource(R.string.oc_attach_preview_close),
+                    contentDescription = null,
                     tint = c.iconBase,
                     modifier = Modifier.size(16.dp),
                 )
@@ -392,6 +425,37 @@ private object AttachmentThumbs {
 }
 
 private const val TAG = "AttachmentPreview"
+
+/**
+ * v63 BUG-2: the ceiling the pending-attachment band is measured against, and
+ * the arithmetic behind it.
+ *
+ * The strip is one horizontally scrolling row — `CHIP_HEIGHT` plus the remove
+ * badge's `BADGE_OVERHANG` plus the row's own vertical padding — optionally with
+ * the upload progress row under it. The band is given a hard maximum so a
+ * mis-measurement can never spend the pane: the composer card below is what
+ * carries the editor and the send button, and a band that grows without bound
+ * pushes it off the pane entirely (`research/v63_verify/5558/27-29`).
+ *
+ * Pure Dp arithmetic, so `AttachmentPreviewLayoutV63Test` pins it on the JVM.
+ */
+internal object AttachmentPreviewLayout {
+
+    /** The strip row: chip + badge overhang + its vertical padding. */
+    val stripHeight: Dp get() = CHIP_HEIGHT + BADGE_OVERHANG + STRIP_PADDING
+
+    /** The band while a read is in flight: strip + progress row. */
+    val bandHeight: Dp get() = stripHeight + PROGRESS_ROW_RESERVE
+
+    /** Hard ceiling for the band, whichever rows it is showing. */
+    val MAX_HEIGHT: Dp get() = bandHeight
+
+    /** `8 dp` top + `4 dp` bottom on the strip `Row`. */
+    val STRIP_PADDING: Dp get() = 8.dp + 4.dp
+
+    /** The `UploadProgressRow`'s own vertical padding plus its bar height. */
+    val PROGRESS_ROW_RESERVE: Dp get() = 8.dp + 12.dp + 8.dp
+}
 
 /** `w-[58px] h-[46px]`. */
 private val THUMB_WIDTH = 58.dp

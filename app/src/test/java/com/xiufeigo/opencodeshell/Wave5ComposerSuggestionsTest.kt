@@ -61,13 +61,16 @@ class Wave5ComposerSuggestionsTest {
             query = "",
             commands = listOf(command("init", "guided AGENTS.md setup"), command("review", "review the diff")),
         )
+        // Built-ins (`/model` `/agent`), the server catalog, then `/btw` — the
+        // registered command that also runs locally (`btw.tsx:57`).
         assertEquals(
-            listOf("/model", "/agent", "/init", "/review"),
+            listOf("/model", "/agent", "/init", "/review", "/btw"),
             items.map { it.label },
         )
         assertTrue("built-ins run locally", items[0].builtIn && items[1].builtIn)
         assertFalse("server commands are submitted", items[2].builtIn)
         assertEquals("guided AGENTS.md setup", items[2].description)
+        assertTrue("`/btw` opens the side-question panel", items[4].builtIn)
     }
 
     @Test
@@ -76,13 +79,27 @@ class Wave5ComposerSuggestionsTest {
             command("init", "guided AGENTS.md setup"),
             command("review", "review the working tree diff"),
             command("gsd-verify-work", "verify a workstream"),
+            command("terminal", "toggle the terminal"),
         )
-        // `filterKeys: ["trigger", "title"]` → normalized contains on name/description.
+        // Upstream's `useFilteredList` runs this menu through `fuzzysort` over
+        // `[trigger, title]` (`packages/ui/src/hooks/use-filtered-list.tsx`),
+        // so the menu answers abbreviations, not just prefixes: `trm` reaches
+        // `/terminal` (5554), while every prefix narrowing (5556) keeps working
+        // because a prefix is itself a subsequence.
         assertEquals(listOf("/init"), ComposerSuggestions.commandItems("ini", commands).map { it.label })
         assertEquals(listOf("/review"), ComposerSuggestions.commandItems("REVIEW", commands).map { it.label })
+        assertEquals(listOf("/review"), ComposerSuggestions.commandItems("rev", commands).map { it.label })
         assertEquals(
-            listOf("/review", "/gsd-verify-work"),
+            listOf("/gsd-verify-work"),
+            ComposerSuggestions.commandItems("gsd", commands).map { it.label },
+        )
+        assertEquals(
+            listOf("/gsd-verify-work"),
             ComposerSuggestions.commandItems("work", commands).map { it.label },
+        )
+        assertEquals(
+            listOf("/terminal"),
+            ComposerSuggestions.commandItems("trm", commands).map { it.label },
         )
         assertTrue(ComposerSuggestions.commandItems("nomatch", commands).isEmpty())
     }

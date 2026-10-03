@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.composer.ComposerSubmit
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,6 +60,30 @@ class ComposerSubmitTest {
         assertFalse("a held Enter must not spam sends", ComposerSubmit.enterSubmits(false, true))
     }
 
+    // ------------------------------------------------------- enter action rule
+
+    @Test
+    fun enterResolvesToOneOfThreeActions() {
+        assertEquals(
+            ComposerSubmit.EnterAction.SUBMIT,
+            ComposerSubmit.enterAction(isShiftPressed = false, isRepeat = false),
+        )
+        assertEquals(
+            "upstream editor.tsx:211 newlines a shifted Enter",
+            ComposerSubmit.EnterAction.NEWLINE,
+            ComposerSubmit.enterAction(isShiftPressed = true, isRepeat = false),
+        )
+        assertEquals(
+            "a composing IME never submits (editor.tsx:211 `!isComposing`)",
+            ComposerSubmit.EnterAction.NEWLINE,
+            ComposerSubmit.enterAction(isShiftPressed = false, isRepeat = false, isComposing = true),
+        )
+        assertEquals(
+            ComposerSubmit.EnterAction.IGNORE,
+            ComposerSubmit.enterAction(isShiftPressed = false, isRepeat = true),
+        )
+    }
+
     // -------------------------------------------------------- source guards
 
     @Test
@@ -66,22 +91,67 @@ class ComposerSubmitTest {
         val composer = source(COMPOSER)
         assertTrue("soft keyboard send action", composer.contains("KeyboardOptions(imeAction = ImeAction.Send)"))
         assertTrue("soft keyboard submit", composer.contains("KeyboardActions(onSend = { submit() })"))
-        assertTrue("hardware Enter path", composer.contains("ComposerSubmit.enterSubmits("))
+        assertTrue("hardware Enter path", composer.contains("ComposerSubmit.enterAction("))
         assertTrue("repeated keys are filtered", composer.contains("repeatCount > 0"))
         assertTrue("send/stop decision", composer.contains("ComposerSubmit.stopping("))
         assertTrue(
             "blank input stops, otherwise it sends",
             composer.contains("if (stopping) onStop() else submit()"),
         )
-        assertTrue("Shift+Enter must reach the text field", composer.contains("return@onPreviewKeyEvent false"))
+        assertTrue("every other key falls through to the field", composer.contains("return@onPreviewKeyEvent false"))
+    }
+
+    /**
+     * v57 P0: the soft keyboard has no newline key once the composer asks for
+     * `ImeAction.Send`, so the IME half of upstream's `Shift+Enter` has to be
+     * reachable — a long press on the send button.
+     */
+    @Test
+    fun theSendButtonLongPressNewlinesForTheSoftKeyboard() {
+        val composer = source(COMPOSER)
+        assertTrue("send button long press", composer.contains("onLongClick = { if (!stopping) insertText(\"\\n\") }"))
+        assertTrue(
+            "the long press is announced",
+            composer.contains("onLongClickLabel = longPressLabel"),
+        )
+    }
+
+    /**
+     * v57 P0: falling through is not "let the field newline" — Compose runs the
+     * IME action for any Enter key-down that reaches the field, so a
+     * `Shift+Enter` used to send. Both branches must be owned and consumed.
+     */
+    @Test
+    fun everyEnterBranchIsOwnedAndConsumed() {
+        val composer = source(COMPOSER)
+        val enter = composer.substringAfter("if (event.key != Key.Enter && event.key != Key.NumPadEnter)")
+            .take(ENTER_WINDOW)
+        assertTrue("the newline branch types the break", enter.contains("insertText(\"\\n\")"))
+        assertTrue("the submit branch submits", enter.contains("ComposerSubmit.EnterAction.SUBMIT -> submit()"))
+        assertTrue("the repeat branch does nothing", enter.contains("ComposerSubmit.EnterAction.IGNORE -> Unit"))
+        assertTrue(
+            "and the key is consumed",
+            enter.contains("ComposerSubmit.EnterAction.IGNORE -> Unit\n                        }\n                        true"),
+        )
     }
 
     @Test
     fun aSendClearsTheEditor() {
         val composer = source(COMPOSER)
-        val submit = composer.substringAfter("fun submit()").take(SUBMIT_WINDOW)
-        assertTrue("the submitted text is cleared", submit.contains("value = TextFieldValue(\"\")"))
-        assertTrue("the mention popover closes", submit.contains("trigger = null"))
+        // Bound by the next declaration, not by a fixed width: `submit()` is long
+        // and its preamble grows with each round's comments, and a hand-counted
+        // window silently stops covering the clear it is here to assert (v81:
+        // the same pin broke on a longer comment, not on a behaviour change).
+        val submit = composer.substringAfter("fun submit()")
+            .substringBefore("\n    fun pasteFromClipboard")
+        // v64: the clear is a write-back like any other, so it goes through the
+        // caret guard rather than around it. v81: the guard is handed the value
+        // being cleared, like every other write (an empty line has no head).
+        assertTrue(
+            "the submitted text is cleared — the panel closes through [live], not a mirror",
+            submit.contains("value = ComposerImeCommit.adopt(TextFieldValue(\"\"), previous = value)"),
+        )
+        assertFalse("no mirrored trigger is cleared anymore", submit.contains("trigger = null"))
     }
 
     @Test
@@ -101,7 +171,7 @@ class ComposerSubmitTest {
         const val COMPOSER = "src/main/java/com/xiufeigo/opencodeshell/ui/session/composer/Composer.kt"
         const val SCREEN = "src/main/java/com/xiufeigo/opencodeshell/ui/session/SessionScreen.kt"
 
-        /** Window that covers the whole `submit()` body. */
-        const val SUBMIT_WINDOW = 400
+        /** Window that covers the whole `Enter` key-down branch. */
+        const val ENTER_WINDOW = 1500
     }
 }

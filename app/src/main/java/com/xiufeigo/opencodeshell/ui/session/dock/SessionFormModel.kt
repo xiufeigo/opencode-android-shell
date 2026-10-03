@@ -43,6 +43,12 @@ data class FormWhen(
     val value: Any?,
 )
 
+/** Result of tapping a custom-answer row ([SessionFormModel.toggleCustom]). */
+data class FormCustomToggle(
+    val customOn: Set<String>,
+    val values: Map<String, Any?>,
+)
+
 sealed interface FormField {
     val key: String
     val title: String
@@ -181,20 +187,29 @@ object SessionFormModel {
                 },
             )
 
-            "number", "integer" -> FormField.NumberInput(
-                key = key,
-                title = title,
-                description = description,
-                required = required,
-                hidden = hidden,
-                whenClauses = whenClauses,
-                integer = obj.optString("type", "") == "integer",
-                default = if (obj.has("default")) {
-                    obj.optDouble("default").takeIf { !it.isNaN() }
-                } else {
-                    null
-                },
-            )
+            "number", "integer" -> {
+                val integer = obj.optString("type", "") == "integer"
+                FormField.NumberInput(
+                    key = key,
+                    title = title,
+                    description = description,
+                    required = required,
+                    hidden = hidden,
+                    whenClauses = whenClauses,
+                    integer = integer,
+                    // A non-finite default (`1e400`) or an integer default
+                    // beyond `Long` would seed a value that either fails JSON
+                    // encoding or saturates to Long.MAX — same "invalid reads
+                    // as absent" rule as the boolean default below.
+                    default = if (obj.has("default")) {
+                        obj.optDouble("default").takeIf {
+                            it.isFinite() && (!integer || inLongRange(it))
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
 
             "boolean" -> FormField.BooleanInput(
                 key = key,
@@ -203,7 +218,15 @@ object SessionFormModel {
                 required = required,
                 hidden = hidden,
                 whenClauses = whenClauses,
-                default = obj.takeIf { it.has("default") }?.optBoolean("default"),
+                // `optBoolean` coerces an explicit JSON null and non-booleans
+                // ("yes") to `false`, which would pre-answer the field the
+                // user never touched — mirror the number default instead:
+                // present-but-invalid reads as "no default".
+                default = if (obj.has("default")) {
+                    obj.opt("default").takeIf { it != JSONObject.NULL }?.let { toBoolean(it) }
+                } else {
+                    null
+                },
             )
 
             "external" -> {
@@ -234,6 +257,18 @@ object SessionFormModel {
             val key = cond.optString("key", "").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
             val op = cond.optString("op", "").takeIf { it == "eq" || it == "neq" } ?: return@mapNotNull null
             FormWhen(key = key, op = op, value = cond.opt("value").takeIf { it != JSONObject.NULL })
+        }
+
+    /**
+     * A numeric draft from the dock's text field. `NaN` / `Infinity` / `1e400`
+     * are rejected outright — `JSONObject.put` throws on non-finite doubles,
+     * which would roll the whole submit back with no visible error. Integer
+     * fields additionally reject values `Long` cannot hold, whose saturating
+     * `toLong()` would post Long.MAX_VALUE as a valid answer.
+     */
+    fun parseNumberDraft(draft: String, integer: Boolean): Double? =
+        draft.trim().toDoubleOrNull()?.takeIf {
+            it.isFinite() && (!integer || inLongRange(it))
         }
 
     /**
@@ -286,6 +321,15 @@ object SessionFormModel {
         else -> null
     }
 
+    // The upper bound is open: `Long.MAX_VALUE.toDouble()` rounds up to 2^63,
+    // which no longer fits a `Long`.
+    private fun inLongRange(value: Double): Boolean =
+        value >= Long.MIN_VALUE.toDouble() && value < Long.MAX_VALUE.toDouble()
+
+    /** Integral value converted without saturation, `null` when out of range. */
+    private fun Double.toLongExact(): Long? =
+        if (this == kotlin.math.floor(this) && inLongRange(this)) toLong() else null
+
     /**
      * The dock's pages: every non-hidden field that is active against the
      * current [answers], in form order. Upstream's question filter
@@ -312,6 +356,41 @@ object SessionFormModel {
     }
 
     /**
+     * A tap on the custom-answer row (v1 question dock's `toggleCustom`,
+     * upstream `customToggle`). Single-select custom is a radio alternative:
+     * entering replaces the option pick (v1 clears `selections`; a retained
+     * draft becomes the answer so it matches the visible input, upstream
+     * `customOpen` → `customUpdate(input(), true)`), and leaving drops the
+     * draft — otherwise a closed custom row would submit its draft invisibly.
+     * Multi keeps its picks and only removes the draft on exit.
+     */
+    fun toggleCustom(
+        key: String,
+        multi: Boolean,
+        customOn: Set<String>,
+        customText: Map<String, String>,
+        values: Map<String, Any?>,
+    ): FormCustomToggle {
+        if (key !in customOn) {
+            val draft = customText[key].orEmpty().trim().takeIf { it.isNotEmpty() }
+            return FormCustomToggle(
+                customOn = customOn + key,
+                values = when {
+                    multi -> values
+                    draft == null -> values - key
+                    else -> values + (key to draft)
+                },
+            )
+        }
+        if (!multi) return FormCustomToggle(customOn - key, values - key)
+        // Leaving custom mode drops the draft from a multi answer.
+        val draft = customText[key].orEmpty().trim()
+        if (draft.isEmpty()) return FormCustomToggle(customOn - key, values)
+        val current = (values[key] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+        return FormCustomToggle(customOn - key, values + (key to (current - draft)))
+    }
+
+    /**
      * The `FormAnswer` (`{key: value}`) the reply posts: upstream `submit()`
      * (`:275-284`) — answered fields only, single-select posts the single
      * value, multiselect the array. Hidden and `when`-inactive fields are
@@ -333,13 +412,16 @@ object SessionFormModel {
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { answer[field.key] = it }
 
-                is FormField.NumberInput -> toDouble(value)?.let { number ->
-                    answer[field.key] = if (field.integer && number == kotlin.math.floor(number)) {
-                        number.toLong()
-                    } else {
-                        number
+                is FormField.NumberInput -> toDouble(value)?.takeIf { it.isFinite() }
+                    ?.let { number ->
+                        if (field.integer && number == kotlin.math.floor(number)) {
+                            // A saturating `toLong()` would post Long.MAX_VALUE
+                            // for e.g. 1e30 — refuse the value instead of lying.
+                            number.toLongExact()?.let { answer[field.key] = it }
+                        } else {
+                            answer[field.key] = number
+                        }
                     }
-                }
 
                 is FormField.BooleanInput -> toBoolean(value)?.let { answer[field.key] = it }
                 is FormField.External -> Unit
@@ -349,11 +431,15 @@ object SessionFormModel {
     }
 
     /**
-     * `DELETE /api/session/{sessionID}/form/{formID}` — the documented cancel
-     * route (`protocol/src/groups/session.ts` `session.form.cancel`, "Cancel a
-     * pending form"; the generated client exposes it as
-     * `session.form.cancel`). `null` when the base URL does not parse, so the
-     * caller can fall back to a local-only dismiss.
+     * Pure `Request` construction for `DELETE /api/session/{sessionID}/form/
+     * {formID}` — `session.form.cancel` (`protocol/src/groups/session.ts:855-868`,
+     * "Cancel a pending form"): path segments only, no body, no `location`
+     * query. No I/O happens here.
+     *
+     * The performing seam is `V2Api.formCancel(sessionID, formID)`
+     * (`v2/V2ApiMissingVerbs.kt`); this builder remains only for callers that
+     * own their own `Call`, and is `null` when the base URL does not parse, so
+     * the caller can fall back to a local-only dismiss.
      */
     fun formCancelRequest(
         baseUrl: String,

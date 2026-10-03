@@ -65,4 +65,39 @@ class TimelineFingerprintTest {
         val filled = listOf(message("m1", listOf(part("p2", "", "bash", "completed", "some output"))))
         assertNotEquals(appendFingerprint(empty), appendFingerprint(filled))
     }
+
+    @Test
+    fun handoverOfTheTrailingPlaceholderChangesFingerprint() {
+        // The delivery swaps the trailing parked steer for the user message in
+        // place — same id, same text length — restyling the bubble without
+        // touching any part the old probe read, so the follow never re-pinned
+        // the bottom after a post-Stop send.
+        val parked = listOf(
+            ChatStore.UiMessage(
+                id = "msg_u2",
+                role = ChatStore.PENDING_ROLE,
+                timeCreated = 2L,
+                parts = listOf(part("msg_u2:pending:text", "vwrite a 200 word essay")),
+            ),
+        )
+        val delivered = listOf(
+            ChatStore.UiMessage(
+                id = "msg_u2",
+                role = "user",
+                timeCreated = 3L,
+                parts = listOf(part("msg_u2:text", "vwrite a 200 word essay")),
+            ),
+        )
+        assertNotEquals(appendFingerprint(parked), appendFingerprint(delivered))
+    }
+
+    @Test
+    fun settlingTheTrailingMessageChangesFingerprint() {
+        // A Stop flags the trailing message, pinning the `Interrupted` divider
+        // below it — again with no part edit, so again invisible to the old
+        // probe and again unpinned until the next scroll.
+        val running = listOf(message("m1", listOf(part("p1", "partial"))))
+        val settled = listOf(message("m1", listOf(part("p1", "partial"))).copy(interrupted = true))
+        assertNotEquals(appendFingerprint(running), appendFingerprint(settled))
+    }
 }

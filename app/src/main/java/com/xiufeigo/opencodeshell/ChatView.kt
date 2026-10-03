@@ -49,6 +49,10 @@ import com.xiufeigo.opencodeshell.databinding.ItemMessageUserBinding
 import com.xiufeigo.opencodeshell.databinding.ItemSessionBinding
 import com.xiufeigo.opencodeshell.databinding.ViewChatBinding
 import com.xiufeigo.opencodeshell.databinding.ViewToolCardBinding
+import com.xiufeigo.opencodeshell.ui.session.timeline.ToolText
+import com.xiufeigo.opencodeshell.ui.session.timeline.contextOverflowActions
+import com.xiufeigo.opencodeshell.ui.session.timeline.errorCopy
+import com.xiufeigo.opencodeshell.ui.session.timeline.serverErrorPhrases
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.CorePlugin
@@ -222,6 +226,17 @@ class ChatView(
                 launch {
                     viewModel.configMissing.collect { renderConfigMissing(it) }
                 }
+                // The error banner's two ratio halves (the overflow diagnosis of
+                // `renderErrorBanner`) land asynchronously — the context read and
+                // the catalog can settle after the failure frame — so the banner
+                // re-evaluates on either of them, exactly like the Compose card's
+                // `collectAsState` does.
+                launch {
+                    viewModel.activeContextTokens.collect { renderErrorBanner(latestState) }
+                }
+                launch {
+                    viewModel.contextLimit.collect { renderErrorBanner(latestState) }
+                }
             }
         }
         started = true
@@ -304,15 +319,54 @@ class ChatView(
                 binding.btnSend.imageTintList = ColorStateList.valueOf(context.getColor(R.color.oc_text_base))
                 binding.btnSend.contentDescription = context.getString(R.string.chat_send)
                 binding.btnSend.setOnClickListener { onSendClicked() }
-                if (state.error != null) {
-                    binding.chatErrorText.text = state.error
-                    binding.chatError.visibility = View.VISIBLE
-                } else {
-                    binding.chatError.visibility = View.GONE
-                }
+                renderErrorBanner(state)
                 updateSendEnabled()
             }
         }
+    }
+
+    /**
+     * The error banner, titled and advised by the same rule the Compose
+     * `SessionErrorCard` uses ([errorCopy]) — the legacy view is the other
+     * surface of the same failure, so it must not call an over-limit rejection
+     * 「出错了」 while the card calls it 「上下文超限」 (v21 P3).
+     *
+     * The ratio halves are the view model's own
+     * [ChatViewModel.activeContextTokens] / [ChatViewModel.contextLimit], i.e.
+     * the **effective window** `min(limit.input, limit.context)`
+     * ([com.xiufeigo.opencodeshell.ui.session.header.ContextUsage.windowOf]) the
+     * ring and the card read — never the catalog's raw `limit.context`, which on
+     * the v20 model is 1,048,576 where the server compacts on 524,288.
+     *
+     * Only the copy is shared: the banner has no button surface (a tap dismisses
+     * it), so the card's two recovery rows have no counterpart here.
+     */
+    private fun renderErrorBanner(state: ChatStore.ChatState) {
+        val error = state.error
+        // A running turn owns the banner: the store's error is the *last*
+        // failure, so it must not reappear behind a live stream.
+        if (error == null || state.runStatus == ChatStore.RunStatus.RUNNING) {
+            binding.chatError.visibility = View.GONE
+            return
+        }
+        val classified = ChatStore.classifyStoredError(error, state.errorDetail)
+        val overflow = contextOverflowActions(
+            error,
+            state.errorDetail,
+            viewModel.activeContextTokens.value,
+            viewModel.contextLimit.value,
+        ).isNotEmpty()
+        val copy = errorCopy(classified, overflow)
+        binding.chatErrorTitle.setText(copy.titleRes)
+        val advice = copy.adviceRes?.let(context::getString)
+        // v32 BUG-1 residual: the line under the title is *display* text, so it
+        // goes through the server phrase table the Compose card uses — the
+        // server's English sentence is otherwise all the generic (`OTHER`)
+        // branch has to show. `state.error` itself is untouched (the store keeps
+        // the server's own words).
+        val shown = ToolText.localizeServerPhrases(error, serverErrorPhrases(resources))
+        binding.chatErrorText.text = if (advice != null) advice + "\n" + shown else shown
+        binding.chatError.visibility = View.VISIBLE
     }
 
     private fun updateSendEnabled() {

@@ -71,6 +71,72 @@ fun OcEnterOnMount(
 }
 
 /**
+ * Where a `Popup`-hosted overlay's top-left corner goes once the window's own
+ * top chrome is taken out of the picture.
+ *
+ * A `Popup` is a separate platform window whose position is applied in the
+ * **frame** coordinate the window manager sees, while `PopupPositionProvider`
+ * hands back a number measured in the Compose content area. In a freeform /
+ * desktop-mode window the two differ by the caption strip above the content
+ * (see [ocOverlayContentTopPx]), so a popup placed at "just under its anchor"
+ * came out that much lower, and one flipped up past the content's top edge
+ * **over the caption** — the model picker on a freeform window,
+ * `research/v57_verify/emu5556` `E2ECHK5556-09-model-select.png` (~27 px over).
+ * Adding the inset back puts the overlay back in the content area's own
+ * coordinates; the clamp then keeps it inside that area even when it is taller
+ * than the window.
+ *
+ * Pure integer math so the JVM pin can read it without a Compose runtime.
+ */
+internal fun ocOverlayY(
+    desiredContentY: Int,
+    contentTopPx: Int,
+    windowHeightPx: Int,
+    overlayHeightPx: Int,
+): Int {
+    val top = contentTopPx.coerceAtLeast(0)
+    val bottom = (windowHeightPx - overlayHeightPx).coerceAtLeast(top)
+    return (desiredContentY + top).coerceIn(top, bottom)
+}
+
+/**
+ * How far the window's content area starts below the frame the window manager
+ * positions popups against. Two independent readings, and the **larger** one
+ * wins because either can be the whole truth:
+ *
+ * - [ocOverlayDecorInsetPx] — the decor's height minus the content view's own.
+ *   This is the caption strip whenever the window manager insets the app window
+ *   itself (the model picker on a 1280-tall freeform window: 1280 − 1225).
+ * - the app's own **caption reserve** (`desktopCaptionReserve`, 36 dp on a
+ *   freeform window, 0 where the status bar already owns the band). The window
+ *   manager paints that caption over the app's top and keeps every touch in it
+ *   (`ui/nav/DesktopTabStrip.kt`); a `Popup` sits **above** it in z-order, so an
+ *   overlay placed without the reserve is not merely misaligned — it draws over
+ *   the caption. `research/v58_verify/5556/05_model_ime.png`: the model's top
+ *   edge landed at y=0 while the content area starts at y=46.
+ *
+ * The decor reading alone cannot cover the second case: in desktop mode the
+ * decor **is** the content view (both 768 px tall on 5556), and while the IME
+ * is up `adjustResize` shrinks both by the same keyboard height — the diff is
+ * 0 either way, so v58's first attempt measured 0 here and the clamp then
+ * pinned the overlay to y=0 (v58 `05_model_ime.png`, worse than the ~27 px it
+ * replaced). The reserve does not move with the IME, which is exactly what
+ * makes it the reading that holds in both window states.
+ */
+internal fun ocOverlayContentTopPx(decorInsetPx: Int, captionReservePx: Int): Int =
+    maxOf(decorInsetPx.coerceAtLeast(0), captionReservePx.coerceAtLeast(0))
+
+/**
+ * The decor measurement behind [ocOverlayContentTopPx]: the decor's height
+ * minus the content view's own height, which is the caption strip whenever the
+ * window manager insets the app window. Anything that does not add up (both
+ * measurements 0, a desktop window whose decor *is* the content) reads as 0
+ * and leaves the other reading in charge.
+ */
+internal fun ocOverlayDecorInsetPx(rootHeightPx: Int, contentHeightPx: Int): Int =
+    (rootHeightPx - contentHeightPx).coerceAtLeast(0)
+
+/**
  * Same motion, driven by a state flag — for overlays that live inside a layout
  * (the `@`-mention popover above the composer, inline cards) rather than in
  * their own window. A vertical expand rides along so the surrounding column does

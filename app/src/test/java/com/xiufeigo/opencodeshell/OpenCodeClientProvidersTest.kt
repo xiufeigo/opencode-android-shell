@@ -161,48 +161,88 @@ class OpenCodeClientProvidersTest {
     }
 
     @Test
-    fun providersEndpointIsGetProviderWithDirectory() {
+    fun providersEndpointReadsTheV2CatalogTriplet() {
         MockWebServer().use { server ->
             server.enqueue(
-                MockResponse().setResponseCode(200)
-                    .setBody("""{"all":[],"connected":[],"default":{}}"""),
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/w"},"data":[
+                        {"id":"anthropic","name":"Anthropic","activation":"enabled",
+                         "integrationID":"int-anthropic"},
+                        {"id":"openai","name":"OpenAI","activation":"enabled",
+                         "integrationID":"int-openai"}]}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/w"},"data":[
+                        {"id":"claude-sonnet-4","modelID":"claude-sonnet-4",
+                         "providerID":"anthropic","name":"Claude Sonnet 4",
+                         "capabilities":{"tools":true,"input":["text"],"output":["text"]},
+                         "limit":{"context":200000,"output":8192},
+                         "variants":[{"id":"low"},{"id":"high"}]}]}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"location":{"directory":"/w"},"data":[
+                        {"id":"int-anthropic","name":"Anthropic",
+                         "methods":[{"type":"key"}],"connections":[{}]},
+                        {"id":"int-openai","name":"OpenAI",
+                         "methods":[{"type":"key"}],"connections":[]}]}""",
+                ),
             )
             val c = client(server)
             val providers = c.providers(directory = "/w")
+            assertEquals(listOf("anthropic", "openai"), providers.all.map { it.id })
+            // Only the integration with a stored connection counts as connected.
+            assertEquals(listOf("anthropic"), providers.connected)
+            assertTrue(providers.default.isEmpty())
+
+            val sonnet = providers.model("anthropic", "claude-sonnet-4")!!
+            assertEquals("Claude Sonnet 4", sonnet.name)
+            assertEquals(true, sonnet.capabilities?.toolCall)
+            assertEquals(200_000, sonnet.limitContext)
+            assertEquals(8_192, sonnet.limitOutput)
+            assertEquals(listOf("low", "high"), sonnet.variants)
+            assertTrue(providers.all[1].models.isEmpty())
+
+            // The v1 `GET /provider` path must never be requested: all three
+            // reads live under `/api/`, location-scoped.
+            val recorded = listOf(
+                server.takeRequest(),
+                server.takeRequest(),
+                server.takeRequest(),
+            )
+            assertEquals(
+                listOf("/api/provider", "/api/model", "/api/integration"),
+                recorded.map { it.requestUrl!!.encodedPath },
+            )
+            recorded.forEach {
+                assertEquals("/w", it.requestUrl!!.queryParameter("location[directory]"))
+            }
+            c.close()
+        }
+    }
+
+    @Test
+    fun providersNeverRequestsTheV1ProviderPath() {
+        MockWebServer().use { server ->
+            repeat(3) {
+                server.enqueue(
+                    MockResponse().setResponseCode(200)
+                        .setBody("""{"location":{},"data":[]}"""),
+                )
+            }
+            val c = client(server)
+            val providers = c.providers()
             assertTrue(providers.all.isEmpty())
-            val recorded = server.takeRequest()
-            assertEquals("GET", recorded.method)
-            assertEquals("/provider", recorded.requestUrl!!.encodedPath)
-            assertEquals("/w", recorded.requestUrl!!.queryParameter("directory"))
-            c.close()
-        }
-    }
-
-    // ------------------------------------------------------- prompt payload
-
-    @Test
-    fun promptAsyncIncludesModelObjectWhenProvided() {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(204))
-            val c = client(server)
-            c.promptAsync("ses_1", "hi", model = "anthropic" to "claude-sonnet-4")
-            val body = JSONObject(server.takeRequest().body.readUtf8())
-            val model = body.getJSONObject("model")
-            assertEquals("anthropic", model.getString("providerID"))
-            assertEquals("claude-sonnet-4", model.getString("modelID"))
-            assertEquals("hi", body.getJSONArray("parts").getJSONObject(0).getString("text"))
-            c.close()
-        }
-    }
-
-    @Test
-    fun promptAsyncOmitsModelWhenNull() {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(204))
-            val c = client(server)
-            c.promptAsync("ses_1", "hi")
-            val body = JSONObject(server.takeRequest().body.readUtf8())
-            assertFalse(body.has("model"))
+            // An empty provider list short-circuits before the integration
+            // read, so exactly two requests go out — both under `/api/`.
+            repeat(2) {
+                val path = server.takeRequest()!!.requestUrl!!.encodedPath
+                assertTrue("v1 path requested: $path", path.startsWith("/api/"))
+            }
+            assertEquals(2, server.requestCount)
             c.close()
         }
     }

@@ -50,7 +50,7 @@ internal fun MessageNavRail(
     maxHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
-    if (ticks.isEmpty()) return
+    if (!MessageNavRailPolicy.isVisible(ticks.size)) return
     val c = OcTheme.colors
     val tickHeight = MessageNavRailPolicy.tickHeightDp(ticks.size, maxHeight.value).dp
     val scroller = rememberScrollState()
@@ -100,11 +100,30 @@ internal fun MessageNavRail(
  */
 object MessageNavRailPolicy {
 
+    /** `[data-size=compact] width: 24px` — also the gutter the timeline reserves. */
+    const val RAIL_WIDTH_DP = 24f
+
     /** `[data-slot=message-nav-tick-button] height: 12px`. */
     const val TICK_HEIGHT_DP = 12f
 
     /** Smallest tick the rail still draws as a distinguishable line. */
     const val MIN_TICK_HEIGHT_DP = 3f
+
+    /**
+     * Whether the rail is worth drawing at all (v43 BUG: a lone black bar).
+     *
+     * Upstream's compact rail navigates *between* turns, so a session with a
+     * single tick has nothing to navigate to. The Android port nevertheless
+     * drew it, and the active tick is the full-rail `2 dp` bar in `textBase`
+     * (`message-nav.css` `[data-active]` → `height: 2px; width: 100%`), so a
+     * one-turn timeline showed a contentless 24 dp × 2 dp black dash floating
+     * at the trailing edge — with no tick row to read it as part of
+     * (`research/v43_verify/tE/v43_15_sent.png`, `v43_49_err3.png`).
+     *
+     * Two ticks is the smallest rail that can actually move the viewport, so
+     * that is where the rail comes back.
+     */
+    fun isVisible(count: Int): Boolean = count > 1
 
     fun tickHeightDp(count: Int, availableDp: Float): Float {
         if (count <= 0) return TICK_HEIGHT_DP
@@ -131,7 +150,7 @@ data class NavPreview(
 )
 
 /** `[data-size=compact] width: 24px`. */
-private val RAIL_WIDTH = 24.dp
+private val RAIL_WIDTH = MessageNavRailPolicy.RAIL_WIDTH_DP.dp
 
 /** `[data-slot=message-nav-tick-line] width: 16px`. */
 private val TICK_WIDTH = 16.dp

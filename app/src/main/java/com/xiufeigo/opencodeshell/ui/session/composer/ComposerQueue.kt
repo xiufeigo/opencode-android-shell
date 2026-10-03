@@ -183,4 +183,57 @@ object ComposerQueue {
      * (`queue-panel.tsx:89-92` `active()`): the turn is stopped and this is row 0.
      */
     fun isParkedFirst(running: Boolean, index: Int): Boolean = !running && index == 0
+
+    /**
+     * One action in a queue row's `session-queue-actions` container
+     * (`queue-panel.tsx:150-191`).
+     *
+     * - [STEER] — the text button `data-action="session-queue-steer"`
+     *   (line 166), icon `arrow-up`, label `session.queue.steer` while the turn
+     *   runs and `session.queue.send` once it parks (line 175). It is wrapped in
+     *   `<Show when={!editing()}>` (line 159), so an editing row has no steer
+     *   action at all.
+     * - [REMOVE] — the `outline-xmark` icon button `data-action="session-queue-remove"`
+     *   (line 181-188), `aria-label` `session.queue.remove`. It is **not** inside
+     *   the `<Show>`, so it survives on an editing row — the only way out of an
+     *   edit that has not been confirmed.
+     */
+    enum class RowAction { STEER, REMOVE }
+
+    /** The label [RowAction.STEER] carries (`queue-panel.tsx:175`). */
+    enum class SteerLabel { STEER, SEND }
+
+    /**
+     * The ordered action set one row renders. Order is upstream's JSX order, not
+     * a convenience: the container is a single flex line, so `[STEER, REMOVE]`
+     * is the only left-to-right reading it can produce.
+     */
+    data class RowActions(
+        val actions: List<RowAction>,
+        val steerLabel: SteerLabel,
+    ) {
+        val hasSteer: Boolean get() = RowAction.STEER in actions
+        val hasRemove: Boolean get() = RowAction.REMOVE in actions
+    }
+
+    /**
+     * The actions a row renders (`queue-panel.tsx:150-191`).
+     *
+     * Visibility is **not** modelled here, and that is deliberate: upstream
+     * gates the container on hover
+     * (`opacity-0 … group-hover/queue-row:opacity-100`, line 154) but ends the
+     * same class list with `[@media(hover:none)]:opacity-100` — on a touch
+     * screen there is no hover, so every row's actions are always visible and
+     * only `busy()` (`pointer-events-none`, line 156) turns inert. A touch
+     * renderer therefore never reproduces upstream's `opacity-0` state, and
+     * a "hover to reveal" port would hide the only way to cancel a queued
+     * prompt behind a gesture the platform has no notion of.
+     *
+     * @param running the session turn is running (`queue.working()`).
+     * @param editing this row is loaded in the composer for edit.
+     */
+    fun rowActions(running: Boolean, editing: Boolean): RowActions = RowActions(
+        actions = if (editing) listOf(RowAction.REMOVE) else listOf(RowAction.STEER, RowAction.REMOVE),
+        steerLabel = if (running) SteerLabel.STEER else SteerLabel.SEND,
+    )
 }

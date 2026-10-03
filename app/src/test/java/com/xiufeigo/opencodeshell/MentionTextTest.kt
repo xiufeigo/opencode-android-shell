@@ -139,6 +139,23 @@ class MentionTextTest {
     }
 
     @Test
+    fun spansMatchCjkAndPathishLabelsPastTheIdentifierShape() {
+        // ChatView's identifier class never matched CJK, so a 中文 chip never
+        // coloured; the widened run stops at whitespace / the next '@'.
+        val text = "看 @中文文件.md 和 @src/Main.kt 回复"
+        val spans = MentionText.spans(text)
+        assertEquals(2, spans.size)
+        assertEquals("@中文文件.md", text.substring(spans[0].start, spans[0].end))
+        assertEquals("@src/Main.kt", text.substring(spans[1].start, spans[1].end))
+        // A space still closes the token: prose after a space is never tinted.
+        val spaced = MentionText.spans("@my file.txt")
+        assertEquals(1, spaced.size)
+        assertEquals("@my", "@my file.txt".substring(spaced[0].start, spaced[0].end))
+        // Adjacent mentions split on '@' rather than merging.
+        assertEquals(2, MentionText.spans("@a@b").size)
+    }
+
+    @Test
     fun triggerInsideAnInsertedMentionIsClosedByItsTrailingSpace() {
         val insertion = MentionText.insert("@sr", 0, 3, "src/Main.kt")
         val caret = insertion!!.caret

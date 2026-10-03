@@ -18,26 +18,56 @@ import org.json.JSONObject
  */
 object SessionExport {
 
-    /** Payload root: `{ info, messages }` and nothing else (no cursors). */
-    data class Frame(val info: JSONObject, val messages: List<JSONObject>)
+    /**
+     * Payload root: `{ info, messages }` (no cursors) plus the optional
+     * [truncated] note. [truncated] is never part of upstream's payload, so it
+     * is only present when a message drain actually hit its page cap — a
+     * complete export stays byte-identical to the upstream shape
+     * (`SessionExport.serialize`).
+     */
+    data class Frame(
+        val info: JSONObject,
+        val messages: List<JSONObject>,
+        /**
+         * The message read stopped at its page cap with the server still
+         * offering a cursor (`V2Api.MessageDrain.truncated`): the payload holds
+         * the first N pages of the transcript, not all of it. Serialized as
+         * `"truncated": {"messages": true, "pages": N}` so a consumer of the
+         * file can tell — the truncation used to be invisible in the export.
+         */
+        val truncated: Boolean = false,
+        /** Pages the drain read before stopping (`V2Api.MessageDrain.pages`). */
+        val truncatedPages: Int = 0,
+    )
+
+    /** Root key of the export's own metadata (only written when [Frame.truncated]). */
+    const val TRUNCATED_KEY = "truncated"
 
     /** Two-space indent, exactly what upstream's `JSON.stringify(…, null, 2)` writes. */
     const val INDENT = 2
 
     /**
-     * `sessionExportFilename` (`export.ts:36-43`): `title || slug || id`,
-     * lower-cased, every run of characters outside `[a-z0-9_-]` collapsed to a
-     * single `-`, leading/trailing `-` trimmed, `.json` appended. A name that
-     * normalizes to nothing falls back to the raw id (upstream: `clean || id`).
+     * `sessionExportFilename` (`export.ts:36-43`): `title || slug || id`, every
+     * run of characters outside `[A-Za-z0-9_-]` collapsed to a single `-`,
+     * leading/trailing `-` trimmed, `.json` appended. A name that normalizes to
+     * nothing falls back to the raw id (upstream: `clean || id`).
+     *
+     * v63 BUG-3 (`research/v63_verify/5556/34_export2.png`): upstream's
+     * `.toLowerCase()` is **not** reproduced here. It turned the device-tagged
+     * title `E2ECHK5556-base` into a pre-filled `e2echk5556-base.json`, so the
+     * saved file no longer carried the title the tester could see on screen —
+     * and on the shared backend those tags are how one device's sessions are
+     * told apart. Everything else (the character class, the run collapsing, the
+     * edge trimming, the id fallback) is upstream's line for line; only the
+     * lower-casing step is dropped, which is what makes the class `A-Za-z`.
      */
-    fun filename(id: String, title: String? = null, slug: String? = null): String {
-        val name = title?.takeIf { it.isNotBlank() }
+    fun filename(id: String, title: String? = null, slug: String? = null): String {        val name = title?.takeIf { it.isNotBlank() }
             ?: slug?.takeIf { it.isNotBlank() }
             ?: id
         val clean = buildString(name.length) {
             var pendingDash = false
-            for (ch in name.lowercase()) {
-                val keep = ch in 'a'..'z' || ch in '0'..'9' || ch == '_' || ch == '-'
+            for (ch in name) {
+                val keep = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '_' || ch == '-'
                 if (keep) {
                     if (pendingDash && isNotEmpty()) append('-')
                     pendingDash = false
@@ -51,19 +81,51 @@ object SessionExport {
     }
 
     /**
+     * The session title a just-fetched [Frame] carries — `info` is the
+     * server's own session object (`V2Transport.readExportFrame` reads
+     * `sessionRaw`), so this is the title as renamed, not as any list, tab
+     * or nav argument cached it. Null-safe: a missing key, a JSON null and
+     * the literal `"null"` org.json's `optString` coerces a JSON null into
+     * all count as absent (a blank counts too), so callers fall back to
+     * their UI title instead of writing `null.json` / `Untitled.json` over
+     * a renamed session.
+     */
+    fun frameTitle(frame: Frame): String? {
+        val info = frame.info
+        if (info.isNull("title")) return null
+        return info.optString("title", "").takeIf { it.isNotBlank() && it != "null" }
+    }
+
+    /**
      * Flattens the pages fetched by the caller into one message list, preserving
      * page order (`fetchSessionExport` does `pages.flatMap { it.data }` and
      * deliberately drops each page's `cursor`).
      */
     fun joinPages(pages: List<List<JSONObject>>): List<JSONObject> = pages.flatten()
 
-    /** `{ "info": …, "messages": [ … ] }`, two-space indented. */
-    fun serialize(frame: Frame): String = serialize(frame.info, frame.messages)
+    /**
+     * `{ "info": …, "messages": [ … ] }`, two-space indented — plus the
+     * truncation note when [Frame.truncated] (see [Frame]).
+     */
+    fun serialize(frame: Frame): String = serialize(frame.info, frame.messages, frame.truncated, frame.truncatedPages)
 
-    fun serialize(info: JSONObject, messages: List<JSONObject>): String {
+    fun serialize(
+        info: JSONObject,
+        messages: List<JSONObject>,
+        truncated: Boolean = false,
+        truncatedPages: Int = 0,
+    ): String {
         val root = JSONObject()
         root.put("info", info)
         root.put("messages", JSONArray().apply { messages.forEach(::put) })
+        if (truncated) {
+            root.put(
+                TRUNCATED_KEY,
+                JSONObject()
+                    .put("messages", true)
+                    .put("pages", truncatedPages),
+            )
+        }
         return root.toString(INDENT)
     }
 

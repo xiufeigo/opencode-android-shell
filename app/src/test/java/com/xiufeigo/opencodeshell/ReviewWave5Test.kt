@@ -96,6 +96,20 @@ class ReviewWave5Test {
     }
 
     @Test
+    fun punctuationOnlyQueryDoesNotPassEveryFileThrough() {
+        // `...` normalises to "": `normalize(value).contains("")` matched
+        // every file while the filter claimed to be active — only the raw
+        // substring may decide in that case.
+        val files = listOf("src/App.kt", "src/Other.kt")
+        assertTrue(ReviewFileFilter.isActive("..."))
+        assertFalse(ReviewFileFilter.matches("...", "src/App.kt"))
+        assertEquals(emptyList<String>(), ReviewFileFilter.filter(files, "..."))
+        assertEquals(emptyList<String>(), ReviewFileFilter.filter(files, "---"))
+        // A file that literally carries the punctuation still matches.
+        assertEquals(listOf("a...b"), ReviewFileFilter.filter(listOf("a...b", "src/App.kt"), "..."))
+    }
+
+    @Test
     fun filterRowsKeepsAncestorsOfAMatch() {
         val rows = listOf(
             Row("src", dir = true, level = 0),

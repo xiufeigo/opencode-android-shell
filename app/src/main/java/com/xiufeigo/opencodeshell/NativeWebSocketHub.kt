@@ -91,7 +91,14 @@ class NativeWebSocketHub(
     fun close(id: String, code: Int, reason: String) {
         val socket = sockets.remove(id) ?: return
         val safe = if (code in 1000..4999) code else 1000
-        socket.close(safe, reason.take(120))
+        try {
+            socket.close(safe, closeReason(reason))
+        } catch (_: IllegalArgumentException) {
+            // `validateCloseCode` rejects reserved codes (1004–1006, 1015–2999)
+            // that the `1000..4999` guard above still passes; the entry is
+            // already removed from the map, so cancel or the socket leaks.
+            socket.cancel()
+        }
     }
 
     fun closeAll() {
@@ -167,5 +174,32 @@ class NativeWebSocketHub(
                 }
                 append('"')
             }
+
+        /** RFC 6455: the close control payload is 125 bytes, 2 of them the code. */
+        internal const val CLOSE_REASON_MAX_BYTES = 123
+
+        /**
+         * Cut [reason] to [maxBytes] of UTF-8 without splitting a code point or
+         * a surrogate pair. OkHttp's `WebSocket.close` requires the *byte* size
+         * ≤ 123; the old char-based `take(120)` overflowed with ≥42 CJK chars
+         * and threw `IllegalArgumentException` from `close()`.
+         */
+        internal fun closeReason(reason: String, maxBytes: Int = CLOSE_REASON_MAX_BYTES): String {
+            var bytes = 0
+            var end = 0
+            while (end < reason.length) {
+                val codePoint = reason.codePointAt(end)
+                val size = when {
+                    codePoint < 0x80 -> 1
+                    codePoint < 0x800 -> 2
+                    codePoint < 0x10000 -> 3
+                    else -> 4
+                }
+                if (bytes + size > maxBytes) break
+                bytes += size
+                end += Character.charCount(codePoint)
+            }
+            return reason.substring(0, end)
+        }
     }
 }

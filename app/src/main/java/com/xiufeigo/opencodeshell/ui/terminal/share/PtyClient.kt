@@ -1,13 +1,13 @@
 package com.xiufeigo.opencodeshell.ui.terminal.share
 
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import java.io.IOException
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -28,7 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - resize: `PUT /pty/:id {size:{rows,cols}}`, first one immediate then 100 ms
  *   debounce ([PtySizeGate]) — never over the WebSocket;
  * - reconnect: `min(250 * 2^min(tries,4), 4000)` ms with a `GET /pty/:id` probe
- *   so an exited session ends the loop instead of retrying forever;
+ *   so an exited session ends the loop instead of retrying forever; once the
+ *   fast ladder of [MAX_ATTEMPTS] is exhausted the state reads `FAILED`, but
+ *   probes continue every [SLOW_RETRY_MS] so a recovered server self-heals;
  * - close codes: 1000 = shell exited, 4404 = session gone, anything else =
  *   abnormal ([PtyProtocol.closeDisposition]).
  *
@@ -52,7 +54,7 @@ class PtyClient(
      * the engine, because the server will resend history we may already hold.
      */
     private val initialCursor: Long? = PtyProtocol.CURSOR_NEW_OUTPUT_ONLY,
-) {
+) : TerminalLink {
 
     enum class State { IDLE, CONNECTING, OPEN, RECONNECTING, EXITED, GONE, FAILED, CLOSED }
 
@@ -100,11 +102,18 @@ class PtyClient(
             }
 
         override fun schedule(delayMs: Long, task: () -> Unit): Cancellable {
-            val future: ScheduledFuture<*> = executor.schedule(
-                { runCatching(task) },
-                delayMs.coerceAtLeast(0L),
-                TimeUnit.MILLISECONDS,
-            )
+            val future: ScheduledFuture<*> = try {
+                executor.schedule(
+                    { runCatching(task) },
+                    delayMs.coerceAtLeast(0L),
+                    TimeUnit.MILLISECONDS,
+                )
+            } catch (e: RejectedExecutionException) {
+                // close() shut the executor down while a late resize/reconnect
+                // still wanted a slot: discard (DiscardPolicy) — the caller,
+                // often the view's layout thread, must not see the exception.
+                return Cancellable.NONE
+            }
             return Cancellable { future.cancel(false) }
         }
 
@@ -135,24 +144,63 @@ class PtyClient(
     private var reconnectTask: Cancellable = Cancellable.NONE
     private var sizeTask: Cancellable = Cancellable.NONE
 
+    /**
+     * Keystrokes (and the emulator's answers) produced while the socket could not
+     * take them — before `onOpen`, or when `WebSocket.send` refused a frame
+     * (OkHttp returns `false` for a socket whose close frame is already enqueued,
+     * e.g. after the server's `onClosing`). Flushed by [flushPendingInput] as soon
+     * as the socket is open again, in order, so no input is ever dropped
+     * silently (v37 tA: "the first key after a prompt is swallowed").
+     *
+     * Bounded: a terminal that is offline for a long time must not grow a queue
+     * without limit; [PENDING_INPUT_LIMIT] bytes is several screens of type-ahead.
+     */
+    private val pendingInput = ArrayDeque<String>()
+    private var pendingInputBytes = 0
+
     val state: State get() = currentState
 
     /** Last server cursor, or `-1` when only new output was requested. */
     val cursor: Long get() = cursorValue ?: PtyProtocol.CURSOR_NEW_OUTPUT_ONLY
 
+    /**
+     * Bytes of type-ahead still waiting for a socket that can take them (see
+     * [pendingInput]). Diagnostics and tests: a non-zero value means input was
+     * held instead of dropped.
+     */
+    val queuedInputBytes: Int get() = synchronized(pendingInput) { pendingInputBytes }
+
     /** Starts (and keeps alive) the connection. Idempotent while already running. */
-    fun start() {
+    override fun start() {
         if (closed.get()) return
         if (currentState != State.IDLE) return
         setState(State.CONNECTING)
         scheduler.schedule(0L) { connectNow() }
     }
 
-    /** Text up-link (`ws.send(str)` upstream; the server writes it to the PTY). */
-    fun send(text: String) {
-        val ws = socket ?: return
-        if (currentState != State.OPEN) return
-        ws.send(text)
+    /**
+     * Text up-link (`ws.send(str)` upstream; the server writes it to the PTY).
+     *
+     * **Never drops a frame.** While the socket is not `OPEN` the text is queued
+     * and delivered by [flushPendingInput] on open; a `send` the socket refuses
+     * (OkHttp answers `false` once a close frame is enqueued) is re-queued too.
+     * The old shape returned silently in both cases, which is how a keystroke
+     * could vanish between the terminal view and the PTY.
+     */
+    override fun send(text: String) {
+        if (text.isEmpty()) return
+        // After `close()` the tab is gone: nothing may be queued for a PTY that
+        // no longer has an owner.
+        if (closed.get()) return
+        val ws = socket
+        if (ws == null || currentState != State.OPEN) {
+            enqueueInput(text)
+            return
+        }
+        // Older frames first: a queue left over from a down window must not be
+        // overtaken by this keystroke.
+        flushPendingInput()
+        if (!ws.send(text)) enqueueInput(text)
     }
 
     /**
@@ -161,7 +209,7 @@ class PtyClient(
      * the server decodes binary as **fatal** UTF-8 (`research/04` §6.2), so a
      * lone byte is safer as text.
      */
-    fun sendBytes(bytes: ByteArray) {
+    override fun sendBytes(bytes: ByteArray) {
         if (bytes.isEmpty()) return
         send(String(bytes, Charsets.UTF_8))
     }
@@ -171,7 +219,7 @@ class PtyClient(
      * then 100 ms debounce). The engine's own grid resize is the caller's job
      * (the caller owns the view geometry, like `TerminalView.updateSize()`).
      */
-    fun resize(cols: Int, rows: Int) {
+    override fun resize(cols: Int, rows: Int) {
         val size = PtySizeGate.Size(cols, rows)
         if (!size.isValid) return
         lastSize = size
@@ -183,7 +231,7 @@ class PtyClient(
     }
 
     /** Close = unmount: no reconnect, socket released, engine released. */
-    fun close() {
+    override fun close() {
         if (!closed.compareAndSet(false, true)) return
         reconnectTask.cancel()
         sizeTask.cancel()
@@ -193,6 +241,12 @@ class PtyClient(
         // leak a socket when the shell is silent. The server cleans the
         // attachment up on socket close, and the panel issues `DELETE /pty/:id`.
         runCatching { ws?.cancel() }
+        // Unmount: the queued type-ahead belongs to a PTY this client no longer
+        // owns (the panel DELETEs it), so it must not be replayed anywhere.
+        synchronized(pendingInput) {
+            pendingInput.clear()
+            pendingInputBytes = 0
+        }
         runCatching { engine.release() }
         scheduler.shutdown()
         setState(State.CLOSED)
@@ -221,8 +275,24 @@ class PtyClient(
             return
         }
         if (closed.get()) return
-        val request: Request = api.socketRequest(ptyId, ticket, requestedCursor)
-        socket = socketClient.newWebSocket(request, SocketListener())
+        // `PtyApi.connect` builds the WS (v2: `V2Api.ptyConnect`, blocking to
+        // `onOpen`; v1: async `newWebSocket(socketRequest(...))`). A rejected
+        // v2 handshake throws before the listener sees anything — same
+        // `failAndRetry` path an aborted open takes.
+        try {
+            socket = api.connect(
+                id = ptyId,
+                listener = SocketListener(),
+                ticket = ticket,
+                cursor = requestedCursor,
+                socketClient = socketClient,
+            )
+        } catch (e: IOException) {
+            failAndRetry(
+                "connection lost: ${e.message ?: e.javaClass.simpleName}",
+                (e as? PtyApi.PtyApiException)?.code,
+            )
+        }
     }
 
     private inner class SocketListener : WebSocketListener() {
@@ -231,9 +301,15 @@ class PtyClient(
                 webSocket.cancel()
                 return
             }
+            // The blocking `PtyApi.connect` path calls back before it returns
+            // the socket — capture it here so up-link bytes are never dropped.
+            socket = webSocket
             tries = 0
             engine.attachUplink { bytes -> sendBytes(bytes) }
             setState(State.OPEN)
+            // Anything typed while the socket was down/connecting goes out now,
+            // in order — before the size, so a keystroke is never held back.
+            flushPendingInput()
             // Upstream re-sends the size right after connect: the PTY may have
             // been created with a default grid before the view was measured.
             sizeGate.reset()
@@ -314,26 +390,66 @@ class PtyClient(
         if (closed.get()) return
         tries += 1
         if (tries > MAX_ATTEMPTS) {
-            listener.onError("$message — giving up after $MAX_ATTEMPTS attempts", code)
+            // The fast ladder is over, but staying FAILED with *no* retry froze
+            // the tab forever when the server came back (upstream never gives
+            // up). Report the give-up once, then keep a low-frequency probe
+            // armed — the `gone()` probe still ends the loop for a dead session.
+            if (tries == MAX_ATTEMPTS + 1) {
+                listener.onError("$message — giving up after $MAX_ATTEMPTS attempts", code)
+            }
             setState(State.FAILED)
+            reconnectTask = scheduler.schedule(SLOW_RETRY_MS) { retryNow() }
             return
         }
         setState(State.RECONNECTING)
         listener.onError(message, code)
-        val delay = PtyProtocol.backoffDelayMs(tries)
-        reconnectTask = scheduler.schedule(delay) {
-            if (closed.get()) return@schedule
-            // `gone()` probe: a PTY that exited is never coming back.
-            if (!api.exists(ptyId)) {
-                setState(State.GONE)
-                return@schedule
-            }
-            setState(State.CONNECTING)
-            connectNow()
+        reconnectTask = scheduler.schedule(PtyProtocol.backoffDelayMs(tries)) { retryNow() }
+    }
+
+    private fun retryNow() {
+        if (closed.get()) return
+        // `gone()` probe: a PTY that exited is never coming back.
+        if (!api.exists(ptyId)) {
+            setState(State.GONE)
+            return
         }
+        setState(State.CONNECTING)
+        connectNow()
     }
 
     // ---------------------------------------------------------------- streams
+
+    /** Queue one up-link frame produced while the socket could not take it. */
+    private fun enqueueInput(text: String) {
+        synchronized(pendingInput) {
+            if (pendingInputBytes + text.length > PENDING_INPUT_LIMIT) return
+            pendingInput.addLast(text)
+            pendingInputBytes += text.length
+        }
+    }
+
+    /**
+     * Hand the queued up-link frames to a socket that can take them, in order.
+     * Called from [SocketListener.onOpen] (and from a later [send] once a frame
+     * has been accepted again): a frame the socket refuses is put back at the
+     * head of the queue, so the order is preserved and nothing is lost.
+     */
+    private fun flushPendingInput() {
+        val ws = socket ?: return
+        if (currentState != State.OPEN) return
+        while (true) {
+            val next = synchronized(pendingInput) {
+                pendingInput.removeFirstOrNull()?.also { pendingInputBytes -= it.length }
+            } ?: return
+            if (!ws.send(next)) {
+                synchronized(pendingInput) {
+                    pendingInput.addFirst(next)
+                    pendingInputBytes += next.length
+                }
+                return
+            }
+        }
+    }
 
     private fun dispatch(text: String) {
         listener.onOutput(text)
@@ -357,6 +473,9 @@ class PtyClient(
     // ----------------------------------------------------------------- resize
 
     private fun scheduleSizeFlush(delayMs: Long) {
+        // Post-close: the view may still flush a grid change while it unbinds,
+        // but the scheduler is already down — drop instead of scheduling.
+        if (closed.get()) return
         sizeTask.cancel()
         sizeTask = scheduler.schedule(delayMs) { flushSize() }
     }
@@ -370,6 +489,7 @@ class PtyClient(
     }
 
     private fun pushSize(size: PtySizeGate.Size) {
+        if (closed.get()) return
         val task = Runnable {
             try {
                 api.updateSize(ptyId, size.cols, size.rows)
@@ -390,13 +510,29 @@ class PtyClient(
 
     companion object {
         /**
-         * Retry cap. Upstream retries indefinitely, but the `gone()` probe above
-         * already stops the loop for a dead session; the cap only bounds a
-         * server that is permanently unreachable.
+         * Fast-retry ladder length. After this many consecutive failures the
+         * state reads `FAILED` (the "giving up" report) — but retries do not
+         * stop: [SLOW_RETRY_MS] probes continue, and the `gone()` probe above
+         * already ends the loop for a genuinely dead session.
          */
         const val MAX_ATTEMPTS = 12
 
+        /**
+         * Probe period once the fast ladder is exhausted: slow enough not to
+         * hammer a struggling server, tight enough that recovery self-heals
+         * without the user rebuilding the tab (and losing the screen).
+         */
+        const val SLOW_RETRY_MS = 15_000L
+
         /** `0x00` as a `Char`, for a NUL-prefixed *text* metadata frame. */
         private const val META_LEADING_CHAR = '\u0000'
+
+        /**
+         * Ceiling on the type-ahead queued while the socket cannot take frames
+         * (a few screens' worth of keystrokes). Past it the oldest keys are kept
+         * and the newest dropped — a terminal that is offline for minutes must
+         * not replay a wall of stale input on reconnect.
+         */
+        const val PENDING_INPUT_LIMIT = 8 * 1024
     }
 }

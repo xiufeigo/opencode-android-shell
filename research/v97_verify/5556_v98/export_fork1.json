@@ -1,0 +1,106 @@
+{
+  "info": {
+    "id": "ses_f038f6a55ffeyDXANBHWlyCIHX",
+    "fork": {
+      "sessionID": "ses_f039270afffeCmUZIOkYCh0UxS",
+      "boundary": {
+        "type": "before",
+        "messageID": "msg_0fc6e4fdf0013ER3ttev8g6SvE"
+      }
+    },
+    "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+    "model": {
+      "id": "space-bunny-free",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1790941631915,
+      "updated": 1790941724584,
+      "idle": 1790941724594,
+      "viewed": 1790941724594
+    },
+    "title": "Interpreting E2ECHK5556c hello-world string (fork #1)",
+    "location": {
+      "directory": "\/home\/xiufeigo\/.local\/share\/opencode\/worktree\/ae5407\/sunny-island"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_0fc7095ab001fCFGDqJ5nTzXnH_1",
+      "time": {
+        "created": 1790941433758
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "space-bunny-free",
+        "providerID": "opencode-go"
+      }
+    },
+    {
+      "id": "msg_0fc7179b20025uQo9plVjHVv96",
+      "time": {
+        "created": 1790941690290
+      },
+      "type": "location-switched",
+      "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+      "subpath": "",
+      "location": {
+        "directory": "\/mnt\/c\/sensorsdata\/main\/program\/opencode-android-shell"
+      },
+      "previous": {
+        "location": {
+          "directory": "\/mnt\/c\/sensorsdata\/main\/program\/opencode-android-shell"
+        },
+        "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+        "subpath": ""
+      }
+    },
+    {
+      "id": "msg_0fc7179c0001vwLeMas5tmMRF3",
+      "time": {
+        "created": 1790941690304
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_0fc71ffa8002WbXV6BugLeLert",
+      "time": {
+        "created": 1790941724584
+      },
+      "type": "location-switched",
+      "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+      "subpath": "",
+      "location": {
+        "directory": "\/home\/xiufeigo\/.local\/share\/opencode\/worktree\/ae5407\/sunny-island"
+      },
+      "previous": {
+        "location": {
+          "directory": "\/mnt\/c\/sensorsdata\/main\/program\/opencode-android-shell"
+        },
+        "projectID": "ae54078c0e09bf8e7cbeefd35db19aaa6b064e46",
+        "subpath": ""
+      }
+    },
+    {
+      "id": "msg_0fc71ffb2001onXFThM6yAugNU",
+      "time": {
+        "created": 1790941724594
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

@@ -49,3 +49,18 @@ research/_raw/opencode-src/
 # Upstream reference checkout (own git repo, reproducible via scripts/sync-opencode-app.sh)
 _upstream/
 
+
+# --- Research evidence bulk (keep reports/scripts; screenshots & dumps are reproducible on disk) ---
+research/**/*.png
+research/**/*.jpg
+research/**/*.jpeg
+research/**/*.xml
+research/**/*.txt
+research/_scratch*/
+/_scratch*/
+/*.png
+/*.xml
+/*.jpg
+
+v36proj*/
+

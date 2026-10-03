@@ -28,7 +28,7 @@ class SettingsServerBridge(
      * `Unsupported` and the panels degrade honestly.
      */
     v2: SettingsV2Writes? = null,
-) : ServerBridge, ServerHealthSource, SettingsServerData {
+) : ServerBridge, ServerHealthSource, SettingsServerData, SshEntryStore {
 
     /**
      * W5-S (D1): the read-only pages (Projects / Worktrees / Extensions) ask the
@@ -47,6 +47,10 @@ class SettingsServerBridge(
     override suspend fun projects() = api.projects()
 
     override suspend fun worktrees() = api.worktrees()
+
+    override suspend fun workspaceInventory() = api.workspaceInventory()
+
+    override suspend fun workspaceSessions(directory: String) = api.workspaceSessions(directory)
 
     override suspend fun mcpServers() = api.mcpServers()
 
@@ -67,6 +71,58 @@ class SettingsServerBridge(
     override suspend fun setServerShell(shell: String) = api.setServerShell(shell)
 
     override suspend fun deleteWorktree(directory: String, force: Boolean) = api.deleteWorktree(directory, force)
+
+    override suspend fun integrationsJson() = api.integrationsJson()
+
+    override suspend fun integrationDetailJson(integrationID: String) =
+        api.integrationDetailJson(integrationID)
+
+    override suspend fun renameCredential(credentialID: String, label: String) = api.renameCredential(credentialID, label)
+
+    override suspend fun activateCredential(credentialID: String) = api.activateCredential(credentialID)
+
+    override suspend fun connectIntegrationKey(
+        integrationID: String,
+        key: String,
+        answer: Map<String, Any?>?,
+        label: String?,
+    ) = api.connectIntegrationKey(integrationID, key, answer, label)
+
+    override suspend fun oauthConnect(integrationID: String, methodID: String, label: String?) =
+        api.oauthConnect(integrationID, methodID, label)
+
+    override suspend fun oauthStatusJson(integrationID: String, attemptID: String) =
+        api.oauthStatusJson(integrationID, attemptID)
+
+    override suspend fun oauthComplete(integrationID: String, attemptID: String, code: String?) =
+        api.oauthComplete(integrationID, attemptID, code)
+
+    override suspend fun oauthCancel(integrationID: String, attemptID: String) = api.oauthCancel(integrationID, attemptID)
+
+    override suspend fun commandConnect(integrationID: String, methodID: String, label: String?) =
+        api.commandConnect(integrationID, methodID, label)
+
+    override suspend fun commandStatusJson(integrationID: String, attemptID: String) =
+        api.commandStatusJson(integrationID, attemptID)
+
+    override suspend fun commandCancel(integrationID: String, attemptID: String) =
+        api.commandCancel(integrationID, attemptID)
+
+    override suspend fun wellknownAdd(url: String) = api.wellknownAdd(url)
+
+    override suspend fun mcpAddLocal(name: String, command: List<String>) = api.mcpAddLocal(name, command)
+
+    override suspend fun mcpAddRemote(name: String, url: String) = api.mcpAddRemote(name, url)
+
+    override suspend fun mcpRemoveServer(name: String) = api.mcpRemoveServer(name)
+
+    override suspend fun mcpResourcesJson() = api.mcpResourcesJson()
+
+    override suspend fun pluginCheckJson() = api.pluginCheckJson()
+
+    override suspend fun pluginUpdate(targets: List<String>) = api.pluginUpdate(targets)
+
+    override suspend fun migrationStatusJson() = api.migrationStatusJson()
 
     override val revision: StateFlow<Int>
         get() = store?.revision ?: kotlinx.coroutines.flow.MutableStateFlow(0)
@@ -151,4 +207,35 @@ class SettingsServerBridge(
         current.replaceAll(current.listServers(), url)
         onChanged()
     }
+
+    // --------------------------------------------------- SshEntryStore (v92)
+    //
+    // The SSH half of the Servers list is a **persisted** list: the durable
+    // recipes live in the store's `ssh_json`, the panel's `SshTunnelHost` is
+    // composition-scoped. These delegates are the panel's seam to the durable
+    // half — seeded on composition, written on submit, dropped on the
+    // confirmed delete. A null store (no config yet) degrades to empty/false.
+
+    override fun sshEntries(): List<ServerConfigStore.SshEntry> = store?.sshEntries().orEmpty()
+
+    override fun sshEntry(id: String): ServerConfigStore.SshEntry? = store?.sshEntry(id)
+
+    override fun putSshEntry(entry: ServerConfigStore.SshEntry): Boolean =
+        store?.putSshEntry(entry) ?: false
+
+    override fun removeSshEntry(id: String): Boolean = store?.removeSshEntry(id) ?: false
+}
+
+/**
+ * v92 — the panel-side seam to the persisted SSH redial recipes
+ * (`ServerConfigStore.sshEntries()`, `ssh_json`). A capability interface in
+ * the [ServerHealthSource] pattern: `ServersPanel` asks for it with
+ * `bridge as? SshEntryStore`, so bridges without a store (tests, the null
+ * bridge) simply do not offer it.
+ */
+interface SshEntryStore {
+    fun sshEntries(): List<ServerConfigStore.SshEntry>
+    fun sshEntry(id: String): ServerConfigStore.SshEntry?
+    fun putSshEntry(entry: ServerConfigStore.SshEntry): Boolean
+    fun removeSshEntry(id: String): Boolean
 }

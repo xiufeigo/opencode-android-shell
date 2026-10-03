@@ -4,7 +4,6 @@ import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,9 +22,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -39,20 +41,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.R
+import com.xiufeigo.opencodeshell.ui.home.DirectoryPickerDialog
+import com.xiufeigo.opencodeshell.ui.overlay.DialogScrim
+import com.xiufeigo.opencodeshell.ui.overlay.dialogCardBounds
+import com.xiufeigo.opencodeshell.ui.overlay.rememberDialogScrimState
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 import com.xiufeigo.opencodeshell.ui.theme.ocShadow
 import java.util.Date
 
 /**
- * The three surfaces the ⋮ menu's session rows open (W6): the fork picker, the
- * share panel and the archive confirmation.
+ * The surfaces the ⋮ menu's fork / move rows open (W6 + F-4).
  *
  * Mounted once per session screen by `ui/App.kt` (a full-size sibling of
  * `SessionScreen`), because a dialog that must cover the whole window cannot be
  * laid out inside the header's 48 dp row. It renders nothing while
  * [SessionActionsHost.dialog] is null.
  *
- * All three are in-tree overlays on `overlayScrim` rather than Material
+ * v2-only dropped the share panel and the archive confirmation with their rows.
+ *
+ * The cards are in-tree overlays on `overlayScrim` rather than Material
  * `AlertDialog`s, the same choice `SessionRowDialogs` records for the drawer: the
  * card keeps the OC surface tokens (`bgBase`, 0.5 dp `borderBase`,
  * `elevation.floating`).
@@ -62,8 +69,7 @@ fun SessionActionsOverlay(host: SessionActionsHost, modifier: Modifier = Modifie
     when (host.dialog) {
         null -> Unit
         SessionActionsDialog.FORK -> ForkSurface(host, modifier)
-        SessionActionsDialog.SHARE -> ShareSurface(host, modifier)
-        SessionActionsDialog.ARCHIVE -> ArchiveSurface(host, modifier)
+        SessionActionsDialog.MOVE -> MoveSurface(host, modifier)
     }
 }
 
@@ -139,96 +145,87 @@ private fun ForkSurface(host: SessionActionsHost, modifier: Modifier = Modifier)
 }
 
 /**
- * 分享会话's confirmation (`session.share.popover.*`): what the session's public
- * link is, that it is public, and the three things left to do with it —
- * 复制链接 (`session.share.copy.copyLink`), 取消发布 and close.
+ * F-4 移动到… surface: the shared `DirectoryPickerDialog` (`ui.home`,
+ * read-only reuse), starting at the session's server-confirmed directory.
+ * Upstream moves from the workspace menu (`session-workspace-menu.tsx:59-87`),
+ * which Android does not render — the ⋮ group opens the same destination
+ * choice here, and the pick submits straight into `host.confirmMove`
+ * (`POST /api/session/{id}/move`).
  *
- * The share itself has already happened when this surface appears: the row
- * publishes, copies and toasts ([SessionActionsHost.share]), and this is the
- * receipt. Its 复制链接 re-copies, which is also what 取消发布's sibling does
- * upstream — the link is the one thing the user came for.
+ * The picker is a bare card (no scrim of its own — `DialogHost` normally
+ * supplies the frame), so this surface wraps it in the same scrim + centering
+ * as [ModalCard] without doubling the card chrome. `onOpenServers` stays null:
+ * an auth-walled server cannot move a session either, and the picker's own
+ * retry row already covers recovery.
+ *
+ * The session directory goes in raw, and the picker's entry guard
+ * (`pickerEntryStart`) is what keeps a Windows system start — the server's
+ * launch cwd, `C:\Windows\System32` on a Windows host — from parking the
+ * browser there; this call site is the one that made the guard necessary.
+ *
+ * Which directory that is, is [movePickerStart]'s rule: the session's own
+ * `location.directory`, never the project's. v40 measured 移动到… opening on the
+ * project directory for a session living in `…/frontend` (`tA/52_moveto.png`).
  */
 @Composable
-private fun ShareSurface(host: SessionActionsHost, modifier: Modifier = Modifier) {
-    val c = OcTheme.colors
-    val url by host.viewModel.shareUrl.collectAsState()
-    ModalCard(modifier = modifier, onDismiss = host::dismiss) {
-        Text(
-            text = stringResource(R.string.session_share_popover_title),
-            color = c.textBase,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            lineHeight = 21.sp,
-        )
-        Text(
-            text = stringResource(R.string.session_share_popover_description_shared),
-            color = c.textMuted,
-            fontSize = 13.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Text(
-            text = url.orEmpty(),
-            color = c.textAccent,
-            fontSize = 12.sp,
-            lineHeight = 20.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        ModalButtons {
-            ModalButton(label = stringResource(R.string.oc_common_close), onClick = host::dismiss)
-            Spacer(Modifier.width(8.dp))
-            ModalButton(
-                label = stringResource(R.string.session_share_copy_copyLink),
-                enabled = url != null,
-                onClick = { host.copyShareLink(url.orEmpty()) },
-            )
-            Spacer(Modifier.width(8.dp))
-            ModalButton(
-                label = stringResource(R.string.session_share_action_unpublish),
-                enabled = !host.busy,
-                onClick = host::unshare,
+private fun MoveSurface(host: SessionActionsHost, modifier: Modifier = Modifier) {
+    val currentDirectory by host.viewModel.currentDirectory.collectAsState()
+    // The start must be the **session's** directory, the one
+    // `GET /api/session/{id}` publishes as `location.directory` — never the
+    // project's. `ChatViewModel.observeSession` republishes `currentDirectory`
+    // from the screen's route on every entry, and that route's directory is
+    // null (it is derived from the nav argument, never from the session), so a
+    // null can wipe the server-confirmed value; the picker then started
+    // wherever the probes point — the project directory / the server cwd
+    // (`research/v40_verify/tA/52_moveto.png`). The last non-blank answer is
+    // kept here so a transient null cannot become a start.
+    var lastConfirmedDirectory by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentDirectory) {
+        if (!currentDirectory.isNullOrBlank()) lastConfirmedDirectory = currentDirectory
+    }
+    val sessionDirectory = movePickerStart(currentDirectory, lastConfirmedDirectory)
+    val scrim = rememberDialogScrimState()
+    Box(modifier = modifier.fillMaxSize()) {
+        DialogScrim(scrim, host::dismiss)
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            DirectoryPickerDialog(
+                chatViewModel = host.viewModel,
+                // The session's own directory, verbatim: it is the honest start
+                // for 移动到…. A Windows system directory never reaches the
+                // browser as a start even so — the picker's own entry guard
+                // (`pickerEntryStart`) re-roots it to its drive root, which is
+                // what the 「移动到…」 flow needs when the session runs in the
+                // server's launch cwd (`C:\Windows\System32`, measured).
+                initialPath = sessionDirectory,
+                onSelect = host::confirmMove,
+                onClose = host::dismiss,
+                // The picker's own box is what `DialogHost` measures as the
+                // layer's content, so its 24 dp gutter counts as "inside the
+                // card" here too — a tap there is swallowed, never a dismissal.
+                modifier = Modifier.dialogCardBounds(scrim),
             )
         }
     }
 }
 
 /**
- * 归档会话. Upstream archives from the command palette with no confirmation
- * (`use-session-commands.tsx:239-246` region); a phone ⋮ menu hit by accident is
- * not a palette invocation, so the row confirms first — the one Android-only
- * addition of this surface (`oc_archive_session_message`).
+ * Where 「移动到…」 starts: the session's own server-confirmed directory
+ * ([currentDirectory], `GET /api/session/{id}`'s `location.directory`), falling
+ * back to the last non-blank one this surface saw ([previous]) when the live
+ * value has gone blank.
+ *
+ * The blank is not a "no directory" answer but a re-`observeSession` from a
+ * route that never carried one, and the picker's own probes answer a null start
+ * with the *project* directory — the bug v40 measured on `tA/52_moveto.png`
+ * (the session lives in `…/frontend`, the picker opened on the shell repo).
+ * An all-blank pair is still null, so the probes keep deciding.
  */
-@Composable
-private fun ArchiveSurface(host: SessionActionsHost, modifier: Modifier = Modifier) {
-    val c = OcTheme.colors
-    ModalCard(modifier = modifier, onDismiss = host::dismiss) {
-        Text(
-            text = stringResource(R.string.command_session_archive),
-            color = c.textBase,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            lineHeight = 21.sp,
-        )
-        Text(
-            text = stringResource(R.string.oc_archive_session_message),
-            color = c.textMuted,
-            fontSize = 13.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        ModalButtons {
-            ModalButton(label = stringResource(R.string.oc_common_cancel), onClick = host::dismiss)
-            Spacer(Modifier.width(8.dp))
-            ModalButton(
-                label = stringResource(R.string.common_archive),
-                enabled = !host.busy,
-                onClick = host::archive,
-            )
-        }
-    }
-}
+internal fun movePickerStart(currentDirectory: String?, previous: String?): String? =
+    currentDirectory?.trim()?.takeIf { it.isNotEmpty() }
+        ?: previous?.trim()?.takeIf { it.isNotEmpty() }
 
 /**
  * Centered card on a tap-through-blocking scrim (drawer dialogs' geometry).
@@ -241,17 +238,9 @@ private fun ModalCard(
 ) {
     val c = OcTheme.colors
     val shape = OcTheme.shapes.xl
+    val scrim = rememberDialogScrimState()
     Box(modifier = modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(c.overlayScrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
+        DialogScrim(scrim, onDismiss)
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -262,6 +251,7 @@ private fun ModalCard(
                 .background(c.bgBase)
                 .border(0.5.dp, c.borderBase, shape)
                 .ocShadow(OcTheme.elevation.floating, shape)
+                .dialogCardBounds(scrim)
                 .padding(16.dp),
             content = content,
         )

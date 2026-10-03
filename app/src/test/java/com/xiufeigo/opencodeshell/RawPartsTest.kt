@@ -79,6 +79,16 @@ class RawPartsTest {
     }
 
     @Test
+    fun retryMessageCapNeverSplitsASurrogatePair() {
+        // The cap lands on the emoji's high surrogate; the old `take` kept a
+        // lone half (81 chars total), the safe cut drops it (80).
+        val truncated = RawParts.retryMessage("z".repeat(79) + "😀!")
+        assertEquals(RawParts.RETRY_MESSAGE_MAX, truncated?.length)
+        assertTrue(truncated!!.endsWith("…"))
+        assertTrue(!Character.isHighSurrogate(truncated[truncated.length - 2]))
+    }
+
+    @Test
     fun stepFinishReadsUsage() {
         val step = RawParts.stepFinish(
             """{"reason":"stop","cost":0.25,"tokens":{"input":100,"output":50,"reasoning":10,
@@ -103,5 +113,58 @@ class RawPartsTest {
         assertEquals("b.kt", RawParts.basename("src/main/b.kt"))
         assertEquals("b.kt", RawParts.basename("src\\main\\b.kt"))
         assertEquals("b.kt", RawParts.basename("b.kt"))
+    }
+
+    @Test
+    fun switchReadsTheMovedPayload() {
+        // The live `session.moved` shape (`MovePayload`): nested location.
+        assertEquals(
+            "v36projB",
+            RawParts.switch(
+                """{"sessionID":"ses_1","location":{"directory":"/home/xiufeigo/v36projB"},"projectID":"pro_1"}""",
+            ).value,
+        )
+        // A hand-built submit shape may carry the directory top-level.
+        assertEquals(
+            "v36projB",
+            RawParts.switch("""{"directory":"/home/xiufeigo/v36projB"}""").value,
+        )
+        // Precedence: agent, then model, then subpath, then location.
+        assertEquals("build", RawParts.switch("""{"agent":"build","location":{"directory":"/x/y"}}""").value)
+        assertEquals(
+            "v36projB",
+            RawParts.switch("""{"subpath":null,"location":{"directory":"/home/xiufeigo/v36projB"}}""").value,
+        )
+    }
+
+    @Test
+    fun switchFallsBackToTheDirectoryForARootMove() {
+        // v47 tD_53: moving to `/` left a bare 「Location changed」 label —
+        // `basename("/")` is empty, so the row had no value at all. The
+        // directory itself is the fallback identifier.
+        assertEquals(
+            "/",
+            RawParts.switch(
+                """{"sessionID":"ses_1","location":{"directory":"/"},"projectID":"pro_1"}""",
+            ).value,
+        )
+        assertEquals("/", RawParts.switch("""{"directory":"/"}""").value)
+        // A normal move still shows the basename, not the full path.
+        assertEquals(
+            "v36projB",
+            RawParts.switch("""{"location":{"directory":"/home/xiufeigo/v36projB"}}""").value,
+        )
+    }
+
+    @Test
+    fun switchNeverRendersNullLiterals() {
+        // Explicit JSON nulls must read absent, never as the word "null".
+        assertNull(RawParts.switch("""{"agent":null}""").value)
+        assertNull(RawParts.switch("""{"location":{"directory":null}}""").value)
+        assertNull(RawParts.switch("""{"directory":null}""").value)
+        assertNull(RawParts.switch("""{"model":{"modelID":null}}""").value)
+        assertNull(RawParts.switch("{}").value)
+        assertNull(RawParts.switch(null).value)
+        assertNull(RawParts.switch("not json").value)
     }
 }

@@ -30,9 +30,6 @@ object ToolPresentation {
     /** `ChatView.TOOL_SUBTITLE_MAX` — subtitle is a single ellipsized line. */
     const val SUBTITLE_MAX = 120
 
-    /** Fallback label when a failed tool carries no error text (`oc_tool_error`). */
-    const val ERROR_LABEL = "Error"
-
     /** Generic label for an unknown tool (`oc_tool_generic`). */
     const val GENERIC_LABEL = "Tool"
 
@@ -132,22 +129,28 @@ object ToolPresentation {
     /**
      * `toolErrorSubtitle` (`tool-renderer.tsx:1265-1289`), transcribed for the
      * failed-card subtitle so an errored row reads like its non-error
-     * counterpart ("Shell sleep 30"): per-tool input key instead of the raw
-     * error wall. `errorLabel` is injected so the Composable can pass the
-     * localized `oc_tool_error` string. Null when the tool names nothing (the
-     * caller renders nothing rather than a blank subtitle).
+     * counterpart ("Shell sleep 30"): the per-tool **input** key, and nothing
+     * else. Null when the tool names nothing (the caller renders nothing rather
+     * than a blank subtitle).
+     *
+     * v32 BUG-1: an errored row must never fall back to the error text. The
+     * card already renders that text's first `": "` segment as its head
+     * ([ToolText.errorHeadDetail]), so the old `summary ?: errorLabel` fallback
+     * printed the same sentence twice on the trigger — measured on a deleted
+     * project directory: 「Shell Working directory does not exist:
+     * /home/xiufeigo/v32projA Working directory does not exist」 (the subtitle
+     * carried the whole line, the head its first segment). Upstream has no such
+     * fallback either: `toolErrorSubtitle` answers `undefined` for a tool whose
+     * input names nothing, and the trigger then shows the title + summary only.
      */
-    fun subtitle(part: ChatStore.UiPart, errorLabel: String = ERROR_LABEL): String? {
+    fun subtitle(part: ChatStore.UiPart): String? {
         if (part.toolStatus == "error") {
-            errorSubtitle(part)?.let { return it.take(SUBTITLE_MAX) }
-            val summary = splitLines((part.toolError ?: part.toolOutput).orEmpty())
-                .firstOrNull { it.isNotBlank() }
-            return (summary ?: errorLabel).take(SUBTITLE_MAX)
+            return errorSubtitle(part)?.let { capChars(it, SUBTITLE_MAX) }
         }
         val input = parseObject(part.toolInput) ?: return null
         for (key in INPUT_KEYS) {
-            val value = input.optString(key, "")
-            if (value.isNotEmpty()) return value.take(SUBTITLE_MAX)
+            val value = input.optStringOrNull(key) ?: continue
+            if (value.isNotEmpty()) return capChars(value, SUBTITLE_MAX)
         }
         return null
     }
@@ -160,7 +163,7 @@ object ToolPresentation {
 
     private fun errorSubtitle(part: ChatStore.UiPart): String? {
         val input = parseObject(part.toolInput)
-        fun text(key: String): String? = input?.optString(key, "")?.takeIf { it.isNotEmpty() }
+        fun text(key: String): String? = input?.optStringOrNull(key)
         return when (part.toolName) {
             "bash", "shell" -> text("command")
             "execute" -> text("code")
@@ -210,8 +213,8 @@ object ToolPresentation {
         }
 
         if (name == "bash" || name == "shell" || name == "execute") {
-            val command = input?.optString("command", "").orEmpty()
-                .ifEmpty { input?.optString("code", "").orEmpty() }
+            val command = input?.optStringOrNull("command").orEmpty()
+                .ifEmpty { input?.optStringOrNull("code").orEmpty() }
             val output = ToolText.shellOutput(part.toolOutput)
             val lines = mutableListOf<BodyLine>()
             lines += errorLines
@@ -224,15 +227,15 @@ object ToolPresentation {
         }
 
         if (name == "edit") {
-            val oldText = input?.optString("oldString", "").orEmpty()
-            val newText = input?.optString("newString", "").orEmpty()
+            val oldText = input?.optStringOrNull("oldString").orEmpty()
+            val newText = input?.optStringOrNull("newString").orEmpty()
             if (oldText.isNotEmpty() || newText.isNotEmpty()) {
                 return errorLines + hunkDiffLines(oldText, newText)
             }
         }
 
         if (name == "write") {
-            val content = input?.optString("content", "").orEmpty()
+            val content = input?.optStringOrNull("content").orEmpty()
             if (content.isNotEmpty()) {
                 // Upstream renders write as a text file view (`mode="text"`),
                 // not a diff: every line is new-file content.
@@ -246,7 +249,7 @@ object ToolPresentation {
             // unified patch instead of an old/new pair, so the diff body has to
             // come from that text — otherwise the card falls back to JSON and
             // the `+`/`-` rendering never appears at all.
-            val patchText = input?.optString("patchText", "").orEmpty()
+            val patchText = input?.optStringOrNull("patchText").orEmpty()
                 .ifEmpty { patchFromFiles(input) }
             if (patchText.isNotEmpty()) {
                 return errorLines + patchLines(patchText)
@@ -365,7 +368,7 @@ object ToolPresentation {
         val files = input?.optJSONArray("files") ?: return ""
         val out = StringBuilder()
         for (i in 0 until files.length()) {
-            val patch = files.optJSONObject(i)?.optString("patch", "").orEmpty()
+            val patch = files.optJSONObject(i)?.optStringOrNull("patch").orEmpty()
             if (patch.isEmpty()) continue
             if (out.isNotEmpty()) out.append('\n')
             out.append(patch)
@@ -373,26 +376,74 @@ object ToolPresentation {
         return out.toString()
     }
 
-    /**
-     * Unified patch text → diff body. `+`/`-` payload lines become
-     * [LineKind.ADD]/[LineKind.DELETE] (their leading marker is kept, which is
-     * what upstream shows), `@@` hunk headers and `*** …` file headers become
-     * [LineKind.HUNK]/[LineKind.COMMAND] so they read as structure rather than
-     * content, and everything else stays plain.
-     */
-    fun patchLines(patchText: String): List<BodyLine> =
-        splitLines(normalize(patchText)).map { line ->
-            when {
-                line.startsWith("@@") -> BodyLine(LineKind.HUNK, line)
-                line.startsWith("***") ||
-                    line.startsWith("---") || line.startsWith("+++") ->
-                    BodyLine(LineKind.COMMAND, line)
+    /** jsdiff `parsePatch` hunk header (`@@ -a[,b] +c[,d] @@`). */
+    private val HUNK_HEADER = Regex("""@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@""")
 
-                line.startsWith("+") -> BodyLine(LineKind.ADD, line)
-                line.startsWith("-") -> BodyLine(LineKind.DELETE, line)
-                else -> BodyLine(LineKind.PLAIN, line)
+    /**
+     * Unified patch text → diff body, classified by a hunk-count state machine
+     * (jsdiff `parsePatch` semantics) rather than bare prefixes: inside a
+     * counted hunk every line is content, so a deletion whose text starts with
+     * `--`/`---` (CSS `--x`, SQL/Lua comments, markdown `---`) keeps
+     * [LineKind.DELETE] instead of being mistaken for a file header — the old
+     * prefix order checked `---`/`+++` before `+`/`-` and stole the red/green
+     * tint. A bare `@@` (apply_patch section header) opens an uncounted hunk
+     * that ends at the next `@@` or `*** …` control line. Outside a hunk,
+     * `@@` is [LineKind.HUNK], `*** …`/`--- …`/`+++ …` stay
+     * [LineKind.COMMAND], and headerless `+`/`-` fragments stay content.
+     */
+    fun patchLines(patchText: String): List<BodyLine> {
+        val out = ArrayList<BodyLine>()
+        var inHunk = false
+        var counted = false
+        var oldLeft = 0
+        var newLeft = 0
+        for (line in splitLines(normalize(patchText))) {
+            if (line.startsWith("@@")) {
+                out += BodyLine(LineKind.HUNK, line)
+                val header = HUNK_HEADER.find(line)
+                counted = header != null
+                oldLeft = header?.groups?.get(2)?.value?.toIntOrNull() ?: 1
+                newLeft = header?.groups?.get(4)?.value?.toIntOrNull() ?: 1
+                inHunk = true
+                continue
+            }
+            if (inHunk && line.startsWith("***")) {
+                // apply_patch control line (`*** End Patch` …): a counted hunk
+                // reaches one only when its header counts ran out early.
+                inHunk = false
+            }
+            if (!inHunk) {
+                out += when {
+                    line.startsWith("***") || line.startsWith("---") ||
+                        line.startsWith("+++") -> BodyLine(LineKind.COMMAND, line)
+
+                    line.startsWith("-") -> BodyLine(LineKind.DELETE, line)
+                    line.startsWith("+") -> BodyLine(LineKind.ADD, line)
+                    else -> BodyLine(LineKind.PLAIN, line)
+                }
+                continue
+            }
+            val kind = when {
+                line.startsWith("-") -> LineKind.DELETE
+                line.startsWith("+") -> LineKind.ADD
+                else -> LineKind.PLAIN
+            }
+            out += BodyLine(kind, line)
+            if (counted) {
+                when {
+                    line.startsWith("\\") -> Unit
+                    line.startsWith("-") -> oldLeft--
+                    line.startsWith("+") -> newLeft--
+                    else -> {
+                        oldLeft--
+                        newLeft--
+                    }
+                }
+                if (oldLeft <= 0 && newLeft <= 0) inHunk = false
             }
         }
+        return out
+    }
 
     /** True when a body line is part of a diff (background-tinted in the card). */
     fun isDiffKind(kind: LineKind): Boolean = when (kind) {
@@ -542,6 +593,20 @@ object ToolPresentation {
         if (text.isEmpty()) return emptyList()
         val parts = text.split('\n')
         return if (parts.isNotEmpty() && parts.last().isEmpty()) parts.dropLast(1) else parts
+    }
+
+    /**
+     * [String.take] that never splits a surrogate pair: a lone high surrogate
+     * renders as U+FFFD, and `ChatStore.capToolText` (which should call this)
+     * hard-cut tool payloads at 16000 chars — an astral-plane character
+     * straddling the cap used to corrupt the tail of every capped field.
+     */
+    fun capChars(text: String, max: Int): String {
+        if (text.length <= max) return text
+        if (max <= 0) return ""
+        var end = max
+        if (text[end - 1].isHighSurrogate() && text[end].isLowSurrogate()) end--
+        return text.substring(0, end)
     }
 
     private fun normalize(text: String): String =

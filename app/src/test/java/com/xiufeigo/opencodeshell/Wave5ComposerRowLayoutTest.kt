@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.composer.ComposerSuggestions
+import com.xiufeigo.opencodeshell.ui.session.composer.SuggestionRowLayout
 import com.xiufeigo.opencodeshell.ui.session.composer.SuggestionRowText
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,10 +27,17 @@ import java.io.File
  *    fix, and the reason an empty label can no longer reach the layout.
  * 2. a source guard on `MentionPopover.SuggestionRow` (the repo's established idiom
  *    for layout facts a JVM test cannot compose — cf. `Wave5ComposerWiringTest`,
- *    `ComposerM1_5Test`): the row has **exactly one weighted child, the
- *    description's slot**, and the label is drawn unweighted before it. That is
- *    what makes the label's width independent of the description's length, and it
- *    is the property the two `weight(…)` calls on the old row violated.
+ *    `ComposerM1_5Test`): the row hands **one** half the remainder and keeps the
+ *    other at its natural width, and [SuggestionRowLayout] decides which — the
+ *    description's slot while the row draws a description (this suite), the label
+ *    while the trailing column is the category tag
+ *    (`MentionRowTagVisibilityTest`, the v16 half).
+ *
+ * v16 note: the guard used to demand a *fixed* arrangement (label unweighted,
+ * description weighted, exactly one `Modifier.weight` in the row). That
+ * arrangement is what squeezed the `@` file rows' "Directory"/"File" tag to 0 dp,
+ * so the guard now pins the *rule* — the policy decides, and each branch weights
+ * exactly one half — instead of one hard-coded side.
  */
 class Wave5ComposerRowLayoutTest {
 
@@ -57,50 +64,81 @@ class Wave5ComposerRowLayoutTest {
 
     // --------------------------------------------------- the row's layout guard
 
+    /** The row's source with every whitespace run folded, so a pin can match a fragment. */
+    private fun compactRow(): String = suggestionRow().replace(Regex("\\s+"), " ")
+
     @Test
-    fun theLabelIsDrawnBeforeTheDescriptionAndCarriesNoModifierOfItsOwn() {
-        val row = suggestionRow()
-        val label = row.indexOf("text = SuggestionRowText.label(")
-        val slot = row.indexOf("Box(")
-        assertTrue("the label is drawn before the description slot", label in 0 until slot)
-        // The label's `Text` call alone — up to the Spacer that follows it — must
-        // carry no modifier: a weight there would put the label back into the pool
-        // Compose measures *last*, and a long description would squeeze it to 0 dp
-        // exactly as it did on the tablet.
-        val labelCall = row.substring(label, row.indexOf("Spacer(", label))
-        assertFalse(
-            "the label must stay unweighted and unbounded (upstream `shrink-0`): $labelCall",
-            labelCall.contains("Modifier."),
+    fun theRowAsksThePolicyWhichHalfGivesWay() {
+        assertTrue(
+            "the flexible half must be the policy's answer, not a hard-coded side",
+            compactRow().contains(
+                "val flexible = SuggestionRowLayout.flexible(hasDescription = description != null)",
+            ),
         )
     }
 
     @Test
-    fun theDescriptionSlotIsTheRowsOnlyWeightedChild() {
+    fun theLabelIsDrawnBeforeTheTrailingSlotAndIsProtectedWhileADescriptionIsDrawn() {
         val row = suggestionRow()
-        val weights = Regex("""Modifier\.weight\(""").findAll(row).toList()
-        assertEquals(
-            "exactly one child may be given the row's remainder: the description",
-            1,
-            weights.size,
-        )
-        // …and that one weight is the description's slot, which therefore starts
-        // after the label and ends at the row's edge.
+        val label = row.indexOf("text = SuggestionRowText.label(")
+        val slot = row.indexOf("Box(")
+        assertTrue("the label is drawn before the trailing slot", label in 0 until slot)
+        // W5-G: on a row that draws a description the label must stay unweighted —
+        // an unweighted child is measured first, at its intrinsic width, so the
+        // description can never take a pixel of the label. The weight is allowed
+        // only on the other branch of the policy (the tag rows, see
+        // `MentionRowTagVisibilityTest`).
         assertTrue(
-            "the weight belongs to the description's Box, not to the label",
-            row.contains("Box(\n            modifier = Modifier.weight(1f),\n            contentAlignment = Alignment.CenterEnd,"),
+            "the label keeps its natural width unless the policy says the tag needs it: ${compactRow()}",
+            compactRow().contains(
+                "modifier = if (flexible == SuggestionRowLayout.Flexible.LABEL) { " +
+                    "Modifier.weight(1f) } else { Modifier }",
+            ),
         )
-        // The slot draws the string the pure policy produced.
+    }
+
+    @Test
+    fun exactlyOneHalfIsWeightedAndThePolicyPicksIt() {
+        val row = suggestionRow()
+        // Two expressions, one per branch: whichever branch runs, exactly one half
+        // of the row is handed the remainder and the other keeps its own width.
+        assertEquals(
+            "the row offers two mutually exclusive weights — one per branch of the policy",
+            2,
+            Regex("""Modifier\.weight\(""").findAll(row).count(),
+        )
+        assertTrue(
+            "the trailing slot is weighted exactly while it draws a description",
+            compactRow().contains(
+                "modifier = if (flexible == SuggestionRowLayout.Flexible.TRAILING) { " +
+                    "Modifier.weight(1f) } else { Modifier }",
+            ),
+        )
+        // The slot draws the string the pure policy produced, falling back to the
+        // row's category tag when there is no description.
         assertTrue(row.contains("val description = SuggestionRowText.description("))
-        assertTrue(row.contains("text = description"))
+        assertTrue(compactRow().contains("text = description ?: category"))
+    }
+
+    @Test
+    fun aRowThatDrawsADescriptionProtectsItsLabel() {
+        // The W5-G branch of the policy: `customize-opencode`'s long description
+        // must never be able to squeeze the `/name`.
+        assertEquals(
+            SuggestionRowLayout.Flexible.TRAILING,
+            SuggestionRowLayout.flexible(hasDescription = true),
+        )
     }
 
     @Test
     fun bothHalvesOfTheRowAreSingleLineAndEllipsized() {
         val row = suggestionRow()
-        assertEquals("the description truncates, it never wraps", 2, Regex("maxLines = 1").findAll(row).count())
+        // Every `Text` the row draws (label, description/category, keybind) stays
+        // on one line and ends in `…` instead of pushing the others out.
+        assertEquals("every text truncates, none wraps", 3, Regex("maxLines = 1").findAll(row).count())
         assertEquals(
-            "both `Text`s end in `…` instead of pushing the other out",
-            2,
+            "every `Text` ends in `…` instead of pushing the other out",
+            3,
             Regex("overflow = TextOverflow.Ellipsis").findAll(row).count(),
         )
     }
@@ -193,8 +231,14 @@ class Wave5ComposerRowLayoutTest {
             ),
         )
         val labels = items.map { it.label }
-        assertEquals(listOf("/model", "/agent", "/customize-opencode", "/jira-SCB-Collector"), labels)
-        for (item in items.drop(2)) {
+        assertEquals(
+            listOf("/model", "/agent", "/customize-opencode", "/jira-SCB-Collector", "/btw"),
+            labels,
+        )
+        // The server rows (not the local built-ins, whose descriptions come from
+        // resources): the label the row draws is the full `/name` — non-blank,
+        // unclamped — and the description stays inside the row's budget.
+        for (item in items.drop(2).filter { !it.builtIn }) {
             // The label the row draws is the full `/name` — non-blank, unclamped.
             assertEquals(item.label, SuggestionRowText.label(item.label, "命令"))
             val description = SuggestionRowText.description(item.description)

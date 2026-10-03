@@ -7,14 +7,15 @@ import com.xiufeigo.opencodeshell.ui.terminal.TerminalPlacement
 /**
  * The stored preferences the *session UI* consumes, published once by
  * `ui/App.kt` instead of being threaded through `SessionScreen` as more
- * parameters: the three timeline-display switches and (B3) the terminal
- * placement.
+ * parameters: the three timeline-display switches, (B3) the terminal
+ * placement and the terminal font.
  *
  * The values exist to be *consumed*: `shellToolPartsExpanded` /
  * `editToolPartsExpanded` are the `shellExpanded` / `editExpanded` arguments
  * `MessageTimeline` already forwards to `ToolCardPolicy.resolveOpen`,
- * `reasoningSummaries` gates the reasoning parts (`PartRenderer`), and
- * `terminalPlacement` picks the slot `ui/terminal/TerminalDock.kt` docks into.
+ * `reasoningSummaries` gates the reasoning parts (`PartRenderer`),
+ * `terminalPlacement` picks the slot `ui/terminal/TerminalDock.kt` docks into
+ * and `terminalFont` is the family the panel resolves for the VT renderer.
  *
  * ```kotlin
  * // session UI (ui/session/timeline):
@@ -42,6 +43,16 @@ data class TimelineDisplayPrefs(
      * setting re-docks the pane without a route change.
      */
     val terminalPlacement: TerminalPlacement = TerminalPlacement.Default,
+    /**
+     * `settings.appearance.terminalFont` (`TerminalPanelHost.terminalFont`).
+     *
+     * The docked pane reads it from here rather than taking a parameter: the
+     * standalone `Route.TERMINAL` host gets `settings.terminalFont` directly
+     * (`ui/App.kt`), so threading it as an argument through `TerminalDock` was
+     * what left the session's terminal on the default face — the setting
+     * changed, the echoed row came back different and the glyphs did not move.
+     */
+    val terminalFont: String = "",
 ) {
     companion object {
         /** Same defaults as `SettingsStore.read()`. */
@@ -59,6 +70,7 @@ fun SettingsStore.Settings.timelineDisplayPrefs(): TimelineDisplayPrefs = Timeli
     shellToolPartsExpanded = shellToolPartsExpanded,
     editToolPartsExpanded = editToolPartsExpanded,
     terminalPlacement = TerminalPlacement.fromId(this.terminalPlacement),
+    terminalFont = this.terminalFont,
 )
 
 /** Provided by `ui/App.kt` around the navigation tree. */

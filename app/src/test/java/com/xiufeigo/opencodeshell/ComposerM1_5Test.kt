@@ -56,7 +56,7 @@ class ComposerM1_5Test {
         val composer = composerSource()
         assertTrue("attachment strip", composer.contains("AttachmentPreviewRow("))
         assertTrue("mention popover", composer.contains("MentionPopover("))
-        assertTrue("mention trigger", composer.contains("MentionText.anchorAt("))
+        assertTrue("mention trigger", composer.contains("ComposerSuggestions.triggerAt(value.text, value.selection.end)"))
         assertTrue("mention insert", composer.contains("MentionText.insert("))
         assertTrue("mention colouring", composer.contains("MentionColorTransformation"))
         assertTrue("model chip", composer.contains("ModelChip("))
@@ -74,8 +74,16 @@ class ComposerM1_5Test {
     @Test
     fun composerDebouncesTheFileSearch() {
         val composer = composerSource()
-        assertTrue(composer.contains("delay(MentionText.DEBOUNCE_MS)"))
-        assertTrue("stale results must not apply", composer.contains("if (trigger != active)"))
+        // v62: the pause is the composer's own rule now — a typed query waits
+        // `MentionText.DEBOUNCE_MS` out, a bare `@` asks at once (`ComposerMention`).
+        assertTrue(composer.contains("delay(ComposerMention.searchDelayMs(active.query))"))
+        assertTrue(composer.contains("MentionText.DEBOUNCE_MS"))
+        // v67 B4: the staleness guard reads the anchor live (the same source the
+        // rows render from), not a mirrored copy the caret can leave behind.
+        assertTrue("stale results must not apply", composer.contains("if (liveMention != active)"))
+        // v67 B2: a session switch re-asks in the new session's scope instead of
+        // serving the outgoing session's paths.
+        assertTrue(composer.contains("LaunchedEffect(live.mention, draftKey)"))
     }
 
     @Test
@@ -96,6 +104,17 @@ class ComposerM1_5Test {
         assertTrue(reader.contains("MAX_IMAGE_EDGE"))
     }
 
+    @Test
+    fun readerRejectsByDeclaredSizeAndStreamsTheRestUnderACap() {
+        // The OOM fix: size is checked *before* any bytes are buffered, and
+        // the stream read is capped so an unknown size cannot slurp a
+        // hundreds-of-MB pick into the heap (an Error no catch saw).
+        val reader = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/composer/AttachmentReader.kt")
+        assertTrue("declared size comes from cursor/fd", reader.contains("declaredSize("))
+        assertTrue("the cap is enforced mid-stream", reader.contains("AttachmentPolicy.readCapped("))
+        assertFalse("no unbounded slurp left", reader.contains(".readBytes()"))
+    }
+
     // ------------------------------------------------------------- the screen
 
     @Test
@@ -103,7 +122,8 @@ class ComposerM1_5Test {
         val screen = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/SessionScreen.kt")
         assertTrue(screen.contains("rememberAttachmentPicker("))
         assertTrue(screen.contains("chatViewModel.send(text, files)"))
-        assertTrue(screen.contains("chatViewModel.searchFiles(query, onResult)"))
+        assertTrue(screen.contains("MentionSearchScope.scoped(reviewRootPath)"))
+        assertTrue("directory-scoped VM overload", screen.contains("chatViewModel.searchFiles(query, directory, onResult = onResult)"))
         assertTrue("pending chips die with the session", screen.contains("attachments = emptyList()"))
     }
 
@@ -112,18 +132,25 @@ class ComposerM1_5Test {
     @Test
     fun readableBodiesAreWrappedInASelectionContainer() {
         val renderer = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/timeline/PartRenderer.kt")
-        assertTrue(renderer.contains("SelectionContainer(content = content)"))
-        assertTrue("text part", renderer.contains("SelectableBody {"))
+        // U-4 folding moved the locus: the text branch routes through
+        // FoldableMarkdown, which owns the SelectionContainer for both the
+        // short body and the folded head / expanded body.
+        assertTrue("text part", renderer.contains("FoldableMarkdown("))
+        val foldUi = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/timeline/TimelineFoldUi.kt")
+        assertTrue("folded/short bodies stay selectable", foldUi.contains("SelectionContainer"))
         // The expanded tool body has its own verticalScroll: never wrap it.
-        val toolBody = renderer.substringAfter("private fun ToolBody(").take(TOOL_BODY_WINDOW)
+        val toolBody = renderer.substringAfter("fun ToolBody(").take(TOOL_BODY_WINDOW)
         assertFalse("tool body must stay unselectable", toolBody.contains("SelectableBody"))
+        assertFalse("tool body must stay unselectable", toolBody.contains("SelectionContainer"))
     }
 
     @Test
     fun userBubbleIsSelectableAndHighlightsMentions() {
         val timeline = source("src/main/java/com/xiufeigo/opencodeshell/ui/session/timeline/MessageTimeline.kt")
         assertTrue(timeline.contains("SelectionContainer"))
-        assertTrue(timeline.contains("mentionAnnotated(text, c)"))
+        // U-4 folding: the bubble renders the folded head until expanded, so
+        // the mention classifier runs on the visible slice — highlight intact.
+        assertTrue(timeline.contains("mentionAnnotated(visibleText, c)"))
     }
 
     private companion object {

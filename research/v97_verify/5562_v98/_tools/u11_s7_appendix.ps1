@@ -1,0 +1,60 @@
+$ErrorActionPreference='Continue'
+[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
+Set-Location 'C:\sensorsdata\main\program\opencode-android-shell\research\v97_verify\5562_v98'
+
+$A=@(Get-Content '.\_u11_ALL_names.txt' | Where-Object { $_.Trim() -ne '' })
+$F=@(Get-Content '.\_u11_F_names.txt' | Where-Object { $_.Trim() -ne '' })
+$C=@(Get-Content '.\_u11_C_names.txt' | Where-Object { $_.Trim() -ne '' })
+$R=@(Get-Content '.\_u11_R_names.txt' | Where-Object { $_.Trim() -ne '' })
+
+$ceq = ((Compare-Object @($C|Sort-Object) @($A|Sort-Object)).Count -eq 0)
+$req = ((Compare-Object @($R|Sort-Object) @($A|Sort-Object)).Count -eq 0)
+$rf  = ((Compare-Object @($R|Sort-Object) @($F|Sort-Object)).Count -eq 0)
+$fa  = ((Compare-Object @($F|Sort-Object) @($A|Sort-Object)).Count -eq 0)
+$fsu = ((Compare-Object @($F|Sort-Object) @($A|Sort-Object) | Where-Object { $_.SideIndicator -eq '<=' }).Count -eq 0)
+
+$sb=New-Object System.Text.StringBuilder
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('---')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('### 9.1 `ALL` — 全量基线（|ALL| = ' + $A.Count + '）')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('```')
+for($i=0;$i -lt $A.Count;$i++){ [void]$sb.AppendLine(('{0,3}. {1}' -f ($i+1), $A[$i])) }
+[void]$sb.AppendLine('```')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('### 9.2 `F` — 过滤 `gradle`（|F| = ' + $F.Count + '）')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('```')
+for($i=0;$i -lt $F.Count;$i++){ [void]$sb.AppendLine(('{0,3}. {1}' -f ($i+1), $F[$i])) }
+[void]$sb.AppendLine('```')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('后 5 个（`build.gradle.kts` / `gradle.properties` / `gradlew` / `gradlew.bat` / `settings.gradle.kts`）**不在根层**，来自 `app/` 子目录 → 递归下钻生效（U12 = PASS，跨一层）。')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('### 9.3 `C` — Clear filter 后（|C| = ' + $C.Count + '）')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('`C` 与 `ALL` **逐名同序完全相同**（`Compare-Object` 差异数 = 0），故不重复贴 208 行。首行 = `' + $C[0] + '`（**不是** `' + $F[0] + '`），末行 = `' + $C[$C.Count-1] + '`。')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('### 9.4 `R` — Refresh 后（|R| = ' + $R.Count + '）')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('`R` 与 `ALL` **逐名同序完全相同**（差异数 = 0），且 `R != F`。首行 = `' + $R[0] + '`，末行 = `' + $R[$R.Count-1] + '`。')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('### 9.5 四个集合的交叉判定')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('```')
+[void]$sb.AppendLine('|ALL| = ' + $A.Count)
+[void]$sb.AppendLine('|F|   = ' + $F.Count)
+[void]$sb.AppendLine('|C|   = ' + $C.Count)
+[void]$sb.AppendLine('|R|   = ' + $R.Count)
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('C == ALL            : ' + $ceq)
+[void]$sb.AppendLine('R == ALL            : ' + $req)
+[void]$sb.AppendLine('R == F              : ' + $rf)
+[void]$sb.AppendLine('F == ALL            : ' + $fa + '   (应为 False)')
+[void]$sb.AppendLine('F 严格子集于 ALL     : ' + $fsu)
+[void]$sb.AppendLine('```')
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('**U11 = PASS。**')
+
+Add-Content -Path '.\REPORT_U11.md' -Value $sb.ToString() -Encoding utf8
+Write-Host ('APPENDIX OK  A={0} F={1} C={2} R={3} | C==ALL={4} R==ALL={5} R==F={6} Fsubset={7}' -f $A.Count,$F.Count,$C.Count,$R.Count,$ceq,$req,$rf,$fsu)

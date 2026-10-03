@@ -62,6 +62,14 @@ fun appCommands(
      * `SettingsStore.showFileTree` drives.
      */
     showFileTree: Boolean = true,
+    /**
+     * B-17: `debugBar.toggle` (`shell/shell.tsx:49-58`) — flips the debug bar.
+     * Upstream declares **no keybind** for it, so the row carries none either
+     * and a recorded override is what gives the command a chord. Null (previews,
+     * the slash registry) keeps the row out, the same rule every optional row
+     * follows.
+     */
+    onToggleDebugBar: (() -> Unit)? = null,
 ): List<PaletteCommand> = listOfNotNull(
     PaletteCommand(
         id = "settings.open",
@@ -149,6 +157,19 @@ fun appCommands(
             id = "session.summary.toggle",
             titleResId = R.string.oc_command_summary_toggle,
             keybind = "Ctrl+Shift+Y",
+            onSelect = it,
+        )
+    },
+    // B-17 (`shell/shell.tsx:49-58`): the debug bar. `command.category.view`,
+    // like upstream, and no keybind — the command upstream registers carries
+    // none. The row and the chord run the same App-level flip
+    // (`ui/App.kt`'s `GlobalChord.DEBUG_BAR`), so the settings row that shows
+    // `debugBar.toggle` can never advertise a key the palette disagrees with.
+    onToggleDebugBar?.let {
+        PaletteCommand(
+            id = "debugBar.toggle",
+            titleResId = R.string.command_debugBar_toggle,
+            category = CATEGORY_VIEW,
             onSelect = it,
         )
     },

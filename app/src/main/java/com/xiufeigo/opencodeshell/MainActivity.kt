@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serverConfig: ServerConfigStore
     private lateinit var chatViewModel: ChatViewModel
     private lateinit var chatView: ChatView
+    private var networkWatch: NetworkRecoveryWatch? = null
     // Which bottom-nav tab is visible. Chat is the default so the shell boots
     // into native chat and only pays WebView cost when the terminal opens.
     private var currentTab: Int = R.id.nav_chat
@@ -125,6 +126,9 @@ class MainActivity : AppCompatActivity() {
         }
         chatView = ChatView(this, chatViewModel)
         binding.chatContainer.addView(chatView)
+        // Flap recovery: a network return re-dials the streams / re-probes
+        // through ChatViewModel.onNetworkAvailable (stopped with the activity).
+        networkWatch = NetworkRecoveryWatch(this) { chatViewModel.onNetworkAvailable() }
 
         // Do not hide system bars. HyperOS immersive overlays have been observed
         // swallowing every subsequent touch while chrome still paints.
@@ -180,6 +184,7 @@ class MainActivity : AppCompatActivity() {
         // Symmetric with gateway.pause() in onStop; without this the proxy
         // would keep dropping sockets forever after the first backgrounding.
         gateway.resume()
+        networkWatch?.start()
         // Chat SSE reconnects here after onStop closed it. Safe even before
         // first window attach: androidx.activity pins the ViewTree owners to
         // the decor view inside setContentView.
@@ -196,6 +201,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         // Battery trio: native SSE down, WebView renderer idle, proxy asleep.
         // Existing gateway streams are not killed; EventStream closes itself.
+        networkWatch?.stop()
         chatView.stop()
         binding.webView.onPause()
         binding.webView.pauseTimers()

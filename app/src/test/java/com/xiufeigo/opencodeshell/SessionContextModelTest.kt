@@ -273,6 +273,101 @@ class SessionContextModelTest {
         assertEquals("7", valueOf(snapshot, Kind.ASSISTANT_MESSAGES))
     }
 
+    /**
+     * P3 (v19 device): `User Messages` read `5` for a session whose prompts the
+     * tester counted as `4`. The count is upstream's
+     * (`session-context-tab.tsx:141-149`: `message.type === "user"`), so the two
+     * shapes have to be pinned separately:
+     *
+     * - **v2** — the union has exactly one `user` type
+     *   (`schema/src/session-message.ts:78-86`); every frame the session emits
+     *   around a prompt (the `model-switched` record a switch writes, the
+     *   `system` instructions row, the `idle` turn marker, `synthetic`/`shell`/
+     *   `compaction`) is a *different* type and cannot be counted;
+     * - **v1** — there is no `type` at all, only `role: "user" | "assistant"`
+     *   (`schema/src/v1/session.ts:327-355`), and the injected records are
+     *   `role: "user"` rows carrying `synthetic` text parts. Those are exactly
+     *   what [SessionContextModel.isUserPrompt] refuses to count.
+     */
+    @Test
+    fun userMessagesCountPromptsOnlyAndNeverTheNoticeFrames() {
+        // ------------------------------------------------------------ v2 rows
+        val v2 = listOf(
+            JSONObject().put("id", "msg_u1").put("type", "user").put("text", "count the words"),
+            JSONObject().put("id", "msg_a1").put("type", "assistant")
+                .put("model", JSONObject().put("id", "muse").put("providerID", "opencode-go"))
+                .put("content", JSONArray()),
+            JSONObject().put("id", "msg_sw").put("type", "model-switched")
+                .put("model", JSONObject().put("id", "muse").put("providerID", "opencode-go")),
+            JSONObject().put("id", "msg_sys").put("type", "system")
+                .put("metadata", JSONObject().put("notice", "instructions")).put("text", "tool catalog"),
+            JSONObject().put("id", "msg_idle").put("type", "idle").put("outcome", "succeeded"),
+            JSONObject().put("id", "msg_syn").put("type", "synthetic").put("text", "note"),
+            JSONObject().put("id", "msg_shell").put("type", "shell").put("command", "ls"),
+            JSONObject().put("id", "msg_comp").put("type", "compaction").put("summary", "…"),
+            JSONObject().put("id", "msg_ag").put("type", "agent-switched").put("agent", "build"),
+            JSONObject().put("id", "msg_loc").put("type", "location-switched"),
+            JSONObject().put("id", "msg_skill").put("type", "skill").put("name", "pdf"),
+            // The second prompt of the session — still one row, still counted.
+            JSONObject().put("id", "msg_u2").put("type", "user").put("text", "and again"),
+        )
+        assertEquals(2, v2.count { SessionContextModel.isUserPrompt(it) })
+        val snapshot = SessionContextModel.project(session(), v2, null, utc, en)
+        assertEquals("12", valueOf(snapshot, Kind.MESSAGES))
+        assertEquals("2", valueOf(snapshot, Kind.USER_MESSAGES))
+
+        // ------------------------------------------------------- v1-shaped rows
+        // An ordinary prompt: `role: "user"` with a real text part.
+        val prompt = v1Row(
+            "msg_1",
+            JSONObject().put("type", "text").put("text", "count the words"),
+        )
+        // The same row a model switch / system reminder leaves: a synthetic text
+        // part and nothing else (`v1-migration.bun.ts:326-347` re-types it
+        // `synthetic`).
+        val injected = v1Row(
+            "msg_2",
+            JSONObject().put("type", "text").put("text", "model switched").put("synthetic", true),
+        )
+        // A compaction envelope: v1 wraps it in a `role: "user"` row too
+        // (`:277-312`).
+        val compaction = v1Row("msg_3", JSONObject().put("type", "compaction"))
+        // An attachment-only prompt is still a prompt (`:318-331`).
+        val attachment = v1Row(
+            "msg_4",
+            JSONObject().put("type", "file").put("url", "data:text/plain;base64,aGk="),
+            JSONObject().put("type", "text").put("text", "count the words"),
+        )
+        // An `@`-mention-only prompt is a prompt as well.
+        val mention = v1Row("msg_5", JSONObject().put("type", "agent").put("name", "build"))
+        // A row with no parts at all: nothing identifies it as a frame, so it
+        // stays a prompt — the pre-existing behaviour of this count.
+        val bare = v1Row("msg_6")
+
+        val v1 = listOf(prompt, injected, compaction, attachment, mention, bare)
+        assertEquals(
+            listOf(true, false, false, true, true, true),
+            v1.map { SessionContextModel.isUserPrompt(it) },
+        )
+        val v1Snapshot = SessionContextModel.project(session(), v1, null, utc, en)
+        assertEquals("6", valueOf(v1Snapshot, Kind.MESSAGES))
+        assertEquals("4", valueOf(v1Snapshot, Kind.USER_MESSAGES))
+        // The frames are still rows in the raw list — only the count ignores them.
+        assertEquals(6, v1Snapshot.messages.size)
+    }
+
+    /** One v1 `{info, parts}` row with an explicit part list (see [message]). */
+    private fun v1Row(id: String, vararg parts: JSONObject): JSONObject {
+        val info = JSONObject()
+            .put("id", id)
+            .put("sessionID", "ses_1")
+            .put("role", "user")
+            .put("time", JSONObject().put("created", created))
+        val array = JSONArray()
+        parts.forEach { array.put(it) }
+        return JSONObject().put("info", info).put("parts", array)
+    }
+
     @Test
     fun theSessionRowFallsBackToTheIdThenToNothing() {
         assertEquals(

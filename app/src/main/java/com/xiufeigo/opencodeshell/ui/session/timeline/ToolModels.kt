@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell.ui.session.timeline
 
 import com.xiufeigo.opencodeshell.ChatStore
+import com.xiufeigo.opencodeshell.OpenCodeClient
 import org.json.JSONObject
 
 /**
@@ -194,10 +195,13 @@ object ToolModels {
     /**
      * Compaction row state (`message-content.tsx:400-473`). Upstream's
      * `SessionCompactionMessage` is a message (running/failed/completed with a
-     * paced summary + outcome separator + error card); the Android store only
-     * keeps a `compaction` **part** with the summary as its text, so the model
-     * is what the part can express: a summary to render through markdown, or a
-     * static fallback when the part carries nothing.
+     * paced summary + outcome separator + error card); the Android store keeps a
+     * `compaction` **part** whose `text` is the summary (or, for a rejected
+     * compaction, the readable error line — the caller suppresses it here and
+     * renders it as the failure detail instead), so this model is what the part
+     * expresses on its own: a summary to render through markdown, or the static
+     * fallback line when it carries nothing. The settled status lives beside it
+     * ([ChatStore.compactionStatusOf]) and is not this model's business.
      */
     enum class CompactionKind { SUMMARY, STARTED_FALLBACK }
 
@@ -276,6 +280,43 @@ object ToolModels {
             repeat(delBars) { add(DiffCell.DELETE) }
             repeat(5 - size) { add(DiffCell.WEAK) }
         }
+    }
+
+    // ------------------------------------------------------------- todos
+
+    /**
+     * The todo list a `todowrite` call carries (`state.input.todos`, the shape
+     * `OpenCodeClient.TodoInfo` parses). Upstream hides the part from the
+     * timeline (`projection.ts:587`) and shows the list elsewhere, so the
+     * Android side folds it out of the rendered tool parts instead of the
+     * v1-only `GET /session/:id/todo` route.
+     */
+    fun todoList(toolInput: String?): List<OpenCodeClient.TodoInfo> {
+        if (toolInput.isNullOrBlank()) return emptyList()
+        val input = try {
+            JSONObject(toolInput)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        val todos = input.optJSONArray("todos") ?: return emptyList()
+        return OpenCodeClient.TodoInfo.listFromJson(todos)
+    }
+
+    /**
+     * Transcript-wide todo list: the **last** `todowrite` part wins (each call
+     * replaces the list), exactly what the server's `GET /todo` used to answer.
+     */
+    fun todoList(messages: List<ChatStore.UiMessage>): List<OpenCodeClient.TodoInfo> {
+        var out: List<OpenCodeClient.TodoInfo> = emptyList()
+        for (message in messages) {
+            for (part in message.parts) {
+                if (part.type == "tool" && part.toolName == "todowrite") {
+                    val todos = todoList(part.toolInput)
+                    if (todos.isNotEmpty() || part.toolInput != null) out = todos
+                }
+            }
+        }
+        return out
     }
 
     // ------------------------------------------------------------------ utils

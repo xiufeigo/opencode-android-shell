@@ -27,10 +27,11 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * W5-S (D1/D4/D5) — the pure half of the settings completion work:
- * the timeline-detail preset projection, the keybind override/recording model,
+ * the timeline-detail preset ownership, the keybind override/recording model,
  * the keybind persistence codec and the read-only page parsers.
  */
 class Wave5SettingsTest {
@@ -42,8 +43,9 @@ class Wave5SettingsTest {
         // A tab that exists in the enum but not in the nav (or vice versa) is the
         // exact drift that left seven upstream pages unreachable before W5-S.
         assertEquals(SettingsTab.entries.toSet(), SETTINGS_NAV_TABS.toSet())
-        // The disabled rows are *not* tabs, and each one has a page-level reason.
-        assertEquals(listOf(R.string.oc_setting_tab_experimental), SETTINGS_NAV_DISABLED.map { it.titleResId })
+        // The disabled rows are *not* tabs; wave-close left none (Experimental
+        // became a real page and Shell joined it).
+        assertEquals(emptyList<Int>(), SETTINGS_NAV_DISABLED.map { it.titleResId })
     }
 
     @Test
@@ -80,18 +82,22 @@ class Wave5SettingsTest {
     }
 
     @Test
-    fun timelinePresetProjectionMatchesTheStoreTable() {
-        // `SettingsStore.update("settings-timeline-detail", id)` writes
-        // `[shell, edit, reasoning]`; this is the anti-drift assertion between the
-        // enum (UI) and the map (store).
-        for (preset in TimelineDetailPreset.Options) {
-            assertEquals(
-                preset.id,
-                listOf(preset.shellExpanded, preset.editExpanded, preset.reasoningShown),
-                SettingsStore.TIMELINE_DETAIL_PRESETS[preset.id],
-            )
-        }
-        assertEquals(TimelineDetailPreset.Options.map { it.id }.toSet(), SettingsStore.TIMELINE_DETAIL_PRESETS.keys)
+    fun theStoreHasNoAllThreeKeyPresetEntry() {
+        // The old `SettingsStore.update("settings-timeline-detail", id)` branch
+        // wrote all three booleans at once, so picking a preset silently undid
+        // a reasoning switch the user had flipped by hand (v63 BUG-01). The
+        // entry is gone; the panel writes a preset's owned keys per-switch
+        // (`SettingsTimelineDetailOwnershipTest`), and a stray write with this
+        // action now falls through `BOOLEAN_KEYS` and persists nothing.
+        val text = File("src/main/java/com/xiufeigo/opencodeshell/SettingsStore.kt")
+            .takeIf { it.isFile }
+            ?.readText()
+            ?: File("app/src/main/java/com/xiufeigo/opencodeshell/SettingsStore.kt").readText()
+        assertFalse(
+            "the all-three-key preset write must stay deleted",
+            text.contains("\"settings-timeline-detail\" ->"),
+        )
+        assertFalse(text.contains("TIMELINE_DETAIL_PRESETS"))
     }
 
     @Test
@@ -225,6 +231,24 @@ class Wave5SettingsTest {
         assertTrue(rows.none { it.id == "no-worktree" })
         assertTrue(projectPageRows("{}").isEmpty())
         assertTrue(projectPageRows(null).isEmpty())
+    }
+
+    @Test
+    fun projectsParseTheV2CanonicalPayload() {
+        // Trimmed from a live `GET /api/project` answer (opencode 2.0.11): the
+        // path key is `canonical`, `icon` is gone, and an element WITHOUT a
+        // path is still skipped rather than rendered blank.
+        val json = """
+            [{"id":"16a80bf9","canonical":"/home/xiufeigo/opencode-android-shell",""" +
+            """"time":{"created":1790075402947,"updated":1790075402947},"sandboxes":[],"vcs":"git"},
+             {"id":"broken","time":{"created":1,"updated":2}}]
+        """.trimIndent()
+        val rows = projectPageRows(json)
+        assertEquals(listOf("opencode-android-shell"), rows.map { it.name })
+        assertEquals("/home/xiufeigo/opencode-android-shell", rows.single().worktree)
+        assertEquals("git", rows.single().vcs)
+        assertEquals(1790075402947L, rows.single().updatedAt)
+        assertTrue(rows.none { it.id == "broken" })
     }
 
     @Test

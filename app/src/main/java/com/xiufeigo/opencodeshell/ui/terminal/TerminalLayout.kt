@@ -1,6 +1,8 @@
 package com.xiufeigo.opencodeshell.ui.terminal
 
+import androidx.compose.ui.text.TextRange
 import com.xiufeigo.opencodeshell.ui.session.drawer.MobileForm
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -203,4 +205,222 @@ class TerminalPaneSizes(initial: Map<String, Int> = emptyMap()) {
             }.toMap(),
         )
     }
+}
+
+/**
+ * Scroll arithmetic of the terminal tab strip (`TerminalTabStrip`).
+ *
+ * The strip is a horizontally scrolling row of fixed-width chips, and the pane
+ * it lives in is often only wide enough for **one** of them: the side placement
+ * opens at 40% of the window (≈307 dp at the 768 dp breakpoint) and the
+ * trailing affordances (session terminals / shells / `+`, 40 dp each) leave
+ * ≈155 dp of chip space against a ≈160 dp chip. A tab created by the strip's
+ * `+` is focused by the model, so without scrolling the new chip sits entirely
+ * outside the viewport and the user sees the *pane* switch to a fresh shell
+ * (the new tab) while the strip still reads 「Terminal 1」 — the "the `+` did
+ * nothing and my terminal restarted" report. The session strips
+ * (`DesktopTabStrip`/`BottomTabStrip`) carry the same overflow behaviour.
+ *
+ * Pure so the "keep the active chip visible" rule is unit-testable without a
+ * device: [reveal] only ever moves the strip as far as the chip needs.
+ */
+object TerminalTabScroll {
+
+    /**
+     * Offset that brings the chip spanning `[start, start + width)` of a
+     * [viewport]-wide strip into view, measured in scroll px.
+     *
+     * Returns [current] when the chip is already fully visible (a strip that
+     * scrolls on every tab switch would fight the user's own scrolling), and
+     * the result is clamped to `[0, maxScroll]`. A strip that has not been
+     * measured yet ([viewport] `<= 0`) also stays where it is.
+     *
+     * [endPadding] is scrollable content past the chip's own end that the
+     * reveal keeps visible too. The strip passes `0` (its scrollable content
+     * is the chips alone since v47) — the parameter stays for the
+     * "keep N px past the chip visible" shape, which is still unit-tested.
+     */
+    fun reveal(
+        start: Int,
+        width: Int,
+        viewport: Int,
+        current: Int,
+        maxScroll: Int,
+        endPadding: Int = 0,
+    ): Int {
+        val ceiling = maxScroll.coerceAtLeast(0)
+        if (viewport <= 0) return current.coerceIn(0, ceiling)
+        val end = start + width
+        val target = when {
+            // Off to the leading side: line the chip's start up with the viewport.
+            start < current -> start
+            // Off to the trailing side: the chip's end is the viewport's end,
+            // plus the trailing slot when one was asked for.
+            end > current + viewport -> end + endPadding.coerceAtLeast(0) - viewport
+            else -> current
+        }
+        return target.coerceIn(0, ceiling)
+    }
+}
+
+/**
+ * v46 (`research/v46_verify/tD`) / v47 (`research/v47_verify/tD`): the strip's
+ * edge-fade policy — the pure half of the "tab bar occlusion + edges" fix.
+ *
+ * The chips row scrolls inside the space left by the fixed trailing actions
+ * (`>_`, shells, `+`, 40 dp each). v46 also reserved a trailing slot *inside*
+ * the scroll container exactly as wide as that group, so the last chip would
+ * park clear of the button-adjacent clip edge — but the slot scrolled as dead
+ * travel past the last chip (v47 `tD_35_right2/39`: the last tab stopped at
+ * `x≈590` while the viewport ran to `980`), so v47 removed it: the scrollable
+ * content is the chips alone, the active-chip reveal ends at the chip's own
+ * end ([TerminalTabScroll.reveal] still clamps to `[0, maxScroll]`), and the
+ * last chip parks with its end flush at the viewport end, fully visible.
+ *
+ * The edge fade itself ([fadeEdges]) is unchanged: a mid-scroll chip must fade
+ * out instead of hard-cutting mid-glyph (`erminal 14`, `tD_28/29/47`). What
+ * v47 changed is *how* it draws — an overlay box pinned to the viewport
+ * (`TerminalStripEdgeFade`, `TerminalPanel.kt`), because a mask drawn inside
+ * `horizontalScroll` scrolls away with the content (`placeRelativeWithLayer`).
+ */
+object TerminalStripChrome {
+
+    /** Which edges of the chips viewport need the fade overlay. */
+    data class EdgeFade(val leading: Boolean, val trailing: Boolean)
+
+    /**
+     * The fade rides the scroll position: no overflow (`maxScroll <= 0`) needs
+     * no overlay, the leading edge only fades once scrolled past the start, and
+     * the trailing edge only while there is content still to the right. A
+     * negative max (an unmeasured strip) reads as "cannot scroll".
+     */
+    fun fadeEdges(value: Int, maxScroll: Int): EdgeFade {
+        val ceiling = maxScroll.coerceAtLeast(0)
+        return EdgeFade(leading = value > 0, trailing = value < ceiling)
+    }
+}
+
+/**
+ * v47 (`research/v47_verify/tD/tD_45_rename` vs `tD_46_renamed`): the terminal
+ * tab rename's entry policy — the pure half of the "prefill the current name"
+ * fix.
+ *
+ * The rename field opens prefilled with the chip's displayed label
+ * ([TerminalTabTitle.resolve]: the custom title when set, else the numbered
+ * default), so typing edits the current name instead of replacing an empty
+ * value — the session strips prefill the same way (`renameDraft = tab.title…`
+ * in `DesktopTabStrip.kt` / `MobileTabsDrawer.kt`; a session always carries a
+ * title, while a numbered terminal tab usually has no custom one, which is why
+ * the prefill reads through the resolved label rather than the raw model).
+ * The field then opens with the whole title selected ([entrySelection]), the
+ * same entry contract as the session strip's `tabRenameEntrySelection`
+ * (`BottomTabStrip.kt`) and the header's `InlineTitleEdit.entrySelection`.
+ */
+object TerminalTabRename {
+
+    /** The selection the rename field opens with: the **whole** title. */
+    fun entrySelection(title: String): TextRange = TextRange(0, title.length)
+}
+
+/**
+ * A chip's label (`session/terminal/tab.tsx:31-44`): the user's title when they
+ * set one, else the `terminal.title.numbered` default **of that terminal's own
+ * counter** ([com.xiufeigo.opencodeshell.ui.terminal.share.TerminalTabs.Tab.number]).
+ *
+ * The number is a property of the terminal, not of its slot, which is what makes
+ * a reorder a pure relabel-free permutation: deriving the label from the chip's
+ * position instead renames the neighbours on every move (the v40 report — "Move
+ * tab left" turned 「Terminal 2」 into 「Terminal 1」 with no tab created or
+ * closed). The title is resolved in one place so that rule cannot drift.
+ */
+object TerminalTabTitle {
+
+    /** The numbered default for a terminal, e.g. `terminal.title.numbered`. */
+    fun numbered(number: Int, defaultTitle: (Int) -> String): String = defaultTitle(number)
+
+    /** The chip label: the custom title when set, else the numbered default. */
+    fun resolve(custom: String?, number: Int, defaultTitle: (Int) -> String): String =
+        custom?.takeIf { it.isNotBlank() } ?: numbered(number, defaultTitle)
+}
+
+/**
+ * v51: the「旧目录」marker a chip carries after its session was moved out from
+ * under the live shell (`research/v51_verify/tD/v51_62_term_after_move.png`).
+ *
+ * The marker is a prefix on a 96 dp-wide single line, so the full wording ate
+ * the label: **both** stale chips read「Old dir · Termi…」and the number — the
+ * one thing that tells two terminals apart — was gone behind the ellipsis.
+ *
+ * The prefix keeps its head word only (`Old dir` → `Old`, `旧目录` stays whole
+ * because CJK has no space to cut on), which keeps the meaning in every locale
+ * while leaving the number on screen. The full wording still rides the chip's
+ * content description ([semantics]), so nothing is lost to a screen reader.
+ */
+object TerminalTabStaleLabel {
+
+    /** Separator between the marker and the title — the same ` · ` the rest of the shell uses. */
+    const val SEPARATOR = " · "
+
+    /**
+     * The marker as it may appear **on the chip**: the first whitespace-delimited
+     * word of [fullLabel], capped at [MAX_PREFIX_CHARS] so a long translation
+     * cannot eat the title either. A label without a space is used as is.
+     */
+    fun chipPrefix(fullLabel: String): String {
+        val trimmed = fullLabel.trim()
+        val head = trimmed.substringBefore(' ').take(MAX_PREFIX_CHARS)
+        return head.ifEmpty { trimmed.take(MAX_PREFIX_CHARS) }
+    }
+
+    /** The chip's visible text: the shortened marker plus the terminal's own label. */
+    fun chip(fullLabel: String, title: String): String =
+        chipPrefix(fullLabel) + SEPARATOR + title
+
+    /** The chip's content description: the **full** marker, never truncated. */
+    fun semantics(fullLabel: String, title: String): String =
+        fullLabel + SEPARATOR + title
+}
+
+/** Marker budget on the chip: past this the ellipsis starts eating the number. */
+private const val MAX_PREFIX_CHARS = 4
+
+/**
+ * Which move rows a chip's ⋮ menu may show. Both directions are decided by the
+ * same rule — the chip needs a neighbour on that side — so the two can never
+ * disagree: the first chip has no left neighbour and the last no right one
+ * (`session/terminal/tab.tsx:104-142` only renders the row that moves).
+ */
+object TerminalTabMenu {
+
+    fun canMoveLeft(index: Int, count: Int): Boolean = index in 1 until count
+
+    fun canMoveRight(index: Int, count: Int): Boolean = index in 0 until (count - 1)
+}
+
+/**
+ * v40: the strip's own scroll vs. the chip's long-press drag. They are the same
+ * gesture until the press has been still for the long-press deadline, so the
+ * travel measured up to that deadline is the whole arbitration.
+ *
+ * The previous design kept the scroll disabled for as long as a finger rested
+ * on a chip, which is what let a long press survive the touch slop — but the
+ * chips sit flush with no gap between them, so a finger on a chip is the only
+ * place there is to drag, and the strip became completely unscrollable (v40
+ * `tD_45_stripleft`: the drag moved the strip not one pixel). Scrolling is
+ * therefore never suspended, and a press that already passed the slop is read
+ * as a scroll instead of the seed of a reorder.
+ */
+object TerminalTabGesture {
+
+    enum class Press {
+        /** Still at the deadline: the hold becomes a reorder / opens the menu. */
+        HOLD,
+
+        /** Already past the slop: the press belongs to the strip's scroll. */
+        SCROLL,
+    }
+
+    /** [travelPx] is the |x| travel since the down, measured before the deadline. */
+    fun press(travelPx: Float, touchSlopPx: Float): Press =
+        if (abs(travelPx) > touchSlopPx) Press.SCROLL else Press.HOLD
 }

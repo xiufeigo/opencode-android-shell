@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.v2
 
+import android.util.Log
 import com.xiufeigo.opencodeshell.OpenCodeClient
 import com.xiufeigo.opencodeshell.basicAuthorizationHeader
 import okhttp3.HttpUrl
@@ -18,8 +19,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Typed client for the **v2** half of an opencode server's HTTP API (`/api/…`),
- * verified against a live `opencode` 1.18.31 process on `127.0.0.1:4096` whose
- * `GET /doc` advertises 162 paths. Mirrors [com.xiufeigo.opencodeshell.OpenCodeClient]
+ * verified against a live `opencode` 2.0.11 process on `127.0.0.1:4095` whose
+ * `GET /openapi.json` advertises 113 paths. Mirrors [com.xiufeigo.opencodeshell.OpenCodeClient]
  * conventions — OkHttp + `org.json`, `basicAuthorizationHeader` for auth, a
  * non-2xx throwing [ApiException] — but shares no code with it.
  *
@@ -27,7 +28,8 @@ import java.util.concurrent.TimeUnit
  *
  * | family | measured body |
  * |---|---|
- * | `GET /api/health` | bare `{"healthy":true}` — **no** envelope, no version, no marker |
+ * | `GET /api/info` | bare `{"version":"2.0.11","pid":…,"urls":[…],"paths":{…}}` — **no** envelope |
+ * | `GET /api/health` | `404` + empty body on 2.0.11; on 1.18.x a bare `{"healthy":true}` — **no** envelope, no version, no marker |
  * | `GET /api/location` | bare `LocationInfo` — `{"directory":…,"project":{"id":…,"directory":…}}` |
  * | `agent`, `model`, `provider`, `command`, `skill`, `integration`, `reference`, `pty`, `fs/list`, `fs/find`, `permission/request`, `question/request` | `{"location":LocationInfo,"data":…}` |
  * | `session` list/get/create, `session/{id}/message`, `context`, `history`, session-scoped `permission`/`question`, `permission/saved` | `{"data":…}` **without** `location` |
@@ -40,11 +42,15 @@ import java.util.concurrent.TimeUnit
  *
  * ## The paths this server does NOT serve
  *
- * Every unimplemented `/api/…` path answers **`200` + `text/html`** (the SPA
- * shell), never a JSON 404 — measured for `/api/config*`, `/api/vcs*`,
- * `/api/file*`, `/api/find*`, `/api/lsp*`, `/api/mcp*`, `/api/info*`,
- * `/api/project*`, `/api/path`, `/api/global-health`, `/api/global/event`,
- * `/api/workspace` and `/api/session/{id}/{shell,prompt_async,diff,todo,abort}`.
+ * Every path absent from the v2 document answers **`200` + `text/html`**
+ * (the SPA shell), never a JSON 404 — but the route list that used to follow
+ * here (`/api/config*`, `/api/vcs*`, `/api/mcp*`, `/api/project*`, …) was a
+ * 1.18.31/4096 measurement and is stale: on 2.0.11/4095 those routes serve
+ * JSON (each method below notes its live measurement; `OpenCodeClient` has
+ * migrated 24 routes onto them). SPA-fallback evidence is now only the
+ * routes still absent from openapi.json — the v1 shapes
+ * (`/api/session/{id}/{shell,prompt_async,diff,todo,abort}`,
+ * `/api/question*`, `/api/workspace`, `/api/global/event`, …).
  * A genuine v2 error is JSON with a `_tag` discriminator, e.g.
  * `404 {"_tag":"SessionNotFoundError",…}` or
  * `400 {"_tag":"InvalidRequestError","message":"Missing key\n at [\"query\"]",
@@ -84,7 +90,9 @@ class V2Api(
 
     /**
      * `/api/<path>` on [baseHttpUrl], with `?location[directory]=` appended when
-     * [withLocation] and a [directory] is configured.
+     * [withLocation] and a [directory] is configured **and [configure] sent no
+     * location of its own**: an override the caller added replaces the instance
+     * default instead of standing beside it (see [located]).
      *
      * The query key is the literal `location[directory]`: the OpenAPI document
      * declares `location` with `style: deepObject, explode: true`, and a live
@@ -95,7 +103,7 @@ class V2Api(
      * Path segments go through `addPathSegment`, which percent-encodes `/` and
      * `\`, so an id can never re-root the URL.
      */
-    private fun url(
+    internal fun url(
         path: String,
         withLocation: Boolean,
         configure: (HttpUrl.Builder) -> Unit = {},
@@ -104,14 +112,22 @@ class V2Api(
         for (segment in path.trim('/').split('/').filter { it.isNotEmpty() }) {
             builder.addPathSegment(segment)
         }
-        if (withLocation && !directory.isNullOrBlank()) {
-            builder.addQueryParameter(LOCATION_DIRECTORY_QUERY, directory)
-        }
         configure(builder)
-        return builder.build()
+        val configured = builder.build()
+        // A caller's own `location[directory]` (see [located]) replaces the
+        // instance default rather than standing beside it: sending both puts the
+        // key in the query twice, and the server resolves the **first**
+        // occurrence (measured 2026-09-25) — so a default appended first would
+        // silently win and the caller's scope would be dead.
+        val callerScoped = configured.queryParameterValues(LOCATION_DIRECTORY_QUERY).isNotEmpty()
+        return if (withLocation && !directory.isNullOrBlank() && !callerScoped) {
+            configured.newBuilder().addQueryParameter(LOCATION_DIRECTORY_QUERY, directory).build()
+        } else {
+            configured
+        }
     }
 
-    private fun builder(
+    internal fun builder(
         path: String,
         withLocation: Boolean,
         configure: (HttpUrl.Builder) -> Unit = {},
@@ -122,82 +138,151 @@ class V2Api(
     }
 
     /** Blocking call returning the raw body; throws [ApiException] on non-2xx. */
-    private fun callBody(request: Request): String =
+    internal fun callBody(request: Request): String =
         http.newCall(request).execute().use { response ->
             val body = response.body?.string() ?: ""
-            if (!response.isSuccessful) throw ApiException(response.code, errorText(response.code, body))
+            if (!response.isSuccessful) throw apiError(response.code, body)
             body
         }
 
     /** Blocking call for the 204 endpoints: asserts success, discards the body. */
-    private fun callUnit(request: Request) {
+    internal fun callUnit(request: Request) {
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 val body = response.body?.string().orEmpty()
-                throw ApiException(response.code, errorText(response.code, body))
+                throw apiError(response.code, body)
             }
         }
     }
 
     /** Blocking call for `GET /api/fs/read/<rel>`: asserts success, keeps the bytes. */
-    private fun callBytes(request: Request): ByteArray =
+    internal fun callBytes(request: Request): ByteArray =
         http.newCall(request).execute().use { response ->
             val bytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) {
-                throw ApiException(
-                    response.code,
-                    errorText(response.code, bytes.toString(Charsets.UTF_8)),
-                )
+                throw apiError(response.code, bytes.toString(Charsets.UTF_8))
             }
             bytes
         }
 
-    private fun postJson(path: String, withLocation: Boolean, json: JSONObject): String =
+    internal fun postJson(path: String, withLocation: Boolean, json: JSONObject): String =
         callBody(
             builder(path, withLocation).post(json.toString().toRequestBody(jsonMedia)).build(),
         )
 
-    private fun postUnit(path: String, withLocation: Boolean, json: JSONObject) {
+    internal fun postUnit(path: String, withLocation: Boolean, json: JSONObject) {
         callUnit(builder(path, withLocation).post(json.toString().toRequestBody(jsonMedia)).build())
     }
 
     /**
-     * Server errors carry a `_tag` discriminator — keep it in the message. The
-     * human sentence (`data.message` / `message` / `name`) is preferred over the
-     * raw JSON body so an error card never renders a wall of `{"name":…}`.
+     * Server errors carry a `_tag` discriminator — keep it in the message — and
+     * provider failures carry a `type` (e.g. `rate_limit_error`): keep that too,
+     * as `HTTP {code} [{type}] {human}`. The old shape dropped `type`, so the
+     * only classifier input was keyword-guessing on the human sentence. The
+     * human sentence (`data.message` / `message` / `name`) is still preferred
+     * over the raw JSON body so an error card never renders a wall of
+     * `{"name":…}`, and the `HTTP {code}` prefix is load-bearing:
+     * `ChatStore.classifyStoredError` reads the status back off it with
+     * `HTTP_CODE_REGEX` on the prompt-POST path (which has no error detail).
+     *
+     * A `ref` (`err_xxxxxxxx`) is appended as `Reference: {ref}`. Upstream's own
+     * answer to an unexpected server failure is deliberately opaque — the
+     * `UnknownError` carries the human sentence 「Unexpected server error. Check
+     * server logs for details.」 and puts the *only* handle on the log line in
+     * `ref` (`_upstream/packages/server/src/handlers/session-error.ts:22-28`;
+     * `UnknownErrorEncoded` in `protocol/openapi.json`). Upstream's TUI prints
+     * exactly this shape (`tui/src/util/error-details.ts:6`) so the user can
+     * quote it; v63 measured the shell dropping it — the card rendered a bare
+     * `HTTP 500` (`research/v63_verify/5560/06_err_detail.png`) with nothing to
+     * search the server log for.
      */
-    private fun errorText(code: Int, body: String): String {
+    internal fun errorText(code: Int, body: String): String {
         val json = runCatching { JSONObject(body) }.getOrNull()
         if (json != null) {
-            val tag = json.optString("_tag", "")
-            val readable = json.optJSONObject("data")?.optString("message", "")?.takeIf { it.isNotBlank() }
-                ?: json.optString("message", "").takeIf { it.isNotBlank() }
-                ?: json.optString("name", "").takeIf { it.isNotBlank() }
+            // Every field is read null-safely ([optStringOrNull]): a provider
+            // error body may carry `"message":null` / `"type":null`, and the
+            // Android `optString` would then put the literal word `null` on the
+            // error card.
+            val tag = optStringOrNull(json, "_tag").orEmpty()
+            val type = errorTypeOf(json).orEmpty()
+            val readable = optStringOrNull(json.optJSONObject("data"), "message")
+                ?: optStringOrNull(json, "message")
+                ?: optStringOrNull(json, "name")
                 ?: ""
             val human = listOf(tag, readable).filter { it.isNotEmpty() }.distinct().joinToString(": ")
-            if (human.isNotEmpty()) return "HTTP $code $human"
+            val bracket = type.takeIf { it.isNotEmpty() && it != tag && it != readable }?.let { "[$it]" }
+            val head = listOfNotNull(bracket, human.takeIf { it.isNotEmpty() }).joinToString(" ")
+            val ref = errorRefOf(json)
+            val tail = listOfNotNull(head.takeIf { it.isNotEmpty() }, ref?.let { "$REF_LABEL $it" })
+            if (tail.isNotEmpty()) return "HTTP $code ${tail.joinToString(" ")}"
         }
         val detail = body.replace(WHITESPACE, " ").trim().take(200)
         return "HTTP $code" + (if (detail.isEmpty()) "" else " $detail")
     }
 
-    private fun dataObject(body: String): JSONObject =
+    /**
+     * The server's log reference (`err_xxxxxxxx`), or null when the body carries
+     * none. Read off `ref` / `data.ref`, the two envelopes the v2 server wraps
+     * its errors in; blank and non-`err_` values are ignored so a provider body
+     * that happens to have a `ref` field of its own cannot put a foreign id on
+     * the card.
+     */
+    internal fun errorRefOf(body: String): String? =
+        runCatching { JSONObject(body) }.getOrNull()?.let(::errorRefOf)
+
+    private fun errorRefOf(json: JSONObject): String? =
+        (optStringOrNull(json.optJSONObject("data"), "ref") ?: optStringOrNull(json, "ref"))
+            ?.trim()
+            ?.takeIf { it.startsWith(REF_PREFIX) }
+
+    /**
+     * The provider/server discriminator of an error body (`type`, e.g.
+     * `rate_limit_error`; `data.type` when the envelope wraps it), or null when
+     * the body carries none. Same parse [errorText] uses, exposed so
+     * [ApiException.errorType] survives without re-parsing the message.
+     */
+    internal fun errorTypeOf(body: String): String? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        return errorTypeOf(json)
+    }
+
+    private fun errorTypeOf(json: JSONObject): String? =
+        optStringOrNull(json.optJSONObject("data"), "type") ?: optStringOrNull(json, "type")
+
+    /**
+     * The single constructor for HTTP-layer failures: the message keeps
+     * `HTTP {code} [{type}] {human}` ([errorText]) and the structured
+     * discriminator plus a capped copy of the raw body ride along as fields,
+     * so a classifier never has to scrape them back out of prose.
+     */
+    internal fun apiError(code: Int, body: String): ApiException =
+        ApiException(
+            code,
+            errorText(code, body),
+            errorTypeOf(body),
+            body.takeIf { it.isNotEmpty() }?.take(RAW_BODY_CAP),
+        )
+
+    internal fun dataObject(body: String): JSONObject =
         parseObject(body).optJSONObject("data") ?: JSONObject()
 
-    private fun dataArray(body: String): JSONArray = parseObject(body).optJSONArray("data") ?: JSONArray()
+    internal fun dataArray(body: String): JSONArray = parseObject(body).optJSONArray("data") ?: JSONArray()
 
     /**
      * `JSONObject(body)`, but a non-JSON body becomes an [ApiException] instead of
      * an `org.json.JSONException`.
      *
-     * Measured reason this matters: every unimplemented `/api/…` path on this
-     * server answers **`200` + `text/html`** (the SPA shell). If capability
-     * detection is ever skipped or wrong, the failure must land in the same
-     * `catch (IOException)` the rest of the shell already uses, not escape as an
-     * unchecked parse error. [V2Capability] is still the right guard; this is the
-     * backstop.
+     * Reason this matters: a path absent from the v2 document answers
+     * **`200` + `text/html`** (the SPA shell) — measured on 1.18.31/4096; on
+     * 2.0.11/4095 the documented `/api/config*`, `/api/vcs*`, `/api/mcp*`,
+     * `/api/project*` and sibling routes serve JSON (see the class KDoc), so
+     * this backstop now guards only the still-undocumented leftovers. If
+     * capability detection is ever skipped or wrong, the failure must land in
+     * the same `catch (IOException)` the rest of the shell already uses, not
+     * escape as an unchecked parse error. [V2Capability] is still the right
+     * guard; this is the backstop.
      */
-    private fun parseObject(body: String): JSONObject = try {
+    internal fun parseObject(body: String): JSONObject = try {
         JSONObject(body)
     } catch (_: JSONException) {
         throw ApiException(
@@ -206,20 +291,44 @@ class V2Api(
         )
     }
 
-    /** Adds `location[directory]` when the caller overrode the instance default. */
-    private fun located(builder: HttpUrl.Builder, override: String?) {
+    /**
+     * Adds `location[directory]` when the caller overrode the instance default.
+     *
+     * The override is then the **only** `location[directory]` in the query:
+     * [url] answers it in place of the instance default instead of beside it,
+     * because the server resolves the first occurrence it sees (measured
+     * 2026-09-25) — a default appended first would silently win over the
+     * caller's scope.
+     */
+    internal fun located(builder: HttpUrl.Builder, override: String?) {
         if (!override.isNullOrBlank()) builder.addQueryParameter(LOCATION_DIRECTORY_QUERY, override)
     }
 
     // ------------------------------------------------------------------ api
 
     /**
-     * `GET /api/health` → `{"healthy":true}`.
+     * Liveness → [Health]. **`GET /api/info`** is the live route: 2.0.11 answers
+     * `404` + an **empty body** on `GET /api/health` (measured 2026-09-25), so
+     * the old primary route made every caller throw. `/api/info` answers
+     * `200` JSON `{"version":"2.0.11","pid":…,"urls":[…],"paths":{…}}` — the same
+     * document `ServerHealth` probes.
      *
-     * Measured: the body is **exactly** that one key — no `version`, no marker
-     * string. Liveness only; the capability decision lives in [V2Capability].
+     * The legacy route stays as the fallback for the mirror image: a 1.18.x
+     * server answers `/api/info` with the **SPA shell** (`200 text/html`, no
+     * JSON) and `/api/health` with `{"healthy":true}`. So the fallback runs when
+     * the primary is `404` or is not JSON at all ([JSON_BODY_CODE]); any other
+     * failure (401/403/5xx/network) propagates untouched, because those are real
+     * answers about the server, not a missing route.
      */
-    fun health(): Health = Health.fromJson(parseObject(callBody(builder("health", false).get().build())))
+    fun health(): Health {
+        val info = try {
+            parseObject(callBody(builder("info", false).get().build()))
+        } catch (e: ApiException) {
+            if (e.code != 404 && e.code != JSON_BODY_CODE) throw e
+            return Health.fromJson(parseObject(callBody(builder("health", false).get().build())))
+        }
+        return Health.fromJson(info)
+    }
 
     /**
      * `GET /api/location` → `LocationInfo`.
@@ -227,25 +336,45 @@ class V2Api(
      * Measured: `{"directory":"C:\\WINDOWS\\system32","project":{"id":"global",
      * "directory":"C:\\"}}` with **no** envelope; `workspaceID` is absent
      * whenever the server runs without a workspace registry.
+     *
+     * [directory] is the `location[directory]` override
+     * ([locationRef]): upstream's add-project registration reads the location of
+     * the directory it just opened (`home/model.ts:105-112`
+     * `ctx.sdk.api.location.get({ location })`), which is the instance default
+     * only for its own cwd. Null/blank keeps the instance's directory — the
+     * behaviour every existing caller had.
      */
-    fun location(): LocationInfo =
-        LocationInfo.fromJson(parseObject(callBody(builder("location", true).get().build())))
+    fun location(directory: String? = null): LocationInfo = LocationInfo.fromJson(
+        parseObject(
+            callBody(
+                builder("location", true) { located(it, directory) }.get().build(),
+            ),
+        ),
+    )
 
     /**
      * `GET /api/session` → `Page<SessionInfo>`.
      *
      * Measured: `{"data":[…]}`, and once `limit` is supplied a
      * `"cursor":{"previous","next"}` sibling appears (opaque base64; feed it
-     * back as [cursor] and do **not** combine it with [order]). Newest first by
-     * default. `search` was verified live (`?search=Friendly` → exactly the one
-     * matching session).
+     * back as [cursor]). Newest first by default. `search` was verified live
+     * (`?search=Friendly` → exactly the one matching session).
+     *
+     * Unlike the message route, follow-ups here MAY repeat `limit`/`order`
+     * alongside `cursor` (measured 2026-09-24 on 4095: `limit+cursor` and
+     * `order+cursor` both answer 200 with the next page) — the
+     * cursor-must-ride-alone rule lives on `message` ([messagesRaw]), not here.
      *
      * Unlike the catalogs this route does **not** use `location[directory]`:
      * its OpenAPI `directory` parameter is a plain string query, and
      * [directoryScoped] sends `&directory=<instance default>`. Measured live:
      * `?directory=C:\Windows\System32` returned exactly the 3 of 50 sessions
-     * whose `location.directory` matched. `project`/`subpath`/`workspace`
-     * overrides are `UNVERIFIED` (never issued live).
+     * whose `location.directory` matched. `project`/`subpath` overrides are
+     * `UNVERIFIED` (never issued live). `parentID` filters by parent session;
+     * the literal `"null"` selects root sessions only (`ParentIDFilter`,
+     * `protocol/src/groups/session.ts:46-58`). There is no `?workspace=`
+     * parameter upstream (`SessionsQuery` = `limit/order/search/parentID` +
+     * `directory | project+subpath? | {}`) — it is not sent.
      */
     fun sessions(
         limit: Int? = null,
@@ -254,7 +383,7 @@ class V2Api(
         cursor: String? = null,
         project: String? = null,
         subpath: String? = null,
-        workspace: String? = null,
+        parentID: String? = null,
         directoryScoped: Boolean = true,
     ): Page<SessionInfo> = parsePage(
         callBody(
@@ -268,23 +397,26 @@ class V2Api(
                 if (!cursor.isNullOrBlank()) it.addQueryParameter("cursor", cursor)
                 if (!project.isNullOrBlank()) it.addQueryParameter("project", project)
                 if (!subpath.isNullOrBlank()) it.addQueryParameter("subpath", subpath)
-                if (!workspace.isNullOrBlank()) it.addQueryParameter("workspace", workspace)
+                if (!parentID.isNullOrBlank()) it.addQueryParameter("parentID", parentID)
             }.get().build(),
         ),
         SessionInfo::fromJson,
     )
 
     /**
-     * `POST /api/session` body `{id?, agent?, model?, location?}` →
-     * `{"data":SessionInfo}`.
+     * `POST /api/session` body `{id?, title?, agent?, model?, location?,
+     * metadata?, permissions?}` → `{"data":SessionInfo}` (`session.create`,
+     * `protocol/src/groups/session.ts:220-237`).
      *
      * Measured live: `{"location":{"directory":"<repo>"},"agent":"build",
      * "model":{"id":"gpt-5.6-sol-fast","providerID":"openai"}}` answered 200 with
      * the created session, whose `projectID` was that directory's project hash
      * and whose title was the server-generated `New session - <ISO instant>`.
-     * A caller-supplied [id], the [workspace] location key and the [agent]/
-     * [model] fields of a session created without a prompt are `UNVERIFIED`
-     * beyond the echo above.
+     * A caller-supplied [id] and the [agent]/[model] fields of a session
+     * created without a prompt are `UNVERIFIED` beyond the echo above, as are
+     * [metadata] (`Session.Metadata` record)
+     * and [permissions] (`Permission.Ruleset`: `[{action, resource, effect}]`);
+     * both ride only when non-null, and creation call sites pass neither yet.
      */
     fun createSession(
         agent: String? = null,
@@ -292,14 +424,17 @@ class V2Api(
         id: String? = null,
         title: String? = null,
         directory: String? = null,
-        workspace: String? = null,
+        metadata: JSONObject? = null,
+        permissions: JSONArray? = null,
     ): SessionInfo {
         val body = JSONObject()
         if (!id.isNullOrBlank()) body.put("id", id)
         if (!title.isNullOrBlank()) body.put("title", title)
         if (!agent.isNullOrBlank()) body.put("agent", agent)
         if (model != null) body.put("model", model.toJson())
-        val location = locationRef(directory, workspace)
+        if (metadata != null) body.put("metadata", metadata)
+        if (permissions != null) body.put("permissions", permissions)
+        val location = locationRef(directory)
         if (location != null) body.put("location", location)
         return SessionInfo.fromJson(dataObject(postJson("session", false, body)))
     }
@@ -307,6 +442,18 @@ class V2Api(
     /** `GET /api/session/{sessionID}` → `{"data":SessionInfo}`. Measured live. */
     fun session(sessionID: String): SessionInfo =
         SessionInfo.fromJson(dataObject(callBody(builder("session/$sessionID", false).get().build())))
+
+    /**
+     * `GET /api/session/{sessionID}` → the **raw** `SessionInfo` object (the
+     * unwrapped `{data}` payload), for the session-export `info` key. Measured
+     * 2026-09-22 on 2.0.11: `{"data":{"id":"ses_…","projectID":…,"cost":…,
+     * "time":{…},"title":…,"location":{"directory":…}}}` — the v2 wire object
+     * verbatim, never re-serialized from a DTO (v1's export contract is the
+     * bare `Session.Info` from `GET /session/{id}`; see
+     * `SessionTransport.fetchExportFrame`).
+     */
+    fun sessionRaw(sessionID: String): JSONObject =
+        dataObject(callBody(builder("session/$sessionID", false).get().build()))
 
     /**
      * `GET /api/session/active` → `{"data":{"ses_…":{"type":"running"}}}`.
@@ -321,7 +468,7 @@ class V2Api(
         val keys = data.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            out[key] = data.optJSONObject(key)?.optString("type", "").orEmpty()
+            out[key] = optStringOrNull(data.optJSONObject(key), "type").orEmpty()
         }
         return out
     }
@@ -346,23 +493,133 @@ class V2Api(
      * store this returns an **empty page** even though `GET /session/{id}/message`
      * (v1) returns the same conversation. The list populates once a v2 prompt
      * has driven the agent loop.
+     *
+     * Second gotcha: `cursor` and `order` must never ride together (measured
+     * `400 InvalidCursorError`, see [messagesRaw]) — pass one or the other.
+     *
+     * Third: upstream's `type` filter (`protocol/src/groups/message.ts:23-39`)
+     * is deliberately **not** exposed. It applies *before* pagination, and every
+     * read this client makes folds the whole tagged union into the store (the
+     * snapshot renders `user`/`assistant`/`compaction` and the notice rows
+     * alike), so a filter could only shorten a page — no upstream client passes
+     * one either (`packages/cli`, `packages/app`).
      */
     fun messages(
         sessionID: String,
         limit: Int? = null,
         order: String? = null,
         cursor: String? = null,
-        type: String? = null,
     ): Page<Message> = parsePage(
         callBody(
             builder("session/$sessionID/message", false) {
                 if (limit != null && limit > 0) it.addQueryParameter("limit", limit.toString())
                 if (!order.isNullOrBlank()) it.addQueryParameter("order", order)
                 if (!cursor.isNullOrBlank()) it.addQueryParameter("cursor", cursor)
-                if (!type.isNullOrBlank()) it.addQueryParameter("type", type)
             }.get().build(),
         ),
         Message::fromJson,
+    )
+
+    /**
+     * `GET /api/session/{sessionID}/message?order=asc` → **every raw message
+     * row** (the unwrapped `{data}` objects), for the session-export
+     * `messages` key. Measured 2026-09-22 on 2.0.11:
+     * - default order is newest-first, so page 1 asks `order=asc` (upstream's
+     *   export also reads `order:"asc"`);
+     * - pages follow `cursor.next`, and the follow-up carries `cursor=` **alone**:
+     *   measured 2026-09-24 on 4095 that `order=asc&cursor=…` (and
+     *   `cursor=…&order=desc`) answers `400 {"_tag":"InvalidCursorError",
+     *   "message":"Cursor cannot be combined with order"}` while `cursor=…`
+     *   alone answers 200 (upstream `server/src/handlers/message.ts:36` rejects
+     *   `cursor && order !== undefined`, then derives the order from the
+     *   decoded cursor — hence the follow-up needs no `order` at all);
+     * - a 17-message session drained in 2 pages / 17 rows live. [maxPages]
+     *   only guards a pathological cursor loop; the export truncates there.
+     * - full-chain re-verified 2026-09-25 on 4095: all 100 sessions drained
+     *   with exactly this wire shape (page 1 `order=asc`, follow-ups `cursor=`
+     *   alone) — 443 rows / 97 follow-up pages, zero 400s. The server's
+     *   `InvalidCursorError` "Invalid cursor" arm fires only when the `cursor`
+     *   value fails base64url→JSON→`{id,order,direction}` validation (upstream
+     *   `server/src/handlers/message.ts`), and this loop round-trips
+     *   server-issued `cursor.next` values verbatim, so a 400 here means the
+     *   build under test did not run this loop.
+     * - **2026-09-25 device P0 (fixed):** the loop *did* run on the device and
+     *   still 400'd because the terminal page's `cursor.next` is JSON `null`
+     *   and [Cursor.fromJson] read it through `optString`, whose result differs
+     *   between the two `org.json` builds this code runs on: Android's
+     *   stringifies the `NULL` sentinel to the literal `"null"` (only a missing
+     *   key falls back), so the drain echoed `cursor=null` — measured live on
+     *   4095 as exactly `400 {"_tag":"InvalidCursorError","message":"Invalid
+     *   cursor"}` — while the JVM build the unit tests use returns the fallback
+     *   and stopped cleanly, which is why every JVM test stayed green. The
+     *   session-list cursor ([sessions]) had the same defect. Both now read
+     *   their halves through [opaqueCursorValue], which uses the
+     *   runtime-stable `isNull` and refuses the stringified sentinels, so the
+     *   terminal page ends the drain on every runtime.
+     *
+     * The full drain feeds ⋮ Export, the context tab, `ExportSessionButton`
+     * and the background-tasks poll (`SessionTransport.fetchExportFrame`,
+     * `ChatViewModel.refreshBackgroundTasks`) — all four broke together when
+     * the follow-up re-sent `order`, and all four recover with this loop.
+     *
+     * [maxPages] is a safety cap, and hitting it used to be silent: the drain
+     * simply stopped mid-transcript and the caller could not tell the truncated
+     * list from a complete one. Callers that hand the rows to a user (the
+     * export) take [messagesRawPage] instead, which reports it; this overload
+     * stays for the ones that only derive state.
+     */
+    fun messagesRaw(sessionID: String, maxPages: Int = 128): List<JSONObject> =
+        messagesRawPage(sessionID, maxPages).messages
+
+    /**
+     * One full drain of `GET /api/session/{sessionID}/message`, with the
+     * truncation flag the row list cannot carry.
+     *
+     * [MessageDrain.truncated] is true **only** when the drain stopped because
+     * of the [maxPages] cap with the server still offering a `cursor.next` —
+     * not when the last page simply ended the transcript. A truncated drain is
+     * also logged, so a release build says why a transcript is short.
+     *
+     * The cursor is echoed verbatim and nothing else: it is the server's own
+     * `cursor.next`, so re-validating its decoded shape locally could only
+     * diverge from the server's rule (and would turn a loud 400 into a silent
+     * short transcript). The one thing that *is* filtered is a value
+     * [opaqueCursorValue] can tell was never issued — see [messagesRaw] for the
+     * 2026-09-25 device P0 that made that necessary.
+     */
+    fun messagesRawPage(sessionID: String, maxPages: Int = 128): MessageDrain {
+        val out = ArrayList<JSONObject>()
+        var cursor: String? = null
+        var page = 0
+        do {
+            val pageCursor = cursor
+            val body = callBody(
+                builder("session/$sessionID/message", false) {
+                    if (page == 0) it.addQueryParameter("order", "asc")
+                    if (!pageCursor.isNullOrBlank()) it.addQueryParameter("cursor", pageCursor)
+                }.get().build(),
+            )
+            val root = parseObject(body)
+            out += v2ObjectList(root.optJSONArray("data") ?: JSONArray())
+            cursor = Cursor.fromJson(root.optJSONObject("cursor"))?.next
+            page++
+        } while (!cursor.isNullOrBlank() && page < maxPages)
+        val truncated = !cursor.isNullOrBlank()
+        if (truncated) {
+            Log.w(TAG, "messagesRaw truncated: $sessionID stopped at the $maxPages page cap")
+        }
+        return MessageDrain(messages = out, truncated = truncated, pages = page)
+    }
+
+    /**
+     * One drain of the session transcript: the raw rows plus what the paging
+     * loop had to leave behind. [pages] is the number of requests the drain
+     * made, [truncated] the [messagesRawPage] cap flag.
+     */
+    data class MessageDrain(
+        val messages: List<JSONObject>,
+        val truncated: Boolean,
+        val pages: Int,
     )
 
     /**
@@ -399,6 +656,14 @@ class V2Api(
      *
      * model/agent/variant are NOT body fields — switch them via
      * [switchAgent]/[switchModel] first (steer only; see `V2Transport`).
+     *
+     * [files]/[agents]/[skills] are `PromptInput.Prompt`'s arrays
+     * (`schema/src/prompt-input.ts:29-35`), element shapes
+     * `{uri, name?, description?, mention?}` / `{name, mention?}` /
+     * `{id, mention?}` — [PromptFile], [PromptAgent] and [PromptSkill] build
+     * them, `mention` included. [metadata] is
+     * `SessionInbox.UserPayload.metadata` (free-form; the structured line
+     * comments ride here, `composer/submit.ts:169-177`).
      */
     fun prompt(
         sessionID: String,
@@ -459,7 +724,7 @@ class V2Api(
             }.post(JSONObject().toString().toRequestBody(jsonMedia)).build(),
         ).execute().use { response ->
             val body = response.body?.string() ?: ""
-            if (!response.isSuccessful) throw ApiException(response.code, errorText(response.code, body))
+            if (!response.isSuccessful) throw apiError(response.code, body)
             return runCatching { JSONObject(body).optBoolean("interrupted", true) }.getOrDefault(true)
         }
     }
@@ -489,6 +754,115 @@ class V2Api(
      */
     fun wait(sessionID: String) {
         postUnit("experimental/session/$sessionID/wait", false, JSONObject())
+    }
+
+    /**
+     * `POST /api/session/{sessionID}/background` (empty body) → **204**.
+     *
+     * `session.background` — "Move active foreground backgroundable tools for
+     * this session into background observation. Idle requests are a no-op."
+     * (`_upstream/packages/protocol/src/groups/session.ts`). Upstream calls it
+     * as `serverSDK.api.session.background({sessionID})`
+     * (`requests/model.ts:90`). `UNVERIFIED` live (openapi.json only).
+     */
+    fun background(sessionID: String) {
+        postUnit("session/$sessionID/background", false, JSONObject())
+    }
+
+    /**
+     * `PUT /api/session/{sessionID}/environment` body
+     * `{variables:Record<String,String>}` → **204**.
+     *
+     * `session.environment` — "Replace the process environment used by local
+     * shell commands for this session" (`protocol/src/groups/session.ts`).
+     * `UNVERIFIED` live (openapi.json only).
+     */
+    fun environment(sessionID: String, variables: Map<String, String>) {
+        val entries = JSONObject()
+        for ((key, value) in variables) entries.put(key, value)
+        val body = JSONObject().put("variables", entries)
+        callUnit(
+            builder("session/$sessionID/environment", false)
+                .put(body.toString().toRequestBody(jsonMedia))
+                .build(),
+        )
+    }
+
+    /**
+     * `POST /api/session/{sessionID}/generate` body `{prompt}` →
+     * `{data:{text}}` (`SessionGenerateResponse`).
+     *
+     * `session.generate` — "Generate transient text from the current session
+     * context without mutating session history"
+     * (`protocol/src/groups/session.ts:705-721`). `UNVERIFIED` live
+     * (openapi.json only).
+     */
+    fun generate(sessionID: String, prompt: String): String {
+        val body = JSONObject().put("prompt", prompt)
+        val answer = dataObject(postJson("session/$sessionID/generate", false, body))
+        return optStringOrNull(answer, "text").orEmpty()
+    }
+
+    /**
+     * `POST /api/session/{sessionID}/move` body `{directory, delivery?}` →
+     * **204**.
+     *
+     * `session.move` — "Move a session to another project directory at the
+     * requested delivery boundary" (`protocol/src/groups/session.ts:377-385`).
+     * Payload is `Location.PublicRef.fields` + `delivery?`; `PublicRef` is
+     * `{directory}` alone (`schema/src/location.ts:13-17` — `workspaceID` is
+     * omitted from the public shape). `delivery` ∈ `"steer"` | `"queue"`
+     * (`schema/src/session-inbox.ts:11`). Upstream sends `{sessionID,
+     * directory}` (`session-workspace-menu.tsx:77`). `UNVERIFIED` live
+     * (openapi.json only).
+     */
+    fun moveSession(sessionID: String, directory: String, delivery: String? = null) {
+        val body = JSONObject().put("directory", directory)
+        if (!delivery.isNullOrBlank()) body.put("delivery", delivery)
+        postUnit("session/$sessionID/move", false, body)
+    }
+
+    /**
+     * `POST /api/session/{sessionID}/synthetic` body `{id?, text, description?,
+     * metadata?, delivery?, resume?}` → `{data:Session.Inbox.Synthetic}`.
+     *
+     * `session.synthetic` — "Durably admit synthetic session input and schedule
+     * execution unless resume is false"
+     * (`protocol/src/groups/session.ts:452-473`). `metadata` is
+     * `SessionMessage.Synthetic`'s optional `Record<String, Unknown>`
+     * (`schema/src/session-message.ts:34`). `UNVERIFIED` live
+     * (openapi.json only).
+     */
+    fun synthetic(
+        sessionID: String,
+        text: String,
+        description: String? = null,
+        id: String? = null,
+        delivery: String? = null,
+        resume: Boolean? = null,
+        metadata: JSONObject? = null,
+    ): JSONObject {
+        val body = JSONObject().put("text", text)
+        if (!description.isNullOrBlank()) body.put("description", description)
+        if (!id.isNullOrBlank()) body.put("id", id)
+        if (!delivery.isNullOrBlank()) body.put("delivery", delivery)
+        if (resume != null) body.put("resume", resume)
+        if (metadata != null) body.put("metadata", metadata)
+        return dataObject(postJson("session/$sessionID/synthetic", false, body))
+    }
+
+    /**
+     * `POST /api/session/{sessionID}/view` body `{idle: DateTimeUtcFromMillis}`
+     * → **204**.
+     *
+     * `session.view` — "Mark the idle transition observed by the viewer as
+     * viewed" (`protocol/src/groups/session.ts:884-891`), i.e. the unread
+     * acknowledgement of one idle boundary. `idle` is a finite epoch-**millis**
+     * number (`DateTimeUtcFromMillis`, `schema/src/schema.ts:25-32`).
+     * `UNVERIFIED` live (openapi.json only).
+     */
+    fun view(sessionID: String, idle: Long) {
+        postUnit("session/$sessionID/view", false, JSONObject().put("idle", idle))
     }
 
     /**
@@ -536,9 +910,14 @@ class V2Api(
 
     /**
      * `POST /api/session/{sessionID}/command` body `{name(required),
-     * text(required), files?, agents?, skills?, delivery?}` → **204**.
+     * text(required), files?, agents?, skills?, delivery?}` → **204**
+     * (`session.command` = `{name, ...PromptInput.Prompt, delivery?}`,
+     * `protocol/src/groups/session.ts`; `Prompt` =
+     * `{text, files?, agents?, skills?}`, `schema/src/prompt-input.ts:29-35`).
      * Measured 204 live; v1's `{command,arguments,agent,model,variant}` shape
-     * is gone (`command→name`, `arguments→text`).
+     * is gone (`command→name`, `arguments→text`). [agents]/[skills] mirror
+     * [prompt] — same element shapes (`{name, mention?}` / `{id, mention?}`),
+     * omitted unless supplied.
      */
     fun command(
         sessionID: String,
@@ -546,6 +925,8 @@ class V2Api(
         text: String,
         files: List<PromptFile> = emptyList(),
         delivery: String? = null,
+        agents: List<JSONObject>? = null,
+        skills: List<JSONObject>? = null,
     ) {
         val body = JSONObject().put("name", name).put("text", text)
         if (files.isNotEmpty()) {
@@ -553,6 +934,8 @@ class V2Api(
             for (file in files) array.put(file.toJson())
             body.put("files", array)
         }
+        agents?.let { body.put("agents", JSONArray(it)) }
+        skills?.let { body.put("skills", JSONArray(it)) }
         if (!delivery.isNullOrBlank()) body.put("delivery", delivery)
         postUnit("session/$sessionID/command", false, body)
     }
@@ -573,13 +956,18 @@ class V2Api(
     }
 
     /**
-     * `PATCH /api/session/{sessionID}` body `{title|null,
-     * permissions|null}` (`additionalProperties:false`) → **204**.
-     * Measured 204 live.
+     * `PATCH /api/session/{sessionID}` body `{title?, permissions?}` →
+     * **204** (`session.update`, `protocol/src/groups/session.ts:357-375`).
+     * Measured 204 live. [permissions] is a `Permission.Ruleset`
+     * (`[{action, resource, effect}]`, `schema/src/permission.ts:60-66`),
+     * omitted unless supplied so plain renames send exactly what they sent
+     * before. A null [title] omits the key too: `session.update`'s title is an
+     * optional *string* that rejects JSON `null` (400).
      */
-    fun renameSession(sessionID: String, title: String?) {
+    fun renameSession(sessionID: String, title: String?, permissions: JSONArray? = null) {
         val body = JSONObject()
-        if (title == null) body.put("title", JSONObject.NULL) else body.put("title", title)
+        if (title != null) body.put("title", title)
+        permissions?.let { body.put("permissions", it) }
         callUnit(builder("session/$sessionID", false).patch(body.toString().toRequestBody(jsonMedia)).build())
     }
 
@@ -622,6 +1010,13 @@ class V2Api(
      * `{id?(^per), action(required), resources(required), save?, metadata?,
      * source?, agent?}` → `{data:{id:per_, effect}}`.
      *
+     * Field types are `Permission.Request.fields` (`schema/src/permission.ts:25-33`):
+     * `save` = `string[]`, `metadata` = `Record<string, unknown>` (free-form),
+     * `source` = `{type:"tool", messageID, id}` (the tool call that triggered
+     * the ask, `permission.ts:16-22`), `agent` = `Agent.ID`. All three are
+     * optional and omitted unless supplied — a caller that passes none sends
+     * exactly the body it sent before.
+     *
      * Measured live: self-created asks answer `effect:allow` and never appear
      * in the pending lists (nothing to reply to — replying 404s with
      * `PermissionNotFoundError`).
@@ -632,6 +1027,9 @@ class V2Api(
         resources: List<String>,
         id: String? = null,
         save: List<String> = emptyList(),
+        metadata: JSONObject? = null,
+        source: JSONObject? = null,
+        agent: String? = null,
     ): JSONObject {
         val body = JSONObject().put("action", action)
         val res = JSONArray()
@@ -643,6 +1041,9 @@ class V2Api(
             for (s in save) arr.put(s)
             body.put("save", arr)
         }
+        metadata?.let { body.put("metadata", it) }
+        source?.let { body.put("source", it) }
+        if (!agent.isNullOrBlank()) body.put("agent", agent)
         return dataObject(postJson("session/$sessionID/permission", false, body))
     }
 
@@ -663,11 +1064,27 @@ class V2Api(
     ).map(PermissionRequest::fromJson)
 
     /**
-     * `GET /api/permission/saved` → `{"data":["…"]}` (no `location`).
-     * Measured live: `{"data":[]}` — strings, so the element *is* the id.
+     * `GET /api/permission/saved[?projectID=]` → `{"data":PermissionSaved.Info[]}`
+     * (no `location`). Measured live: `{"data":[]}` — the live server had no
+     * saved rule to sample, so every non-empty instance is `UNVERIFIED`; the
+     * element shape itself is the schema's
+     * `{id, projectID, action, resource, time{created, updated}}`
+     * (`schema/src/permission-saved.ts:11-22`).
+     *
+     * `permission.saved.list` takes an optional `projectID` query
+     * (`protocol/src/groups/permission.ts:37-40`) — "optionally filtered by
+     * project". Omitted/blank ⇒ no parameter at all (the server then answers
+     * every project's saved rules), which is what every existing caller gets.
      */
-    fun savedPermissions(): List<String> =
-        v2StringList(dataArray(callBody(builder("permission/saved", false).get().build())))
+    fun savedPermissions(projectID: String? = null): List<SavedPermission> = v2ObjectList(
+        dataArray(
+            callBody(
+                builder("permission/saved", false) {
+                    if (!projectID.isNullOrBlank()) it.addQueryParameter("projectID", projectID)
+                }.get().build(),
+            ),
+        ),
+    ).map(SavedPermission::fromJson)
 
     /**
      * `DELETE /api/permission/saved/{id}` → **204**.
@@ -687,8 +1104,8 @@ class V2Api(
     // `GET /api/form`, `GET/POST /api/session/{id}/form`,
     // `GET/DELETE …/form/{formID}`, `POST …/form/{formID}/reply`.
     //
-    // The old `sessionQuestions`/`replyQuestion`/`rejectQuestion`/
-    // `pendingQuestions` are therefore REMOVED (not deprecated): v1 question
+    // The old question ask/reply/reject surface is therefore REMOVED (not
+    // deprecated): v1 question
     // behavior lives in `OpenCodeClient` + `V1Transport` and is untouched.
 
     /**
@@ -718,8 +1135,15 @@ class V2Api(
     }
 
     /**
-     * `GET /api/session/{sessionID}/form/{formID}` → `{data:FormInfo}`.
-     * Undocumented but symmetric; failures surface as [ApiException].
+     * `GET /api/session/{sessionID}/form/{formID}` → `{data:Form.Detail}`.
+     *
+     * `session.form.get` (`protocol/src/groups/session.ts:824-837`) answers
+     * **`Form.Detail`**, not `Form.Info`: Detail is Info's fields plus `state`
+     * (`schema/src/form.ts:150-160`) — `{status:"pending"}`,
+     * `{status:"answered", answer}` or `{status:"cancelled"}`. That `state` is
+     * the entire difference, and it is the only way to tell an answered or
+     * cancelled form from a pending one, so [FormInfo.state] carries it (null on
+     * [sessionForms]/[pendingForms], whose payloads really are `Form.Info`).
      */
     fun form(sessionID: String, formID: String): FormInfo = FormInfo.fromJson(
         dataObject(callBody(builder("session/$sessionID/form/$formID", false).get().build())),
@@ -736,6 +1160,23 @@ class V2Api(
         postUnit("session/$sessionID/form/$formID/reply", false, JSONObject().put("answer", answers))
     }
 
+    /**
+     * `Form.State` (`schema/src/form.ts:140-148`) — the tagged union the
+     * `answered` member extends with its `answer` record. [status] is
+     * `"pending"` | `"answered"` | `"cancelled"`; [answer] is set only on
+     * `answered` (keyed by field key, `Form.Answer`).
+     */
+    data class FormState(val status: String, val answer: JSONObject? = null) {
+        companion object {
+            /** Null when there is no `state` key, or it carries no readable `status`. */
+            fun fromJson(obj: JSONObject?): FormState? {
+                if (obj == null) return null
+                val status = optStringOrNull(obj, "status") ?: return null
+                return FormState(status, obj.optJSONObject("answer"))
+            }
+        }
+    }
+
     /** `Form.Info{id:frm_, sessionID, title, metadata?, fields[]}` (Wave 2 owns field rendering). */
     data class FormInfo(
         val id: String,
@@ -743,6 +1184,11 @@ class V2Api(
         val title: String,
         val fields: JSONArray,
         val raw: JSONObject,
+        /**
+         * `Form.Detail.state` — populated by [form] (the only route answering
+         * Detail); the list routes answer `Form.Info` and leave this null.
+         */
+        val state: FormState? = null,
     ) {
         companion object {
             fun fromJson(obj: JSONObject): FormInfo = FormInfo(
@@ -751,6 +1197,7 @@ class V2Api(
                 title = obj.optString("title", ""),
                 fields = obj.optJSONArray("fields") ?: JSONArray(),
                 raw = obj,
+                state = FormState.fromJson(obj.optJSONObject("state")),
             )
         }
     }
@@ -763,6 +1210,23 @@ class V2Api(
      * `GET /api/session/{sessionID}/diff?from&to&context` → `{data:[FileDiff…]}`.
      * Measured `{data:[]}` live. Param semantics changed from v1 (commit /
      * message range, not one messageID) — see [OpenCodeClient.FileDiff].
+     *
+     * `from` / `to` are **user** message ids and `context` the unchanged lines
+     * around each hunk (`protocol/src/groups/session.ts:579-601`); omitting both
+     * ids asks for the turn of the newest user message, which is the request the
+     * review panel makes — so an empty `{data:[]}` is never a parameter error.
+     *
+     * The route is a *snapshot* diff (`core/src/session/diff.ts`), not a list of
+     * the session's write/edit calls: it compares the `snapshot.start`/`end`
+     * git-tree ids the runner records on each assistant step, so it is empty
+     * whenever those trees were never captured. `Snapshot.capture()` bails on
+     * `location.vcs?.type === "git"` (`core/src/snapshot.ts enabled()`), which a
+     * location graph built before its directory's `git init` never has — measured
+     * 2026-09-25 on 2.0.11: every session in such a directory answers
+     * `{data:[]}` however many files the session wrote, and no snapshot
+     * repository is ever created under the server's data dir
+     * (`research/v8_verify/err_review`). Re-probing the location read-only
+     * cannot repair that; see `ui/session/review/ReviewVcsReprobe`.
      */
     fun sessionDiff(
         sessionID: String,
@@ -889,30 +1353,75 @@ class V2Api(
         return v2ObjectList(JSONArray(body)).map(V2Config::fromJson)
     }
 
+    /**
+     * `GET /api/config/shell` → a BARE ARRAY `[{path,name,acceptable}]` — the
+     * server shell picker's options (measured 2026-09-22 on 2.0.11:
+     * `sh`/`bash`/`rbash` per prefix). Returned as the distinct `name`s, the
+     * ids `serverShellInfo` compares against `config.info.shell`.
+     */
+    fun shellOptions(): List<String> {
+        val body = callBody(builder("config/shell", false).get().build()).trim()
+        if (!body.startsWith("[")) throw ApiException(JSON_BODY_CODE, "response is not a bare array")
+        return v2ObjectList(JSONArray(body)).mapNotNull { obj ->
+            optStringOrNull(obj, "name")
+        }.distinct()
+    }
+
     /** `GET /api/mcp` → `{location,data:[{name,status…}]}`. Measured live. */
     fun mcp(locationDirectory: String? = null): List<JSONObject> = v2ObjectList(
         dataArray(callBody(builder("mcp", true) { located(it, locationDirectory) }.get().build())),
     )
 
-    /** `GET /api/shell` → `{location,data:[…]}` (raw; Wave 2 owns the rows). Measured `{data:[]}` live. */
+    /**
+     * `GET /api/plugin` → `{location,data:[{id,source,features,state}]}`.
+     * Measured 2026-09-22 on 2.0.11 — elements carry `id` (no `name`);
+     * `pluginPageRows` accepts either key.
+     */
+    fun plugins(locationDirectory: String? = null): List<JSONObject> = v2ObjectList(
+        dataArray(callBody(builder("plugin", true) { located(it, locationDirectory) }.get().build())),
+    )
+
+    /** `GET /api/shell` → `{location,data:[…]}` (raw; Wave 2 owns the rows).
+     *
+     * Measured 2026-09-24 on 4095: `{"location":{"directory":"…"},"data":[]}`
+     * with no shells running, and `?location[directory]=/tmp` echoed back as
+     * `"directory":"/tmp"` — the deepObject key is honoured, so pass the same
+     * directory the shells were created under (a create with omitted `cwd`
+     * lands in the location directory). Re-measured 2026-09-25: a flat
+     * `?directory=/tmp` is IGNORED (the location echoes the default
+     * directory), so list and create must both go through [located] — they do
+     * (`shellCreate` uses the same helper, one scope by construction).
+     * Upstream lists **currently running** commands only (`shell.ts` summary:
+     * "List currently running shell commands… Exited commands are not
+     * included"), so an empty list is the normal idle state, not a parse
+     * failure — and a refetch can never confirm a create: a command that
+     * exits before the next poll never appears. Callers must pin the
+     * `shell.create` response row (see `BackgroundShellPanel`) and resolve
+     * its terminal status via `shellGet`, which — unlike the list — returns
+     * exited rows with their exit code. Element shape is `Shell.Info`
+     * ([ShellCommandInfo]).
+     */
     fun shells(locationDirectory: String? = null): List<JSONObject> = v2ObjectList(
         dataArray(callBody(builder("shell", true) { located(it, locationDirectory) }.get().build())),
     )
 
     /**
-     * `GET /api/worktree` → `{location,data:[…]}` (raw; Wave 2 owns the rows).
+     * `GET /api/worktree?projectID=` → a BARE ARRAY `[{directory, strategy?}]`
+     * (`Worktree.List` = `Worktree.Directory[]`; raw rows, Wave 2 owns them) —
+     * **no** `{location,data}` envelope, do not use [dataArray]. Measured live
+     * 2026-09-23: `[{"directory":"/mnt/c/…/opencode-android-shell"}]`.
      * Without `?projectID` the server answers 400 — pass one explicitly.
      */
-    fun worktrees(projectID: String, locationDirectory: String? = null): List<JSONObject> = v2ObjectList(
-        dataArray(
-            callBody(
-                builder("worktree", true) {
-                    located(it, locationDirectory)
-                    it.addQueryParameter("projectID", projectID)
-                }.get().build(),
-            ),
-        ),
-    )
+    fun worktrees(projectID: String, locationDirectory: String? = null): List<JSONObject> {
+        val body = callBody(
+            builder("worktree", true) {
+                located(it, locationDirectory)
+                it.addQueryParameter("projectID", projectID)
+            }.get().build(),
+        ).trim()
+        if (!body.startsWith("[")) throw ApiException(JSON_BODY_CODE, "response is not a bare array")
+        return v2ObjectList(JSONArray(body))
+    }
 
     /** `GET /api/project` entry: `{id, canonical, time{created,updated}, sandboxes[]}` (bare array). */
     data class V2Project(
@@ -965,8 +1474,8 @@ class V2Api(
             fun fromJson(obj: JSONObject): VcsInfo {
                 val branch = obj.optJSONObject("branch")
                 return VcsInfo(
-                    current = branch?.optString("current", "")?.takeIf { it.isNotEmpty() },
-                    default = branch?.optString("default", "")?.takeIf { it.isNotEmpty() },
+                    current = optStringOrNull(branch, "current"),
+                    default = optStringOrNull(branch, "default"),
                     raw = obj,
                 )
             }
@@ -1028,6 +1537,26 @@ class V2Api(
     fun skills(locationDirectory: String? = null): List<SkillInfo> = v2ObjectList(
         dataArray(callBody(builder("skill", true) { located(it, locationDirectory) }.get().build())),
     ).mapNotNull(SkillInfo::fromJson)
+
+    /**
+     * `GET /api/websearch` provider catalog — the route the generated client
+     * calls `websearch.providers` (`GET /api/websearch/provider`,
+     * `mock-api.ts:88`) returning `{location, data:[{id,name}]}`
+     * (`WebSearch.Provider`, `schema/src/websearch.ts`). The consent dock maps
+     * the rows to `{value: id, label: name}` (`model.ts:50-53`).
+     */
+    data class WebSearchProviderInfo(val id: String, val name: String) {
+        companion object {
+            fun fromJson(obj: JSONObject): WebSearchProviderInfo = WebSearchProviderInfo(
+                id = obj.optString("id", ""),
+                name = obj.optString("name", ""),
+            )
+        }
+    }
+
+    fun websearchProviders(locationDirectory: String? = null): List<WebSearchProviderInfo> = v2ObjectList(
+        dataArray(callBody(builder("websearch/provider", true) { located(it, locationDirectory) }.get().build())),
+    ).map(WebSearchProviderInfo::fromJson)
 
     /**
      * `GET /api/integration` → `{"location":…,"data":[IntegrationInfo…]}`.
@@ -1312,7 +1841,7 @@ class V2Api(
 
     // -------------------------------------------------------------- parsing
 
-    private fun <T> parsePage(body: String, map: (JSONObject) -> T?): Page<T> {
+    internal fun <T> parsePage(body: String, map: (JSONObject) -> T?): Page<T> {
         val root = parseObject(body)
         return Page(
             data = v2ObjectList(root.optJSONArray("data") ?: JSONArray()).mapNotNull(map),
@@ -1320,21 +1849,38 @@ class V2Api(
         )
     }
 
-    private fun locationRef(override: String?, workspace: String?): JSONObject? {
+    /**
+     * `Location.PublicRef` — `{directory}` alone (`schema/src/location.ts:13-17`);
+     * there is no `workspace` key in the upstream shape, so none is ever sent.
+     * Null when neither [override] nor the instance default names a directory.
+     */
+    internal fun locationRef(override: String?): JSONObject? {
         val dir = if (!override.isNullOrBlank()) override else directory
-        if (dir.isNullOrBlank() && workspace.isNullOrBlank()) return null
-        val location = JSONObject()
-        if (!dir.isNullOrBlank()) location.put("directory", dir)
-        if (!workspace.isNullOrBlank()) location.put("workspace", workspace)
-        return location
+        if (dir.isNullOrBlank()) return null
+        return JSONObject().put("directory", dir)
     }
 
     // ------------------------------------------------------------------ dto
 
-    /** `GET /api/health` → `{"healthy":true}`. */
-    data class Health(val healthy: Boolean) {
+    /**
+     * Liveness document. Two shapes reach it:
+     *
+     * - `GET /api/info` (2.0.x) → `{"version":"2.0.11",…}`: healthy iff a
+     *   `version` marker is readable, [version] carries it;
+     * - `GET /api/health` (1.18.x, the fallback) → `{"healthy":true}`: healthy
+     *   iff the flag is set, [version] is null.
+     *
+     * [version] is read through [optStringOrNull], never a bare `optString`:
+     * the two `org.json` builds this app runs on disagree about a JSON `null`
+     * (Android stringifies the sentinel as `"null"`, the JVM returns the
+     * fallback), and `"null"` as a version would read as a healthy server.
+     */
+    data class Health(val healthy: Boolean, val version: String? = null) {
         companion object {
-            fun fromJson(obj: JSONObject): Health = Health(obj.optBoolean("healthy", false))
+            fun fromJson(obj: JSONObject): Health {
+                val version = optStringOrNull(obj, "version")
+                return Health(healthy = obj.optBoolean("healthy", false) || version != null, version = version)
+            }
         }
     }
 
@@ -1349,10 +1895,10 @@ class V2Api(
             fun fromJson(obj: JSONObject): LocationInfo {
                 val project = obj.optJSONObject("project")
                 return LocationInfo(
-                    directory = obj.optString("directory", ""),
-                    workspaceID = obj.optString("workspaceID", "").takeIf { it.isNotEmpty() },
-                    projectID = project?.optString("id", "")?.takeIf { it.isNotEmpty() },
-                    projectDirectory = project?.optString("directory", "")?.takeIf { it.isNotEmpty() },
+                    directory = optStringOrNull(obj, "directory").orEmpty(),
+                    workspaceID = optStringOrNull(obj, "workspaceID"),
+                    projectID = optStringOrNull(project, "id"),
+                    projectDirectory = optStringOrNull(project, "directory"),
                 )
             }
         }
@@ -1370,18 +1916,32 @@ class V2Api(
             fun fromJson(obj: JSONObject): ModelRef = ModelRef(
                 id = obj.optString("id", ""),
                 providerID = obj.optString("providerID", ""),
-                variant = obj.optString("variant", "").takeIf { it.isNotEmpty() },
+                variant = optStringOrNull(obj, "variant"),
             )
         }
     }
 
-    /** `Page.cursor` — `{previous, next}`, both nullable and opaque. */
+    /**
+     * `Page.cursor` — `{previous, next}`, both nullable and opaque.
+     *
+     * Both halves are read through [opaqueCursorValue], never bare `optString`:
+     * the wire sets them to JSON `null` on the terminal page, and the two
+     * `org.json` builds this app runs on disagree about what `optString` does
+     * with that. Android's `JSONObject.optString(name, fallback)` runs the value
+     * through `JSON.toString`, and the `NULL` sentinel's `toString()` is the
+     * literal `"null"` — only a *missing* key reaches the fallback — so
+     * `{"next":null}` read as the string `"null"`, the drain echoed
+     * `?cursor=null`, and the server answered `400 InvalidCursorError: Invalid
+     * cursor`. The JVM build the unit tests run on returns the fallback for
+     * `NULL` (verified against `org.json:json:20240303`), which is why the whole
+     * JVM suite stayed green through the device P0.
+     */
     data class Cursor(val previous: String?, val next: String?) {
         companion object {
             fun fromJson(obj: JSONObject?): Cursor? = obj?.let {
                 Cursor(
-                    previous = it.optString("previous", "").takeIf { value -> value.isNotEmpty() },
-                    next = it.optString("next", "").takeIf { value -> value.isNotEmpty() },
+                    previous = opaqueCursorValue(it, "previous"),
+                    next = opaqueCursorValue(it, "next"),
                 )
             }
         }
@@ -1427,8 +1987,8 @@ class V2Api(
                 return SessionInfo(
                     id = obj.optString("id", ""),
                     projectID = obj.optString("projectID", ""),
-                    parentID = obj.optString("parentID", "").takeIf { it.isNotEmpty() },
-                    agent = obj.optString("agent", "").takeIf { it.isNotEmpty() },
+                    parentID = optStringOrNull(obj, "parentID"),
+                    agent = optStringOrNull(obj, "agent"),
                     model = obj.optJSONObject("model")?.let(ModelRef::fromJson),
                     cost = obj.optDouble("cost", 0.0),
                     tokensInput = tokens?.optLong("input", 0L) ?: 0L,
@@ -1437,9 +1997,9 @@ class V2Api(
                     timeCreated = time?.optLong("created", 0L) ?: 0L,
                     timeUpdated = time?.optLong("updated", 0L) ?: 0L,
                     timeArchived = time?.optLong("archived", 0L)?.takeIf { it > 0L },
-                    title = obj.optString("title", "").ifEmpty { UNTITLED },
-                    directory = location?.optString("directory", "")?.takeIf { it.isNotEmpty() },
-                    subpath = obj.optString("subpath", "").takeIf { it.isNotEmpty() },
+                    title = optStringOrNull(obj, "title") ?: UNTITLED,
+                    directory = optStringOrNull(location, "directory"),
+                    subpath = optStringOrNull(obj, "subpath"),
                     raw = obj,
                 )
             }
@@ -1460,7 +2020,8 @@ class V2Api(
      *
      * A **flat tagged union**, so [type] decides which fields are populated:
      * `"user"` → [text]; `"assistant"` → [agent], [model], [content];
-     * `"shell"` → [command], [output]; `"agent-switched"`, `"model-switched"`,
+     * `"shell"` → [command], [output] (the *inner* `Shell.Output.output`
+     * string — see [shellOutputText]); `"agent-switched"`, `"model-switched"`,
      * `"synthetic"`, `"system"`, `"compaction"` → [raw] (the compaction summary
      * key is `UNVERIFIED`, so [compactionSummary] reads `summary` leniently).
      */
@@ -1496,6 +2057,16 @@ class V2Api(
             const val TYPE_SHELL = "shell"
             const val TYPE_COMPACTION = "compaction"
 
+            /**
+             * `Session.Message.Idle` — the durable **turn marker**
+             * (`_upstream/packages/schema/src/session-message.ts:288-292`):
+             * `{type:"idle", outcome:"succeeded"|"failed"|"interrupted"}`, one
+             * per finished turn, never a drawn row. Measured 2.0.18/4095 on a
+             * Stop that landed before the provider answered: `user` row +
+             * `idle{outcome:"interrupted"}` and nothing in between.
+             */
+            const val TYPE_IDLE = "idle"
+
             /** Lenient: an unknown `type` yields an entry whose [raw] is intact. */
             fun fromJson(obj: JSONObject): Message {
                 val time = obj.optJSONObject("time")
@@ -1506,13 +2077,16 @@ class V2Api(
                     type = obj.optString("type", "unknown"),
                     timeCreated = time?.optLong("created", 0L) ?: 0L,
                     timeCompleted = time?.optLong("completed", 0L)?.takeIf { it > 0L },
-                    text = if (obj.has("text")) obj.optString("text", "") else null,
-                    agent = obj.optString("agent", "").takeIf { it.isNotEmpty() },
+                    // `has("text")` is true for a JSON `null` too, so the key check
+                    // alone is not enough: read through the null-safe helper, or a
+                    // `{"text":null}` frame renders the word "null" as the body.
+                    text = if (obj.has("text")) optStringOrNull(obj, "text").orEmpty() else null,
+                    agent = optStringOrNull(obj, "agent"),
                     model = obj.optJSONObject("model")?.let(ModelRef::fromJson),
                     content = content,
-                    command = obj.optString("command", "").takeIf { it.isNotEmpty() },
-                    output = obj.optString("output", "").takeIf { it.isNotEmpty() },
-                    compactionSummary = obj.optString("summary", "").takeIf { it.isNotEmpty() },
+                    command = optStringOrNull(obj, "command"),
+                    output = shellOutputText(obj),
+                    compactionSummary = optStringOrNull(obj, "summary"),
                     cost = if (obj.has("cost")) obj.optDouble("cost") else null,
                     tokensInput = tokens?.optLong("input", 0L) ?: 0L,
                     tokensOutput = tokens?.optLong("output", 0L) ?: 0L,
@@ -1564,8 +2138,8 @@ class V2Api(
                     admittedSeq = obj.optLong("admittedSeq", 0L),
                     id = obj.optString("id", ""),
                     sessionID = obj.optString("sessionID", ""),
-                    text = payload?.optString("text", "").orEmpty(),
-                    delivery = obj.optString("delivery", "").takeIf { it.isNotEmpty() },
+                    text = optStringOrNull(payload, "text").orEmpty(),
+                    delivery = optStringOrNull(obj, "delivery"),
                     timeCreated = time?.optLong("created", 0L) ?: obj.optLong("timeCreated", 0L),
                     promotedSeq = if (obj.has("promotedSeq")) obj.optLong("promotedSeq") else null,
                     raw = obj,
@@ -1601,11 +2175,11 @@ class V2Api(
 
             fun fromJson(obj: JSONObject): AgentInfo = AgentInfo(
                 id = obj.optString("id", ""),
-                name = obj.optString("name", "").takeIf { it.isNotEmpty() } ?: obj.optString("id", ""),
+                name = optStringOrNull(obj, "name") ?: obj.optString("id", ""),
                 description = obj.optString("description", ""),
                 mode = obj.optString("mode", ""),
                 hidden = obj.optBoolean("hidden", false),
-                system = obj.optString("system", "").takeIf { it.isNotEmpty() },
+                system = optStringOrNull(obj, "system"),
                 raw = obj,
             )
 
@@ -1649,11 +2223,11 @@ class V2Api(
                 val cost = obj.optJSONArray("cost")?.optJSONObject(0)
                 return ModelInfo(
                     id = id,
-                    modelID = obj.optString("modelID", "").takeIf { it.isNotEmpty() } ?: id,
+                    modelID = optStringOrNull(obj, "modelID") ?: id,
                     providerID = obj.optString("providerID", ""),
-                    name = obj.optString("name", "").ifEmpty { id },
-                    family = obj.optString("family", "").takeIf { it.isNotEmpty() },
-                    status = obj.optString("status", "").takeIf { it.isNotEmpty() },
+                    name = optStringOrNull(obj, "name") ?: id,
+                    family = optStringOrNull(obj, "family"),
+                    status = optStringOrNull(obj, "status"),
                     enabled = obj.optBoolean("enabled", false),
                     tools = capabilities?.let { if (it.has("tools")) it.optBoolean("tools") else null },
                     input = v2StringList(capabilities?.optJSONArray("input")),
@@ -1672,11 +2246,11 @@ class V2Api(
              * (`{"id":"high","headers":{},"body":{}}`); a bare string array is
              * tolerated for forward compatibility.
              */
-            private fun variantIds(array: JSONArray?): List<String> {
+            internal fun variantIds(array: JSONArray?): List<String> {
                 if (array == null) return emptyList()
                 return (0 until array.length()).mapNotNull { i ->
                     when (val element = array.opt(i)) {
-                        is JSONObject -> element.optString("id", "").takeIf { it.isNotEmpty() }
+                        is JSONObject -> optStringOrNull(element, "id")
                         is String -> element.takeIf { it.isNotEmpty() }
                         else -> null
                     }
@@ -1711,13 +2285,13 @@ class V2Api(
                 val api = obj.optJSONObject("api")
                 return ProviderInfo(
                     id = obj.optString("id", ""),
-                    name = obj.optString("name", "").ifEmpty { obj.optString("id", "") },
-                    activation = obj.optString("activation", "").takeIf { it.isNotEmpty() },
-                    integrationID = obj.optString("integrationID", "").takeIf { it.isNotEmpty() },
-                    pkg = obj.optString("package", "").takeIf { it.isNotEmpty() },
-                    apiType = api?.optString("type", "")?.takeIf { it.isNotEmpty() },
-                    apiPackage = api?.optString("package", "")?.takeIf { it.isNotEmpty() },
-                    apiUrl = api?.optString("url", "")?.takeIf { it.isNotEmpty() },
+                    name = optStringOrNull(obj, "name") ?: obj.optString("id", ""),
+                    activation = optStringOrNull(obj, "activation"),
+                    integrationID = optStringOrNull(obj, "integrationID"),
+                    pkg = optStringOrNull(obj, "package"),
+                    apiType = optStringOrNull(api, "type"),
+                    apiPackage = optStringOrNull(api, "package"),
+                    apiUrl = optStringOrNull(api, "url"),
                     raw = obj,
                 )
             }
@@ -1825,9 +2399,8 @@ class V2Api(
                     id = obj.optString("id", ""),
                     name = name,
                     description = obj.optString("description", ""),
-                    location = (obj.optString("path", "").takeIf { it.isNotEmpty() }
-                        ?: obj.optString("location", "").takeIf { it.isNotEmpty() }),
-                    content = obj.optString("content", "").takeIf { it.isNotEmpty() },
+                    location = optStringOrNull(obj, "path") ?: optStringOrNull(obj, "location"),
+                    content = optStringOrNull(obj, "content"),
                 )
             }
         }
@@ -1847,9 +2420,7 @@ class V2Api(
                 val types = ArrayList<String>(methods?.length() ?: 0)
                 if (methods != null) {
                     for (i in 0 until methods.length()) {
-                        methods.optJSONObject(i)?.optString("type", "")
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let(types::add)
+                        optStringOrNull(methods.optJSONObject(i), "type")?.let(types::add)
                     }
                 }
                 return IntegrationInfo(
@@ -1886,15 +2457,15 @@ class V2Api(
                 val source = obj.optJSONObject("source")
                 // v2 source key is `id` (schema `Permission.Source`); accept
                 // v1's `callID` too for hybrid-era payloads.
-                val callID = source?.optString("id", "")?.takeIf { it.isNotEmpty() }
-                    ?: source?.optString("callID", "")?.takeIf { it.isNotEmpty() }
+                val callID = optStringOrNull(source, "id")
+                    ?: optStringOrNull(source, "callID")
                 return PermissionRequest(
                     id = obj.optString("id", ""),
                     sessionID = obj.optString("sessionID", ""),
                     action = obj.optString("action", ""),
                     resources = v2StringList(obj.optJSONArray("resources")),
                     save = v2StringList(obj.optJSONArray("save")),
-                    messageID = source?.optString("messageID", "")?.takeIf { it.isNotEmpty() },
+                    messageID = optStringOrNull(source, "messageID"),
                     callID = callID,
                     raw = obj,
                 )
@@ -1903,66 +2474,31 @@ class V2Api(
     }
 
     /**
-     * Kept for source compatibility: v2 has no question endpoints
-     * (`/api/question*` 404s, absent from openapi.json) — v1 question behavior
-     * lives in `OpenCodeClient.QuestionRequest` + `V1Transport` and is
-     * untouched. New v2 code uses [FormInfo] + `form.*` events instead.
+     * `PermissionSaved.Info` — `{id, projectID, action, resource,
+     * time:{created, updated}}` (`schema/src/permission-saved.ts:11-22`), the
+     * element of [savedPermissions]. [raw] keeps anything the schema grows.
+     *
+     * `UNVERIFIED` beyond the empty list: the live server had no saved rule.
      */
-    data class QuestionRequest(
+    data class SavedPermission(
         val id: String,
-        val sessionID: String,
-        val questions: List<Question>,
-        val messageID: String?,
-        val callID: String?,
+        val projectID: String,
+        val action: String,
+        val resource: String,
+        val timeCreated: Long?,
+        val timeUpdated: Long?,
         val raw: JSONObject,
     ) {
-        data class Option(val label: String, val description: String) {
-            companion object {
-                fun fromJson(obj: JSONObject): Option = Option(
-                    label = obj.optString("label", ""),
-                    description = obj.optString("description", ""),
-                )
-            }
-        }
-
-        data class Question(
-            val question: String,
-            val header: String,
-            val options: List<Option>,
-            val multiple: Boolean,
-            val custom: Boolean,
-            val raw: JSONObject,
-        ) {
-            companion object {
-                fun fromJson(obj: JSONObject): Question = Question(
-                    question = obj.optString("question", ""),
-                    header = obj.optString("header", ""),
-                    options = (0 until (obj.optJSONArray("options")?.length() ?: 0)).mapNotNull { i ->
-                        obj.optJSONArray("options")?.optJSONObject(i)?.let(Option::fromJson)
-                    },
-                    multiple = obj.optBoolean("multiple", false),
-                    custom = obj.optBoolean("custom", true),
-                    raw = obj,
-                )
-            }
-        }
-
         companion object {
-            fun fromJson(obj: JSONObject): QuestionRequest {
-                val tool = obj.optJSONObject("tool")
-                val questionsJson = obj.optJSONArray("questions")
-                return QuestionRequest(
+            fun fromJson(obj: JSONObject): SavedPermission {
+                val time = obj.optJSONObject("time")
+                return SavedPermission(
                     id = obj.optString("id", ""),
-                    sessionID = obj.optString("sessionID", ""),
-                    questions = if (questionsJson == null) {
-                        emptyList()
-                    } else {
-                        (0 until questionsJson.length()).mapNotNull { i ->
-                            questionsJson.optJSONObject(i)?.let(Question::fromJson)
-                        }
-                    },
-                    messageID = tool?.optString("messageID", "")?.takeIf { it.isNotEmpty() },
-                    callID = tool?.optString("callID", "")?.takeIf { it.isNotEmpty() },
+                    projectID = obj.optString("projectID", ""),
+                    action = obj.optString("action", ""),
+                    resource = obj.optString("resource", ""),
+                    timeCreated = if (time?.has("created") == true) time.optLong("created") else null,
+                    timeUpdated = if (time?.has("updated") == true) time.optLong("updated") else null,
                     raw = obj,
                 )
             }
@@ -1980,9 +2516,9 @@ class V2Api(
         companion object {
             fun fromJson(obj: JSONObject): RevertState = RevertState(
                 messageID = obj.optString("messageID", ""),
-                partID = obj.optString("partID", "").takeIf { it.isNotEmpty() },
-                snapshot = obj.optString("snapshot", "").takeIf { it.isNotEmpty() },
-                diff = obj.optString("diff", "").takeIf { it.isNotEmpty() },
+                partID = optStringOrNull(obj, "partID"),
+                snapshot = optStringOrNull(obj, "snapshot"),
+                diff = optStringOrNull(obj, "diff"),
                 files = (0 until (obj.optJSONArray("files")?.length() ?: 0))
                     .mapNotNull { obj.optJSONArray("files")?.optJSONObject(it) },
             )
@@ -2013,14 +2549,14 @@ class V2Api(
         val timestamp: Long? get() = if (data.has("timestamp")) data.optLong("timestamp") else null
 
         /** `data.sessionID` — the session the frame belongs to. */
-        val sessionID: String? get() = data.optString("sessionID", "").takeIf { it.isNotEmpty() }
+        val sessionID: String? get() = optStringOrNull(data, "sessionID")
 
         /** `data.assistantMessageID` — set on the step/text/reasoning/tool frames. */
         val assistantMessageID: String?
-            get() = data.optString("assistantMessageID", "").takeIf { it.isNotEmpty() }
+            get() = optStringOrNull(data, "assistantMessageID")
 
         /** `data.text` — set on `session.next.text.ended`, the final assistant text. */
-        val text: String? get() = data.optString("text", "").takeIf { it.isNotEmpty() }
+        val text: String? get() = optStringOrNull(data, "text")
 
         companion object {
             fun fromJson(obj: JSONObject): DurableEvent {
@@ -2031,13 +2567,11 @@ class V2Api(
                 return DurableEvent(
                     id = obj.optString("id", ""),
                     type = obj.optString("type", "unknown"),
-                    aggregateID = durable?.optString("aggregateID", "")?.takeIf { it.isNotEmpty() }
-                        ?: obj.optString("aggregateID", "").takeIf { it.isNotEmpty() },
+                    aggregateID = optStringOrNull(durable, "aggregateID")
+                        ?: optStringOrNull(obj, "aggregateID"),
                     seq = flatSeq ?: if (durable?.has("seq") == true) durable.optLong("seq") else null,
                     version = if (durable?.has("version") == true) durable.optLong("version") else null,
-                    locationDirectory = obj.optJSONObject("location")
-                        ?.optString("directory", "")
-                        ?.takeIf { it.isNotEmpty() },
+                    locationDirectory = optStringOrNull(obj.optJSONObject("location"), "directory"),
                     data = obj.optJSONObject("data") ?: JSONObject(),
                     raw = obj,
                 )
@@ -2045,18 +2579,103 @@ class V2Api(
         }
     }
 
-    /** `PromptInput` file attachment — `{uri, name?, description?, source?}`. */
-    data class PromptFile(val uri: String, val name: String? = null, val description: String? = null) {
+    /**
+     * `Prompt.Mention` — `{start, end, text}` (`schema/src/prompt.ts:7-12`): the
+     * `@` token span inside the prompt text that produced an attachment
+     * (`composer/request.ts:66-85` fills it for every file/agent/skill entry).
+     * The runner keys inline-image de-duplication off `files[].mention.text`
+     * (`core/src/session/runner/to-llm-message.ts:87-95`), so an attachment
+     * without it cannot be recognised as a repeat of an earlier `@`.
+     */
+    data class PromptMention(val start: Int, val end: Int, val text: String) {
+        fun toJson(): JSONObject = JSONObject().put("start", start).put("end", end).put("text", text)
+
+        companion object {
+            /** Null when the key is missing or JSON `null` — never the literal `"null"`. */
+            fun fromJson(obj: JSONObject?): PromptMention? {
+                if (obj == null || obj.isNull("start") || obj.isNull("end")) return null
+                return PromptMention(
+                    start = obj.optInt("start"),
+                    end = obj.optInt("end"),
+                    text = optStringOrNull(obj, "text").orEmpty(),
+                )
+            }
+        }
+    }
+
+    /**
+     * `PromptInput.FileAttachment` — `{uri, name?, description?, mention?}`
+     * (`schema/src/prompt-input.ts:8-16`).
+     */
+    data class PromptFile(
+        val uri: String,
+        val name: String? = null,
+        val description: String? = null,
+        val mention: PromptMention? = null,
+    ) {
         fun toJson(): JSONObject {
             val json = JSONObject().put("uri", uri)
             if (!name.isNullOrBlank()) json.put("name", name)
             if (!description.isNullOrBlank()) json.put("description", description)
+            mention?.let { json.put("mention", it.toJson()) }
             return json
         }
     }
 
-    /** Non-2xx response. [code] is the HTTP status; the message carries the `_tag`. */
-    class ApiException(val code: Int, message: String) : IOException(message)
+    /**
+     * `PromptInput.AgentAttachment` — `{name, mention?}`
+     * (`schema/src/prompt-input.ts:23-26`). [prompt]'s `agents` parameter takes
+     * the raw JSON list, so `PromptAgent(name, mention).toJson()` is the typed
+     * way in (and the only way to attach a span).
+     */
+    data class PromptAgent(val name: String, val mention: PromptMention? = null) {
+        fun toJson(): JSONObject {
+            val json = JSONObject().put("name", name)
+            mention?.let { json.put("mention", it.toJson()) }
+            return json
+        }
+    }
+
+    /**
+     * `PromptInput.SkillAttachment` — `{id, mention?}`
+     * (`schema/src/prompt-input.ts:30-33`). Same entry rule as [PromptAgent].
+     */
+    data class PromptSkill(val id: String, val mention: PromptMention? = null) {
+        fun toJson(): JSONObject {
+            val json = JSONObject().put("id", id)
+            mention?.let { json.put("mention", it.toJson()) }
+            return json
+        }
+    }
+
+    /**
+     * Non-2xx response. [code] is the HTTP status; the message carries
+     * `HTTP {code} [{type}] {human}` ([errorText]). [errorType] is the raw
+     * `type` discriminator (`rate_limit_error`, …) when the body carried one —
+     * the prompt-POST path has no error detail, so this field (not message
+     * scraping) is the durable way to keep it. [rawBody] is the response body
+     * capped to [RAW_BODY_CAP] chars, for troubleshooting only.
+     */
+    class ApiException(
+        val code: Int,
+        message: String,
+        val errorType: String? = null,
+        val rawBody: String? = null,
+    ) : IOException(message) {
+        /**
+         * The server rejected a pagination cursor — the `_tag` the message and
+         * session-list routes answer with when a `cursor` value is not a
+         * server-issued token (`400 {"_tag":"InvalidCursorError", …}`).
+         *
+         * **Never retry this.** The cursor is built client-side, so repeating
+         * the identical request reproduces the identical rejection; the fix is
+         * always to stop paging and surface the failure. The tag is checked
+         * against [rawBody] because [errorType] reads the payload's `type`
+         * discriminator, which a `_tag`-only error body does not carry.
+         */
+        val isInvalidCursor: Boolean
+            get() = code == 400 && rawBody?.contains("\"InvalidCursorError\"") == true
+    }
 
     companion object {
         /** The literal query key the OpenAPI `deepObject` location parameter uses. */
@@ -2080,6 +2699,15 @@ class V2Api(
         const val JSON_BODY_CODE = -1
         private val WHITESPACE = Regex("\\s+")
 
+        /** The label upstream's TUI puts in front of a server log reference. */
+        private const val REF_LABEL = "Reference:"
+
+        /** Server log references are minted `err_{uuid4[0:8]}` upstream. */
+        private const val REF_PREFIX = "err_"
+
+        /** [ApiException.rawBody] is troubleshooting context, not a body store. */
+        private const val RAW_BODY_CAP = 4096
+
         /** REST timeouts, same shape as `OpenCodeClient`/`PtyApi`. */
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -2088,12 +2716,21 @@ class V2Api(
             .build()
 
         /**
-         * Client for the SSE routes: no read timeout (the stream idles between
-         * events; the server only heartbeats every 10 s).
+         * Client for the SSE routes, on the same idle policy as the app's own
+         * streams (`com.xiufeigo.opencodeshell.EventStream.sseClient`, whose
+         * 35 s watchdog this mirrors).
+         *
+         * The read timeout is deliberately **finite**. `readTimeout(0)` was the
+         * old shape here ("the stream idles between events; the server only
+         * heartbeats every 10 s"), which is wrong twice over: the measured
+         * heartbeat interval is 15 s (`_upstream/packages/server/src/handlers/
+         * event.ts:22`, confirmed by a 62 s `curl -N /api/event` on 2.0.18/4095
+         * — 5 comment lines), and an infinite read means a blackholed socket
+         * never throws, so the stream is held forever and never reconnects.
          */
         fun defaultSseClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .readTimeout(com.xiufeigo.opencodeshell.EventStream.IDLE_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(true)
             .build()
 
@@ -2158,6 +2795,9 @@ class V2Api(
     }
 }
 
+/** Log tag for the transport-level warnings this file emits on its own behalf. */
+private const val TAG = "V2Api"
+
 /**
  * `JSONArray` → `List<JSONObject>`, dropping non-object elements.
  *
@@ -2165,13 +2805,88 @@ class V2Api(
  * nested DTO companions ([V2Api.Message]'s especially) parse their own payloads
  * and cannot reach an outer instance member.
  */
-private fun v2ObjectList(array: JSONArray): List<JSONObject> =
+internal fun v2ObjectList(array: JSONArray): List<JSONObject> =
     (0 until array.length()).mapNotNull { array.optJSONObject(it) }
 
-/** `JSONArray` → `List<String>`, dropping non-strings. */
-private fun v2StringList(array: JSONArray?): List<String> {
+/**
+ * `JSONArray` → `List<String>`, dropping non-strings.
+ *
+ * Read through `opt`/`isNull` rather than `optString(index, fallback)`: a JSON
+ * `null` element stringifies as the literal `"null"` on Android's `org.json`
+ * (see [optStringOrNull]) and would then ride into a list of resources, shells or
+ * capabilities as a value that never existed.
+ */
+internal fun v2StringList(array: JSONArray?): List<String> {
     if (array == null) return emptyList()
     return (0 until array.length()).mapNotNull { i ->
-        array.optString(i, "").takeIf { it.isNotEmpty() }
+        when (val element = array.opt(i)) {
+            is String -> element.takeIf { it.isNotEmpty() && it != "null" }
+            else -> null
+        }
+    }
+}
+
+/**
+ * One half of an opaque pagination cursor, or null when the server did not
+ * issue one.
+ *
+ * `JSONObject.isNull` is the runtime-stable half of the check: it answers true
+ * for a missing key and for the wire's JSON `null` on **both** `org.json` builds
+ * this app sees (Android's, and the `org.json:json` jar the unit tests use),
+ * whereas `optString` turns JSON `null` into the literal string `"null"` on
+ * Android and into its fallback on the JVM. Reading a cursor through
+ * `optString` alone is what made the device drain send `?cursor=null` and take
+ * `400 InvalidCursorError` on every export while every JVM test passed.
+ *
+ * The `"null"`/`"undefined"` rejections are belt-and-braces for the Android
+ * shape and for a server that literally serialized those tokens as strings:
+ * neither is a value the route can decode, so treating them as "no cursor" is
+ * always right.
+ */
+internal fun opaqueCursorValue(obj: JSONObject, key: String): String? {
+    if (obj.isNull(key)) return null
+    return obj.optString(key, "").takeIf { it.isNotEmpty() && it != "null" && it != "undefined" }
+}
+
+/**
+ * An optional string field, or null when the wire did not carry one.
+ *
+ * Same runtime split as [opaqueCursorValue], for the non-cursor fields: Android's
+ * `JSONObject.optString(name, fallback)` runs the value through `JSON.toString`,
+ * so a JSON `null` becomes the **literal string `"null"`** (the `NULL` sentinel's
+ * `toString()`); only a *missing* key reaches the fallback. The JVM build the
+ * unit tests run on returns the fallback for `NULL`
+ * (`org.json:json:20240303`), which is why the divergence only ever showed up on
+ * a device (three times now: `Cursor.previous`/`next` twice, and
+ * `ChatStore.errorMessageOf`).
+ *
+ * `isNull` is the runtime-stable half — it answers true for a missing key and for
+ * JSON `null` alike on both builds — and a server-sent literal `"null"` counts as
+ * absent too, since no optional field this class models has `"null"` as a value.
+ * A `null` [obj] answers `null` as well, so an optional parent object
+ * (`payload.metadata`, `branch`, `source`, …) needs no extra `?.let`.
+ */
+internal fun optStringOrNull(obj: JSONObject?, key: String): String? {
+    if (obj == null || obj.isNull(key)) return null
+    return obj.optString(key, "").takeIf { it.isNotBlank() && it != "null" }
+}
+
+/**
+ * The captured stdout of a `type:"shell"` session message.
+ *
+ * On the wire `output` is the **object** `Shell.Output`
+ * `{output, cursor, size, truncated}` (`schema/src/shell.ts:73-80`), so reading
+ * the outer key through `optStringOrNull` would hand back the whole object's
+ * JSON text as if it were the command's output. The inner `output` string is
+ * the payload; the older/plain-string shape is still accepted for a hybrid
+ * server. A JSON `null`, a missing key and the literal `"null"` all answer
+ * `null` (see [optStringOrNull] for the two-`org.json` split).
+ */
+internal fun shellOutputText(obj: JSONObject?): String? {
+    if (obj == null || obj.isNull("output")) return null
+    return when (val raw = obj.opt("output")) {
+        is String -> raw.takeIf { it.isNotEmpty() && it != "null" }
+        is JSONObject -> optStringOrNull(raw, "output")
+        else -> null
     }
 }

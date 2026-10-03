@@ -35,11 +35,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +75,8 @@ import kotlinx.coroutines.flow.collect
  * |           | cell pad 12, `display: block` horizontal scroll     |      |
  * | inline code | mono 500, bg = text-base 8 %                      | span style |
  * | a         | `--text-interactive-base`, no underline             | [LinkAnnotation.Url], accent colour |
+ * | img       | `markdown-image.ts` (local paths read through the    | [MarkdownImageView] via |
+ * |           | server, remote ones browser-owned) + `image-preview` | [LocalMarkdownImageReader]; tap = preview |
  * | strong    | weight medium (500), colour = body                  | W500 spans |
  * | hr        | height 0, my 32 (invisible spacing)                 | spacer |
  *
@@ -205,6 +208,18 @@ private fun BlockView(
 
         is MdBlock.Heading -> HeadingView(block, palette, fontSize, muted, first, last)
 
+        // A-1: `![alt](src)` (`markdown-image.ts`) — the bytes come from
+        // `LocalMarkdownImageReader`, the alt text is the fallback.
+        is MdBlock.Image -> MarkdownImageView(
+            alt = block.alt,
+            src = block.src,
+            color = palette.base,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            first = first,
+            last = last,
+        )
+
         is MdBlock.CodeBlock -> CodeBlockView(block, palette, first, last)
 
         is MdBlock.BulletList -> ListView(block, palette, fontSize, lineHeight, muted, first, last)
@@ -328,6 +343,11 @@ private fun CodeBlockView(
         clipboard.setText(AnnotatedString(block.code))
         copied = true
     }
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // IconButton's own modifier chain, not the `Icon` inside it — M3's
+    // `IconButton` is a clickable Box, and Compose announces only the node that
+    // carries ACTION_CLICK (a descendant's description is not merged into it).
+    val copyLabel = stringResource(R.string.oc_md_copy_code)
     // Tokens are memoized with the syntax colours, so a dark⇄light switch
     // re-resolves without re-tokenizing (the tokenize itself is theme-free).
     // Mermaid fences degrade to a labeled code block (A3 #5): upstream renders
@@ -349,7 +369,7 @@ private fun CodeBlockView(
             .combinedClickable(
                 onClick = {},
                 onLongClick = copy,
-                onLongClickLabel = stringResource(R.string.oc_md_copy_code),
+                onLongClickLabel = copyLabel,
             ),
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -364,7 +384,7 @@ private fun CodeBlockView(
                         Text(
                             text = languageLabel,
                             color = palette.muted,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = OcTheme.monoFont,
                             fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -387,12 +407,17 @@ private fun CodeBlockView(
                                 .padding(horizontal = 6.dp, vertical = 3.dp),
                         )
                     }
-                    IconButton(onClick = copy, modifier = Modifier.size(28.dp)) {
+                    IconButton(
+                        onClick = copy,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .semantics { contentDescription = copyLabel },
+                    ) {
                         Icon(
                             painter = painterResource(
                                 if (copied) R.drawable.ic_oc_check else R.drawable.ic_oc_copy
                             ),
-                            contentDescription = stringResource(R.string.oc_md_copy_code),
+                            contentDescription = null,
                             tint = palette.muted,
                             modifier = Modifier.size(16.dp),
                         )
@@ -402,7 +427,7 @@ private fun CodeBlockView(
             Text(
                 text = highlighted,
                 color = palette.base,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = OcTheme.monoFont,
                 fontSize = 13.sp,
                 lineHeight = 20.sp,
                 modifier = Modifier
@@ -628,6 +653,7 @@ private fun QuoteView(
  * so `Text` handles the tap itself. [forceBold] renders every span W500 — the
  * table-header path (`th { font-weight: medium }` applies to the whole cell).
  */
+@Composable
 private fun annotate(
     spans: List<MdSpan>,
     palette: OcMarkdownPalette,
@@ -640,7 +666,7 @@ private fun annotate(
                 color = palette.base,
                 fontWeight = if ((forceBold || span.bold) && !muted) FontWeight.W500 else null,
                 fontStyle = if (span.italic) FontStyle.Italic else null,
-                fontFamily = if (span.code) FontFamily.Monospace else null,
+                fontFamily = if (span.code) OcTheme.monoFont else null,
                 background = if (span.code) palette.codeBackground else Color.Unspecified,
             )
             if (span.link != null) {

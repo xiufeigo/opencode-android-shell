@@ -27,11 +27,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xiufeigo.opencodeshell.R
+import com.xiufeigo.opencodeshell.ui.session.actions.MessageRevertAction
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 import kotlinx.coroutines.delay
 import java.util.Date
@@ -85,13 +88,17 @@ internal fun AssistantMetaRow(
 
 /**
  * User row meta (`:311-327`): `Agent · Model` head + time stamp, right aligned,
- * copy button after the text.
+ * copy button after the text. The「撤销到此」action (`message-content.tsx:328-338`)
+ * sits before the copy button; [onRevert] hides it when the host supplies none.
  */
 @Composable
 internal fun UserMetaRow(
     text: String,
     meta: MessageMeta.Meta,
     modifier: Modifier = Modifier,
+    messageID: String = "",
+    revertBusy: Boolean = false,
+    onRevert: ((String) -> Unit)? = null,
 ) {
     val c = OcTheme.colors
     val context = LocalContext.current
@@ -122,6 +129,14 @@ internal fun UserMetaRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
+            )
+        }
+        if (onRevert != null) {
+            Spacer(Modifier.width(META_GAP))
+            MessageRevertAction(
+                messageID = messageID,
+                busy = revertBusy,
+                onRevert = onRevert,
             )
         }
         if (text.isNotBlank()) {
@@ -168,6 +183,9 @@ private fun CopyActionButton(
     val label = stringResource(copyLabelRes)
     val copiedLabel = stringResource(R.string.oc_meta_copied)
     var copied by remember { mutableStateOf(false) }
+    // Hoisted: `semantics {}` is not a composable scope. The label rides the
+    // clickable Box, not the `Icon` inside it.
+    val copyLabel = if (copied) copiedLabel else label
 
     LaunchedEffect(copied) {
         if (!copied) return@LaunchedEffect
@@ -182,12 +200,13 @@ private fun CopyActionButton(
             .clickable(role = Role.Button) {
                 clipboard.setText(AnnotatedString(text))
                 copied = true
-            },
+            }
+            .semantics { contentDescription = copyLabel },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(if (copied) R.drawable.ic_oc_check else R.drawable.ic_oc_copy),
-            contentDescription = if (copied) copiedLabel else label,
+            contentDescription = null,
             tint = c.iconMuted,
             modifier = Modifier.size(14.dp),
         )
