@@ -179,6 +179,10 @@ class ComposerUnionBottomP5V109Test {
     // 已经是完整活判据。这两条断言的是 **v98 那次 padding 拆分（4+8）的物理后果**
     // —— `top = 4.dp` 自 v110 起已不存在，保留它们是**记录**而非判据，故消息统一
     // 标成 `v98 re-enactment:`，防止再被当成开放项。**一个数没动、没删、没放宽。**
+    // v115：本方法里的 `SessionPaneLayout.composerTopPx(paneHeight768, 94)`（及其下游断言）
+    // **不可删** —— 它是 R6 那两条记录断言唯一的侦测力来源，删掉它们会静默退化成纯装饰；
+    // 已有结构 pin（`ComposerTripwireIntegrityV115Test`，含反向验证）守住这条不变量，
+    // 推导见 `research/v97_fix/TRIPWIRE_HARDENING.md` §1-§3。
 
     @Test
     fun theBottomPaddingAbsorbsTheOverrunOnSevenSixEightButNotOnSixHundred() {

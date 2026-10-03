@@ -335,6 +335,10 @@ class ComposerBandTallEnoughV106Test {
         // 判据本身（`unionBottom <= paneBottom`）的活版本在
         // `ComposerPositionDecompositionV107Test` / `ComposerUnionBottomP5V109Test`，
         // 这里的 5 与 2 **只作记录，不再被当判据引用**。
+        // v115：下面那几条「修后」断言（`Frame(...)` → `SessionPaneLayout`）**不可删** ——
+        // 它们是 R5 唯一的侦测力来源，删掉会让上面这些记录断言静默退化成纯装饰；
+        // 已有结构 pin（`ComposerTripwireIntegrityV115Test`，含反向验证）守住这条不变量，
+        // 推导见 `research/v97_fix/TRIPWIRE_HARDENING.md` §1-§3。
         assertEquals(
             "真机 600 档 ①：unionBottom 218 > hostBottom(imeTop) 213 ⇒ +5",
             5, 218 - 213,
