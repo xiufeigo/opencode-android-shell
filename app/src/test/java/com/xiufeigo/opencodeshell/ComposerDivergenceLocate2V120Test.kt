@@ -385,13 +385,24 @@ class ComposerDivergenceLocate2V120Test {
     }
 
     /**
-     * §2.2 **结构 pin：§2.3 的读数问题清单必须还在。**
+     * §2.2 **结构 pin：§2.3 的读数问题清单必须还在** —— **v127 复核：清单已过期，但账不许消失。**
      *
-     * **为什么不能更强**：−8px 的**答案未知**。任何把它写成数值的断言都是编造。
-     * 这一条保证的是**账不被销掉**（清单不许被悄悄删掉），不是**账已结清** ——
-     * 而这正是它此刻**应该**保证的东西。
-     * 一旦 `dumpsys window insets` 的 `navigationBars` 读数到手，
-     * 本用例**应被替换**为带真实 `navBottomPx` 的数值断言（`DIVERGENCE_LOCATE2.md` §2.3 ①）。
+     * ## v127 的复核结论（本轮只紧不松，**0 条被删、0 条被松**）
+     *
+     * 这条 pin 原本**只**要求下游历史文档保持原样，理由是「−8px 的答案未知，不编数值」。
+     * **它自己写明的时态条件 `before the dumpsys reading lands` 已经兑现** ——
+     * 第 3 次真机终验的 insets 原文已到手（`research/v97_verify/5554_md/REPORT_FINAL_VERIFY.md:357-362`），
+     * `type=ime frame=[0,342][1366,768]` ⇒ `imeBottomPx = 426`。
+     * 且**同文件的 §2.1（`:343`）已把那笔 −8px 逐位结清**（`132 → 180`、`140 − 180 = −40`、`48 − 40 = 8`）。
+     *
+     * ⇒ 因此本 pin **只保留历史文档的完整性**（历史不许被悄悄改写，这正是它当初的价值），
+     * **并新增 4 条把「当前事实」钉死**：这笔账**已经结清**，结清后的继任账目
+     * 必须落在 `RESIDUAL_LEDGER.md` 上（`96 = 84 + 60 − 48`），且**不许**再让任何东西
+     * 悄悄改掉那 7 条历史断言。
+     *
+     * **为什么这不是放宽**：原有 7 条断言的取值集合**一个字没变大**（全是精确相等 / `contains`），
+     * 新增 4 条**只增约束**；「−8px 未闭环」这四个字**没有被删掉**。
+     * 被纠正的只是它作为「当前状态声明」的地位，**不是它的存在**。
      */
     @Test
     fun `the eight pixel question list is still open and must not be deleted before the dumpsys reading lands`() {
@@ -423,6 +434,46 @@ class ComposerDivergenceLocate2V120Test {
         assertTrue(
             "…and must still say the −8px is NOT closed",
             text.contains("−8px **未闭环**") || text.contains("−8px 未闭环"),
+        )
+
+        // ---- v127 新增：时态条件已兑现，这笔账已结清，结清后的账目必须有人认领 ----
+        assertEquals(
+            "v127: the deciding reading HAS landed — the clamp-off pane is 606 − 426 = 180, not 132",
+            paneClampOff768,
+            paneBox768 - imeBottom768,
+        );
+        assertEquals(
+            "v127: …so the measured reading over-reads the device by 40 = one nav bar (48) less the phantom 8",
+            -40,
+            devicePane768 - paneClampOff768,
+        );
+        assertEquals(
+            "v127: 48 − 40 = 8 — the −8px is fully accounted for, it is not an open question any more",
+            8,
+            navFloor768 - (paneClampOff768 - devicePane768),
+        )
+        // 继任账目：结清 −8px 之后剩下的 96 必须落在账本上，且**不许**再无人认领。
+        val ledger = listOf(
+            File("research/v97_fix/RESIDUAL_LEDGER.md"),
+            File("app/research/v97_fix/RESIDUAL_LEDGER.md"),
+            File("../research/v97_fix/RESIDUAL_LEDGER.md"),
+        ).firstOrNull { it.isFile }
+        assertTrue(
+            "v127: the successor account of the closed −8px must be booked in RESIDUAL_LEDGER.md",
+            ledger != null,
+        )
+        val ledgerText = ledger!!.readText().replace("\r\n", "\n")
+        assertTrue(
+            "v127: the ledger must carry the residual's arithmetic 96 = 84 + 60 − 48",
+            ledgerText.contains("84 + 60 − 48"),
+        )
+        assertTrue(
+            "v127: …and must state that A (dropping chrome) is not movable — that is why the 96 is approved",
+            ledgerText.contains("A（去 chrome）不可动"),
+        )
+        assertTrue(
+            "v127: …and must record both tiers' unified-criterion baseline (−10 / −12)",
+            ledgerText.contains("−10") && ledgerText.contains("−12"),
         )
     }
 }

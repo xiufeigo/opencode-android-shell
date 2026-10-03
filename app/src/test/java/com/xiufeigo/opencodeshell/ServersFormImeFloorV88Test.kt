@@ -66,6 +66,20 @@ class ServersFormImeFloorV88Test {
     /**
      * The composition read of `WindowInsets.ime` on that window (`r1_edit_kbd.png`):
      * the IME *frame*, 48 dp taller than the drawn keyboard.
+     *
+     * **v127 复核：这是**记录性 fixture**，属于「IME *frame* 轴」，不是 session 判据轴。**
+     * 判别标准（与 v126 同一把尺子）：这个值**从不**作为实参进入
+     * `believedImeBottomPx(...)`，只喂 `serverDialogFloorDp` / `serverDialogBandDp` /
+     * `serverDialogBandLiftDp`（服务器表单 / 设置弹窗的带高与抬升）。
+     *
+     * **它不是 `426`，也不该改成 `426`**：`474.5 − 426 = 48.5`，
+     * 而 48.5 正是 frame 顶边（`768 − 474.5 = 293.5`）到**已绘制**的键盘首像素
+     * `y=342` 之间的那圈 Gboard 透明顶带（本类 KDoc:40-42 自陈）。
+     * 改成 426 会抹掉这圈透明带，把 V88/V89/V92 三类里逐位钉住的
+     * `lift 155.5` / `drawnTop 111.5` / `band 224f` / `floor 335.5f` 集体位移 48.5，
+     * 等于删掉这段实测结论的根据。
+     * `29_edit_kbdown` 那个状态**至今没有 insets 原文** ⇒ **不臆造新值**，保留并加注。
+     * 详见 `research/v97_fix/RESIDUAL_LEDGER.md` §2。
      */
     private val imeFrameDp = 474.5f
 

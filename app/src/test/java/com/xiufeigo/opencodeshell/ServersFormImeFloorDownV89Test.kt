@@ -327,6 +327,11 @@ class ServersFormImeFloorDownV89Test {
         val upImeDp = 474.5f
         val upFloorDp = 335.5f
         val editTopDp = 267f
+        // v127 复核：474.5 是**记录性 fixture**（IME *frame* 轴，含 48.5 的 Gboard 透明顶带：
+        // 768 − 474.5 = 293.5 是 frame 顶边，342 是已绘制的键盘首像素，293.5 + 48.5 = 342）。
+        // 它**不是** session 判据轴的 426（474.5 − 426 = 48.5），也**不该**改成 426 ——
+        // 改值会让本用例逐位钉住的 lift 155.5 / drawnTop 111.5 / band 224f / floor 335.5 集体位移。
+        // 该状态（29_edit_kbdown）至今无 insets 原文 ⇒ 不臆造新值。详见 research/v97_fix/RESIDUAL_LEDGER.md §2。
         assertEquals(upFloorDp, serverDialogFloorDp(windowDp, upImeDp, upPanelTopDp, upPanelHeightDp))
         val band = serverDialogBandDp(windowDp, upImeDp, editTopDp, upPanelHeightDp, upPanelTopDp)
         val lift = serverDialogBandLiftDp(band, windowDp, upImeDp, editTopDp, upPanelTopDp, upPanelHeightDp)

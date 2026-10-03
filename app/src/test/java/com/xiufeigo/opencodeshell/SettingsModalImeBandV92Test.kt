@@ -48,6 +48,12 @@ class SettingsModalImeBandV92Test {
      * the IME frame's composition read is 474.5 dp and the panel slot's box is
      * y=91…335.5. The prompt card replaces the form card in the same slot, so
      * its band is measured against the same box.
+     *
+     * **v127 复核：记录性 fixture（IME *frame* 轴，含 48.5 的 Gboard 透明顶带），
+     * 不是 session 判据轴的 `426`，也不该改成 `426`。** 判别标准同 v126：
+     * 该值**从不**进入 `believedImeBottomPx(...)`，只喂 `serverDialog*Dp(...)`。
+     * 改它会把本类逐位钉住的 `band 224f` / `lift 155.5` / `floor 335.5f` 集体位移 48.5。
+     * 详见 `research/v97_fix/RESIDUAL_LEDGER.md` §2。
      */
     private val upImeDp = 474.5f
     private val upPanelTopDp = 91f

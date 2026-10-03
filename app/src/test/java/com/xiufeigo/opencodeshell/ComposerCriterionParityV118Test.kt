@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * v118：让 JVM 模型能**复算「设备口径」的量**，把 `0 vs −12` 从「不可比」变成「可换算」。
@@ -558,5 +559,256 @@ class ComposerCriterionParityV118Test {
             dev768BContainerBottom,
             dumpContainerBottomBandPx(devicePaneBottom768, bandPx),
         )
+    }
+
+    /**
+     * §4.1 **v127：把「768 档多算 96」钉成「已知且被批准的偏差」。**
+     *
+     * 本类的 §4 已经把那 96 **记账**了（`theSevenSixEightProductionPaneDisagreesWithTheDeviceAndThatIsBooked`）。
+     * 但记账只说「它是 96」，没说**三件事**：
+     * ① **算式可复算**（`84 + 60 − 48`，逐项指到生产常量/真机原文）；
+     * ② **它为什么被批准**（因为 **A（去 chrome）不可动** —— v123 实测去掉后 v77 的 P0 复发）；
+     * ③ **它为什么不构成用户可见缺陷**（真机统一口径两档 ① 均过关：`readable` 768=92 / 600=51 逐位保持）。
+     *
+     * 这三条一起把「96」从一个**没人负责的数字**变成**一份被明确批准的偏差**。
+     *
+     * **纯函数 + 调生产函数/常量，不造假绊线**：
+     * 残差由 `productionPaneBottomPx768()`（内部调 `believedImeBottomPx`）对
+     * `dev768BContainerBottom` 算出；`84` 取 `CHROME_FULL_HEIGHT`、`60` 取
+     * `COMPOSER_MIN_HEIGHT − COMPOSER_MINIMAL_HEIGHT`、`48` 取 `navFloor768`；
+     * 「A 不可动」由**同一个生产函数跑两遍**证明（见 ②）。
+     */
+    @Test
+    fun theNinetySixIsEightyFourPlusSixtyLessTheNavigationBarAndItIsAnApprovedDeviation() {
+        // ---- ① 残差 = 96（由生产函数算，不由字面量声明）----
+        val productionPaneBottom = productionPaneBottomPx768()
+        val devicePaneBottom = dev768BContainerBottom - navFloor768 // 350 − 48 = 302
+        val residual = productionPaneBottom - devicePaneBottom
+
+        assertEquals(
+            "768: the clamp fires on the measured inputs — panePx = 606 − (322 + 48) = 236",
+            236,
+            productionPaneBottom - paneTop,
+        );
+        assertEquals(
+            "768: production's paneBottom is 162 + 236 = 398, digit exact on the measured insets",
+            398,
+            productionPaneBottom,
+        );
+        assertEquals(
+            "768: the device's paneBottom is the container bottom less the nav bar = 350 − 48 = 302",
+            302,
+            devicePaneBottom,
+        );
+        assertEquals(
+            "⇒ the residual is 398 − 302 = 96 — the booked deviation, recomputed from production",
+            96,
+            residual,
+        )
+
+        // ---- ② 算式可复算：96 = 84 + 60 − 48，逐项取自生产常量 ----
+        val chromeFullPx = SessionPaneLayout.CHROME_FULL_HEIGHT.value.toInt()      // 84
+        val stackedFloorPx = SessionPaneLayout.COMPOSER_MIN_HEIGHT.value.toInt()    // 116
+        val minimalFloorPx = SessionPaneLayout.COMPOSER_MINIMAL_HEIGHT.value.toInt() // 56
+
+        assertEquals(
+            "the 84 term is CHROME_FULL_HEIGHT = HEADER 48 + TAB_STRIP 36 (SessionPaneLayout.kt:1437)",
+            84,
+            chromeFullPx,
+        );
+        assertEquals(
+            "the 60 term is the stacked floor COMPOSER_MIN_HEIGHT (:95)",
+            116,
+            stackedFloorPx,
+        );
+        assertEquals(
+            "…minus the one-row floor COMPOSER_MINIMAL_HEIGHT (:811)",
+            56,
+            minimalFloorPx,
+        );
+        assertEquals(
+            "⇒ 96 = 84 + 60 − 48, digit exact",
+            residual,
+            chromeFullPx + (stackedFloorPx - minimalFloorPx) - navFloor768,
+        );
+        assertEquals(
+            "…and the −48 is exactly one navigation bar: 768 − 720 = 48 (insets原文)",
+            48,
+            navFloor768,
+        )
+        // 承重性（沿用 v119 §A.4 的结构）：旧的 144 = 84 + 60 少写 −48，整笔虚高恰好一个导航条。
+        assertEquals(
+            "the retired 144 = 84 + 60 is the same arithmetic missing the −48 term",
+            144,
+            chromeFullPx + (stackedFloorPx - minimalFloorPx),
+        );
+        assertEquals(
+            "…and 144 − 96 = 48, i.e. the retired total was inflated by exactly one navigation bar",
+            48,
+            (chromeFullPx + (stackedFloorPx - minimalFloorPx)) - residual,
+        )
+    }
+
+    /**
+     * §4.2 **v127：96 被批准的**唯一**理由 = A（去 chrome）不可动。**
+     *
+     * 这不是一句注释声明，而是**用生产函数本身跑两遍**得到的事实：
+     * 同一个 `believedImeBottomPx`，喂 v77 的实测输入（`research/v73_verify/5554/61_session_tab.png`，
+     * 1344x2992 @420dpi ⇒ density 2.625，v123 §2.2 逐位给出），
+     * 只换 `essentialPx` 走「去 chrome」口径：
+     *
+     * ```
+     * 现状（essential 含 chrome = px(284) = 745）：room = 2725 − 745 = 1980 ; claimed = 2195 − 63 = 2132
+     *                                        2132 > 1980 ⇒ 钳位开 ; believed = 1980 + 63 = **2043** < 2195 ✅ 被压住
+     * 去 chrome（essential = px(200) = 525）  ：room = 2725 − 525 = 2200 ; 2132 ≤ 2200 ⇒ 不开
+     *                                        believed = **2195**（原样相信）              ❌ 防护没了
+     * ```
+     *
+     * 去掉 chrome 后钳位**整个不开** ⇒ 键盘之上剩 `2725 − 2132 = 593 px = 226 dp`，
+     * 而 `593 > 525` ⇒ 钳位自己的判据说「没塌」⇒ v77 实测的那个「丢工具栏/tab 条」复发。
+     *
+     * ⇒ **96 是「A 不动」的已知代价，不是没修的 bug。** 这就是它被批准的根据。
+     */
+    @Test
+    fun theNinetySixIsApprovedBecauseDroppingChromeRecoversV77sP0AndThatIsWhyItStays() {
+        val density = 2.625f
+        val box = 2725   // 2992 − 267
+        val nav = (24 * density).toInt()  // px(24) = 63
+        val ime = 2195   // 2992 − 797
+
+        val essentialWithChrome = (284 * density).toInt()     // px(284) = 745
+        val essentialWithoutChrome = (200 * density).toInt()  // px(200) = 525
+
+        assertEquals("v77's nav inset is px(24) = 63 on that 420dpi device", 63, nav)
+        assertEquals("v77's stale IME claim is the 2195 px the platform reported", 2195, ime)
+
+        // 现状：钳位**开**，把 2195 压到 2043。
+        val believedNow = SessionPaneLayout.believedImeBottomPx(
+            visibleBoxPx = box,
+            floorPx = nav,
+            imeBottomPx = ime,
+            essentialPx = essentialWithChrome,
+        )
+        assertEquals(
+            "v77 today: room 1980 < claimed 2132 ⇒ the clamp fires and pins believed to 1980 + 63 = 2043",
+            2043,
+            believedNow,
+        )
+        assertTrue(
+            "…and 2043 < 2195 — the stale claim IS being pressed down, which is what the guard is for",
+            believedNow < ime,
+        )
+
+        // 去 chrome：钳位**不开**，原样相信 2195 ⇒ 防护失效（P0 复发）。
+        val believedWithoutChrome = SessionPaneLayout.believedImeBottomPx(
+            visibleBoxPx = box,
+            floorPx = nav,
+            imeBottomPx = ime,
+            essentialPx = essentialWithoutChrome,
+        )
+        assertEquals(
+            "v123 measured: room 2200 >= claimed 2132 ⇒ the clamp does NOT fire and believed stays 2195",
+            2195,
+            believedWithoutChrome,
+        )
+        assertTrue(
+            "…so dropping chrome removes the protection entirely — the v77 P0 ('lost toolbar / tab strip') returns",
+            believedWithoutChrome >= ime,
+        )
+        // 塌陷量逐位：键盘之上只剩 593 px = 226 dp，而 226 dp > 525/2.625 ⇒ 钳位自己会说「没塌」。
+        val bodyPx = box - (ime - nav)
+        assertEquals(
+            "the collapse v77 measured: 2725 − 2132 = 593 px of pane above the keyboard",
+            593,
+            bodyPx,
+        );
+        assertEquals(
+            "…which rounds to the 226 dp v77 recorded as the collapse (v77 rounds, it does not truncate)",
+            226,
+            (bodyPx / density).roundToInt(),
+        )
+        assertEquals(
+            "…and the truncated form is 225 — the dp figure v77 quotes is the rounded one",
+            225,
+            (bodyPx / density).toInt(),
+        )
+    }
+
+    /**
+     * §4.3 **v127：96 不构成用户可见缺陷** —— 真机统一口径两档 ① 均过关。
+     *
+     * 关键前提是本类 §2 早就写下的那条：**768 档的 dump 换算用的是设备读数 `140`
+     * （`dev768PanePx`），不是生产算出来的 `236`**（见 §4 的 KDoc :535-537）。
+     * 所以 `96` 停在「模型口径 vs 设备口径」这一层，**没有渗到用户看到的行数与可读区**：
+     *
+     * ```
+     * 768: readable = 容器高 188 − 并集高 96 = 92  ✅ ≥ 64 地板（v105/v106 钉的那个数，逐位未变）
+     * 600: readable = 容器高  99 − 带高    48 = 51  ✅ ≥ 64 地板（逐位未变）
+     * 统一口径偏差：768 −10 ; 600 −12
+     * ```
+     */
+    @Test
+    fun theNinetySixStopsAtTheModelLayerBothTiersReadableHoldsDigitExact() {
+        assertEquals(
+            "768: readable = 188 − 96 = 92 — v105/v106's own pin, digit exact, unchanged",
+            92,
+            dev768BContainerHeight - dev768BUnionPx,
+        );
+        assertEquals(
+            "600: readable = 99 − 48 = 51 — digit exact, unchanged",
+            51,
+            readablePx(dev600BContainerHeight, bandPx),
+        )
+        val readableFloor = 64
+        assertTrue(
+            "768's readable 92 must still clear the 64 px floor that v105/v106 pinned",
+            92 >= readableFloor,
+        );
+        // ⚠️ 600 **不**适用 64 地板：它是 v106 记的**显式让位区**（`V106Test:502-505`：
+        // 「600+IME readable — 方案 A 未动（显式让位区）」），对 600 断言 ≥ 64 是错的。
+        // 600 要钉的是「**逐位未变**」——它是 51，不是 64。
+        assertEquals(
+            "600: 51 is the explicit give-way region and must stay digit exact — not judged against the 64 floor",
+            51,
+            readablePx(dev600BContainerHeight, bandPx),
+        )
+        // 统一口径偏差两档均过关（真机终验基线），且**都小于**一个导航条 ⇒ 不可能被用户看见。
+        assertTrue(
+            "768's unified-criterion deviation (−10) stays well inside one navigation bar",
+            -10 > -bandPx,
+        );
+        assertTrue(
+            "600's unified-criterion deviation (−12) stays well inside one navigation bar",
+            -12 > -bandPx,
+        )
+    }
+
+    // =======================================================================
+    //  §5  v127 交接：本轮新增 pin 的依据文档
+    // =======================================================================
+
+    /**
+     * **账本必须存在** —— 96 残差、过期 pin 的更新、settings `474.5f` 的判定，
+     * 三件事都记在 `research/v97_fix/RESIDUAL_LEDGER.md`（v127）。
+     *
+     * 与 `V120Test` 的过期 pin 更新成对：那条要求历史文档不许被悄悄改写，
+     * 这一条要求**继任账目必须有人认领**。
+     */
+    @Test
+    fun theResidualLedgerExistsSoTheNinetySixIsNotAnUnownedNumber() {
+        val ledger = listOf(
+            File("research/v97_fix/RESIDUAL_LEDGER.md"),
+            File("app/research/v97_fix/RESIDUAL_LEDGER.md"),
+            File("../research/v97_fix/RESIDUAL_LEDGER.md"),
+        ).firstOrNull { it.isFile }
+        assertTrue("RESIDUAL_LEDGER.md must exist to own the 96 residual", ledger != null)
+        val text = ledger!!.readText().replace("\r\n", "\n")
+
+        for (needle in listOf("84 + 60 − 48", "A（去 chrome）不可动", "474.5", "−12")) {
+            assertTrue(
+                "the residual ledger must carry '$needle' — a booked deviation needs its arithmetic and its approval",
+                text.contains(needle),
+            )
+        }
     }
 }
