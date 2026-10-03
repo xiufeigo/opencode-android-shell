@@ -1,5 +1,10 @@
 # REPORT_QUEUE_COVERAGE — OpenCode Android Shell 真机队列域覆盖（v130）
 
+> ⚠️ **作废批注（v133 追加，2026-10-04）**：本报告 **§3.4 / §5 里"格三 = FAIL"的结论已作废**，**不是活缺陷**。
+> 理由：v133 按"以官方为准"核了上游 —— **`_upstream/.../queue-panel.tsx:175`（分支 `:89-92`）的语义就是 "parked ⇒ `Send`"**，而本壳**忠实实现了它**（6/6 对照）。
+> v130 之所以判 FAIL，是**它的读数前提不成立**（当时并未处于真 idle），属**口径/取证错误**，不是产品缺陷。
+> 详见 `research/v97_fix/PARKED_ROW_ACTION.md`（含真 idle 的修正判据：**看 `content-desc="Stop"` 是否消失**）。
+
 - **设备**：emulator-5554（Medium_Desktop）
 - **包**：`com.xiufeigo.opencodeshell`（Activity `.OcActivity`）
 - **执行日期**：2026-10-04
