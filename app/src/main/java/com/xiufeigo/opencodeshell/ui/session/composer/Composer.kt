@@ -2387,6 +2387,8 @@ private fun ComposerArrangement(
                 // so a placement regression is visible to the suite, not only to a
                 // device frame.
                 SessionComposerBandUnion.record(unionBottom = unionBottom, bandPx = band)
+                // v139 probe: behaviour-free; prints what THIS layout pass actually used (PIN_DEVICE_HARDLINK.md §3).
+                android.util.Log.i("BandUnion", "minimal=$minimal bandPx=$band editorTop=$editorTop editorH=${editor.height} toolRowTop=$toolRowTop toolRowH=${toolRow.height} unionBottomPx=$unionBottom")
                 // v104: the union (`unionPx`, the rectangle 真机 measures) is bounded
                 // by the band **by construction** — `maxHeight = band` on both
                 // children above is the Compose contract, and `editorTop` is a
