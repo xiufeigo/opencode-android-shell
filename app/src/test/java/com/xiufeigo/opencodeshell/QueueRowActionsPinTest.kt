@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.composer.ComposerQueue
+import com.xiufeigo.opencodeshell.ui.session.composer.ComposerSubmit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -200,6 +201,48 @@ class QueueRowActionsPinTest {
         assertEquals(2, row.actions.size)
         assertTrue(row.hasSteer)
         assertTrue(row.hasRemove)
+    }
+
+    // ---------------------------------------- one run state, two readings (v133)
+
+    @Test
+    fun theComposerButtonIsTheRunStateOracleTheLabelMustAgreeWith() {
+        // v133 (`research/v97_fix/PARKED_ROW_ACTION.md`). A device sweep stopped a
+        // turn, then polled the queue bar and read "idle ⇒ the first row should say
+        // Send, it says Steer ⇒ FAIL". The premise was wrong and the shell was
+        // right: the shell's primary button carries the run state as its
+        // **content-desc** (`Stop`), while the sweep's classifier matched
+        // `text="Stop"` — a node that does not exist — so every poll fell through
+        // to IDLE. In `parked_idle.xml` the button reads `content-desc="Stop"`
+        // and the tab still reads `Working`: the turn never went idle, so
+        // `Steer` was upstream's own answer.
+        //
+        // What is pinned here is the *oracle*, not the prose: one `running` value
+        // drives both the button and the row label, so a frame is only evidence
+        // of idle when the button does NOT read stop. A future sweep that reads
+        // the wrong attribute fails here instead of shipping a false FAIL.
+        for (running in listOf(true, false)) {
+            val buttonIsStop = ComposerSubmit.stopping(running = running, text = "", attachmentCount = 0)
+            assertEquals(
+                "the composer button is Stop exactly while a blank composer is running (running=$running)",
+                running,
+                buttonIsStop,
+            )
+            assertEquals(
+                "a Stop button proves the turn is running, so the row must read Steer (running=$running)",
+                if (running) ComposerQueue.SteerLabel.STEER else ComposerQueue.SteerLabel.SEND,
+                actions(running = running).steerLabel,
+            )
+        }
+        // And the blank-composer precondition the oracle depends on: a composer
+        // holding text keeps the send button even mid-run, so "the button is a
+        // send button" alone never proves idle either.
+        assertFalse(
+            ComposerSubmit.stopping(running = true, text = "typed follow-up", attachmentCount = 0),
+        )
+        assertFalse(
+            ComposerSubmit.stopping(running = true, text = "", attachmentCount = 1),
+        )
     }
 
     // ------------------------------------------------- panel chrome unchanged
