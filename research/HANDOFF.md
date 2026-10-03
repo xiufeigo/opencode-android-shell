@@ -321,3 +321,99 @@ AOT+脱敏前 8 个分支同 `remember{}`、Picnic 素材体积、`NetworkRecove
   `ComposerDivergenceLocate2V120Test.kt`、`ComposerCriterionParityV118Test.kt`。
 - **49/49 绿**（6 个类，用例数只增不减 7→8）；**两轮反向验证各红**（ime 回退红 1 条；floor 回退红 4 条且**精确复现 144**）。
 - **未** assembleDebug、**未** clean、**未**装机 ⇒ **设备基线本轮未复验**。
+
+---
+
+## 七、v124–v129 补记（v129 追加，**只加不改语义**）
+
+> 本节是**追加**：上文第六节及清单的原文**一个字未改**。清单第 7 项（768 判据 ② `band` 口径）
+> 在本节**结账**，结账后的状态见 §7.7。
+
+### 7.1 轴统一（IME 与 floorPx 各自**无分叉**）
+
+| 轴 | 收敛到 | 轮次 | 承重证据 |
+|---|---|---|---|
+| `imeBottomPx` | **`426`** | **v125** | **无分叉**（新 epoch 取代 `474`）；**3 处注入 ⇒ 3 条变红** |
+| `floorPx` | **`48`** | **v126** | **无分叉**；`navFloor768` 取 48 即生产 `MIN_INTERACTIVE_COMPONENT_PX` |
+
+**两轴都不再是"两个数并存"** ⇒ 清单第 9 项（`426` vs `474`）**已消解**。
+
+### 7.2 96 残差：**已钉为「被批准的偏差」**
+
+```
+96 = 84 + 60 − 48
+```
+
+- `84` = chrome 二次计入、`60` = 形态收账错、`48` = 已修口径；
+- **受 v77 P0 保护**、**无用户可见缺陷** ⇒ **已批准，不再作为待修项追踪**；
+- pin：`ComposerCriterionParityV118Test.theNinetySixIsEightyFourPlusSixtyLessTheNavigationBarAndItIsAnApprovedDeviation`；
+- **反向验证红**：把这三项里任一项改错，残差即不再等于 `96` ⇒ 断红。
+
+### 7.3 A 不可动（v123 实测证据）
+
+去掉 chrome ⇒ **v77 P0 复发**，实测三数：
+
+```
+box = 2725     nav = 63     ime = 2195
+```
+
+⇒ 从「**压住** 2043」变成「**不压** 2195」。**A 不是不想动，是动了会破 v77 P0。**
+
+### 7.4 v124 的 3 条 pin（原值 → 现值）
+
+| pin | 旧 | 现 |
+|---|---|---|
+| 1 | `144` | **`96`** |
+| 2 | `446` | **`398`** |
+| 3 | `132` | **`180`** |
+
+### 7.5 设备基线**零漂移**（v128 逐位复现）
+
+| 项 | 768 | 600 |
+|---|---|---|
+| 时间线盒 | **`140`** ✅ | — |
+| `readable` | **`92`** ✅ | **`51`** ✅ |
+| 判据 ①（dump 侧） | **`−10`**（`340 ≤ 350`）✅ | **`−12`**（`249 ≤ 261`）✅ |
+| 判据 ①（生产口径） | `+2`（同 `CRITERION_PARITY.md` §7.1） | `0` ✅ |
+
+- **缩窗往返 2 轮：logcat 零命中、pid 全程未变**（768 → 600 → 768）。
+
+### 7.6 队列几何**首次测到**（v128）+ 历史"测不到"的**根因**
+
+v128 首次量到（此前多轮均「未出现 ⇒ 无法测量」）：
+
+```
+Steer  h = 48      相邻按钮 h = 48      两者均 clickable
+```
+
+**根因（已回源码坐实，v129 核）**：删除按钮的 **a11y 标签是 `Remove`，从来不是 `×`**。
+`ComposerQueuePanel.kt:266` `.semantics { contentDescription = removeLabel }`，
+`:260` `removeLabel = stringResource(R.string.session_queue_remove)`，
+`values/strings_oc_i18n.xml:905` = `Remove`。**`×` 只是内层 Icon**（`:269`），**从不进 a11y 标签**
+⇒ 历史按 `×` 扫树，**永远扫不到**。
+
+### 7.7 768 判据 ② 口径：**v129 结账**（清单第 7 项）
+
+完整推导见 **`research/v97_fix/UNIFIED_CRITERION_768.md`**。结论：
+
+- **缺口**：不是 `band` 没定值（`MIN_INTERACTIVE_COMPONENT_PX = 48` 一直有），
+  而是**缺"堆叠形态下 ② 的右侧该取哪个盒"的分支**；
+- **定义**：`boxPx = if (oneRow) bandPx else hostPx`（`SessionPaneLayout.kt:1374-1381` 原文），
+  `② : unionPx <= boxPx`；
+- **两档都真且都是等号**：768 `96 ≤ 96`、600 `48 ≤ 48` —— **零余量**；
+- 报告里 `96 ≤ 48` 的"假"是**形态错配**（把只对 `oneRow` 生效的算式套到堆叠形态），
+  **不是缺陷** ⇒ 清单第 7 项**关闭**。
+- pin：`ComposerUnifiedCriterionV129Test`（**6 用例**）；反向验证 `readable768 92 → 96`
+  ⇒ **红 4 条**，改回即恢复 6/6 绿。
+
+### 7.8 三条新纪律
+
+1. **多行姿态不能用 a11y bounds 反推触摸靶高** ——
+   裁剪行**不进 a11y 树**（`ComposerQueuePanel.kt:92-93` 逐字：
+   `outside the viewport and never reach the accessibility tree`）。
+   看到的高度只是**视口里那一行**，不是触摸靶的真实布局高。
+2. **本模拟器 `logcat -d --pid=` 必须带 `-t`** ——
+   否则**挂死**（无 `-t` 时该组合不退化）。
+3. **行尾：`core.autocrlf=false` + 逐字 pin** ——
+   **禁用** `git checkout` / `git restore` / `git add --renormalize` 去改行尾；
+   v123 曾因此**一次性把 64 个文件改成 CRLF**、**源头校验 pin 全部失败**。只用编辑工具。
