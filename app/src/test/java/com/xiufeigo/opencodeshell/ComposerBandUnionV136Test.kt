@@ -7,6 +7,7 @@ import com.xiufeigo.opencodeshell.ui.session.SessionPaneLayout.composerBandTouch
 import com.xiufeigo.opencodeshell.ui.session.SessionPaneLayout.composerBandHeightDp
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,6 +40,56 @@ import org.junit.Test
  * quantities, so a regression in the placement rule cannot pass silently. The v135
  * device literals are kept verbatim as the **regression trigger** — if the real frame
  * moves, these numbers are the first thing that must be re-read.
+ *
+ * ---------------------------------------------------------------------------
+ * v138 REDOWNGRADE — **this class is a JVM model, NOT device truth.**
+ * ---------------------------------------------------------------------------
+ *
+ * v136 claimed "the union-alignment 1 px is fixed" and pinned the mechanism with
+ * this class. **v137's device run falsified the claim** (`research/v97_verify/
+ * 5554_md/REPORT_1PX_RESIDUAL.md`, build md5 `9142f0eb…`, emulator-5554,
+ * 600 tier, queue bar on screen):
+ *
+ * ```
+ * EditText  [24,214][405,262]   h=48     ← top 214
+ * Add       [399,215][441,263]  h=48     ← top 215   (union 49, topDelta −1)
+ * Stop      [1316,215][1364,263] h=48    ← top 215
+ * scroller  [441,228][1316,249] h=21     ← the 21-high layout the 48 dp target wraps
+ * unionPx = 49  (baseline 48)     criterion 1 = +2  (not +1)
+ * ```
+ *
+ * So every assertion in this class describes **a model that the device does not
+ * exhibit**. They are kept — they are not relaxed, not deleted and not made
+ * trivially true — but they must never be read as "the 1 px is fixed".
+ *
+ * v138's static finding, which is what makes the gap mechanical rather than
+ * philosophical (full argument in `research/v97_fix/UNION_1PX_NOT_EFFECTIVE.md`):
+ *
+ *  * `composerBandChildTopPx` / `composerBandUnionBottomPx` **are** on the live
+ *    path (`Composer.kt:2362/2366/2370`, inside `if (minimal)` at `:2326`, and
+ *    `minimal` is provably `true` here: the 48 dp band at `Composer.kt:2189`
+ *    exists only on the `minimal` branch).
+ *  * They are nevertheless **provable no-ops on this form**: the tool row
+ *    carries `Modifier.height(BAND_HEIGHT)` (`Composer.kt:2189`) which coerces
+ *    its own height to exactly `band`, and the editor is measured with
+ *    `maxHeight = band`, so `childPx == bandPx == 48` for both and
+ *    `composerBandChildTopPx(48, 48) = 0` — bit-identical to the pre-v136
+ *    `toolRow.place(0, 0)` and `editorTop = (band - editor.height)/2`.
+ *  * ⇒ the model answers `unionBottom = 48` while the device answers `49`.
+ *    The 1 px is produced **below** `place()`, by the material3-enforced 48 dp
+ *    `minimumInteractiveComponentSize` expanding each control's *semantics*
+ *    bounds about a 21-high layout, which this model has no term for.
+ *  * The only line of the v136 diff that can move a pixel on device is
+ *    `verticalAlignment = if (minimal) Alignment.Top …` (`Composer.kt:2210`),
+ *    and v137's own frame carries the `Alignment.CenterVertically` fingerprint
+ *    (`roundToInt((48 − 21)/2f) = 14`, the scroller measured at `214 + 14 = 228`).
+ *    `Alignment.Top` can only emit `0`.
+ *
+ * The pin `theOneRowFormAlignsControlsToTheTopEdgeAndTheStackedFormDoesNot`
+ * therefore stays green by asserting **source text**, which is exactly the
+ * fake-green this repo has now hit five times. It is kept verbatim; the device
+ * side of the contradiction is pinned by
+ * [theV137DeviceReadingsAreTheRegisterAndTheModelStillDisagreesWithThem].
  */
 class ComposerBandUnionV136Test {
 
@@ -217,6 +268,130 @@ class ComposerBandUnionV136Test {
         assertEquals("the union alignment, the odd-height 1 px", 1, alignment)
         assertEquals("criterion 1 on the archived frame, still +2", 2, criterion1)
         assertEquals("+2 = 1 + 1", realExit + alignment, criterion1)
+    }
+
+    // ------------------------------------------------------------------ 5. v138:
+    // the **device** reading register. This is the half of the contract that was
+    // missing: everything above 1..4 is a model, and v137 proved the model and the
+    // device disagree by 1 px. The device half is pinned here so the disagreement
+    // is a *failing assertion* the day somebody fixes it, instead of a discovery
+    // somebody has to make on an emulator again.
+
+    /**
+     * The v137 device readings, verbatim, from
+     * `research/v97_verify/5554_md/artifacts/v137_BARON_M.xml`
+     * (build md5 `9142f0eb…`, `wm size 1366x600` / `wm density 160` ⇒ 1dp == 1px,
+     * 600 tier, queue bar on screen, one-row form).
+     *
+     * **These are the numbers that must move together when the defect is fixed.**
+     * Nothing here may be recomputed from the model — they are a *reading*, and a
+     * model is not allowed to invent its own "before" values
+     * (`COMPOSER_OVERFLOW_FIX4.md` §1.3).
+     */
+    @Test
+    fun theV137DeviceReadingsAreTheRegisterAndTheModelStillDisagreesWithThem() {
+        // ---- the reading, verbatim from the frame -------------------------------
+        val devPaneBottom = 261
+        val devBandTop = 214
+        val devEditorTop = 214
+        val devEditorBottom = 262
+        val devControlTop = 215 // the 48 dp semantics bounds of Add / Stop / Model
+        val devControlBottom = 263
+        val devScrollerTop = 228
+        val devScrollerHeight = 21 // the 21-high layout the 48 dp target wraps
+        val devBand = 48
+
+        val devUnionBottom = maxOf(devEditorBottom, devControlBottom)
+        val devUnionPx = devUnionBottom - devBandTop
+        val devTopDelta = devControlTop - devEditorTop
+        val devCriterion1 = devUnionBottom - devPaneBottom
+
+        // ---- the register: these five readings, asserted -------------------------
+        assertEquals("v137 device: the band top is the editor's top edge", devBandTop, devEditorTop)
+        assertEquals("v137 device: the 48 dp control bounds sit 1 px lower", 1, devTopDelta)
+        assertEquals("v137 device: unionPx is still 49, the 48 baseline is NOT met", 49, devUnionPx)
+        assertEquals("v137 device: union bottom 263 = max(262, 263)", 263, devUnionBottom)
+        assertEquals("v137 device: criterion 1 is still +2, not +1", 2, devCriterion1)
+        assertEquals(
+            "v137 device: the controls' own layout is 21 high inside a 48 band",
+            21,
+            devScrollerHeight,
+        )
+
+        // ---- the fingerprint that says which alignment produced the frame -------
+        //
+        // Compose's `Alignment.CenterVertically` is `BiasAlignment(verticalBias =
+        // 0.5f)`, whose offset is `roundToInt((band - child) / 2f)`. On this frame:
+        //
+        //   roundToInt((48 - 21) / 2f) = roundToInt(13.5f) = 14
+        //   214 + 14 = 228  == the scroller's measured top
+        //
+        // `Alignment.Top.align` returns 0 for every child, by construction, so a
+        // measured child at `bandTop + 14` is proof that the frame was rendered by
+        // the **pre-v136** `Alignment.CenterVertically` branch, whatever the source
+        // tree says today. This is what separates v137's two still-open hypotheses
+        // (install ownership vs. a misattributed line) without a rebuild: the frame
+        // answers it arithmetically.
+        val centredOffset = Math.round((devBand - devScrollerHeight) / 2.0).toInt()
+        assertEquals("the centring offset of a 21-high child in a 48 band", 14, centredOffset)
+        assertEquals(
+            "v137 device: the scroller's top IS bandTop + that centring offset",
+            devScrollerTop,
+            devBandTop + centredOffset,
+        )
+        assertNotEquals(
+            "`Alignment.Top` is not what rendered this frame: its offset is 0 for every " +
+                "child by construction, so the scroller would have measured $devBandTop, " +
+                "not $devScrollerTop",
+            devBandTop + 0,
+            devScrollerTop,
+        )
+
+        // ---- and the disagreement that made this register necessary --------------
+        //
+        // The production function — the one this whole class pins — is fed the two
+        // heights the arrangement actually measures. Both are 48, because the tool
+        // row carries `Modifier.height(BAND_HEIGHT)` and the editor is measured with
+        // `maxHeight = band`:
+        //
+        //   composerBandChildTopPx(48, 48)      = 0
+        //   composerBandUnionBottomPx(48, 48, 48) = max(0+48, 0+48) = 48
+        //
+        // …so the model says the union is **48** and the device says **49**. That 1
+        // is the whole defect, and it is invisible to every assertion in sections
+        // 1..4 because the model's only term is the *placeable* bottom while the
+        // device measures *semantics* bounds — a 48 dp `minimumInteractiveComponentSize`
+        // centred on a 21-high layout, a term this model does not have.
+        //
+        // **This assertion is the tripwire.** It is deliberately asserting that the
+        // model and the device DISAGREE. The day the 1 px is really fixed on device
+        // (unionPx 48, topDelta 0, criterion 1 +1), this line must fail and the
+        // device constants above must be re-read — it must never be edited into an
+        // `assertEquals` to make it pass.
+        val modelUnionBottom = composerBandUnionBottomPx(
+            bandPx = devBand,
+            editorPx = 48,
+            toolRowPx = 48,
+        )
+        assertEquals(
+            "the model's answer for the arrangement's own (48, 48) pair",
+            48,
+            modelUnionBottom,
+        )
+        assertEquals(
+            "and the model is STILL 1 px short of what the device reads — this is the " +
+                "v138 redowngrade: the JVM pin is green while the frame reads $devUnionPx. " +
+                "When the device is fixed this must FAIL and force a re-read.",
+            1,
+            devUnionPx - modelUnionBottom,
+        )
+        assertEquals(
+            "the v136 'fix' is a provable no-op on this form: both children measure " +
+                "exactly `band`, so the shared rule returns the same 0 the pre-v136 " +
+                "hard-coded `toolRow.place(0, 0)` returned",
+            0,
+            composerBandChildTopPx(bandPx = devBand, childPx = devBand),
+        )
     }
 }
 
