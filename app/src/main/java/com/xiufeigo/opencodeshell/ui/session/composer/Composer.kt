@@ -107,6 +107,7 @@ import com.xiufeigo.opencodeshell.ui.overlay.SessionComposerBounds
 import com.xiufeigo.opencodeshell.ui.palette.PaletteCommand
 import com.xiufeigo.opencodeshell.ui.palette.SessionCommands
 import com.xiufeigo.opencodeshell.ui.session.LocalTerminalImeFocus
+import com.xiufeigo.opencodeshell.ui.session.SessionComposerBandUnion
 import com.xiufeigo.opencodeshell.ui.session.SessionPaneLayout
 import com.xiufeigo.opencodeshell.ui.session.btw.LocalSessionBtwHost
 import com.xiufeigo.opencodeshell.ui.theme.OcMotion
@@ -2192,7 +2193,21 @@ private fun ComposerArrangement(
                         // (`research/v51_verify/tE/v51_07_typed`).
                         Modifier.fillMaxWidth().height(TOOL_ROW_HEIGHT).padding(horizontal = 8.dp)
                     },
-                    verticalAlignment = Alignment.CenterVertically,
+                    // v136 P0: 一行形态**顶沿对齐**，不居中。
+                    //
+                    // 真机那 1px 的并集错位就出在这里（`k600_MEASURE_BARON.xml`：
+                    // `EditText [24,214][405,262]` vs 按钮组 `[399,215][441,263]` ——
+                    // 同样 48 高，顶沿差 1，并集高 49 vs 基线 48）。机制：带高 `band`
+                    // 是 48dp，而行内控件**实测高可以是奇数**；`Alignment.CenterVertically`
+                    // 把偏移算成 `(band - child) / 2f` 再 `roundToInt()`，**半像素进位**
+                    // ⇒ 一个 47 高的控件被放在 **+1** 而不是 0，它那 48dp 触摸靶再绕着
+                    // 自己居中 ⇒ a11y 读出 `215..263`。
+                    //
+                    // 一行形态里控件本来就**该**贴带的顶沿（带 = 48 = 触摸靶本身，没有
+                    // 「居中」可谈），故取 `Top`：`band == child` 时 `Top` 与
+                    // `CenterVertically` 逐位相同（偏移都是 0，**一个像素都不动**），
+                    // 只有奇数高那种本来就在错的情况被拉回 0。堆叠形态一行不动。
+                    verticalAlignment = if (minimal) Alignment.Top else Alignment.CenterVertically,
                 ) {
                     Spacer(
                         (if (minimal) {
@@ -2332,14 +2347,46 @@ private fun ComposerArrangement(
             // ② 编辑器按**并集**上界摆位，`editorTop + editor.height <= band` 恒成立
             // ⇒ 子节点并集底沿 `<= 宿主盒底沿 <= pane 底沿`（v103 的恒等式）
             // 在**被测量的那一维**（并集）上兑现，而不再只是宿主盒的自说自话。
-            val unionPx = maxOf(editor.height, toolRow.height)
-            val editorTop = (band - editor.height).coerceAtLeast(0) / 2
+            // v136 P0: 两个孩子**用同一条摆位规则**（v104 只对齐了尺寸，没对齐摆位）。
+            // 原来这里是 `editor.place(0, editorTop)` + `toolRow.place(0, 0)` ——
+            // 编辑器居中、工具行钉顶沿，两套规则。带高 48、两个子节点都 48 高时两者
+            // 同为 0，所以真机那 1px **不是**这一行造成的（本报告 §1 有逐位算式）；
+            // 但只要两者高度不等（工具行里坐着被 `minimumInteractiveComponentSize`
+            // 撑起来的控件，编辑器是 `heightIn` 的内容高），「一个居中一个钉顶」就会
+            // 把并集底沿推出带外。现在两者都走 [SessionPaneLayout.composerBandChildTopPx]，
+            // 顶沿相同当且仅当同高，且 `top + 自己的高 <= band` 对**每一个**子节点恒成立。
+            //
+            // **48dp 触摸靶一个像素不动**：`band` 仍是 `BAND_HEIGHT`(48dp)、子节点仍以
+            // `maxHeight = band` 测量、`composerBandTouchTargetDp` 未被触碰；本行只改
+            // 「放在带内的哪个 y」。
+            val editorTop = SessionPaneLayout.composerBandChildTopPx(
+                bandPx = band,
+                childPx = editor.height,
+            )
+            val toolRowTop = SessionPaneLayout.composerBandChildTopPx(
+                bandPx = band,
+                childPx = toolRow.height,
+            )
+            val unionBottom = SessionPaneLayout.composerBandUnionBottomPx(
+                bandPx = band,
+                editorPx = editor.height,
+                toolRowPx = toolRow.height,
+            )
             layout(constraints.maxWidth, constraints.constrainHeight(band)) {
                 // The band centred the field when the field was its child
                 // (`verticalAlignment = CenterVertically`); the arrangement does
                 // the centring now, and the tool row fills the band.
                 editor.place(0, editorTop)
-                toolRow.place(0, 0)
+                toolRow.place(0, toolRowTop)
+                // v136: the union's bottom edge is **computed** above rather than
+                // assumed, and it is deliberately *not* clamped and *not* asserted:
+                // a `unionBottom > band` is the defect itself, and hiding it behind a
+                // `coerceAtMost` (v135 §1.6 的假绿陷阱) or a `check()` (which kills the
+                // process inside `layout` — `CRASH_SHRINK_FIX.md`) would make it
+                // invisible. The same production function is what the JVM pin asserts,
+                // so a placement regression is visible to the suite, not only to a
+                // device frame.
+                SessionComposerBandUnion.record(unionBottom = unionBottom, bandPx = band)
                 // v104: the union (`unionPx`, the rectangle 真机 measures) is bounded
                 // by the band **by construction** — `maxHeight = band` on both
                 // children above is the Compose contract, and `editorTop` is a

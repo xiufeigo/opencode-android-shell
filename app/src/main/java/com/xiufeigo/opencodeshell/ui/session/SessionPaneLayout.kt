@@ -1346,6 +1346,49 @@ internal object SessionPaneLayout {
             )
 
     /**
+     * v136 P0: 一行形态那条带里**每个子节点的摆位** —— 两个孩子用**同一条**规则。
+     *
+     * v104 让两个子节点各自受 `maxHeight = band` 约束（尺寸对齐了），但**摆位**仍是
+     * 两套：编辑器按 `(band - editor)/2` 居中，而工具行被 `place(0, 0)` 钉在带的顶沿
+     * （`Composer.kt` 的 minimal 分支）。两套规则只在一行形态下才可能给出**不同**的顶沿：
+     * 只要两个子节点的实测高**不同**（工具行里有被 `minimumInteractiveComponentSize`
+     * 撑到 48dp 的控件，编辑器是 `heightIn` 的内容高），「一个居中、一个钉顶」就会把
+     * 1px 的差留在并集里 —— 这正是 v135 记的 `unionPx 49` vs 基线 `48`
+     * （真机 `EditText [24,214][405,262]` vs 按钮组 `[399,215][441,263]`：同为 48 高，
+     * 顶沿差 1px）。
+     *
+     * 本函数把那 1px 的自由度**收掉**：两个子节点都按「带 − 自己」居中，于是
+     * * 顶沿相同当且仅当两者同高（差 0），或相差 1px 时**各自居中到同一个整数位**；
+     * * 底沿 `composerBandChildTopPx + 自己的高 <= band` **恒成立**（`band >= child`
+     *   时 `(band - child)/2 + child <= band`，`band < child` 时被 `coerceAtLeast(0)`
+     *   收成 0 并由父的 `maxHeight = band` 裁到 `band`）。
+     *
+     * **单调性**：`0 <= top <= band/2`（`child` 越大顶沿越高），且
+     * `top <= band - child`，所以它是「离顶沿最近的那个居中位」—— 摆位只由带高和
+     * 自己的高决定，**不含任何别的子节点**，也就没有两个子节点互相错开的可能。
+     */
+    fun composerBandChildTopPx(bandPx: Int, childPx: Int): Int =
+        (bandPx - childPx.coerceAtLeast(0)).coerceAtLeast(0) / 2
+
+    /**
+     * v136 P0: 一行形态**子节点并集的底沿**（相对带顶沿）—— 真机量的那个矩形。
+     *
+     * 与 [composerChildUnionHeightPx] 的区别是那一处量的是**可用高**（用
+     * `coerceAtMost` 收进宿主，因此在并集这一维上结构上恒 `<= host`，也就是 v135
+     * §1.6 指认的**假绿陷阱**：它对任何输入都返回非正残差，验证不了真机读数）。
+     * 本函数量的是**摆位后的真实底沿**，不收口、不夹紧 —— 它可以返回大于 `band` 的
+     * 值，而那正是缺陷本身。把它做成生产函数、并让 `Composer.kt` 用它摆位，是为了让
+     * 「并集底沿 vs 基线」这条判据在**生产代码里**有一个可被测试调用的求值点。
+     */
+    fun composerBandUnionBottomPx(bandPx: Int, editorPx: Int, toolRowPx: Int): Int =
+        maxOf(
+            composerBandChildTopPx(bandPx = bandPx, childPx = editorPx) +
+                editorPx.coerceAtLeast(0),
+            composerBandChildTopPx(bandPx = bandPx, childPx = toolRowPx) +
+                toolRowPx.coerceAtLeast(0),
+        )
+
+    /**
      * v105 P0: **被强制的最小触摸靶**（Compose `Modifier.clickable` 挂的
      * `minimumInteractiveComponentSize`，material3 的 48dp 地板）在**一行带**里的
      * 容许高度 —— 唯一求值处，`Composer.kt` 的闸门读它、测试的真值表断言它。
@@ -1784,4 +1827,31 @@ internal object SessionPaneLayout {
      * failure this floor exists to make unrepresentable.
      */
     val TIMELINE_FLOOR_UNDER_QUEUE: Dp = TIMELINE_MIN_CONTENT
+}
+
+/**
+ * v136: the one-row band publishes its **last measured** child-union bottom edge, so
+ * the quantity the device measures (`unionBottom` -- a11y's `max(child.y2)`) has a
+ * production read point instead of living only in a device dump.
+ *
+ * It is a **read point, not an assertion**: nothing is clamped, nothing is thrown
+ * (a `check()` inside `layout` kills the process -- `CRASH_SHRINK_FIX.md`). Its
+ * purpose is that the number is *reachable*, so a placement regression is visible to
+ * a JVM pin rather than only on a device frame.
+ */
+object SessionComposerBandUnion {
+    /** Last `unionBottom` the one-row arrangement computed; `null` before the first pass. */
+    @Volatile
+    var unionBottomPx: Int? = null
+        private set
+
+    /** The band it was measured against -- `unionBottom <= bandPx` needs both. */
+    @Volatile
+    var bandPx: Int? = null
+        private set
+
+    fun record(unionBottom: Int, bandPx: Int) {
+        unionBottomPx = unionBottom
+        this.bandPx = bandPx
+    }
 }
