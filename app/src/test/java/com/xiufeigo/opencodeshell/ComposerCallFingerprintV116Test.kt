@@ -34,6 +34,34 @@ import java.io.File
 // Everything below is a pure function over source text. The mutations in the
 // tests hand it mutated strings and demand a verdict, which is what makes the
 // three reverse cases real evidence rather than assertions about a status quo.
+//
+// ============================================================================
+// v117 — Lead's ruling: R5's required set is **both tiers**, not either one
+// ----------------------------------------------------------------------------
+// v116 §7#2 left one hole open and named it: `V106:364`'s
+// `after768 = Frame(768, 466, …)` was never pinned, so "add a new call and
+// delete that one" still worked against it. Closing it required first deciding
+// *which* call R5 depends on — a question about the criterion's ownership, not
+// about the validator. Lead ruled: **both are required**.
+//
+// Why both, rather than picking the stronger one:
+//
+//   * `V106:351` — the **600 cell**. This is the defect site: the device read
+//     `unionBottom 218 > hostBottom 213` (+5) and the fix makes it exactly
+//     equal. It is the cell that proves the fix *works*.
+//   * `V106:364` — the **768 cell**. Also a failing reading (`296 > 294`,
+//     +2), fixed the same way. It is the cell that proves the fix *did not
+//     break the other configuration*.
+//
+// The composer band fix's contract is the conjunction of those two claims, so
+// pinning one tier pins half the contract and leaves the other half unguarded —
+// which is precisely the "nominally alive, substantively dead" failure this
+// file exists to prevent, one level up. Neither call can stand in for the
+// other, and `neitherTierSubstitutesForTheOther` proves it in both
+// directions against the real file.
+//
+// Everything v116 established is preserved verbatim; the change is strictly
+// additive (one fingerprint appended to the required set, plus tests).
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -344,18 +372,57 @@ internal object ComposerFingerprintSpecs {
     const val R6_METHOD =
         "theBottomPaddingAbsorbsTheOverrunOnSevenSixEightButNotOnSixHundred"
 
+    // ------------------------------------------------------------------
+    // v117 裁定（R5 的必需调用清单 = **两档**，不是二选一）
+    //
+    // v116 §7#2 自陈的缺口：`:364` 的 `Frame(768, 466, …)` 没有进指纹集合，
+    // 对它做「加新的删旧的」仍可能通过。补它之前必须先判定
+    // **R5 到底该依赖 `:351` 还是 `:364`** —— Lead 已裁定：
+    //
+    //   **两条都要进，任一缺失即违规。** 理由：composer 那次修复的契约
+    //   **同时覆盖两档** —— `:351` 的 600 档是「缺陷现场 / 已修格」，
+    //   `:364` 的 768 档是「不得回退格」。只钉一档 = 放掉另一半契约，
+    //   正是本仓反复踩的「名义活、实质死」。
+    //
+    // ⚠️ 口径统一：v115 报告把侦测力来源记成 `:347`，v116 已按源码改为 `:351`；
+    //   本轮起 **R5 = `:351` + `:364` 两档**，`:347` 是记录性 fixture（真机读数），
+    //   不是判据依赖。行号对照表见本报告 §3。
+    // ------------------------------------------------------------------
+
+    /** 600 档（`V106:351`）—— 缺陷现场 / 已修格：`unionBottom 218 > 213` 那档。 */
+    const val R5_CALL_600 = "600, 387, rows=0, oneRow=true, bandHeightPx=BAND_AFTER_PX"
+
+    /** 768 档（`V106:364`）—— 不得回退格：`296 > 294` 那档。 */
+    const val R5_CALL_768 = "768, 466, rows=0, oneRow=true, bandHeightPx=BAND_AFTER_PX"
+
     /**
-     * R5's detection power is `Frame(600, 387, bandHeightPx = BAND_AFTER_PX)`
-     * at `V106:351` — v115's own §0/§1.1 put it there, and `BAND_AFTER_PX` is
-     * the *only* non-literal argument, which is precisely why
-     * `minProductionArgs = 1` is load-bearing: rewriting it to `bandHeightPx = 48`
-     * leaves all three arguments literal and the tripwire hollow.
+     * R5 的**必需**调用清单 —— **两档都是必需项**。
+     *
+     * 每档的 `minProductionArgs = 1` 都是 load-bearing：两档的五个实参里
+     * `600/387`（或 `768/466`）、`rows=0`、`oneRow=true` **全是字面量**，
+     * 唯一撑住"来自生产"的就是 `BAND_AFTER_PX`。把它换成 `48`
+     * ⇒ 五实参全字面量 ⇒ tripwire 掏空。
+     * 而 `BAND_AFTER_PX` **就是 48**（`V106:93`）—— 所以这个变异**数值完全等价**，
+     * V106 自己的 7 个用例**照样全绿**，只有指纹校验器能看见。
+     * 这就是"名义活、实质死"的字面含义，也是 `minProductionArgs` 存在的理由。
+     *
+     * `:372` 那条 `Frame(768, 466, rows = rows, …)`（队列 0/2/11 的循环）
+     * **不在**必需集合内：它是遍历队列条数的参数化检查，不是某一档的定格读数。
+     * 它的存活由"循环体里至少还有一个 `Frame` 调用"间接保证；把它也 pin 死
+     * 会让"改队列档位列表"这种**无害**改动被迫改 pin。判据强度不因此下降：
+     * 两档的定格调用一旦被删，本清单立刻报红。
      */
     val R5_CALLS = listOf(
         CallFingerprint(
             scope = "fun $R5_METHOD",
             callee = "Frame",
             args = listOf("600", "387", "rows=0", "oneRow=true", "bandHeightPx=BAND_AFTER_PX"),
+            minProductionArgs = 1,
+        ),
+        CallFingerprint(
+            scope = "fun $R5_METHOD",
+            callee = "Frame",
+            args = listOf("768", "466", "rows=0", "oneRow=true", "bandHeightPx=BAND_AFTER_PX"),
             minProductionArgs = 1,
         ),
     )
@@ -506,8 +573,12 @@ class ComposerCallFingerprintV116Test {
         assertTrue("the pinned line must exist verbatim in the real source", real.contains(victim))
         val deleted = real.replace(victim, "")
         val violations = CallFingerprintValidator.validate(deleted, ComposerFingerprintSpecs.R5_CALLS)
-        assertTrue("expected a fingerprint-missing violation, got $violations", violations.isNotEmpty())
+        assertEquals("only the 600 pin may fail — got $violations", 1, violations.size)
         assertEquals("fingerprint-missing", violations.first().kind)
+        assertTrue(
+            "must name the 600 fingerprint, not the 768 one: ${violations.first().id}",
+            violations.first().id.contains("600, 387"),
+        )
     }
 
     // ------------------------ reverse case ②: add a new one AND delete the old
@@ -544,8 +615,12 @@ class ComposerCallFingerprintV116Test {
 
         // …and the fingerprint check refuses it anyway.
         val violations = CallFingerprintValidator.validate(mutated, ComposerFingerprintSpecs.R5_CALLS)
-        assertTrue("expected a fingerprint-missing violation, got $violations", violations.isNotEmpty())
+        assertEquals("only the 600 pin may fail — got $violations", 1, violations.size)
         assertEquals("fingerprint-missing", violations.first().kind)
+        assertTrue(
+            "must name the 600 fingerprint: ${violations.first().id}",
+            violations.first().id.contains("600, 387"),
+        )
     }
 
     // --------------------------- reverse case ③: arguments hardcoded to literals
@@ -647,6 +722,228 @@ class ComposerCallFingerprintV116Test {
             "expected hardcoded-argument, got ${CallFingerprintValidator.validate(mutated, sameShape)}",
             CallFingerprintValidator.validate(mutated, sameShape).any { it.kind == "hardcoded-argument" },
         )
+    }
+
+    // ------------------------------------------------- v117: the 768 tier
+    //
+    // Everything above is v116 and still stands. v117 adds the second half of
+    // R5's contract: `V106:364`'s `Frame(768, 466, …)`. Lead's ruling is that
+    // **both** tiers are required — 600 is the fixed cell, 768 is the
+    // must-not-regress cell — so deleting either one alone must go red, and
+    // neither call may stand in for the other.
+
+    /** Verbatim source lines for the two pinned tiers (exact indentation). */
+    private val line600 =
+        "        val after600 = Frame(600, 387, rows = 0, oneRow = true, bandHeightPx = BAND_AFTER_PX)\n"
+    private val line768 =
+        "        val after768 = Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = BAND_AFTER_PX)\n"
+
+    /**
+     * **The ruling itself, asserted structurally.** Both tiers are in the
+     * required set, and they are *distinct* fingerprints — if `:364` had
+     * been pinned with `:351`'s arguments (or simply omitted), this goes red
+     * before any mutation is even attempted.
+     */
+    @Test
+    fun bothTiersAreRequiredAndAreDistinctFingerprints() {
+        val r5 = ComposerFingerprintSpecs.R5_CALLS
+        assertEquals(
+            "R5 must require exactly two pinned calls — the 600 cell and the 768 cell",
+            2,
+            r5.size,
+        )
+        assertEquals(
+            "the two tiers must be distinct fingerprints, not one call pinned twice",
+            2,
+            r5.map { it.key() }.distinct().size,
+        )
+        assertEquals(
+            "600 档 must be the pinned `Frame(600, 387, …)`",
+            ComposerFingerprintSpecs.R5_CALL_600,
+            r5[0].args.joinToString(", "),
+        )
+        assertEquals(
+            "768 档 must be the pinned `Frame(768, 466, …)`",
+            ComposerFingerprintSpecs.R5_CALL_768,
+            r5[1].args.joinToString(", "),
+        )
+    }
+
+    /**
+     * **Mutation ①-768 — delete the 768 call only.** The 600 call sits right
+     * next to it and is completely untouched, so a "≥ 1 live assertion" or
+     * "some `Frame` call exists" criterion is perfectly satisfied. Must still
+     * be reported, naming the 768 fingerprint specifically.
+     */
+    @Test
+    fun deletingTheSevenSixEightCallIsReported() {
+        val real = v106
+        assertTrue("the 768 line must exist verbatim in the real source", real.contains(line768))
+        assertTrue("the 600 line must be untouched by this mutation", real.contains(line600))
+        val mutated = real.replace(line768, "")
+        val violations = CallFingerprintValidator.validate(mutated, ComposerFingerprintSpecs.R5_CALLS)
+        assertEquals(
+            "exactly one violation: only the 768 pin is missing — got $violations",
+            1,
+            violations.size,
+        )
+        assertEquals("fingerprint-missing", violations.first().kind)
+        assertTrue(
+            "the violation must name the 768 fingerprint, not the 600 one: ${violations.first().id}",
+            violations.first().id.contains("768, 466"),
+        )
+    }
+
+    /**
+     * **Both tiers deleted at once** ⇒ two violations, one per tier. This is
+     * what "the contract covers both cells" means operationally: removing the
+     * entire post-fix half of R5 cannot leave a single green light behind.
+     */
+    @Test
+    fun deletingBothTiersIsReportedOncePerTier() {
+        val mutated = v106.replace(line600, "").replace(line768, "")
+        val violations = CallFingerprintValidator.validate(mutated, ComposerFingerprintSpecs.R5_CALLS)
+        assertEquals("one violation per deleted tier — got $violations", 2, violations.size)
+        assertEquals(
+            listOf("fingerprint-missing", "fingerprint-missing"),
+            violations.map { it.kind },
+        )
+        assertTrue(
+            "600 must be reported: ${violations.map { it.id }}",
+            violations.any { it.id.contains("600, 387") },
+        )
+        assertTrue(
+            "768 must be reported: ${violations.map { it.id }}",
+            violations.any { it.id.contains("768, 466") },
+        )
+    }
+
+    /**
+     * **Mutation ②-768 — the v115 hole, applied to the 768 cell.** A brand-new
+     * live `Frame(...)` call is added and the pinned 768 one is deleted. The
+     * 600 call survives, so every "at least one live assertion" criterion in
+     * v115 is satisfied. The fingerprint check must refuse anyway, and it must
+     * refuse *because of the 768 pin specifically*.
+     */
+    @Test
+    fun addingANewCallAndDeletingTheSevenSixEightOneIsStillReported() {
+        val real = v106
+        assertTrue("the 768 line must exist verbatim in the real source", real.contains(line768))
+        val replacement =
+            "        val after768 = Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = BAND_BEFORE_PX)\n" +
+                "        @Suppress(\"unused\") val after900 = Frame(900, 466, rows = 0, oneRow = true, bandHeightPx = BAND_AFTER_PX)\n"
+        val mutated = real.replace(line768, replacement)
+        assertTrue(
+            "the pinned 768 fingerprint must be gone",
+            !mutated.contains("Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = BAND_AFTER_PX)"),
+        )
+
+        // The decoy is genuinely present — a count-based validator is content.
+        val body = CallFingerprintScanner.funBody(
+            CallFingerprintScanner.mask(mutated),
+            ComposerFingerprintSpecs.R5_METHOD,
+        )!!
+        val newCalls = CallFingerprintScanner.callsIn(body, "Frame")
+        assertTrue(
+            "the replacement call must be present, otherwise this test proves nothing: $newCalls",
+            newCalls.contains(listOf("900", "466", "rows=0", "oneRow=true", "bandHeightPx=BAND_AFTER_PX")),
+        )
+        assertTrue(
+            "the untouched 600 call must still be there — v115 stays green: $newCalls",
+            newCalls.contains(listOf("600", "387", "rows=0", "oneRow=true", "bandHeightPx=BAND_AFTER_PX")),
+        )
+
+        val violations = CallFingerprintValidator.validate(mutated, ComposerFingerprintSpecs.R5_CALLS)
+        assertEquals("only the 768 pin may fail — got $violations", 1, violations.size)
+        assertEquals("fingerprint-missing", violations.first().kind)
+        assertTrue(
+            "must name the 768 fingerprint: ${violations.first().id}",
+            violations.first().id.contains("768, 466"),
+        )
+    }
+
+    /**
+     * **Mutation ③-768 — hardcode the 768 cell's only production argument.**
+     *
+     * `bandHeightPx = BAND_AFTER_PX` → `bandHeightPx = 48`, and
+     * `BAND_AFTER_PX` **is** 48 (`V106:93`), so every geometric assertion in
+     * `ComposerBandTallEnoughV106Test` still passes — v115 and v116's 600 pin
+     * stay green. This is the numerically-equivalent variant the ruling has
+     * to survive, on the tier v116 had left unpinned.
+     */
+    @Test
+    fun hardcodingTheSevenSixEightCallsArgumentIsReported() {
+        val mutated = v106.replace(
+            "Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = BAND_AFTER_PX)",
+            "Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = 48)",
+        )
+        assertTrue(
+            "the mutation must have applied",
+            mutated.contains("Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = 48)"),
+        )
+
+        // The 600 pin is unaffected — proving the red is about 768, not collateral.
+        assertEquals(
+            "the 600 pin must still pass under this mutation",
+            emptyList<Violation>(),
+            CallFingerprintValidator.validate(mutated, listOf(ComposerFingerprintSpecs.R5_CALLS[0])),
+        )
+
+        val violations = CallFingerprintValidator.validate(mutated, ComposerFingerprintSpecs.R5_CALLS)
+        assertEquals("only the 768 pin may fail — got $violations", 1, violations.size)
+        assertEquals("fingerprint-missing", violations.first().kind)
+
+        // And the all-literal shape is refused on provenance grounds too.
+        val allLiteral768 = listOf(
+            CallFingerprint(
+                scope = "fun ${ComposerFingerprintSpecs.R5_METHOD}",
+                callee = "Frame",
+                args = listOf("768", "466", "rows=0", "oneRow=true", "bandHeightPx=48"),
+                minProductionArgs = 1,
+            ),
+        )
+        assertTrue(
+            "expected hardcoded-argument, got ${CallFingerprintValidator.validate(mutated, allLiteral768)}",
+            CallFingerprintValidator.validate(mutated, allLiteral768).any { it.kind == "hardcoded-argument" },
+        )
+    }
+
+    /**
+     * **Neither tier substitutes for the other.** A pin set that contained
+     * only `:351` would be satisfied by a source that keeps 600 and drops 768;
+     * one that contained only `:364` would be satisfied by the mirror image.
+     * Both directions are asserted on the real source, so the ruling cannot
+     * quietly collapse back to "either tier will do".
+     */
+    @Test
+    fun neitherTierSubstitutesForTheOther() {
+        val no768 = v106.replace(line768, "")
+        val no600 = v106.replace(line600, "")
+
+        val keepOnly600 = CallFingerprintValidator.validate(no768, ComposerFingerprintSpecs.R5_CALLS)
+        assertTrue(
+            "keeping only the 600 tier must still fail the 768 pin — got $keepOnly600",
+            keepOnly600.any { it.kind == "fingerprint-missing" && it.id.contains("768, 466") },
+        )
+
+        val keepOnly768 = CallFingerprintValidator.validate(no600, ComposerFingerprintSpecs.R5_CALLS)
+        assertTrue(
+            "keeping only the 768 tier must still fail the 600 pin — got $keepOnly768",
+            keepOnly768.any { it.kind == "fingerprint-missing" && it.id.contains("600, 387") },
+        )
+    }
+
+    /** A KDoc that merely *mentions* `Frame(768, 466, …)` buys nothing either. */
+    @Test
+    fun aCommentAdvertisingTheSevenSixEightCallDoesNotSatisfyThePin() {
+        val skeleton = """
+            fun ${ComposerFingerprintSpecs.R5_METHOD}() {
+                // val after768 = Frame(768, 466, rows = 0, oneRow = true, bandHeightPx = BAND_AFTER_PX)
+                assertEquals("真机 768 档 ①：296 > 294 ⇒ +2", 2, 296 - 294)
+            }
+        """.trimIndent()
+        val violations = CallFingerprintValidator.validate(skeleton, ComposerFingerprintSpecs.R5_CALLS)
+        assertTrue("a comment must not satisfy a fingerprint pin, got $violations", violations.any { it.kind == "fingerprint-missing" })
     }
 
     // ----------------------------------------------------- the primitives
