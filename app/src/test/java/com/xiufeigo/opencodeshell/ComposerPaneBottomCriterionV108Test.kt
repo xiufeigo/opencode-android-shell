@@ -51,18 +51,29 @@ import java.io.File
  * `COMPOSER_OVERFLOW_FIX4.md` sec 1.3).
  *
  * **2. The falsification of "the 8px is an IME-height error".** v107b recorded
- * that the v106 model used IME = 466 where the device measures 474, and named
+ * that the v106 model used IME = 466 where the device measured 474, and named
  * that delta the suspect for criterion 1. This file calls the **real production
  * function** `SessionPaneLayout.believedImeBottomPx` and shows 466 is not a
  * value that function can produce, and — decisively — that on the **600** tier
  * the production IME path contributes **exactly zero** error, so the 600 tier's
  * `+5` cannot have been produced by it.
  *
+ * > **v125 correction to this section.** Both numbers in that sentence are
+ * > retired: the `474` and the `8` it differs from `466` by. The device's
+ * > measured 768-tier IME bottom is **426** (`imeTop 342`), not 474
+ * > (`imeTop 294`, the v110 epoch). `466` is therefore not merely unreachable —
+ * > it was never the right target, and the "8px delta" this section named as
+ * > the suspect is `48 − 40`: one navigation bar of wrong input plus a 40px
+ * > surplus. The *conclusion* this section reached (the 600 tier's IME path
+ * > contributes exactly zero error) is **unaffected** — it was derived on the
+ * > 600 tier, where nothing changed. Only the 768-tier literals move.
+ *
  * Device chain, reproduced here rather than asserted in prose:
  * ```
  * pane height = paneBoxPx - believedImeBottomPx(...)  [SessionPaneLayout.kt:1531]
  * 600: paneBox 438 - raw imeBottom 387 = 51          <- device measured 51
- * 768: paneBox 606 - raw imeBottom 474 = 132         <- device measured 140
+ * 768: paneBox 606 - raw imeBottom 426 = 180         <- device measured 140
+ *       (v125; the retired 474 gave 132, and 140 - 132 = 8 — the phantom)
  * ```
  *
  * (v112: this line used to read `paneBottomDp [SessionScreen.kt:2428]`, but
@@ -76,7 +87,18 @@ class ComposerPaneBottomCriterionV108Test {
     private val paneTop = 162
     private val paneHeight768 = 140
     private val paneHeight600 = 51
-    private val imeBottom768 = 474 // window - imeTop(294)
+    /**
+     * v125: **the 768-tier IME bottom inset is `426`, not the `474` v108/v110 wrote.**
+     *
+     * Measured insets (3rd final verification, sec 4, verbatim):
+     * `InsetsSource id=3 type=ime frame=[0,342][1366,768]` ⇒ `768 − 342 = 426`.
+     * The retired `474` back-solves to an `imeTop` of `294`, which is the **v110
+     * epoch's** reading and is not this build's top edge. `474 − 426 = 48` —
+     * **exactly one navigation bar** — which is the whole provenance of the
+     * retired "8px" this class used to pin (see
+     * [theImeShortfallTermIsAThreeHundredSixtyEightOnlyTermAndIsZeroOnTheSixHundredTier]).
+     */
+    private val imeBottom768 = 426 // window - imeTop(342)
     private val imeBottom600 = 387 // window - imeTop(213)
     private val paneBox768 = 606 // paneTop..window, after safeDrawing top
     private val paneBox600 = 438
@@ -359,12 +381,14 @@ class ComposerPaneBottomCriterionV108Test {
             essentialPx = essentialPx(),
         )
 
-        // Unclamped the function returns the platform reading (474). Clamped it
+        // Unclamped the function returns the platform reading (426). Clamped it
         // returns visibleBox - essentialPx (606 - 284 = 322). It cannot return
         // 466 for any floor >= 0, because 466 is neither input nor a difference
-        // of them.
+        // of them. v125: the raw branch is restated from the retired 474 to the
+        // measured 426; the reachable clamped value (322) is unchanged, because
+        // 426 and 474 both exceed room 322 and both therefore trip the clamp.
         assertTrue(
-            "clamp output must be raw 474 or clamped 322, was $believed",
+            "clamp output must be raw 426 or clamped 322, was $believed",
             believed == imeBottom768 || believed == paneBox768 - essentialPx(),
         )
         assertNotEquals(
@@ -374,14 +398,33 @@ class ComposerPaneBottomCriterionV108Test {
         )
     }
 
+    // v125: renamed from `theEightPxIsAThreeHundred…` — the numeral in the old
+    // name was the retired reading's artefact. The structural claim it pins is
+    // unchanged: the term exists on 768 and is identically zero on 600.
     @Test
-    fun theEightPxIsAThreeHundredSixtyEightOnlyTermAndIsZeroOnTheSixHundredTier() {
+    fun theImeShortfallTermIsAThreeHundredSixtyEightOnlyTermAndIsZeroOnTheSixHundredTier() {
         // "room above the IME inside the pane box" - the honest available height
-        val room768 = paneBox768 - imeBottom768 // 132
+        val room768 = paneBox768 - imeBottom768 // 180 (v125: was 132 under the retired 474)
         val room600 = paneBox600 - imeBottom600 // 51
         val pane768 = paneHeight768 // 140
 
-        assertEquals("768 asks for 8px it does not have", 8, pane768 - room768)
+        // v125: the term is STILL 768-only and STILL identically zero on 600 —
+        // that is what this class is for and neither half of it moved. What
+        // changed is only the 768 operand, because the room it measures against
+        // is a function of the IME reading: with the measured `426` the room is
+        // 180, and `140 − 180 = −40`, i.e. the pane now has 40px to SPARE rather
+        // than asking for 8px it cannot have. The retired 8 was `48 − 40` — one
+        // navigation bar minus that 40 — so it was the 48 in the wrong IME
+        // reading all along, not a real shortfall. 600 is untouched: 438 − 387.
+        assertEquals(
+            "768 has 40px to spare, not a shortfall: 140 − (606 − 426) = −40",
+            -40,
+            pane768 - room768,
+        )
+        // the 768-only term, restated on the measured input
+        assertEquals("the retired 8 was 48 − 40, i.e. one navigation bar of bad input", 8, 48 - 40)
+        // ...and the retired 8 reproduces exactly if the retired input comes back
+        assertEquals("a 474 ime bottom would reproduce the retired 8 exactly", 8, 140 - (606 - 474))
         assertEquals("600 asks for exactly the room it has", 0, paneHeight600 - room600)
 
         // The term that is zero here is exactly the term that cannot produce the

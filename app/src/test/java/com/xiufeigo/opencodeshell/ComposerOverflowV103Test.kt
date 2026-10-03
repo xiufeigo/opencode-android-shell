@@ -2,6 +2,7 @@ package com.xiufeigo.opencodeshell
 
 import com.xiufeigo.opencodeshell.ui.session.SessionPaneLayout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -76,6 +77,16 @@ class ComposerOverflowV103Test {
         /** composer 一行卡的固有高（真机 `EditText h=48`）。 */
         const val CARD_PX = 48
     }
+
+    /**
+     * **v125**：本类三维真值表**唯一的** IME 输入来源（`600` 档 387 / `768` 档 426）。
+     *
+     * 提到类级是为了让
+     * [theSevenSixEightImeInputIsTheMeasuredFourTwoSixAndNotTheRetiredV110FourSevenFour]
+     * 真正**读到**扫表所用的那一份，而不是复述一个字面量——否则那条 pin 就是自证的。
+     * 真机 insets 原文：`type=ime frame=[0,342][1366,768]` ⇒ `768 − 342 = 426`。
+     */
+    private val imeHeights = listOf(387, 426)
 
     /**
      * composer 想占的高度。**真机口径：恒为 48** ——
@@ -164,12 +175,22 @@ class ComposerOverflowV103Test {
      * IME 信念取**真机实测的两个真值**，不编造：
      *  * `1366x600` + IME：`believedImeBottomPx = 387`（`REPORT_U1E.md` §4.2，
      *    与 IME `InsetsSource.mFrame` 逐位相等）；
-     *  * `1366x768` + IME：`mFrame = [0,294][1366,768]` ⇒ `474`（同文 §4.1）。
+     *  * `1366x768` + IME：`frame = [0,342][1366,768]` ⇒ **`426`**（第 3 次终验
+     *    §4 insets 原文）。
      * 480 窗两种都跑（IME 固有高与窗高有关，真机未实测，不编第三个数）。
+     *
+     * ⚠️ **v125：`426` 取代了这里原先的 `474`。** 本表用的是**未钳位**读数
+     * `pane = window − CHROME_PX − imeBottomPx`，所以这个数**直接**决定 768 档
+     * 每一格的 `pane`：`606 − 426 = 180`（原 `606 − 474 = 132`）。
+     * 旧值 `474` 反推的 `imeTop` 是 `294`（v110 那一轮的读数），不是当前 build
+     * 的顶边；`474 − 426 = 48` **恰好一个导航条**。
+     * ⇒ 换源后 768 档的 `pane` 与 `ComposerDivergenceLocate2V120Test` 的
+     * `paneClampOff768 = 180`（同一条实测口径）**逐位一致**，这正是 426 为真、
+     * 474 为旧的独立交叉验证。600 档（387）与全部断言结构**一字未动**。
      */
     @Test
     fun theThreeDimensionalTruthTableHoldsOnEveryWindowImeAndQueueCell() {
-        val imeHeights = listOf(387, 474)
+        // v125: `imeHeights` 已提到类级（见其定义），供 v125 新增的那条 pin 同源读取。
         val rows = listOf(0, 2, 11)
         var cells = 0
         var zeroCeilingCells = 0
@@ -219,6 +240,56 @@ class ComposerOverflowV103Test {
         assertEquals("the device cell is in the zero-ceiling branch", 0, device.hostPx)
         assertTrue("the sweep must actually exercise it", zeroCeilingCells > 0)
         assertEquals("3 windows x 3 IME x 3 queue depths", 27, cells)
+    }
+
+    /**
+     * **v125 新增**（纯增，不替代上面任何一条）：把这一类**唯一**的 768 档 IME
+     * 输入钉成一条**独立的**判据，使它不能再被换回 v110 的 `474`。
+     *
+     * 这条之所以必要：上面那条三维真值表是**相对**断言（`bottom <= pane`、
+     * `pane == bottom`…），所以把 768 档的 IME 从 `474` 换成 `426` 时，
+     * **它一条都不会红** —— 每一格仍然自洽，只是整体被平移了。
+     * 换句话说：**没有这条 pin，474 与 426 在这个类里是无法区分的。**
+     *
+     * 算式（未钳位读数，真机 insets 原文）：
+     * ```
+     * imeTop 342      insets: type=ime frame=[0,342][1366,768]
+     * imeBottom = 768 − 342 = 426          ← 判据
+     * pane(768) = 768 − CHROME_PX(162) − 426 = 180
+     * 交叉验证：与 ComposerDivergenceLocate2V120Test 的 paneClampOff768 = 180 逐位一致
+     * 退役值   ：474 → 606 − 474 = 132，且 140 − 132 = 8（就是那个幻影 8）
+     * ```
+     *
+     * 这条**只紧不松**：它断言的是源码里那个 `imeHeights` 里**确实**有 `426`，
+     * 且**确实**没有 `474`——两个都是新增的收紧点。
+     */
+    @Test
+    fun theSevenSixEightImeInputIsTheMeasuredFourTwoSixAndNotTheRetiredV110FourSevenFour() {
+        val imeBottom768 = 426 // = window(768) − imeTop(342)
+
+        // ① 字面量：本类的 768 档 IME 输入必须就是实测值，且退役值不得再出现。
+        assertTrue(
+            "the 768 IME input must be the measured 426, was $imeHeights",
+            imeHeights.contains(imeBottom768),
+        )
+        assertFalse(
+            "the retired v110 474 must not remain a criterion input",
+            imeHeights.contains(474),
+        )
+
+        // ② 算式：未钳位 pane = window − CHROME_PX − imeBottomPx。
+        val pane768 = Frame(768, imeBottom768, 0).pane
+        assertEquals("768 unclamped pane is 606 − 426 = 180", 180, pane768)
+
+        // ③ 与真机 pane 读数的关系：设备量到 140，故 768 档**富余 40**。
+        assertEquals("the 768 tier has 40px to spare on the measured input", 40, pane768 - 140)
+
+        // ④ 幻影 8 的来路：退役输入逐位复现它，且它恰好等于一个导航条 − 40。
+        assertEquals("a retired 474 ime bottom would reproduce the phantom 8", 8, 140 - (606 - 474))
+        assertEquals("and that 8 is one navigation bar minus the 40 spare", 8, 48 - 40)
+
+        // ⑤ 600 档必须**逐位不动**——本轮没有动它，也不能让后来者动它。
+        assertEquals("the 600 tier reading is untouched", 51, Frame(600, 387, 0).pane)
     }
 
     // ------------------------------------------------- ② 全组合 / 全整数扫描
