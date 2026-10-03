@@ -27,22 +27,32 @@ import java.io.File
  *   设备那一侧 `140 = TIMELINE_MIN_HEIGHT(72) + COMPOSER_MINIMAL_HEIGHT(56) + COMPOSER_REGION_PADDING(12)`
  *   **逐位等于一行形态的地板** ⇒ 生产按**堆叠**收账是唯一的差额来源。
  *   判定链：`SessionScreen.kt:2385-2389` → `SessionPaneLayout.kt:1039-1040` → 阈值 `:1008-1010`（**164 dp**）。
- * * **−8px 仍未闭环，但已定位到候选行**：v119 的模型把 `floorPx` 硬写成 `0`
- *   （`ComposerDivergenceLocateV119Test.kt:85`），而生产读的是
- *   `SessionScreen.kt:2362-2363` 的 `navigationBars`。判据见 `DIVERGENCE_LOCATE2.md` §2.3。
- *   —— 答案未知，所以只钉**结构**（见本文件 §结构 pin 的说明），**不编数值**。
+ * * **−8px 已判掉（v124）**：它不是 nav bar floor、不是取整，是**模型用了一个错的
+ *   `imeBottomPx`** —— `474`（反推 ime 顶边 294）不是当前 build 的顶边；真机 insets 原文是
+ *   `type=ime frame=[0,342][1366,768]` ⇒ `imeBottomPx = 426`。
+ *   而 `474 − 426 = 48` **恰好等于导航条** ⇒ 那个 8 是一个 48 的差被错投出来的残影。
+ *   同时 `floorPx` 从 `0` 修正为实测的 `48` ⇒ 「多算 144」更正为 **96**。
+ *   详见 `research/v97_fix/CRITERION_MODEL_FIX.md`。
  */
 class ComposerDivergenceLocate2V120Test {
 
-    // ---- 真机读数（v110 dump 原文，density 160 ⇒ 1dp == 1px；**故意保留的字面量**）----
-    /** 768 档：pane 盒 = 606（= 窗口 768 − paneTop 162），键盘自称 474。 */
+    // ---- 真机读数（density 160 ⇒ 1dp == 1px；**故意保留的字面量**）----
+    /** 768 档：pane 盒 = 606（= 窗口 768 − paneTop 162）。 */
     private val paneTop = 162
     private val paneBox768 = 606
-    private val imeBottom768 = 474
+    /** 768 档 ime 底 inset = `768 − imeTop(342)` = **426**（第 3 次终验 §4 insets 原文）。 */
+    private val imeBottom768 = 426
+    /** 768 档导航条底 inset = `768 − navBarTop(720)` = **48**（同一段 insets 原文）。 */
+    private val navFloor768 = 48
     /** 768 档设备真实 pane 盒高（`188 − 48`，`COMPOSER_OVERFLOW_FIX8.md:344`）。 */
     private val devicePane768 = 140
-    /** 768 档：钳位关掉（§4.2 替代方案）后生产认为的 pane 盒 —— v119 §4.2 的 `132`。 */
-    private val paneClampOff768 = 132
+    /**
+     * 768 档：**钳位关掉**后生产认为的 pane 盒 = `606 − 426` = **180**。
+     *
+     * **v124 修正**：v119 §4.2 记的 `132` 是按退役的 `imeBottomPx = 474` 算的；
+     * 按实测 426 算，它应当是 `606 − 426 = 180`。
+     */
+    private val paneClampOff768 = 180
 
     // ---- 生产量（一律取自生产）----------------------------------------------
     private fun essentialPx(): Int = SessionPaneLayout.PANE_ESSENTIAL_HEIGHT.value.toInt()
@@ -162,20 +172,26 @@ class ComposerDivergenceLocate2V120Test {
         )
 
         // ③ body：钳位开 ⇒ paneBox − believed，其中 believed 由生产函数给出。
+        //    v124：floor 换成实测的 48 ⇒ 钳位返回 `room + floor` ⇒ body = `essential − floor`。
         val believed = SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox768,
-            floorPx = 0,
+            floorPx = navFloor768,
             imeBottomPx = imeBottom768,
             essentialPx = essentialPx(),
         )
-        val bodyWhenClamped = (paneBox768 - believed).coerceAtLeast(0)
+        val bodyWhenClamped = (paneBox768 - maxOf(navFloor768, believed)).coerceAtLeast(0)
         assertEquals(
-            "with the clamp on, the pane is pinned to PANE_ESSENTIAL_HEIGHT",
-            essentialPx(),
+            "with the clamp on, the pane is pinned to PANE_ESSENTIAL_HEIGHT − the measured floor",
+            essentialPx() - navFloor768,
+            bodyWhenClamped,
+        );
+        assertEquals(
+            "…which is 284 − 48 = 236, still digit exact on the measured inputs",
+            236,
             bodyWhenClamped,
         );
         assertTrue(
-            "…and that clamped body clears the 164dp one-row threshold, so 768 goes STACKED",
+            "…and that clamped body still clears the 164dp one-row threshold, so 768 goes STACKED",
             bodyWhenClamped >= threshold,
         );
         assertFalse(
@@ -275,22 +291,32 @@ class ComposerDivergenceLocate2V120Test {
             SessionPaneLayout.composerMinimal(essentialWithoutChrome.toDouble().dp),
         );
 
-        // 钳位仍会开（闸门 200×2 = 400 ≤ 606），于是 pane 仍被钉成 200、body 仍是 200。
+        // v124：实测输入下，essential = 200 时**钳位不再触发**，生产原样相信键盘。
         val believedWithoutChrome = SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox768,
-            floorPx = 0,
+            floorPx = navFloor768,
             imeBottomPx = imeBottom768,
             essentialPx = essentialWithoutChrome,
         )
-        val bodyWithoutChrome = (paneBox768 - believedWithoutChrome).coerceAtLeast(0)
+        val bodyWithoutChrome = (paneBox768 - maxOf(navFloor768, believedWithoutChrome)).coerceAtLeast(0)
         assertEquals(
-            "…so the clamped body is still 200, and the 60 survives the proposal untouched",
-            200,
+            "the 60's own cause is untouched by the proposal: 116 − 56 = 60",
+            60,
+            stackedFloorPx() - minimalFloorPx(),
+        );
+        assertEquals(
+            "with the measured ime (426) and floor (48), room 406 >= claimed 378 — the clamp does not fire",
+            imeBottom768,
+            believedWithoutChrome,
+        );
+        assertEquals(
+            "…so the body is 606 − 426 = 180, not 200 — and not the device's 140 either",
+            180,
             bodyWithoutChrome,
         );
         assertEquals(
-            "the residual vs the device is still exactly 60 — v119's fix does not move it",
-            60,
+            "the residual vs the device is 40 = (606 − 426) − 140; 48 − 40 is the phantom 8",
+            40,
             bodyWithoutChrome - devicePane768,
         );
     }
@@ -300,17 +326,21 @@ class ComposerDivergenceLocate2V120Test {
     // =======================================================================
 
     /**
-     * §2.1 **−8px 的候选行**：生产确实从 `navigationBars` 读 floor，
-     * 而 v119 的模型把它硬写成 0。
+     * §2.1 **v124：−8px 判掉 —— 它不是 nav bar floor，是一个错的 `imeBottomPx`。**
      *
-     * **为什么这一条只能是源码解析的结构 pin**：−8px 的**答案本身还未知**
-     * （`DIVERGENCE_LOCATE2.md` §2.2 的 `140 = 132 + 8(nav bar)` 只是**领先假设**，
-     * 判据是 §2.3 ① 的 `dumpsys window insets`）。把假设写成数值断言 = 编造。
-     * 这里能做的最强断言是：**生产那一侧读 floor 的那两行还在**，
-     * 以及**8 这个缺口结构本身**仍成立（`140 − 132`）。
+     * v120 当时只能钉结构（"答案未知，不编数值"）。第 3 次终验把 insets 原文取回来了：
+     * `type=ime frame=[0,342][1366,768]` ⇒ `imeBottomPx = 426`，而模型用的是 `474`。
+     * `474 − 426 = 48` **恰好等于导航条** ⇒ 那个 8 是「把导航条那一带算进键盘」的残影。
+     *
+     * 代入实测 `imeBottomPx = 426` 后，钳位关掉的 pane 是 `606 − 426 = **180**`，
+     * 对设备的 140 是 `140 − 180 = **−40**` —— **既不是 +8 也不是 0，而 40 = 48 − 8**：
+     * 旧口径的 8 与新的 40 相差恰好一个导航条，**同一笔账的两面**。
+     *
+     * **生产读 floor 的那几行仍然必须原样在**（`SessionScreen.kt:2362-2369`）：它们是对的，
+     * 只是 v119 的模型没喂给它真值。⇒ 下面四条源码 pin **一字未改**。
      */
     @Test
-    fun `the eight pixel gap is the navigation bar floor the previous round hard coded to zero`() {
+    fun `the eight pixel gap was a mis read ime bottom not a navigation bar the measured insets read forty over`() {
         val src = productionText("SessionScreen.kt")
 
         // 生产侧：floor 来自 navigationBars（真实行，必须还在）。
@@ -331,16 +361,26 @@ class ComposerDivergenceLocate2V120Test {
             Regex("""maxOf\(paneFloorPx,\s*believedImeBottomPx\)""").containsMatchIn(src),
         )
 
-        // 缺口结构：钳位关掉后生产 132、设备 140，差 8 —— 这个差**仍是 8**。
+        // 钳位关掉：按实测 ime（426），生产读到的 pane 盒是 180，不是 132。
         assertEquals(
-            "with the clamp off production reads a 132px pane box (v119 §4.2)",
+            "with the clamp off and the measured ime, production reads 606 − 426 = 180 (not 132)",
             paneClampOff768,
             paneBox768 - imeBottom768,
         )
         assertEquals(
-            "…against the device's 140, the unexplained gap is exactly 8px",
-            8,
+            "the retired 132 was 606 − 474, i.e. it came from the mis-read ime bottom, not from the floor",
+            132,
+            paneBox768 - 474,
+        );
+        assertEquals(
+            "…and the measured reading over-reads the device by 40 = one nav bar (48) less the phantom 8",
+            -40,
             devicePane768 - paneClampOff768,
+        );
+        assertEquals(
+            "…so 48 − 40 = 8: the old gap was this same 48px mis booked as 8",
+            8,
+            navFloor768 - (paneClampOff768 - devicePane768),
         )
     }
 

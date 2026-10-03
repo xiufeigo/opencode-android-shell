@@ -240,3 +240,84 @@ picker/Models 全量列出；⋮ 菜单聚合；context 圆环直达；websearch
 3. **判判据本身也要能被证伪**：U1B 的"不被覆盖"判据在集合论上不成立；更早还有"没证明容器渲染就去判控件缺失"（一次测错组件 `MessageNavRail`、一次队列条根本没出现）。
 4. **核心 UI 子系统"改一侧挤压必须给另一侧设下限"**：U1 第一版只保时间线 ⇒ 把队列条压到 2–3px。
 
+
+---
+
+## v124 交接（修复工程师 mavis，2026-10-04）—— 测试侧 `imeBottomPx` 修正 + 交接收口
+
+> 本节**只追加、不改语义**。完整证据见 `research/v97_fix/CRITERION_MODEL_FIX.md`。
+
+### 一、真机终验结论（第 3 次，`emulator-5554` / `1366x768` / `160`）
+
+| 项 | 结论 |
+|---|---|
+| **第 0 步 认证** | ✅ **PASS** —— 首次真正拿到**10 行可点会话列表**（`Friendly greeting` / `android-e2e` / `DRAFT__OK` …），并进入会话看到真实消息 `收到，连接正常。有什么需要帮忙的？` + `Build · longcat-2.5-preview-free · 7s` |
+| **引导页只有两个框** | ✅ 真机 a11y dump 只有 `Server address` / `Password` 两个 `EditText`，**没有 Username 框** ⇒ `CONNECT_AUTH_CONTRACT.md` §1.3 成立 |
+| **主判据 ①（统一口径：dump 侧）** | ✅ **两档都过关**：768 = **−10**、600 = **−12** |
+| **主判据 ②** | ✅ 600 档 = 0（`unionPx 48 ≤ band 48`）；768 档取决于 `band` 口径，**未裁定**（见五） |
+| **三格基线逐位保持** | ✅ 768 `readable 92` / 768 `时间线盒 140` / 600 `readable 51` —— **三格全部逐位保持**；600 旧口径 `249 ≤ 261` 亦逐位复现 |
+| **缩窗往返** | ✅ 2 轮（600→768→600→768），`pidof 3526` **全程未变**，`FATAL\|IllegalArgumentException\|maxHeight` **零命中**，全程无 ANR |
+| 🔴 **队列几何仍未测到** | **不判回退，只给取证**：扫了 5 次 dump（`u_q1/q2/q3/q4/noime`），全树**没有任何 `Queue` 或 `Steer` 标签节点**。composer 工具行的全部内容是 **`Add` + `Model` + `Send`** 三个 chip（`desc=[Add] Button (10,292)-(52,340)`、`Model chip View (52,302)-(262,330)`、`desc=[Send] View (1308,292)-(1356,340)`）⇒ **队列条根本不存在，所以无从点它**。基线 `Steer h=43` / `× h=48` / 全 clickable **本轮无法测量，不是"不达标"**。也可能队列条生命周期太短（两次抓屏之间已消失） |
+
+**两个非阻塞杂项**：① 开工取 `mCurrentFocus` 撞 ANR，按纪律 `adb reboot` 后继续（本轮记一次）；
+② reboot 后 `mWakefulness=Asleep`，需 `KEYCODE_WAKEUP` + `wm dismiss-keyguard` + `HOME` —— **这是休眠不是 ANR**，记录以免下轮误判。
+③ `dumpsys window insets` **不是合法子命令**（`Bad window command`），insets 原文在 `dumpsys window` 的正文里。
+
+### 二、解阻塞的**两条契约**（照此填，不要再猜）
+
+1. **服务器探测（PATH 必须是 v2 可执行文件）**
+   - `GET /api/info` 必须返回 **HTTP 200** + **JSON**，
+   - 且 JSON 里的 **`version` 字段必须以 `2.` 开头**（例：`{"version":"2.0.14","pid":712,...,"paths":{"tmp":"..."}}`），
+   - **且 PATH 上解析到的必须是 v2 可执行文件** —— 只有 v2 才带 `/api/info`；PATH 上若是 v1，即使有监听也会探测不到/探到别的形状。
+2. **连接认证（用户名固定、口令走环境变量）**
+   - **用户名固定 `opencode`**（引导页**没有** Username 框，不要去填、也不要留空、**不要**填 `admin`）；
+   - **Password = `OPENCODE_SERVER_PASSWORD`** 这个环境变量的值；它同时是 `Authorization: Basic base64("opencode:<该口令>")` 的口令部分。
+   - 校验手段：**从 a11y dump 读回 `text` 属性的长度**（掩码位数即长度），确认口令没被截断。
+   - ⚠️ **长 URL 必须自己按逐位校对过的边界切分**，不要凭"每段 ≤8 字符"去凑 —— 本轮就是把 `127.0.0.1` 连拼成 `127.0.0.0.1` 才失败的，与认证无关。
+
+### 三、A（去 `CHROME_FULL_HEIGHT`）**不可动** —— 结论与理由
+
+- **`:1467-1468` 是在兜 P0，不是冗余**：`PANE_ESSENTIAL_HEIGHT` 在 `believedImeBottomPx` 里
+  承担的角色**不是尺寸预算，是塌陷阈值** —— v77 那一挡存在的全部意义是
+  「**不许把 pane 压到付不起自己 chrome 的高度以下**」，而被比较的那个数**必须含 chrome**。
+  去掉 chrome ⇒ v77 实测的那个**226 dp 塌陷**（`593 px`）不再被检出 ⇒
+  **「丢工具栏/tab 条」复发**（header 行被裁、view tab 条整条消失）。
+- v123 已**试改实测**：13 条红 → 全部回退 → 97/97 绿，**最终生产代码净改动 = 0**。
+- **v124 新增的独立反证**：代入真机 insets 口径后，去 chrome 让 `essential = 200`，
+  于是 `room = 606 − 200 = 406 ≥ claimed = 426 − 48 = 378` ⇒ **钳位整个不开**，
+  生产**原样相信**键盘 426，`body = 606 − 426 = 180`，残差 `180 − 140 = 40` ——
+  等于**把一个已记账的 60 换成一个没记账的 40**。⇒ **两头都不划算。**
+- ⇒ **144/96 这笔账必须换个地方修，不能动这个常数。** 落地与否**交给裁定**。
+
+### 四、⚠️ 行尾陷阱（v123 踩过，务必知道）
+
+- 现象：**`autocrlf=true` + 仓库有「逐字源码 pin」** ⇒ 文件一被 checkout/回退就整仓变 CRLF，
+  于是那些**逐字比对生产源码文本**的 pin 全红 —— 表现为「**代码明明是干净的，测试却必红**」。
+  v123 曾因此**把 64 个文件变成 CRLF**，让逐字源码 pin **确定性失败**。
+- **现状：仓库已设 `core.autocrlf=false`**（本轮已复核：输出 `false`），三个被改测试文件 `CR` 字节数实测 **= 0**。
+- 🔴 **禁令**：**不要用 `git checkout` / `git restore` / `git add --renormalize` 去改行尾。**
+  **改文件一律只用编辑工具**（Edit / Write）。
+
+### 五、仍未闭环清单
+
+| # | 项 | 状态 |
+|---|---|---|
+| 1 | **自证循环** `SessionScreen.kt:2385-2389`（形态判定看的是**钳位自己的输出**） | **未闭环**。v124 代入实测输入后 body 从 284 变 **236**，**仍然 ≥ 164 阈值** ⇒ **循环不但没破、还更强** |
+| 2 | **队列几何** | **未测到**（工具行只有 `Add`/`Model`/`Send`，见一）⇒ 队列 pin 未动、未放宽 |
+| 3 | **通知竞态** | **未闭环** |
+| 4 | **44MB release 侧** | **未闭环**。debug 包 **44MB**；定位到 `bcprov 库体积`、路径遍历/文件名库、
+AOT+脱敏前 8 个分支同 `remember{}`、Picnic 素材体积、`NetworkRecoveryWatch` 启动开销；
+**必须走 release 侧 R8 + baseline profile**（AGP 未在 profile 阶段关 debuggable） |
+| 5 | **IPv6 仅 JVM** | **未闭环**（只在 JVM 侧验证过，**未在设备上验**） |
+| 6 | **Trust 流程** | **未复验** |
+| 7 | 768 判据 ② 的 `band` 口径（`BAND_HEIGHT=48` vs 该档总带高 96） | **待裁定** ⇒ 裁定用 48 则 768 ② 为假（全局 FAIL），用总带高则两档 ② 均真 |
+| 8 | 768 判据① 生产口径 **+2**（B：`Composer.kt:2150/2152` 的 2px 居中探出） | **未修**，被 6 条既有 pin 逐字锁住，仍在授权外 |
+| 9 | 仓内 `426`（新 epoch）与 `474`（v110 旧 epoch）两套 IME 读数并存 | **已知的口径分叉**，见 `CRITERION_MODEL_FIX.md` §6.2，建议下一轮统一 |
+
+### 六、本轮交付与自证
+
+- **生产代码净改动 = 零**（`git status --porcelain -- app/src/main ui _upstream app/build.gradle.kts` = **0 条**）。
+- 改动仅 **3 个测试文件** + `research/**`：`ComposerDivergenceLocateV119Test.kt`、
+  `ComposerDivergenceLocate2V120Test.kt`、`ComposerCriterionParityV118Test.kt`。
+- **49/49 绿**（6 个类，用例数只增不减 7→8）；**两轮反向验证各红**（ime 回退红 1 条；floor 回退红 4 条且**精确复现 144**）。
+- **未** assembleDebug、**未** clean、**未**装机 ⇒ **设备基线本轮未复验**。

@@ -67,7 +67,15 @@ class ComposerCriterionParityV118Test {
     private val paneBox600 = 438
     private val imeBottom600 = 387
     private val paneBox768 = 606
-    private val imeBottom768 = 474
+    /**
+     * 768 档 ime 底 inset = `768 − imeTop(342)` = **426**（第 3 次终验 §4 insets 原文）。
+     * v118 当时写的是 `474`（反推 ime 顶边 294，v110 那一轮的读数），本轮按实测更正。
+     */
+    private val imeBottom768 = 426
+    /** 768 档导航条底 inset = `768 − navBarTop(720)` = **48**（生产 `SessionScreen.kt:2362` 读的就是它）。 */
+    private val navFloor768 = 48
+    /** 600 档导航条底 inset = `600 − nonDecorBottom(552)` = **48**。 */
+    private val navFloor600 = 48
 
     // ---- 生产常量（全部取自生产，不在本文件重述）---------------------------
     private fun essentialPx(): Int = SessionPaneLayout.PANE_ESSENTIAL_HEIGHT.value.toInt()
@@ -166,20 +174,26 @@ class ComposerCriterionParityV118Test {
     // ---- 生产求值（cross-check：证明模型的输入真的是生产值）------------------
 
     private fun productionPanePx600(): Int =
-        paneBox600 - SessionPaneLayout.believedImeBottomPx(
-            visibleBoxPx = paneBox600,
-            floorPx = 0,
-            imeBottomPx = imeBottom600,
-            essentialPx = essentialPx(),
+        paneBox600 - maxOf(
+            navFloor600,
+            SessionPaneLayout.believedImeBottomPx(
+                visibleBoxPx = paneBox600,
+                floorPx = navFloor600,
+                imeBottomPx = imeBottom600,
+                essentialPx = essentialPx(),
+            ),
         )
 
     private fun productionPaneBottomPx768(): Int =
         productionPaneBottomPx(
-            paneBox768 - SessionPaneLayout.believedImeBottomPx(
-                visibleBoxPx = paneBox768,
-                floorPx = 0,
-                imeBottomPx = imeBottom768,
-                essentialPx = essentialPx(),
+            paneBox768 - maxOf(
+                navFloor768,
+                SessionPaneLayout.believedImeBottomPx(
+                    visibleBoxPx = paneBox768,
+                    floorPx = navFloor768,
+                    imeBottomPx = imeBottom768,
+                    essentialPx = essentialPx(),
+                ),
             ),
         )
 
@@ -507,14 +521,19 @@ class ComposerCriterionParityV118Test {
      * **一处口径矛盾，如实钉住并记账**（不修、不豁免、也不假装它不存在）。
      *
      * 768 档上 `believedImeBottomPx`（`SessionPaneLayout.kt:1531`）的 v99 钳位**会开**：
-     * `606 >= essentialPx*2` ⇒ 成立，而键盘要的 `474` 大于 `room = 606 − 284 = 322`
-     * ⇒ 生产**相信** `322`，于是 `panePx = 606 − 322 = 284`。
+     * `606 >= essentialPx*2` ⇒ 成立，而键盘要的 `426 − 48 = 378` 大于 `room = 606 − 284 = 322`
+     * ⇒ 生产**相信** `room + floor = 370`，于是 `panePx = 606 − 370 = 236`。
+     *
+     * **v124 修正**：本条原先写的是「键盘要的 `474` … `panePx = 606 − 322 = 284`」，
+     * 那两个数都建立在 `imeBottomPx = 474` + `floorPx = 0` 上。代入真机 insets
+     * （`imeTop 342` ⇒ `426`；`navBarTop 720` ⇒ `floor 48`）后，pane 是 **236**、
+     * `paneBottom` 是 **398**、多算是 **96**（不是 144）。
      *
      * 而设备读到的 768 档 pane 盒是 **140**（v98 的 `302 − 162` 与 v110 的 `350 − 48 − 162`
      * 都指着它）。
      *
      * ⇒ 768 档的 dump 换算**必须以设备读数 140 为输入**（本类已如此），
-     * 而**不能**用生产算出来的 284。v108 那支在 768 档用的是冻结字面量 `296/302`，
+     * 而**不能**用生产算出来的 236。v108 那支在 768 档用的是冻结字面量 `296/302`，
      * 不是生产算式 —— 这一点本类第一次把它显式写下来。
      */
     @Test
@@ -522,11 +541,15 @@ class ComposerCriterionParityV118Test {
         val productionPaneBottom768 = productionPaneBottomPx768()
         val devicePaneBottom768 = productionPaneBottomPx(dev768PanePx)
 
-        assertEquals("the v99 clamp fires on 768: panePx = 606 − 322 = 284", 284, productionPaneBottom768 - paneTop)
+        assertEquals(
+            "the v99 clamp fires on 768: panePx = 606 − (322 + 48) = 236 = essential − floor",
+            236,
+            productionPaneBottom768 - paneTop,
+        )
         assertEquals("the device read a 140 px pane", 140, devicePaneBottom768 - paneTop)
         assertEquals(
-            "so production over-credits the 768 pane by 144 px — booked, not fixed (see §6)",
-            446,
+            "so production over-credits the 768 pane by 96 px (not 144) — booked, not fixed (see §6)",
+            398,
             productionPaneBottom768,
         )
         // 本类的 768 锚定用的是设备读数，因此照样逐位成立 —— 但这个前提必须被显式钉住。
