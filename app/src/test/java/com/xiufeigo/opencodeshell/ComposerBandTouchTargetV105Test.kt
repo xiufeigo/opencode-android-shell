@@ -379,7 +379,13 @@ class ComposerBandTouchTargetV105Test {
         val hostPx = SessionPaneLayout.MIN_INTERACTIVE_COMPONENT_PX // 48, :108
         val panePx = 438 - SessionPaneLayout.believedImeBottomPx( // 438 - 387 = 51, :1531
             visibleBoxPx = 438,
-            floorPx = 0,
+            // v126: was 0; the measured 600-tier navigation bar is
+            // `600 − nonDecorBottom(552) = 48` (insets 原文 ROTATION_0 行的
+            // nonDecorFrame). 48 也是生产在 `SessionScreen.kt:2363-2369` 递给
+            // `believedImeBottomPx` 的 `navBottomPx`。本档结果不变，原因是**构造性**
+            // 的：`438 < 284 * 2` 让 `SessionPaneLayout.kt:1539` 在读到 floorPx 之前
+            // 就返回，不是"碰巧没影响"。
+            floorPx = 48,
             imeBottomPx = 387, // 600 - imeTop(213)
             essentialPx = SessionPaneLayout.PANE_ESSENTIAL_HEIGHT.value.toInt(),
         )

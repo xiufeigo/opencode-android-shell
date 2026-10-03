@@ -301,11 +301,23 @@ class ComposerUnionBottomP5V109Test {
      * `paneBoxPx − believedImeBottomPx(...)` (`SessionPaneLayout.kt:1531`) ⇒ `438 − 387 = 51`.
      * Read from production rather than taken from [paneHeight600] so a change to the
      * production IME path moves the yardstick too.
+     *
+     * v126: `floorPx` was the retired `0`; it is now the measured 600-tier
+     * navigation bar, `600 − nonDecorBottom(552) = 48` (insets 原文:
+     * `ROTATION_0={... nonDecorFrame=[0,0][1366,552] ...}`), the same quantity
+     * production passes as `navBottomPx` at `SessionScreen.kt:2363-2369`. The
+     * verdict is unchanged **by construction**: `438 < 284 * 2` makes
+     * `SessionPaneLayout.kt:1539` return before it ever reads `floorPx`. That
+     * short-circuit is itself pinned in
+     * `ComposerPaneBottomCriterionV108Test.theNavigationBarFloorIsReadOnTheSevenSixtyEightTierAndTheSixHundredTierIsInertToIt`,
+     * so this call no longer relies on its own silence to stay right.
      */
+    private val navFloor600 = 48
+
     private fun panePx600(): Int =
         paneBox600 - SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox600,
-            floorPx = 0,
+            floorPx = navFloor600,
             imeBottomPx = imeBottom600,
             essentialPx = SessionPaneLayout.PANE_ESSENTIAL_HEIGHT.value.toInt(),
         )

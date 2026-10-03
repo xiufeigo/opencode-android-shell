@@ -103,6 +103,30 @@ class ComposerPaneBottomCriterionV108Test {
     private val paneBox768 = 606 // paneTop..window, after safeDrawing top
     private val paneBox600 = 438
 
+    /**
+     * v126: **the navigation-bar floor is `48`, not the `0` this class used.**
+     *
+     * Same insets verbatim lines as [imeBottom768] above:
+     *  * `navigationBars frame=[0,720][1366,768]` ⇒ 768-tier floor = `768 − 720 = 48`
+     *  * `nonDecorFrame=[0,0][1366,552]` (600 tier) ⇒ 600-tier floor = `600 − 552 = 48`
+     *  * `nonDecorInsets=[0,0][0,48]` on **both** tiers states the same 48 once more.
+     *
+     * Production passes exactly this quantity: `SessionScreen.kt:2363` reads
+     * `val paneFloorPx = if (titlebarBottom && !desktop) 0 else navBottomPx` and
+     * `:2364-2369` hands it to `believedImeBottomPx` as `floorPx` — `navBottomPx`
+     * **is** the 48. (Both facts are already pinned by
+     * `ComposerDivergenceLocate2V120Test` and `SessionPaneImeBeliefV77Test`.)
+     *
+     * The retired `0` was the **same v110 epoch** as the retired `474`: it is the
+     * reading of a window whose navigation bar had not been subtracted. Because
+     * `believedImeBottomPx` returns `roomPx + floorPx` when it clamps
+     * (`SessionPaneLayout.kt:1543`), `floorPx` lands on the **return value**, not
+     * merely on the comparison — so `0` did not stay a harmless placeholder, it
+     * made this class report a pane the device never showed.
+     */
+    private val navFloor768 = 48
+    private val navFloor600 = 48
+
     private fun essentialPx(): Int = SessionPaneLayout.PANE_ESSENTIAL_HEIGHT.value.toInt()
 
     private fun source(relative: String): String =
@@ -172,7 +196,7 @@ class ComposerPaneBottomCriterionV108Test {
     private fun panePx600(): Int =
         paneBox600 - SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox600,
-            floorPx = 0,
+            floorPx = navFloor600, // v126: was 0 — the measured navigation bar
             imeBottomPx = imeBottom600,
             essentialPx = essentialPx(),
         )
@@ -358,9 +382,16 @@ class ComposerPaneBottomCriterionV108Test {
     fun theSixHundredTierImePathContributesExactlyZeroError() {
         // paneBox 438 < essentialPx * 2 (284*2 = 568) => the clamp's guard
         // short-circuits and the raw inset is believed verbatim.
+        //
+        // v126: floorPx is now the measured navigation bar (48), not 0. The
+        // guard above returns **before** floorPx is ever read, so the verdict is
+        // unchanged by construction — which is exactly why the old `0` could sit
+        // here unnoticed. The reading is now the device's, and
+        // [theNavigationBarFloorIsReadOnTheSevenSixtyEightTier] pins that this
+        // tier is inert to it rather than leaving that as a coincidence.
         val believed = SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox600,
-            floorPx = 0,
+            floorPx = navFloor600,
             imeBottomPx = imeBottom600,
             essentialPx = essentialPx(),
         )
@@ -376,25 +407,93 @@ class ComposerPaneBottomCriterionV108Test {
     fun fourSixSixIsNotAValueTheProductionImePathCanProduce() {
         val believed = SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox768,
-            floorPx = 0,
+            floorPx = navFloor768, // v126: was 0 — the measured navigation bar
             imeBottomPx = imeBottom768,
             essentialPx = essentialPx(),
         )
 
-        // Unclamped the function returns the platform reading (426). Clamped it
-        // returns visibleBox - essentialPx (606 - 284 = 322). It cannot return
-        // 466 for any floor >= 0, because 466 is neither input nor a difference
-        // of them. v125: the raw branch is restated from the retired 474 to the
-        // measured 426; the reachable clamped value (322) is unchanged, because
-        // 426 and 474 both exceed room 322 and both therefore trip the clamp.
-        assertTrue(
-            "clamp output must be raw 426 or clamped 322, was $believed",
-            believed == imeBottom768 || believed == paneBox768 - essentialPx(),
+        // v126 restatement, and it is **tighter**, not looser.
+        //
+        // v125 left a two-way disjunction here — `believed == 426 || believed ==
+        // 322` — because the retired `floorPx = 0` made the clamp return
+        // `roomPx + 0 = 322`, and the v125 report itself recorded (§9.1) that
+        // this assertion therefore **could not tell 426 from 474**. With the
+        // measured floor the return value is `roomPx + floorPx`, so the reachable
+        // set collapses to ONE number and the disjunction is replaced by an
+        // equality — strictly more constraining than what it replaced:
+        //
+        //   claimed = 426 − 48 = 378 ; room = 606 − 284 = 322 ; 378 > 322 ⇒ clamp
+        //   believed = room + floor = 322 + 48 = **370**
+        //
+        // 370 is also the value the sibling classes already pin from the same
+        // insets (`ComposerDivergenceLocateV119Test`: `believed = 370`,
+        // `panePx = 606 − 370 = 236 = essentialPx − floorPx`). Two classes,
+        // written in different rounds, now agree digit-for-digit; under the
+        // retired `0` they did not (322 vs 370), which is the fork itself.
+        assertEquals(
+            "the clamp returns room + floor: 322 + 48 = 370, exactly one reachable value",
+            paneBox768 - essentialPx() + navFloor768,
+            believed,
+        )
+        assertEquals(
+            "…which is digit-exact with the sibling class's 370, not the retired 322",
+            370,
+            believed,
+        )
+        assertNotEquals(
+            "and the retired floorPx = 0 reading is what produced 322 — it is gone",
+            paneBox768 - essentialPx(),
+            believed,
         )
         assertNotEquals(
             "466 is unreachable from believedImeBottomPx",
             466,
             believed,
+        )
+    }
+
+    /**
+     * v126 **new pin**: the `floorPx` axis is the measured navigation bar, and it
+     * is *load-bearing* on the 768 tier — which is precisely why the retired `0`
+     * could not stay a placeholder.
+     *
+     * `believedImeBottomPx` spends `floorPx` twice (`SessionPaneLayout.kt:1540`
+     * `claimedPx = imeBottomPx − floorPx` and `:1543` `return roomPx + floorPx`),
+     * so a wrong floor is a real modelling error and not a comment.
+     *
+     * Every expected value below is read off the insets, and the 0-vs-48
+     * distinction is asserted **both ways** so neither value can pass as the
+     * other.
+     */
+    @Test
+    fun theNavigationBarFloorIsReadOnTheSevenSixtyEightTierAndTheSixHundredTierIsInertToIt() {
+        // 768: the floor lands on the return value. 378 > 322 ⇒ clamp ⇒ 370.
+        assertEquals("768: the navigation bar is subtracted from the IME claim", 426 - 48, 378)
+        assertEquals("768: production believes room + floor", 322 + 48, 370)
+        // The retired floor is not an equivalent spelling: it changes the answer.
+        assertNotEquals(
+            "floorPx = 0 would have returned 322, so the two axes are not interchangeable",
+            370,
+            322,
+        )
+        // 370 is the 284-essential form less the floor, i.e. the same
+        // constructive identity V119/V118 pin (pane = essentialPx − floorPx).
+        assertEquals("768: pane = essentialPx − floorPx", 284 - 48, 236)
+        assertEquals("768: and 606 − 370 is exactly that pane", 236, 606 - 370)
+        // The two nav-floor readings are one navigation bar on both tiers.
+        assertEquals("the 768 and 600 navigation bars are the same 48", navFloor768, navFloor600)
+        // 600 tier: the guard short-circuits BEFORE floorPx is read, so the floor
+        // is inert there — pinned so that if the guard ever moves, this goes red.
+        val at600 = SessionPaneLayout.believedImeBottomPx(
+            visibleBoxPx = paneBox600,
+            floorPx = navFloor600,
+            imeBottomPx = imeBottom600,
+            essentialPx = essentialPx(),
+        )
+        assertEquals("600: the guard returns the raw inset, floor never read", 387, at600)
+        assertTrue(
+            "600: 438 < essentialPx * 2 is the guard that makes the floor inert",
+            paneBox600 < essentialPx() * SessionPaneLayout.PANE_ESSENTIAL_SPARE_ROOM,
         )
     }
 

@@ -120,10 +120,25 @@ class ComposerPositionDecompositionV107Test {
     private val paneBox600 = 438
     private val imeBottom600 = 387
 
-    /** The 600 tier's pane height the way production computes it ⇒ `438 − 387 = 51`. */
+    /**
+     * The 600 tier's pane height the way production computes it ⇒ `438 − 387 = 51`.
+     *
+     * v126: `floorPx` was the retired `0`; it is now the measured navigation bar,
+     * `600 − nonDecorBottom(552) = 48` (insets verbatim:
+     * `ROTATION_0={... nonDecorFrame=[0,0][1366,552] ...}`), which is the same
+     * quantity production passes at `SessionScreen.kt:2363-2369`. The result is
+     * unchanged **by construction, not by luck**: `438 < 284 * 2` makes
+     * `believedImeBottomPx` return before it reads `floorPx`
+     * (`SessionPaneLayout.kt:1539`). The input is now the device's, and the
+     * short-circuit is pinned as such in
+     * `ComposerPaneBottomCriterionV108Test.theNavigationBarFloorIsReadOnTheSevenSixtyEightTierAndTheSixHundredTierIsInertToIt`
+     * rather than being left to rest on this call's silence.
+     */
+    private val navFloor600 = 48
+
     private fun panePx600(): Int = paneBox600 - SessionPaneLayout.believedImeBottomPx(
         visibleBoxPx = paneBox600,
-        floorPx = 0,
+        floorPx = navFloor600,
         imeBottomPx = imeBottom600,
         essentialPx = SessionPaneLayout.PANE_ESSENTIAL_HEIGHT.value.toInt(),
     )
