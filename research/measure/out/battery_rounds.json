@@ -1,0 +1,32 @@
+[
+  {
+    "round": 1,
+    "start_s": 0.0,
+    "end_s": 56.4
+  },
+  {
+    "round": 2,
+    "start_s": 56.4,
+    "end_s": 112.0
+  },
+  {
+    "round": 3,
+    "start_s": 112.0,
+    "end_s": 167.8
+  },
+  {
+    "round": 4,
+    "start_s": 167.8,
+    "end_s": 223.3
+  },
+  {
+    "round": 5,
+    "start_s": 223.3,
+    "end_s": 278.9
+  },
+  {
+    "round": 6,
+    "start_s": 278.9,
+    "end_s": 334.8
+  }
+]

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      边到边：状态栏/导航栏由 WebHostActivity 用 WindowCompat.setDecorFitsSystemWindows(false)
+      + WindowInsetsControllerCompat 画成透明，主题这里只保证不预铺一层不透明系统栏背景。
+      深浅色跟随 WebView 的 data-color-scheme，由代码在运行时切（WebHostActivity.applyBarsTheme）。
+    -->
+    <style name="Theme.OcWebHost" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/oc_host_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

@@ -139,4 +139,33 @@ object ContextUsage {
     /** Convenience for the Compose layer: messages + limit → sweep fraction. */
     fun progressOf(messages: List<ChatStore.UiMessage>, limit: Long?): Float =
         progress(percentOf(lastTokenTotal(messages), limit))
+
+    /**
+     * The percentage of the **context tab's `Usage` cell**, read back for the
+     * tab's own usage indicator (upstream `session-side-panel.tsx:370`
+     * `<SessionContextUsage variant="indicator" />`, which renders the very same
+     * `ctx()?.usage` the tab's stats table shows -- `session-context-tab.tsx:133`).
+     *
+     * Why parse a string: the right panel is handed
+     * [com.xiufeigo.opencodeshell.ui.session.context.SessionContextModel.Snapshot],
+     * whose cells are display-ready text ([com.xiufeigo.opencodeshell.ui.session
+     * .context.SessionContextModel.Stat.value]), so re-deriving a fresh ratio
+     * here would be a *second* computation over a payload this panel does not
+     * own -- and could disagree with the `Usage` row sitting one tap away. One
+     * number, one source.
+     *
+     * `null` for absent / placeholder (`SessionContextModel.DASH`) / unparseable
+     * cells, and for anything outside `0..100`, so the indicator is not drawn at
+     * all rather than drawn empty (upstream renders nothing without a limit
+     * either: `ctx()?.usage` is `null` when `model.limit.context` is missing).
+     */
+    fun indicatorPercent(usageCell: String?): Int? {
+        val cell = usageCell?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val digits = cell.removeSuffix("%").trim()
+        val percent = digits.toIntOrNull() ?: return null
+        return percent.takeIf { it in 0..100 }
+    }
+
+    /** [indicatorPercent] folded into [progress]'s sweep fraction. */
+    fun indicatorProgress(usageCell: String?): Float? = indicatorPercent(usageCell)?.let(::progress)
 }

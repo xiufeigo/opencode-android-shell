@@ -1,0 +1,498 @@
+package com.xiufeigo.opencodeshell.web.host
+
+import android.util.Base64
+import android.util.Log
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.io.Closeable
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.SocketTimeoutException
+import java.net.URI
+import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * R1 · 应用内回环反向代理（路线 A 的心脏）。
+ *
+ * ## 为什么是"代理"而不是"页面直连后端"
+ *
+ * 官方 UI 由服务端自托管（G1）：路由是根 `/`，资源前缀 `/_assets/`，`GET /` 免认证返回
+ * 200 text/html；只有 `/api/…` 要 Basic 认证（无认证 401、Basic 200）。
+ * 如果 WebView 直接 `loadUrl("http://127.0.0.1:4095/")`，那么：
+ *
+ *  1. **页面必须自己处理 Basic 认证** —— 密码就得进 JS 可见范围（window / 存储），
+ *     任何 XSS 或第三方脚本都能读走。实测 `/api/info` 无认证就是 401。
+ *  2. **CORS 悬空** —— 一旦页面 origin 变了（资产托管、或走代理），API 就成了跨源。
+ *
+ * 所以本类让**文档本身也从代理 origin 提供**：
+ *
+ * ```
+ *   WebView  ──http://127.0.0.1:<随机端口>/──▶  本类（回环 HTTP 服务）
+ *                                            ├─ /            → 上游 /            （200 免认证 HTML）
+ *                                            ├─ /_assets/…   → 上游 /_assets/…   （静态资源）
+ *                                            └─ /api/…       → 上游 /api/…  + 注入 Basic 头
+ * ```
+ *
+ * 页面 origin == API origin == `http://127.0.0.1:<port>`，**完全不依赖后端 CORS**，
+ * 且**页面永远拿不到密码** —— 认证在转发时由原生侧注入。
+ *
+ * ## 与 legacy `:app` 的 LocalGateway 的关系
+ *
+ * 做法直接搬自 `app/src/main/java/com/xiufeigo/opencodeshell/LocalGateway.kt`
+ * （ServerSocket + 手写 HTTP/1.1 解析 + OkHttp 转发 + 剥 Origin + SSE 空转看门狗 +
+ * WebSocket 隧道）。差异见本文件 `onForward` 的注释。
+ *
+ * 选它而不是 `shouldInterceptRequest` 的理由写在 `research/web/ROUTE_A_WIRING.md` §2，
+ * 一句话版本：intercept 拿不到**文档本身**的同源，也**根本不接管 WebSocket**。
+ */
+class LoopbackProxy(
+    /** 上游基址，例如 `http://127.0.0.1:4095`。末尾斜杠会被去掉。 */
+    private val upstreamBase: String,
+    /**
+     * Basic 密码提供者。**每次转发都重新调用**，不在代理里缓存明文；
+     * 实现方必须从 `SecretStore`（EncryptedSharedPreferences）读。
+     * 返回 null/空 ⇒ 不注入 Authorization（后端会 401，属预期）。
+     */
+    private val passwordProvider: () -> String?,
+    private val httpClient: OkHttpClient = defaultClient(),
+    private val sseIdleReadTimeoutMs: Long = SSE_IDLE_READ_TIMEOUT_MS,
+) : Closeable {
+
+    companion object {
+        private const val TAG = "OcWebHost/Proxy"
+
+        /** 用户名固定（与 opencode 服务端约定一致）；只有密码是秘密。 */
+        const val BASIC_USER = "opencode"
+
+        internal const val SSE_IDLE_READ_TIMEOUT_MS = 35_000L
+
+        internal fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            // 0 = 不给普通响应设读超时；SSE 走下面那个专用的 sseClient。
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    private val running = AtomicBoolean(false)
+    private val base = upstreamBase.trim().trimEnd('/')
+    private var serverSocket: ServerSocket? = null
+    private var executor: ExecutorService? = null
+    private val activeClients = java.util.concurrent.CopyOnWriteArrayList<Socket>()
+
+    var port: Int = -1
+        private set
+
+    /** 页面与 API 的**共同** origin。 */
+    fun publicOrigin(): String = "http://127.0.0.1:$port"
+
+    /** opencode `/event` 每 10 s 心跳；35 s 静默即认定半开，主动断开让页面重连。 */
+    private val sseClient: OkHttpClient by lazy {
+        if (sseIdleReadTimeoutMs <= 0L) httpClient
+        else httpClient.newBuilder().readTimeout(sseIdleReadTimeoutMs, TimeUnit.MILLISECONDS).build()
+    }
+
+    fun start() {
+        if (running.get()) return
+        val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+        serverSocket = socket
+        port = socket.localPort
+        running.set(true)
+        val pool = Executors.newCachedThreadPool { r ->
+            Thread(r, "oc-web-proxy").apply { isDaemon = true }
+        }
+        executor = pool
+        pool.execute {
+            while (running.get()) {
+                try {
+                    val client = socket.accept()
+                    activeClients.add(client)
+                    pool.execute { handleClient(client) }
+                } catch (ioe: IOException) {
+                    if (running.get()) Log.w(TAG, "accept failed: ${ioe.message}")
+                }
+            }
+        }
+        Log.i(TAG, "listening on ${publicOrigin()} -> $base")
+    }
+
+    fun isBoundPort(candidate: Int): Boolean = candidate == port
+
+    override fun close() {
+        running.set(false)
+        runCatching { serverSocket?.close() }
+        serverSocket = null
+        for (c in activeClients) runCatching { c.close() }
+        activeClients.clear()
+        executor?.shutdownNow()
+        executor = null
+    }
+
+    // ---- 连接处理 --------------------------------------------------------
+    private fun handleClient(socket: Socket) {
+        socket.soTimeout = 0
+        socket.tcpNoDelay = true
+        try {
+            socket.use { sock ->
+                val input = BufferedInputStream(sock.getInputStream())
+                val output = sock.getOutputStream()
+                val parsed = readHttpRequest(input) ?: return
+                val target = base + (parsed.path.ifEmpty { "/" }) +
+                    (parsed.query?.let { "?$it" } ?: "")
+                if (isWebSocketUpgrade(parsed)) {
+                    tunnelWebSocket(sock, input, output, parsed, target)
+                    return
+                }
+                onForward(output, parsed, target)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "client error: ${e.message}")
+        } finally {
+            activeClients.remove(socket)
+            runCatching { socket.close() }
+        }
+    }
+
+    /**
+     * HTTP 转发。与 legacy `LocalGateway.proxyHttp` 的三处**实质**差异：
+     *
+     *  1. **注入 Basic 头**（legacy 那层页面在 `https://appassets` 上、代理只做 CORS
+     *     换源，认证由页面自己出；本轮文档就在代理 origin 上，认证必须原生做，
+     *     否则密码要么进 JS、要么根本没人填）。
+     *  2. **不回灌 CORS 头**：同源了，不需要 `Access-Control-Allow-*`；反而把上游
+     *     自己的 ACAO 丢掉，避免"代理以为自己是 CORS 边界"的误读。
+     *  3. 目标地址是**逐字拼接**（不再有 token/prefix 改写），因为页面与 API 同源。
+     */
+    private fun onForward(output: OutputStream, parsed: ParsedRequest, target: String) {
+        Log.i(TAG, "${parsed.method} $target")
+        val builder = Request.Builder().url(target)
+        for ((name, value) in parsed.headers) {
+            if (shouldDropRequestHeader(name)) continue
+            runCatching { builder.addHeader(name, value) }
+        }
+        val password = runCatching { passwordProvider() }.getOrNull()
+        var authSent = false
+        if (!password.isNullOrEmpty()) {
+            val token = Base64.encodeToString(
+                "$BASIC_USER:$password".toByteArray(Charsets.UTF_8),
+                Base64.NO_WRAP,
+            )
+            // 页面永远不会看到这个头 —— 浏览器只在同源请求里发，代理在建上游请求时补。
+            builder.header("Authorization", "Basic $token")
+            authSent = true
+        } else {
+            Log.w(TAG, "no password in SecretStore -> ${parsed.path} will 401 upstream")
+        }
+
+        val method = parsed.method.uppercase(Locale.US)
+        val request = when (method) {
+            "GET", "HEAD" -> builder.method(method, null).build()
+            "DELETE" -> builder.method("DELETE", if (parsed.body.isNotEmpty()) body(parsed) else null).build()
+            else -> builder.method(method, body(parsed)).build()
+        }
+
+        val response = try {
+            val client = if (isEventStreamRequest(parsed)) sseClient else httpClient
+            client.newCall(request).execute()
+        } catch (e: Exception) {
+            Log.e(TAG, "upstream ${parsed.method} $target failed: ${e.message}")
+            val msg = """{"error":${jsonString(e.message ?: "upstream failed")}}"""
+            writeStatus(
+                output, 502, "Bad Gateway",
+                mapOf(
+                    "Content-Type" to "application/json",
+                    "Content-Length" to msg.toByteArray().size.toString(),
+                    "Cache-Control" to "no-store",
+                ),
+                msg.toByteArray(),
+            )
+            return
+        }
+
+        response.use { resp ->
+            if (resp.code == 401 || resp.code == 403) {
+                // 只在认证失败时打，且**只打长度/是否为空**，绝不回显口令本身。
+                Log.w(
+                    TAG,
+                    "auth rejected: ${parsed.method} $target -> ${resp.code}; " +
+                        "user=$BASIC_USER passLen=${password?.length ?: -1} authHeaderSent=${authSent}",
+                )
+            }
+            val headers = LinkedHashMap<String, String>()
+            for (i in 0 until resp.headers.size) {
+                val name = resp.headers.name(i)
+                if (shouldDropResponseHeader(name)) continue
+                // 同源了，CORS 头一律不要。
+                if (name.equals("Access-Control-Allow-Origin", true)) continue
+                if (name.equals("Access-Control-Allow-Credentials", true)) continue
+                headers[name] = resp.headers.value(i)
+            }
+            // 由我们自己按实际字节数写，避免上游 Content-Length 与传输不一致。
+            headers.remove("Content-Length")
+            headers["Connection"] = "close"
+            if (isEventStreamRequest(parsed)) {
+                Log.i(
+                    TAG,
+                    "sse response ${resp.code} ctype=${resp.headers["Content-Type"]} " +
+                        "te=${resp.headers["Transfer-Encoding"]} cl=${resp.headers["Content-Length"]} " +
+                        "ce=${resp.headers["Content-Encoding"]}",
+                )
+            }
+            output.write("HTTP/1.1 ${resp.code} ${resp.message.ifBlank { "OK" }}\r\n".toByteArray())
+            for ((name, value) in headers) output.write("$name: $value\r\n".toByteArray())
+            output.write("\r\n".toByteArray())
+            output.flush()
+            if (method != "HEAD") {
+                resp.body?.byteStream()?.let { copyStreaming(it, output) }
+            }
+            output.flush()
+        }
+    }
+
+    /** WebSocket 隧道（PTY 终端）。抄 legacy `tunnelWebSocket`，逐字握手 + 双向 copy。 */
+    private fun tunnelWebSocket(
+        client: Socket,
+        alreadyBuffered: BufferedInputStream,
+        output: OutputStream,
+        parsed: ParsedRequest,
+        target: String,
+    ) {
+        val uri = URI(target)
+        val ssl = uri.scheme.equals("https", true) || uri.scheme.equals("wss", true)
+        val port = when {
+            uri.port > 0 -> uri.port
+            ssl -> 443
+            else -> 80
+        }
+        val host = uri.host ?: return
+        Log.i(TAG, "websocket tunnel -> $host:$port ${uri.path}")
+        val remote = if (ssl) Socket(host, port) else Socket(host, port)
+        remote.soTimeout = 0
+        remote.tcpNoDelay = true
+        try {
+            val remoteOut = remote.getOutputStream()
+            val path = (uri.rawPath ?: "/") +
+                (if (!uri.rawQuery.isNullOrEmpty()) "?${uri.rawQuery}" else "")
+            remoteOut.write("${parsed.method} $path HTTP/1.1\r\n".toByteArray())
+            remoteOut.write("Host: $host${if (port != 80 && port != 443) ":$port" else ""}\r\n".toByteArray())
+            val password = runCatching { passwordProvider() }.getOrNull()
+            if (!password.isNullOrEmpty()) {
+                val token = Base64.encodeToString(
+                    "$BASIC_USER:$password".toByteArray(Charsets.UTF_8),
+                    Base64.NO_WRAP,
+                )
+                remoteOut.write("Authorization: Basic $token\r\n".toByteArray())
+            }
+            for ((name, value) in parsed.headers) {
+                val lower = name.lowercase(Locale.US)
+                if (lower in setOf("host", "origin", "referer", "authorization")) continue
+                remoteOut.write("$name: $value\r\n".toByteArray())
+            }
+            remoteOut.write("\r\n".toByteArray())
+            remoteOut.flush()
+            val remoteIn = remote.getInputStream()
+            val t1 = Thread({ copyStreaming(alreadyBuffered, remoteOut) }, "oc-ws-up").apply { isDaemon = true }
+            val t2 = Thread({ copyStreaming(remoteIn, output) }, "oc-ws-down").apply { isDaemon = true }
+            t1.start(); t2.start(); t1.join(); t2.join()
+        } finally {
+            runCatching { remote.close() }
+            runCatching { client.close() }
+        }
+    }
+
+    // ---- HTTP/1.1 解析（照搬 legacy 语义） --------------------------------
+    private data class ParsedRequest(
+        val method: String,
+        val path: String,
+        val query: String?,
+        val headers: Map<String, String>,
+        val body: ByteArray,
+    )
+
+    private fun readHttpRequest(input: BufferedInputStream): ParsedRequest? {
+        val headerBytes = readUntilHeadersEnd(input) ?: return null
+        val lines = String(headerBytes, Charsets.ISO_8859_1).split("\r\n")
+        if (lines.isEmpty()) return null
+        val requestLine = lines[0].split(" ")
+        if (requestLine.size < 2) return null
+        val rawTarget = requestLine[1]
+        val q = rawTarget.indexOf('?')
+        val path = if (q >= 0) rawTarget.substring(0, q) else rawTarget
+        val query = if (q >= 0) rawTarget.substring(q + 1) else null
+        val headers = LinkedHashMap<String, String>()
+        for (i in 1 until lines.size) {
+            val line = lines[i]
+            if (line.isEmpty()) continue
+            val colon = line.indexOf(':')
+            if (colon <= 0) continue
+            headers[line.substring(0, colon).trim()] = line.substring(colon + 1).trim()
+        }
+        return ParsedRequest(requestLine[0], path, query, headers, readBody(input, headers, requestLine[0]))
+    }
+
+    private fun readBody(input: BufferedInputStream, headers: Map<String, String>, method: String): ByteArray {
+        if (method.equals("GET", true) || method.equals("HEAD", true)) return ByteArray(0)
+        val te = header(headers, "Transfer-Encoding")
+        if (te != null && te.contains("chunked", true)) return readChunked(input)
+        val length = header(headers, "Content-Length")?.toIntOrNull() ?: 0
+        if (length <= 0) return ByteArray(0)
+        return readFully(input, length)
+    }
+
+    private fun header(headers: Map<String, String>, name: String): String? =
+        headers.entries.firstOrNull { it.key.equals(name, true) }?.value
+
+    private fun body(parsed: ParsedRequest) =
+        parsed.body.toRequestBody(header(parsed.headers, "Content-Type")?.toMediaTypeOrNull())
+
+    private fun isEventStreamRequest(parsed: ParsedRequest): Boolean {
+        val accept = header(parsed.headers, "Accept")
+        if (accept != null && accept.contains("text/event-stream", ignoreCase = true)) return true
+        val path = parsed.path
+        return path == "/event" || path.endsWith("/event")
+    }
+
+    private fun isWebSocketUpgrade(parsed: ParsedRequest): Boolean {
+        val upgrade = header(parsed.headers, "Upgrade") ?: return false
+        val connection = header(parsed.headers, "Connection") ?: return false
+        return upgrade.contains("websocket", true) && connection.contains("upgrade", true)
+    }
+
+    private fun shouldDropRequestHeader(name: String): Boolean = when (name.lowercase(Locale.US)) {
+        // origin / referer 必须剥 —— 这正是免 CORS 的关键：上游看到的是"无 Origin 的服务端请求"。
+        "host", "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+        "te", "trailer", "transfer-encoding", "upgrade", "origin", "referer",
+        "content-length", "accept-encoding", "authorization",
+        -> true
+        else -> false
+    }
+
+    private fun shouldDropResponseHeader(name: String): Boolean = when (name.lowercase(Locale.US)) {
+        "connection", "keep-alive", "proxy-authenticate", "transfer-encoding", "trailer" -> true
+        else -> false
+    }
+
+    private fun copyStreaming(input: InputStream, output: OutputStream) {
+        val buf = ByteArray(8192)
+        var total = 0L
+        var exit = "eof"
+        while (true) {
+            val n = try {
+                input.read(buf)
+            } catch (e: SocketTimeoutException) {
+                Log.w(TAG, "upstream stream idle timeout: ${e.message}")
+                exit = "idle-timeout"
+                break
+            } catch (e: Exception) {
+                Log.w(TAG, "upstream stream read failed after $total bytes: ${e.javaClass.simpleName}: ${e.message}")
+                exit = "read-error"
+                break
+            }
+            if (n < 0) break
+            if (n == 0) continue
+            total += n
+            try {
+                output.write(buf, 0, n)
+                output.flush()
+            } catch (e: Exception) {
+                Log.w(TAG, "downstream write failed after $total bytes: ${e.message}")
+                exit = "write-error"
+                break
+            }
+        }
+        if (total == 0L || exit != "eof") {
+            Log.w(TAG, "stream ended: exit=$exit bytes=$total")
+        }
+    }
+
+    private fun readUntilHeadersEnd(input: BufferedInputStream): ByteArray? {
+        val out = ByteArrayOutputStream()
+        var last4 = 0
+        while (true) {
+            val b = input.read()
+            if (b < 0) return if (out.size() == 0) null else out.toByteArray()
+            out.write(b)
+            last4 = ((last4 shl 8) or (b and 0xff))
+            if (last4 == 0x0d0a0d0a) break
+            if (out.size() > 64 * 1024) return null
+        }
+        return out.toByteArray()
+    }
+
+    private fun readFully(input: InputStream, length: Int): ByteArray {
+        val bytes = ByteArray(length)
+        var off = 0
+        while (off < length) {
+            val n = input.read(bytes, off, length - off)
+            if (n < 0) break
+            off += n
+        }
+        return if (off == length) bytes else bytes.copyOf(off)
+    }
+
+    private fun readChunked(input: InputStream): ByteArray {
+        val out = ByteArrayOutputStream()
+        while (true) {
+            val line = readLineAscii(input) ?: break
+            val size = line.substringBefore(';').trim().toIntOrNull(16) ?: break
+            if (size == 0) { readLineAscii(input); break }
+            out.write(readFully(input, size))
+            readLineAscii(input)
+        }
+        return out.toByteArray()
+    }
+
+    private fun readLineAscii(input: InputStream): String? {
+        val out = ByteArrayOutputStream()
+        while (true) {
+            val b = input.read()
+            if (b < 0) break
+            if (b == '\n'.code) break
+            if (b != '\r'.code) out.write(b)
+        }
+        return if (out.size() == 0) null else out.toString(Charsets.US_ASCII.name())
+    }
+
+    private fun writeStatus(
+        output: OutputStream,
+        code: Int,
+        reason: String,
+        headers: Map<String, String>,
+        body: ByteArray? = null,
+    ) {
+        output.write("HTTP/1.1 $code $reason\r\n".toByteArray())
+        for ((name, value) in headers) output.write("$name: $value\r\n".toByteArray())
+        output.write("\r\n".toByteArray())
+        if (body != null) output.write(body)
+        output.flush()
+    }
+
+    private fun jsonString(value: String): String = buildString {
+        append('"')
+        for (ch in value) {
+            when (ch) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                else -> append(ch)
+            }
+        }
+        append('"')
+    }
+}

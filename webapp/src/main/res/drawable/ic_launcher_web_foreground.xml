@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 占位前景：一个「W」字形，让两个壳在 launcher 里一眼能分辨（原生壳是官方 OpenCode 标）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF3D7DF2"
+        android:pathData="M32,38 L38,38 L40,62 L48,44 L54,44 L62,62 L64,38 L70,38 L66,72 L59,72 L51,55 L43,72 L36,72 Z" />
+</vector>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  W1 明文放行范围：**只**放行回环、模拟器宿主和自建局域网调试地址。
+
+  为什么需要明文：宿主 origin 是 https://appassets.androidplatform.net，而 opencode
+  后端常跑在 PC 的 http://192.168.x.x:4096 —— 那是 *混合内容* + 明文。本模块用
+  WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE（仅兼容模式）放行混合内容，
+  网络侧再由本文件把回环/自建地址的明文限定住。
+
+  为什么不是全局 usesCleartextTraffic="true"：那会让**所有**第三方 http 目标
+  （前端里出现的任意 http 图片/脚本/跳转）都能明文传输。本文件默认 deny，
+  只有下面这些具体主机可明文，且不含通配符 —— network-security-config 不支持
+  IP 段通配，所以新增自建后端要**显式**加一行 domain，宁可啰嗦也不要全局放开。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- WebView 内的 127.0.0.1（应用内回环网关 / WebSocket polyfill 目标） -->
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- Android 模拟器里 PC 的固定地址 -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Genymotion -->
+        <domain includeSubdomains="false">10.0.3.2</domain>
+        <!--
+          自建局域网后端：按需显式追加本机在用的地址，例如
+            <domain includeSubdomains="false">192.168.1.10</domain>
+            <domain includeSubdomains="false">192.168.0.7</domain>
+          （不要写 192.168.x.x —— 不支持通配；写错就会静默变回 https 失败。）
+        -->
+    </domain-config>
+</network-security-config>

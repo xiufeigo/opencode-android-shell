@@ -263,15 +263,17 @@ fun SessionScreen(
      * `TerminalDock` picks the slot from the stored setting.
      * Narrow layouts never dock — there the terminal is a full view tab.
      *
-     * v43: [onToggleTerminalDock] mounts the wide-screen terminal entry chip
-     * (M5 phase 1, `ui/App.kt`'s `TerminalEntryButton`) **inside the timeline
-     * pane**. It used to be `Alignment.TopEnd` of the whole session body, which
-     * put it on top of the docked review panel's tab row — the chip covered the
-     * 「文件」tab, which then read as 「File…」
-     * (`research/v43_verify/tE/v43_32_panel_wide.png`, `v43_34_resize2.png`).
-     * Anchoring it to the timeline's own trailing edge keeps it clear of the
-     * panel in every panel width, and moves it by exactly zero when no panel is
-     * docked. Null hides it (mobile: the Terminal view tab owns the entry).
+     * v161: [onToggleTerminalDock] no longer mounts a chip. It used to (v43) mount
+     * a 28 dp `TerminalEntryButton` (`ui/terminal/TerminalPanel.kt:2030-2057`) as
+     * `Alignment.TopEnd` of the timeline pane — the v43 note below still holds as
+     * history: that anchor kept it off the docked review panel's tab row, but the
+     * chip itself had no upstream counterpart and sat in the same visual band as
+     * the side panel's tabs. Upstream opens the terminal from the command palette
+     * (`shell/commands/command.tsx:18` -> `ui/palette/AppCommands.kt`'s
+     * `terminal.toggle` row) and renders the panel in the side / bottom dock
+     * (`screen.tsx:473-500`, `:507-539`); this screen still only mounts the pane.
+     * The parameter is kept (and still forwarded by `ui/App.kt`) because it is the
+     * dock toggle the palette row and the `Ctrl+`` chord drive.
      */
     terminalDocked: Boolean = false,
     onCloseTerminalDock: () -> Unit = {},
@@ -2248,21 +2250,18 @@ fun SessionScreen(
                             )
                         }
                     }
-                    // v43: the wide-screen terminal entry chip, owned by the timeline
-                    // pane so a docked review panel (the row's other child) can
-                    // never sit under it. See [onToggleTerminalDock].
-                    if (desktop && onToggleTerminalDock != null) {
-                        TerminalEntryButton(
-                            onClick = onToggleTerminalDock,
-                            active = terminalDocked,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(
-                                    top = SessionTerminalEntryPolicy.TOP_DP,
-                                    end = SessionTerminalEntryPolicy.END_DP,
-                                ),
-                        )
-                    }
+                    // v161 parity: on a wide screen the terminal is opened the way
+                    // upstream opens it -- from the command palette's
+                    // `terminal.toggle` row (`shell/commands/command.tsx:18`,
+                    // registered in `ui/palette/AppCommands.kt`), and the panel
+                    // itself is the side / bottom dock (`screen.tsx:473-500` and
+                    // `:507-539`, wired by `TerminalDock` below). The 28 dp chip
+                    // that used to be mounted here had **no** upstream counterpart
+                    // (`session-side-panel.tsx:333-374` has only the review and
+                    // context triggers) and it landed in the side panel's tab band.
+                    // `SessionTerminalEntryPolicy` is deliberately left in place:
+                    // it is the pinned geometry this chip's 48 dp touch box was
+                    // measured against (`UsabilityCellsV146SendOcclusionFixTest`).
                 }
             }
         }

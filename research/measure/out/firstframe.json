@@ -1,0 +1,20 @@
+[
+  {
+    "run": 1,
+    "ThisTimeTotal": null,
+    "TotalTime": 4122,
+    "WaitTime": 4125
+  },
+  {
+    "run": 2,
+    "ThisTimeTotal": null,
+    "TotalTime": 3799,
+    "WaitTime": 3801
+  },
+  {
+    "run": 3,
+    "ThisTimeTotal": null,
+    "TotalTime": 4500,
+    "WaitTime": 4504
+  }
+]

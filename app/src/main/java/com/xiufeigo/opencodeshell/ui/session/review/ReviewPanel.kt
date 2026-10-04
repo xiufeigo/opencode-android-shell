@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,10 +48,45 @@ import com.xiufeigo.opencodeshell.OpenCodeClient
 import com.xiufeigo.opencodeshell.R
 import com.xiufeigo.opencodeshell.ui.session.context.SessionContextModel
 import com.xiufeigo.opencodeshell.ui.session.context.SessionContextPanel
+import com.xiufeigo.opencodeshell.ui.session.header.ContextRing
+import com.xiufeigo.opencodeshell.ui.session.header.ContextUsage
 import com.xiufeigo.opencodeshell.ui.theme.OcTheme
 
 /** Review side panel tabs, upstream `SessionReviewV2` sidebar modes. */
 enum class ReviewPanelTab { CHANGES, CONTEXT, FILES }
+
+/**
+ * The tab strip the panel renders, upstream's own split
+ * (`_upstream/packages/app/src/session/files/session-side-panel.tsx:333-374`):
+ * a **fixed pair** -- `review` (`:333-343`) then `context` (`:344-374`) -- and
+ * then `<For each={panelTabs()}>` (`:375-386`), the file tabs that exist only
+ * because a file has been opened.
+ *
+ * v161: this shell used to show all three at all times, which put a third
+ * always-on trigger in a band upstream keeps to two (and made the `file.open`
+ * target look like a mode rather than an opened file). The file tab is now
+ * **dynamic** like upstream's, keyed on the [openPath] the hoisted
+ * `file.open` command carries -- so the default strip is exactly two tabs, and
+ * `file.open` still lands on a file tab that is actually there.
+ *
+ * Pure and JVM-tested on purpose ([com.xiufeigo.opencodeshell
+ * .RightPanelParityTest]): a tab strip is the one place where "which tabs
+ * exist" and "which tab is selected" have to be separable, and the selected
+ * tab is hoisted (`SessionScreen.kt:420`) while this list is not.
+ */
+internal fun visibleReviewTabs(openPath: String?): List<ReviewPanelTab> =
+    if (openPath.isNullOrBlank()) {
+        listOf(ReviewPanelTab.CHANGES, ReviewPanelTab.CONTEXT)
+    } else {
+        listOf(ReviewPanelTab.CHANGES, ReviewPanelTab.CONTEXT, ReviewPanelTab.FILES)
+    }
+
+/** This shell's labels for the upstream tab order; no new strings are introduced. */
+private fun ReviewPanelTab.labelRes(): Int = when (this) {
+    ReviewPanelTab.CHANGES -> R.string.oc_review_tab_changes
+    ReviewPanelTab.CONTEXT -> R.string.oc_review_tab_context
+    ReviewPanelTab.FILES -> R.string.oc_review_tab_files
+}
 
 /**
  * Review (changes) side panel, the Android port of the upstream v2 right-hand
@@ -337,24 +373,21 @@ fun SessionReviewPanel(
             // Upstream tab order: review → context → file tabs
             // (`session-side-panel.tsx:345-373`).
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                ReviewTabButton(
-                    label = stringResource(R.string.oc_review_tab_changes),
-                    selected = tab == ReviewPanelTab.CHANGES,
-                    onClick = { onTabChange(ReviewPanelTab.CHANGES) },
-                    modifier = Modifier.weight(1f),
-                )
-                ReviewTabButton(
-                    label = stringResource(R.string.oc_review_tab_context),
-                    selected = tab == ReviewPanelTab.CONTEXT,
-                    onClick = { onTabChange(ReviewPanelTab.CONTEXT) },
-                    modifier = Modifier.weight(1f),
-                )
-                ReviewTabButton(
-                    label = stringResource(R.string.oc_review_tab_files),
-                    selected = tab == ReviewPanelTab.FILES,
-                    onClick = { onTabChange(ReviewPanelTab.FILES) },
-                    modifier = Modifier.weight(1f),
-                )
+                visibleReviewTabs(openPath).forEach { entry ->
+                    ReviewTabButton(
+                        label = stringResource(entry.labelRes()),
+                        selected = tab == entry,
+                        onClick = { onTabChange(entry) },
+                        // Upstream's context trigger carries its usage indicator in
+                        // front of the label (`session-side-panel.tsx:369-372`).
+                        leading = if (entry == ReviewPanelTab.CONTEXT) {
+                            { ContextTabUsageIndicator(contextSnapshot) }
+                        } else {
+                            null
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
             Box(Modifier.fillMaxWidth().height(0.5.dp).background(c.borderMuted))
 
@@ -481,6 +514,12 @@ private fun ReviewTabButton(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Optional affordance drawn **in front of** the label, upstream's
+     * `<div class="flex items-center gap-2">` wrapper
+     * (`session-side-panel.tsx:369-372`). Only the context trigger passes one.
+     */
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val c = OcTheme.colors
     Column(
@@ -489,14 +528,27 @@ private fun ReviewTabButton(
             .clickable(role = Role.Tab, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = label,
-            color = if (selected) c.textBase else c.textMuted,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.W500,
-            maxLines = 1,
-            modifier = Modifier.padding(top = 8.dp, bottom = 6.dp),
-        )
+        val text: @Composable () -> Unit = {
+            Text(
+                text = label,
+                color = if (selected) c.textBase else c.textMuted,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.W500,
+                maxLines = 1,
+            )
+        }
+        if (leading == null) {
+            Box(Modifier.padding(top = 8.dp, bottom = 6.dp)) { text() }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 8.dp, bottom = 6.dp),
+            ) {
+                leading()
+                text()
+            }
+        }
         Box(
             Modifier
                 .width(24.dp)
@@ -504,6 +556,33 @@ private fun ReviewTabButton(
                 .background(if (selected) c.accent else androidx.compose.ui.graphics.Color.Transparent),
         )
     }
+}
+
+/**
+ * The context tab's usage indicator, upstream's
+ * `<SessionContextUsage variant="indicator" />`
+ * (`session-side-panel.tsx:370`).
+ *
+ * Upstream draws [ContextRing] -- its own `ProgressCircleV2` at `size = 14`,
+ * `strokeWidth = 1.5` (`session-context-usage.tsx`) -- so the shell reuses the
+ * very same component the session header's ring is made of, at upstream's own
+ * size, and paints the same number: the context tab's `Usage` cell, i.e.
+ * upstream's `ctx()?.usage` (`session-context-tab.tsx:133`).
+ *
+ * Nothing is drawn while the usage is unknown (no cell, upstream's `DASH`
+ * placeholder, or no limit at all) rather than an empty track: the tab stays a
+ * plain label, which is exactly what upstream renders when `ctx()?.usage` is
+ * `null` (`model.limit.context` missing -> `usage: null`, `:133`).
+ */
+@Composable
+private fun ContextTabUsageIndicator(
+    snapshot: SessionContextModel.Snapshot?,
+    modifier: Modifier = Modifier,
+) {
+    val progress = ContextUsage.indicatorProgress(
+        snapshot?.stats?.firstOrNull { it.kind == SessionContextModel.Kind.USAGE }?.value
+    ) ?: return
+    ContextRing(progress = progress, modifier = modifier)
 }
 
 /**
