@@ -3165,12 +3165,19 @@ internal object SessionComposerGate {
  *
  * One deliberate consequence of the single tree: the composer's host is now drawn
  * *after* the whole viewport, so the wide-screen terminal entry chip (a
- * `TopEnd` child of the viewport) is under it rather than over it. The two never
- * share a pixel — the chip sits in the top ~42 dp and the composer's ceiling
- * keeps the top [SessionPaneLayout.TIMELINE_MIN_CONTENT] (64 dp) clear in every
- * arrangement — and the composer keeps drawing over the transcript, which is the
- * order that matters (`TerminalEntryButton` is a corner affordance, the composer
- * is the pane's bottom band).
+ * `TopEnd` child of the viewport) is under it rather than over it.
+ *
+ * **v146 correction — the "never share a pixel" claim that stood here until now
+ * was false.** On device at `1366×600` the chip's touch box `[1320,192][1366,240]`
+ * and the composer's `Send` `[1316,191][1364,239]` overlapped by
+ * `44 × 47 = 2068 px²`, leaving a 2 px residual sliver and **zero visible chip
+ * pixels** (`Send` is `enabled="false"` there). No band, no ceiling and no
+ * [SessionPaneLayout.TIMELINE_MIN_CONTENT] ever separated them: the two boxes share
+ * a row. They are now separated **horizontally** instead — the chip's trailing
+ * anchor [SessionTerminalEntryPolicy.END_DP] moved 8 dp → 64 dp, which is what
+ * this claim should always have said. The composer still draws over the
+ * transcript, which is the order that matters (`TerminalEntryButton` is a corner
+ * affordance, the composer is the pane's bottom band).
  */
 @Composable
 private fun SessionPaneArrangement(
@@ -3611,8 +3618,30 @@ internal object SessionTerminalEntryPolicy {
     /** Below the 0–80 dp session header band (see the KDoc). */
     val TOP_DP: Dp = 88.dp
 
-    /** Inset from the timeline pane's trailing edge. */
-    val END_DP: Dp = 8.dp
+    /**
+     * v146: inset from the timeline pane's trailing edge — **64 dp, not 8 dp**.
+     *
+     * The chip's touch box is its 28 dp body grown by material3's 48 dp
+     * `minimumInteractiveComponentSize` (10 dp per side), anchored by
+     * `padding(end = END_DP)`. At 8 dp that box ran to `paneRight + 2` and was
+     * **clipped by the screen edge to 46 dp wide**, landing on the very
+     * rectangle the composer's `Send` occupies in the one-row form: overlap
+     * `44 × 47 = 2068 px²`, a 2 px residual sliver, and — because `Send` is
+     * drawn second (`SessionScreen.kt:3187` viewport Box first, `:3188-3208`
+     * composer host second) and its 28 dp body is 0.5 px from the chip's —
+     * **zero visible chip pixels**.
+     *
+     * 64 dp is the smallest inset that separates the two boxes *by geometry*
+     * rather than by painting order: the chip's touch box ends at
+     * `paneRight + 12 − END_DP` = `1312`, while `Send` starts at `1316`, so
+     * `overlapArea == 0` with a 4 px gap. 56 dp would leave the boxes
+     * touching (overlap 0 only by equality); 60 is the exact minimum.
+     *
+     * This is the **horizontal** anchor only. [TOP_DP] is untouched, so the
+     * 48 dp target height, the composer's vertical budget and the timeline
+     * accounting (`140 / 92 / 51 / −10 / −12`) are all bit-for-bit unchanged.
+     */
+    val END_DP: Dp = 64.dp
 }
 
 /**

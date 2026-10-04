@@ -538,10 +538,14 @@ class UsabilityCellsV144FixTest {
         )
         assertEquals(
             "v144: `SessionTerminalEntryPolicy.END_DP` (`SessionScreen.kt:3615`) is the chip's " +
-                "horizontal anchor — the one that disagrees with the composer's end inset by the " +
-                "**2 px** cell 5's residual is made of. It is INDEPENDENT of the composer's own " +
-                "padding; neither is derived from the other, which is why the frames disagree.",
-            8f,
+                "horizontal anchor — the one that disagreed with the composer's end inset by the " +
+                "**2 px** cell 5's residual was made of. It is INDEPENDENT of the composer's own " +
+                "padding; neither is derived from the other, which is why the frames disagreed. " +
+                "**v146 moved this anchor 8 dp → 64 dp** to separate the two boxes by geometry; " +
+                "`UsabilityCellsV146SendOcclusionFixTest` re-adjudicates cell 5 against it. This " +
+                "assertion now pins the *post-fix* anchor, and it stays just as strong: the value " +
+                "is read live, so any further move goes red here too.",
+            64f,
             SessionTerminalEntryPolicy.END_DP.value,
         )
         assertEquals(

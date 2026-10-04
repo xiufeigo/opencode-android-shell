@@ -23,9 +23,20 @@ class SessionTerminalEntryPolicyTest {
         assertEquals(88f, SessionTerminalEntryPolicy.TOP_DP.value, 0.001f)
     }
 
-    /** 8 dp from the timeline pane's trailing edge, as before. */
+    /**
+     * 64 dp from the timeline pane's trailing edge.
+     *
+     * v146 moved this from 8 dp: at 8 the chip's 48 dp touch box ran past the
+     * screen's right edge (clipped to 46 dp) and landed on the composer's
+     * `Send` box, so `Send` — drawn second — covered the chip completely
+     * (0 visible pixels, overlap 2068 px², 2 px residual sliver). 64 dp is the
+     * smallest inset that separates the two boxes **by geometry** (4 px gap)
+     * rather than by painting order. The chip's **height** is still 48 dp and
+     * [theChipStartsClearOfTheSessionHeaderBand] still pins its vertical anchor
+     * — the 48 dp target semantics are untouched.
+     */
     @Test
     fun theChipKeepsItsTrailingInset() {
-        assertEquals(8f, SessionTerminalEntryPolicy.END_DP.value, 0.001f)
+        assertEquals(64f, SessionTerminalEntryPolicy.END_DP.value, 0.001f)
     }
 }
