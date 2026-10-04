@@ -1,0 +1,20 @@
+{
+  "FCP_ms": 2452,
+  "DOM_readyMs": 3057,
+  "DOM_nodes": 845,
+  "res_total": {
+    "n": 61,
+    "xfer": 1455939,
+    "dec": 2698107,
+    "ratio": 0.54
+  },
+  "H.launch.enter": 921,
+  "I.proxyListening": 1060,
+  "J.loadUrlIssued": 1077,
+  "G.onCreate.exit": 1077,
+  "Z.firstDraw": 1236,
+  "K.onPageStarted": 1500,
+  "L.onPageFinished": 2550,
+  "LAST_asset_fwd_at_NOT_firstscreen": 31579,
+  "fwd_count": 514
+}

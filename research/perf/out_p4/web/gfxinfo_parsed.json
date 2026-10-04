@@ -1,0 +1,17 @@
+{
+  "Total frames rendered": "N/A",
+  "Janky frames": "N/A",
+  "Janky frames (legacy)": "N/A",
+  "50th percentile": "N/A",
+  "90th percentile": "N/A",
+  "95th percentile": "N/A",
+  "99th percentile": "N/A",
+  "Number Slow UI thread": "N/A",
+  "Number Slow issue draw commands": "N/A",
+  "Number Missed Vsync": "N/A",
+  "50th gpu percentile": "N/A",
+  "90th gpu percentile": "N/A",
+  "Number High input latency": "N/A",
+  "Number Slow bitmap uploads": "N/A",
+  "interaction_wall_s": 41.3
+}

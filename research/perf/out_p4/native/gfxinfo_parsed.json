@@ -1,0 +1,18 @@
+{
+  "side": "native",
+  "Total frames rendered": "1063",
+  "Janky frames": "133 (12.51%)",
+  "Janky frames (legacy)": "849 (79.87%)",
+  "50th percentile": "22ms",
+  "90th percentile": "44ms",
+  "95th percentile": "65ms",
+  "99th percentile": "500ms",
+  "Number Slow UI thread": "89",
+  "Number Slow issue draw commands": "99",
+  "Number Missed Vsync": "43",
+  "50th gpu percentile": "6ms",
+  "90th gpu percentile": "21ms",
+  "Number High input latency": "1754",
+  "Number Slow bitmap uploads": "1",
+  "interaction_wall_s": 45.1
+}

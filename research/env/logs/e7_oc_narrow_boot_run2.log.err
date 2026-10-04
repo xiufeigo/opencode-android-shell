@@ -33,3 +33,4 @@ netsimd I 10-04 13:20:57.652 external/netsim+/rust/daemon/src\rust_main.rs:96 - 
     },
     rssi: None,
 }
+pc_memory_init: above 4g size: 40000000
