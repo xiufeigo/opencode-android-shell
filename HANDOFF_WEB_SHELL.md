@@ -18,8 +18,8 @@
 
 | 产物 | 体积 | md5 | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,962,969 B（≈3.78 MB）** | `188e019b81436d43dfd4639b08da6ae5` | ✅ **推荐对外分发**（已签名 `sharedDebug`）；**含通知点击修复（`f989907`）+ WebView 预检 + 省电策略（`c2eaa3b`）** |
-| `opencode-shell-web.apk`（debug） | **5,198,170 B（≈4.96 MB）** | `c77a43fade7ffe9997ed990ac2a66162` | 日常调试（debug 签名）；**同上** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,965,033 B（≈3.78 MB）** | `b063148df53a1364bf5c42ce6bdca0d3` | ✅ **推荐对外分发**（已签名 `sharedDebug`）；**含通知点击修复（`f989907`）+ WebView 预检 + 省电策略（`c2eaa3b`）+ 回合常亮修复（D1）** |
+| `opencode-shell-web.apk`（debug） | **5,200,219 B（≈4.96 MB）** | `34cc6957a383d15cc15bbf7d89791428` | 日常调试（debug 签名）；**同上** |
 | **R8 版** | **未产出** | — | ⚠️ **构建未成功**；12 项风险清单，**最高风险 = Tink 静默降级** ⇒ **设备验证前不要分发** |
 
 > 🔄 **重建记录（2026-10-05）**：`f989907`（通知）→ R2 重建并设备复验；`c2eaa3b`（省电策略）→ **再次重建**。

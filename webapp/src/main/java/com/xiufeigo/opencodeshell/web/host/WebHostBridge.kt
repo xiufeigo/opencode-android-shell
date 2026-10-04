@@ -161,6 +161,13 @@ class WebHostBridge(
      * 理由：常亮是 T1 §7.3 认定"接上之后 = 高风险"的项（耗电大户、且是看起来很
      * 合理的那类 bug）。页面若在 `visibilitychange` 时序错位（先发 `true` 后退后台），
      * 旧实现会把 flag 挂到一个不可见的窗口上。判据见 [PowerPolicy.shouldKeepScreenOn]。
+     *
+     * D1：这一段曾经是**死代码**（`research/web/FIX_D1.md` §1）—— 它是 flag 的
+     * 唯一写入口，却只有页面能调，而上游官方 UI 从不调 `setKeepScreenOn` ⇒
+     * `addFlags` 那行永远执行不到，"回合进行中保持屏幕常亮"从未生效。
+     * 现在**真正的驱动方**是 [LoopbackProxy.roundActivity]（代理看得见真实回合
+     * 流量），本方法改为把页面的显式请求**喂给同一个跟踪器**，
+     * 再由 [WebHostActivity.applyKeepScreenOn] 统一落 flag。页面这条 API 语义不变。
      */
     @JavascriptInterface
     fun setKeepScreenOn(on: Boolean) {
@@ -169,13 +176,14 @@ class WebHostBridge(
             Log.w(TAG, "setKeepScreenOn(true) ignored: not in foreground")
             return
         }
-        ctx.runOnUiThread {
-            if (on) {
-                ctx.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                ctx.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
+        val tracker = ctx.roundActivityTracker()
+        if (on) {
+            tracker?.onRoundStart(System.currentTimeMillis())
+        } else {
+            tracker?.onRoundEnd()
         }
+        // 落 flag 的动作统一走宿主，页面与代理两条路只有一个写入口。
+        ctx.applyKeepScreenOnState()
     }
 
     // ---- 6. IME 策略 -----------------------------------------------------

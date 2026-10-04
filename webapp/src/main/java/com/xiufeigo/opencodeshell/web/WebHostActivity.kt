@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -31,6 +32,7 @@ import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
+import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.SetupDialogMetrics
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
@@ -148,6 +150,23 @@ class WebHostActivity : AppCompatActivity() {
 
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上问"现在在前台吗"。 */
     fun isForeground(): Boolean = foreground
+
+    /**
+     * D1：回合活跃跟踪器（代理可能还没起来 ⇒ 可空）。
+     * 供 [WebHostBridge.setKeepScreenOn] 把页面的显式请求喂进同一个状态机。
+     */
+    fun roundActivityTracker(): RoundActivityTracker? = runCatching { proxy?.roundActivity }.getOrNull()
+
+    /**
+     * D1：按当前"回合是否在进行"重新结算一次常亮 flag。
+     * 桥线程与主线程都会调它，自身保证切到主线程。
+     */
+    fun applyKeepScreenOnState() {
+        val active = runCatching {
+            proxy?.roundActivity?.isRoundActive(System.currentTimeMillis())
+        }.getOrNull() ?: false
+        runOnUiThread { applyKeepScreenOn(active) }
+    }
 
     // ---- G1：WebView 版本前置检查 + 首屏看门狗 -----------------------------
     /** 真实读数（不写死）：`WebView.getCurrentWebViewPackage()?.versionName`，读不到就是 `null`。 */
@@ -361,6 +380,10 @@ class WebHostActivity : AppCompatActivity() {
         }
         pendingProxy = null
         proxy = p
+        // D1：接上"回合状态"回调 —— 代理一看到页面 POST 消息/回合流结束就通知，
+        // 宿主据此置位/清除常亮 flag。这是让该功能**真正生效**的接线点
+        // （此前 flag 只有页面主动调桥才会被置起，而上游 UI 从不调 ⇒ 死代码）。
+        p.onRoundActiveChanged = { active -> runOnUiThread { applyKeepScreenOn(active) } }
         val origin = p.publicOrigin()
         val restored = restoredUrlOrNull
         val url = if (restored != null && restored.startsWith(origin)) restored else "$origin/"
@@ -773,6 +796,8 @@ class WebHostActivity : AppCompatActivity() {
         // P6：先落状态再清 flag。顺序有意为之 —— 让此刻之后任何 `setKeepScreenOn(true)`
         // 的桥调用都立刻被 [isForeground] 拒掉（哪怕 `clearFlags` 还没跑到主线程）。
         foreground = false
+        // D1：撤掉挂着的兜底复查（回合已不在前台，没必要再问一次）。
+        if (::webView.isInitialized) webView.removeCallbacks(keepScreenOnBackstop)
         // P6 · 省电 · 刀 1：切后台**无条件**清常亮。
         //
         // 为什么是"无条件"而不是"只在页面发过 false 时清"：这正是 T1 §7.3 点名的
@@ -800,6 +825,11 @@ class WebHostActivity : AppCompatActivity() {
         // P6：解除后台拒绝，页面下一次 EventSource 重试即恢复（与代理 35 s 半开
         // 主动断开是同一条恢复路径，不引入新行为类别）。
         runCatching { proxy?.resumeStreaming() }
+        // D1：回合若仍在进行，回前台要**把常亮补回来**（否则回合中途切走再回来，
+        // 回合还在跑屏幕却不再常亮）。回合已结束则这里等价于一次幂等 clearFlags。
+        val active = runCatching { proxy?.roundActivity?.isRoundActive(System.currentTimeMillis()) }
+            .getOrNull() ?: false
+        applyKeepScreenOn(active)
         if (::webView.isInitialized) {
             webView.onResume()
             insets.refresh()
@@ -814,6 +844,69 @@ class WebHostActivity : AppCompatActivity() {
      */
     fun clearKeepScreenOnOnBackground() {
         runCatching { window.clearFlags(PowerPolicy.FLAG_KEEP_SCREEN_ON_BIT) }
+    }
+
+    /**
+     * D1 · **按 [PowerPolicy] 的结论真正置位/清除常亮 flag**。
+     *
+     * 这是"回合进行中保持屏幕常亮"**唯一**的 flag 写入口。之前
+     * [WebHostBridge.setKeepScreenOn] 只在页面主动调时才会走到 `addFlags`，
+     * 而上游官方 UI 从不调它 ⇒ flag 永远置不起来（死代码，详见
+     * `research/web/FIX_D1.md` §1）。现在由 [LoopbackProxy.roundActivity]
+     * 用真实流量驱动，页面那条路则改为喂同一个跟踪器。
+     *
+     * @param roundActive 当前是否有回合在进行
+     */
+    fun applyKeepScreenOn(roundActive: Boolean) {
+        val should = PowerPolicy.shouldKeepScreenOn(foreground = isForeground(), roundActive = roundActive)
+        val next = if (should) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            true
+        } else {
+            window.clearFlags(PowerPolicy.FLAG_KEEP_SCREEN_ON_BIT)
+            false
+        }
+        // D1：置位后**主动排一次兜底复查**。
+        //
+        // 为什么必须排：`RoundActivityTracker.isRoundActive` 是**被问才结算**的纯函数 ——
+        // 90 s 兜底超时只是"判定规则"，**没有任何定时器会自己去问**。
+        // 若不排这一下，回合中途崩溃/渲染进程被杀（既无结束事件、也没人再调桥）时
+        // flag 就会**永久挂着** —— 正是 T1 §7.3 的忘关路径。
+        // 实测教训：设备上只靠规则时，t=+91 s 仍然 `KEEP_SCREEN_ON hits=1`；
+        // 加上这一行复查后，t=+95 s 归 0。
+        if (next) scheduleKeepScreenOnBackstopCheck()
+        Log.i(
+            TAG,
+            "D1 applyKeepScreenOn: roundActive=$roundActive foreground=${isForeground()} " +
+                "shouldKeep=$should flagSet=$next",
+        )
+    }
+
+    /** D1：兜底复查用的 runnable（同一时刻只挂一个，重复挂会互相覆盖成"最后一次"）。 */
+    private val keepScreenOnBackstop = Runnable {
+        val stillActive = runCatching {
+            proxy?.roundActivity?.isRoundActive(System.currentTimeMillis())
+        }.getOrNull() ?: false
+        if (stillActive) {
+            // 回合还活着（心跳还在续命）⇒ 重新挂一次，别让它漏掉下一次兜底。
+            applyKeepScreenOn(true)
+        } else {
+            applyKeepScreenOn(false)
+        }
+    }
+
+    private fun scheduleKeepScreenOnBackstopCheck() {
+        if (!::webView.isInitialized) return
+        webView.removeCallbacks(keepScreenOnBackstop)
+        val now = System.currentTimeMillis()
+        val tracker = proxy?.roundActivity
+        // 两种兜底谁先到就按谁：
+        //  ① 空闲超时（回合没动静了）—— 常规路径；
+        //  ② 硬上限剩余量 —— 兜底中的兜底。常驻 `GET /event` 心跳会无限续命
+        //     （设备实测：t=+131s 仍 hits=1），只靠 ① 永远不会触发。
+        val holdMs = tracker?.roundHoldTimeoutMs ?: 90_000L
+        val remainMs = tracker?.let { (it.maxRoundKeepMs - it.roundAgeMs(now)).coerceAtLeast(1L) }
+        webView.postDelayed(keepScreenOnBackstop, minOf(holdMs, remainMs ?: holdMs))
     }
 
     override fun onDestroy() {

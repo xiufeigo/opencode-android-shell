@@ -134,6 +134,34 @@ class LoopbackProxy(
     /** 被后台拒绝掉的流式请求数（诊断用）。 */
     private val streamingRefused = java.util.concurrent.atomic.AtomicInteger(0)
 
+    // ---- D1 · 回合活跃跟踪（喂给宿主的"回合进行中"信号） ----------------
+    /**
+     * 回合活跃跟踪器。代理是所有页面流量的中枢，**看得见**回合的起止：
+     * 页面 POST 消息 = 回合开始；回合的流式通道 EOF/静默 = 回合结束。
+     *
+     * 为什么非要在代理上看：`KEEP_SCREEN_ON` 死代码的根因就是
+     * **上游官方 UI 不会调 `setKeepScreenOn`** ⇒ 页面那条路永远不来。
+     * 详见 [RoundActivityTracker] 类注释与 `research/web/FIX_D1.md` §1。
+     */
+    val roundActivity = RoundActivityTracker()
+
+    /**
+     * 回合状态变化时回调（**只在变化时**触发，宿主据此置位/清除 flag）。
+     * 由 `WebHostActivity` 在起代理后装上。
+     */
+    @Volatile
+    var onRoundActiveChanged: ((Boolean) -> Unit)? = null
+
+    /** 回合状态变化时统一走这里：判定 + 通知 + 打诊断日志。 */
+    private fun publishRoundActive() {
+        val active = roundActivity.isRoundActive(System.currentTimeMillis())
+        val cb = onRoundActiveChanged
+        if (cb != null) {
+            runCatching { cb(active) }.onFailure { Log.w(TAG, "round callback failed", it) }
+        }
+        Log.i(TAG, "D1 roundActive=$active ageMs=${roundActivity.roundAgeMs(System.currentTimeMillis())}")
+    }
+
     var port: Int = -1
         private set
 
@@ -284,6 +312,13 @@ class LoopbackProxy(
      */
     private fun onForward(output: OutputStream, parsed: ParsedRequest, target: String): Boolean {
         Log.i(TAG, "${parsed.method} $target")
+        // D1：回合开始信号。页面 POST 一条"发消息"请求 = 用户按了发送。
+        // 放在最前面（连后台拒绝判定之前）⇒ 即便这条请求随后被 503 拒掉，
+        // 回合也已经开始了，常亮该置位；否则会漏掉"发送后立刻切后台"这种时序。
+        if (roundActivity.isRoundStartRequest(parsed.method, parsed.path)) {
+            roundActivity.onRoundStart(System.currentTimeMillis())
+            publishRoundActive()
+        }
         // P6 · 后台省电：流式连接在后台**不回上游**。
         // 放在这里（建上游请求之前）⇒ 连 socket 都不建，更谈不上射频唤醒。
         // 决策见纯逻辑 [PowerPolicy]；这里只接线。
@@ -654,6 +689,8 @@ class LoopbackProxy(
             }
             if (n < 0) break
             if (n == 0) continue
+            // D1：搬到了字节 = 回合还活着，续命（防 90s 兜底超时把活跃回合判死）。
+            if (roundActivity.onRoundActivity(System.currentTimeMillis())) publishRoundActive()
             total += n
             try {
                 output.write(buf, 0, n)
@@ -666,6 +703,16 @@ class LoopbackProxy(
         }
         if (total == 0L || exit != "eof") {
             Log.w(TAG, "stream ended: exit=$exit bytes=$total")
+        }
+        // D1：回合结束信号。**只认"静默够久"这一种关闭**：
+        // 页面 EventSource 会按退避节奏重连（实测 2s，V4 §2 记过），
+        // 若"socket 一关就算回合结束"，重连窗口里 flag 会被反复置起/清除抖动。
+        // 上游 `/event` 每 10 s 一次心跳（T1 §7.2）⇒ 静默超过一个 SSE 读超时
+        // （[SSE_IDLE_READ_TIMEOUT_MS]）才认定回合真的停了。
+        if (roundActivity.isRoundActive(System.currentTimeMillis()) &&
+            roundActivity.idleMs(System.currentTimeMillis()) >= SSE_IDLE_READ_TIMEOUT_MS
+        ) {
+            if (roundActivity.onRoundEnd()) publishRoundActive()
         }
     }
 
