@@ -12,7 +12,7 @@
 |---|---|---|---|
 | 1 | **后端不可达 ⇒ 友好错误态** | ✅ **FIXED（debug + release 双份设备复验）** | 裸 JSON + 泄露内部 URL 已消失，改成中文可读页 + **48px 重试按钮**（已实测点了会真重试） |
 | 2 | **口令错 ⇒ 明确认证失败 + 可改** | ✅ **FIXED（debug + release 双份设备复验）** | 宿主主动探 `/api/info`，**401 ⇒ 原生对话框"用户名或口令不对" + 返回/继续加载/重试**（三个按钮各 142px ≈ 54dp） |
-| 3 | **connect/扫码路径** | 🔴 **未打通**（**不是"应该可以"**） | 卡在**上游 registry 自动播种**这一环：connect screen 是 `fallback`，registry 一旦非空就是死支。清空 localStorage + reload 后仍自动长回来（见 §3） |
+| 3 | **connect/扫码路径** | 🔴 **未打通**（**不是"应该可以"**） | 卡在**上游 registry 语义**：`allServers()` = `store.list` ＋ `props.servers`（`registry.tsx:213-215`），而回环 origin 被 `isLocalHost()` 判为本地 server ⇒ `routes.tsx:79` 的 `fallback` 恒不渲染。清空 localStorage + reload 后仍回 Home（见 §3） |
 | 4 | **日志无口令** | ✅ **确认** | 全量 logcat 中 `wrongpass123` 出现 **0 次**；只有既有的 `passLen=12` 记法 |
 | 5 | **回归** | ✅ **0 失败** | `:webapp` **141** 例（128 → 141，**+13**）、`:app` **6136** 例，均 0 fail |
 
@@ -181,6 +181,9 @@ W OcWebHost: F5 probe AUTH FAILED code=401; showing retryable dialog
 | `_upstream/packages/app/src/servers/connect/scanner.tsx:20-41` | `onMount` → `new QrScanner(video, …)` → `scanner.start()` | 取流就在这里 |
 | `_upstream/packages/app/src/servers/connect/camera.ts:6` | `platform.platform === "web" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia` | 取流的前置条件 |
 | `_upstream/packages/app/src/runtime/persistence/storage.ts:32` | `const LOCAL_PREFIX = "opencode."` | registry 的 localStorage 键前缀 |
+| `_upstream/packages/app/src/runtime/server/registry.tsx:213-215` | `allServers = createMemo(() => resolveServerList({ stored: store.list, props: props.servers }))` | 🔴 **registry 实际由两处合并**：`store.list`（localStorage，键前缀 `opencode.`）**＋** `props.servers`（启动参数注入） |
+| `_upstream/packages/app/src/app.tsx:127-131` | `<ServersProvider defaultServer=… canonicalLocalServer=… servers={props.servers}>` | `props.servers` 的**注入口** |
+| `_upstream/packages/app/src/runtime/server/registry.tsx:29-32, 191-192` | `isLocalHost(url)` 命中 `localhost` / `127.0.0.1` ⇒ `local(conn) === true` | 本壳代理 origin 恒为 `http://127.0.0.1:<port>` ⇒ **永远被判定为"本地 server"** |
 
 **回答派单的三个问题**：
 
@@ -189,8 +192,10 @@ W OcWebHost: F5 probe AUTH FAILED code=401; showing retryable dialog
   （`WebHostActivity` 有 `onPermissionRequest` 对可信 origin 授 `RESOURCE_VIDEO_CAPTURE`），
   且代理 origin 是 `http://127.0.0.1:<port>` —— **localhost 本身就是 secure context**，
   `camera.ts:6` 那三个条件在本部署下都成立。
-- **是上游的注册表语义？** ✅ **就是它。** 页面 boot 时会把**当前 origin 当成一个 server 自动播种**进 registry，
-  于是 `servers.list.length > 0` 恒真 ⇒ `fallback` 分支**是死支** ⇒ 真机 UI 上**到不了**扫码入口。
+- **是上游的注册表语义？** ✅ **就是它。** `allServers()` 由 `store.list` 与 `props.servers`
+  **合并**而成（`registry.tsx:213-215`），而本部署的 origin 恒为回环地址
+  ⇒ 被 `isLocalHost()`（`registry.tsx:29-32`）判为本地 server
+  ⇒ `servers.list.length > 0` 恒真 ⇒ `routes.tsx:79` 的 `fallback` **是死支** ⇒ 真机 UI 上到不了扫码入口。
 
 ### 3.2 本轮设备实测（把"猜"变成"测"）
 
@@ -209,27 +214,46 @@ I OcWebHost/Eval: eval=(function(){var p=String.fromCharCode(111,112,101,110,99,
 OpenCode / Tabs / Projects / scrollable content / Recent sessions / Loading
 ```
 
-⇒ reload 之后**又是 Home 会话列表**，不是 connect screen。截图 `research/env/f5/f5_d3_after_clear.png`。
+截图 `research/env/f5/f5_d3_after_clear.png`。
 
-**结论（设备证据支持，不是"应该可以"）**：清空 registry 不够，**它在 boot 时自动长回来**，
-所以 `routes.tsx:79` 的 fallback 在本部署下**恒不渲染**。
+**结论（设备证据支持，不是"应该可以"）**：**清空 registry + reload 之后，回到的仍是 Home
+会话列表，不是 connect screen。**
+
+⚠️ **如实标注本条测量的边界**：我据此判定"fallback 在本部署下不可达"，但**没有**区分
+下面两种情形 ——(a) 页面在 boot 时**重新播种**了 registry；(b) `location.reload()`
+与清除之间存在竞态，截图时**旧的 store 尚未被换掉**。本轮**没有**再做一次
+"清除 → 等待 → 只 reload 不改任何东西 → 再读一次 `allServers` 长度"的分离测量来二选一。
+**因此"到底是重播种还是竞态"这一条属未闭环**，但**它不改变结论**：
+两种情形下 `servers.list.length > 0` 都成立 ⇒ `routes.tsx:79` 的 fallback 都不渲染 ⇒
+**扫码入口在真机 UI 上依然到不了**。区分它只影响"最小可行改法"选哪一条，不影响"当前不通"。
 
 ### 3.3 卡在哪一环 + 依赖什么 + 最小可行改法
 
-- **卡在**：上游"registry 自动播种"这一环（`_upstream/.../registry.tsx` + `routes.tsx:79`）。
-  相机/权限/代理/WebView 设置**都不是**阻塞点。
-- **依赖**：需要**上游**改语义 —— 把 `ConnectServerScreen` 从"空 registry 的 fallback"
-  变成**常驻可达的导航项**（或提供"添加服务器"入口）。这在 `_upstream/**`，
-  **本轮无写权限**，且**不是** `webapp/**` 内能绕过去的。
-- **最小可行改法（二选一）**：
-  1. **上游侧（推荐）**：`routes.tsx:79` 的 `fallback` 改为"无 server 时显示 connect screen，
-     **有** server 时在导航里保留一个 '添加服务器' 入口指向同一组件" ——
-     `screen.tsx` 本身已经是可复用组件，改动面小。
-  2. **宿主侧（本轮可做但未做）**：给宿主加一个**配对模式**开关
-     （`WebHostActivity` 读一个 extra），在该模式下**首屏不自动播种 registry**，
-     使 fallback 真正渲染，用户用完再退出配对模式。
-     ⚠️ 代价：需要宿主能可靠地阻止那次自动播种（`oc_debug_eval` 清 storage 只是**事后**清，
-     boot 早期那次播种拦不住），属**未验证方案**，不写成"可行"。
+- **卡在**：上游 registry 语义 —— `allServers()`（`registry.tsx:213-215`）把
+  `store.list` 与 `props.servers` **合并**；本部署 origin 恒为回环地址，被
+  `isLocalHost()`（`registry.tsx:29-32`）判成"本地 server" ⇒ `servers.list.length > 0` 恒真
+  ⇒ `routes.tsx:79` 的 `fallback` 不渲染。
+- **相机/权限/代理/WebView 设置都不是阻塞点**（见 §3.1 逐条排除）。
+- **依赖**：需要让 `servers.list` 变空，或让 connect 入口常驻。二者都在 `_upstream/**`，
+  **本轮无写权限**。
+
+**最小可行改法（三选一，按可信度排序）**：
+
+1. **上游侧（推荐、改动面最小）**：`app.tsx:127-131` 不再把当前回环 origin 注入
+   `props.servers`（或在 `routes.tsx:79` 把 `fallback` 改成"有 server 时导航里也保留一个
+   '添加服务器' 入口指向 `screen.tsx:18` 的同一组件"）。
+   `ConnectServerScreen` 本身已是可复用组件，改的是**谁把它挂出来**，不是重写它。
+2. **宿主侧 · 改回环 origin（本轮发现的新杠杆，⚠️ 未验证）**：
+   `isLocalHost()` 只认 `localhost` 与 `127.0.0.1`（`registry.tsx:29-32`）。
+   若让代理 origin 不再是这两个字面量（例如绑到 `127.0.0.2` 之类**同属回环**的地址，
+   Linux/Android 上 `127.0.0.0/8` 都是本机），则 `local(conn)` 不再成立，
+   有机会让 `allServers()` 变空 ⇒ fallback 渲染。
+   **必须先自查**：`res/xml/network_security_config.xml` 是否放行该地址、
+   `isTrustedWebOrigin()` 是否跟着走（它用 `proxy.publicOrigin()`，会自然一致）。
+   ⚠️ **本轮没有实现、也没有验证**；它是**候选**，不是结论 —— 不要按"应该可以"对待。
+3. **上游侧 · 常驻入口**：把 `servers/connect/screen.tsx` 的表单抽成 Settings 里的
+   "添加服务器"面板（`dialog.tsx` 已有 `server.connect.scan` = "Scan QR code" 这条现成文案），
+   这样**不再依赖 registry 为空**。
 
 ### 3.4 本轮**未**声称的东西（不写"应该可以"）
 
@@ -349,8 +373,9 @@ lock exists after release = False
 
 ## 10. 未闭环
 
-1. 🔴 **扫码/取流路径**（§3）：卡在上游 registry 自动播种，**依赖上游改语义**。需产品负责人决定走 §3.3 的哪条路。
-2. **"配对模式"宿主侧开关**：给出了方案但**未实现、未验证**，不声称可行。
+1. 🔴 **扫码/取流路径**（§3）：卡在上游 registry 语义，**依赖上游改语义**（或宿主换回环 origin，⚠️ 未验证）。需产品负责人决定走 §3.3 的哪条路。
+2. **§3.2 的二选一未做完**：到底是"boot 重播种"还是"reload 竞态"，需按 §3.2 末尾描述做一次分离测量。**不影响"当前不通"的结论**。
+3. **§3.3 方案 2（换回环 origin）**：**未实现、未验证**，只作为候选列出。
 3. **N-5 第三类（WebView 过旧）**：仍只引用 G1/V3，本轮**未独立复核**。
 4. **N-7 命令面板/消息区复制**：沿用 V7 结论，本轮未覆盖。
 5. 本轮**没有**用"错误口令 → 改对口令 → 回到正常页面"的**完整闭环**收尾
