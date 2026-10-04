@@ -18,9 +18,13 @@
 
 | 产物 | 体积 | md5 | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,961,217 B（≈3.78 MB）** | `7b578ceec3d7e35e2fffa4da67fe2d3b` | ✅ **推荐对外分发**（已签名 `sharedDebug`，`apksigner verify` = **Verifies**）；**已含通知点击修复（`f989907`）** |
-| `opencode-shell-web.apk`（debug） | **5,145,604 B（≈4.91 MB）** | `b716cbeb4c66e55fcb0f497640ae5e0c` | 日常调试（debug 签名）；**已含通知点击修复（`f989907`）** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,962,969 B（≈3.78 MB）** | `188e019b81436d43dfd4639b08da6ae5` | ✅ **推荐对外分发**（已签名 `sharedDebug`）；**含通知点击修复（`f989907`）+ WebView 预检 + 省电策略（`c2eaa3b`）** |
+| `opencode-shell-web.apk`（debug） | **5,198,170 B（≈4.96 MB）** | `c77a43fade7ffe9997ed990ac2a66162` | 日常调试（debug 签名）；**同上** |
 | **R8 版** | **未产出** | — | ⚠️ **构建未成功**；12 项风险清单，**最高风险 = Tink 静默降级** ⇒ **设备验证前不要分发** |
+
+> 🔄 **重建记录（2026-10-05）**：`f989907`（通知）→ R2 重建并设备复验；`c2eaa3b`（省电策略）→ **再次重建**。
+> **"交付物 = 代码"已用机械方式自查**：APK 内 `assets/www/oc-host.js` 的 md5 **等于**仓库源码 md5（`bf54276929d5f044f92ab08670b2dbbe`）。
+> ⚠️ **旧 md5 全部作废**（`9ab8ee30…` / `8dcffc57…` / `7b578cee…` / `b716cbeb…`），它们对应的产物**不含后续修复**。
 
 包名统一 `com.xiufeigo.opencodeshell.web.debug` · 签名 `CN=Android Debug`（SHA-256 `e86b7006…0510a`）
 **对比**：原生壳 debug **44.2 MB** / 原生壳 release **29.4 MB** ⇒ **web 壳 release 比原生 release 小 7.4 倍**（因为**一个前端字节都不打包**）。
