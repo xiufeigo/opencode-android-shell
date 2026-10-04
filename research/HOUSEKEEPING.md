@@ -42,6 +42,9 @@ foreach ($p in $ours) {
 
 | 2026-10-05 01:0x–01:2x | **关闭** `OC_FF_F4`（`emulator-5892`，端口 5892，F4 形态覆盖自建；镜像 `android-35;google_apis_playstore_tablet` + `pixel_tablet`） | `wm size reset` + `wm density reset` → 复核 `Physical size: 2560x1600` / `Physical density: 320`（**已无 Override 行**）；`adb -s emulator-5892 emu kill` → `OK: killing emulator, bye bye`；复核 **0 残留进程**、**端口 5892 LISTEN=0**（仅 `TimeWait` 残根）；用户设备 `5654`(DSH_T80_Tablet)/`5656`(DSH_T80_Phone) **未受影响**；**`OC_NotifyRC`(5880) 不是本轮起的，全程未碰**；未执行 `adb kill-server`、未用 `-a`/通配符。**故意保留：无**。本轮共 boot 3 次（中途静默退出 2 次，同 E7 §1.2 模式，均发生在几何高度超出物理面板时）。报告：`research/env/FORMFACTORS_F4.md` |
 
+| 2026-10-05 01:29–01:53 | **关闭** `OC_Deliver_R2`（`emulator-5900`，端口 5900，**R2 交付重建轮自建**；克隆自 `OC_FF_F4`，镜像 `android-35;google_apis_playstore_tablet` + `pixel_tablet`） | `wm size reset` + `wm density reset` → 复核 `Physical size: 2560x1600` / `Physical density: 320`（**已无 Override 行**）；杀前按 AVD 名确认 `pid=51956 avd=OC_Deliver_R2 port=5900 MINE=True`；`adb -s emulator-5900 emu kill` → `OK: killing emulator, bye bye`；复核 **emulator/qemu 进程数 = 0**、**`OC_Deliver_R2` 残留 = 0**、**端口 5900 LISTEN=0**（仅 `TimeWait` 残根 `OwningProcess=0`）、`.agent-gradle-lock exists = False`；未执行 `adb kill-server`、未用 `-a`/通配符。**故意保留：无**。⚠️ 本轮该 AVD **静默退出 3 次**（`adb devices` 直接掉线、脚本卡在失联 adb 上），模式与 F4 轮 E7 §1.2 一致（几何 2400 > 物理高度 1600）；**规避手段 = 串行跑、同一时刻只开一个 adb 客户端**（早期两次挂死确为两后台任务抢 adb）。本轮**只碰过 `emulator-5900`** 一个 serial；开始时 `adb devices` 为空、emulator/qemu 进程数 0，故**没有任何用户设备可被波及**。后端 `4095` 全程未起停。报告：`research/web/DELIVER_REBUILD_R2.md` |
+
+
 ## 四、仍未处理（等产品负责人决定）
 
 - 我们建过的 **AVD 定义**仍留在磁盘（`OC_Phone_Test`、`OC_Phone_Test_B`、`OC_Phone_Test_C`、

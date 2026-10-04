@@ -1,0 +1,32 @@
+diff --git a/HANDOFF_WEB_SHELL.md b/HANDOFF_WEB_SHELL.md
+index 73562ce..0a43c95 100644
+--- a/HANDOFF_WEB_SHELL.md
++++ b/HANDOFF_WEB_SHELL.md
+@@ -12,10 +12,14 @@
+ 
+ **当前可交付（三份，都在 `research/deliver/`）**：
+ 
++> 🔄 **R2 重建（2026-10-05，`f989907` 之后）**：下表两份 APK 已**重新构建**，
++> **已包含通知点击修复（`f989907`）**。旧数（3,948,209 B / 8,636,901 B）**已作废**。
++> 重建与设备复验原始输出见 `research/web/DELIVER_REBUILD_R2.md`。
++
+ | 产物 | 体积 | md5 | 用途 |
+ |---|---|---|---|
+-| **`opencode-shell-web-release-nor8.apk`** | **3,948,209 B（≈3.95 MB）** | `9ab8ee300027f9847c2b220bb26f2b98` | ✅ **推荐对外分发**（已签名 `sharedDebug`，`apksigner verify` = Verifies） |
+-| `opencode-shell-web.apk`（debug） | 8,636,901 B | `8dcffc572ad469f472f61594f12ea990` | 日常调试（debug 签名） |
++| **`opencode-shell-web-release-nor8.apk`** | **3,961,217 B（≈3.78 MB）** | `7b578ceec3d7e35e2fffa4da67fe2d3b` | ✅ **推荐对外分发**（已签名 `sharedDebug`，`apksigner verify` = **Verifies**）；**已含通知点击修复（`f989907`）** |
++| `opencode-shell-web.apk`（debug） | **5,145,604 B（≈4.91 MB）** | `b716cbeb4c66e55fcb0f497640ae5e0c` | 日常调试（debug 签名）；**已含通知点击修复（`f989907`）** |
+ | **R8 版** | **未产出** | — | ⚠️ **构建未成功**；12 项风险清单，**最高风险 = Tink 静默降级** ⇒ **设备验证前不要分发** |
+ 
+ 包名统一 `com.xiufeigo.opencodeshell.web.debug` · 签名 `CN=Android Debug`（SHA-256 `e86b7006…0510a`）
+@@ -51,8 +55,8 @@ R8 做成 **`-Pwebapp.r8=true` 开关**（默认关），不新增 buildType。
+ 
+ | 产物 | 路径 | 体积 | MD5 | 签名 | 用途 |
+ |---|---|---:|---|---|---|
+-| Web 壳 debug（原有，**未改动**） | `research/deliver/opencode-shell-web.apk` | 8,636,901 B | `8dcffc572ad469f472f61594f12ea990` | debug 签名 | 现状基线；A/B 对比老包 |
+-| **✅ Web 壳 release 已签（非 R8）** | `research/deliver/opencode-shell-web-release-nor8.apk` | **3,948,209 B** | `9ab8ee300027f9847c2b220bb26f2b98` | **`sharedDebug`（v2，`apksigner verify` = `Verifies`）** | **推荐对外分发** |
++| Web 壳 debug（**R2 重建**） | `research/deliver/opencode-shell-web.apk` | **5,145,604 B** | `b716cbeb4c66e55fcb0f497640ae5e0c` | debug 签名 | 日常调试；**已含 `f989907`** |
++| **✅ Web 壳 release 已签（非 R8，R2 重建）** | `research/deliver/opencode-shell-web-release-nor8.apk` | **3,961,217 B** | `7b578ceec3d7e35e2fffa4da67fe2d3b` | **`sharedDebug`（v2，`apksigner verify` = `Verifies`）** | **推荐对外分发**；**已含 `f989907`** |
+ | Web 壳 release + R8 | ❌ **未产出** | — | — | — | 被另一路的不可编译源码阻塞 |
+ 
+ **推荐对外分发 = `opencode-shell-web-release-nor8.apk`。**
