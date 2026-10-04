@@ -335,4 +335,14 @@ INFO         | Ignore IPv6 address: 484b:f8e8:cd00:0:b024:f8e8:cd00:0
 INFO         | Ignore IPv6 address: 484b:f8e8:cd00:0:b024:f8e8:cd00:0
 INFO         | Ignore IPv6 address: 484b:f8e8:cd00:0:b024:f8e8:cd00:0
 INFO         | Ignore IPv6 address: 4051:f8e8:cd00:0:b024:f8e8:cd00:0
-INFO         | Ignore IPv6 addres
+INFO         | Ignore IPv6 address: 4051:f8e8:cd00:0:b024:f8e8:cd00:0
+INFO         | Ignore IPv6 address: 4051:f8e8:cd00:0:b024:f8e8:cd00:0
+INFO         | Ignore IPv6 address: 3857:f8e8:cd00:0:b024:f8e8:cd00:0
+INFO         | Ignore IPv6 address: 3857:f8e8:cd00:0:b024:f8e8:cd00:0
+INFO         | Ignore IPv6 address: 3857:f8e8:cd00:0:b024:f8e8:cd00:0
+INFO         | Wait for emulator (pid 17684) 20 seconds to shutdown gracefully before kill;you can set environment variable ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL(in seconds) to change the default value (20 seconds)
+
+INFO         | Saving with gfxstream=1
+INFO         | Saving snapshot 'default_boot' using 1847 ms
+WARNING      | Emulator client has not yet been configured.. Call configure me first!
+INFO         | removeAll
