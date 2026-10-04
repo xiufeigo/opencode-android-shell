@@ -1,0 +1,457 @@
+################ G2 cold start: >=5 runs, UI-usable marker (NOT last _assets GET) ################
+== device fingerprint ==
+serial              = emulator-5910
+avd                 = OC_Deliver_R2 (cloned from verified OC_FF_F4 combo)
+port                = 5910
+geometry            = Physical size: 2560x1600 | Override size: 1080x2400
+density             = Physical density: 320 | Override density: 420
+webview             =     versionName=124.0.6367.219
+avd hw             = disk.dataPartition.path = <temp> ; disk.dataPartition.size = 6442450944 ; hw.device.name = pixel_tablet ; hw.lcd.backlight = yes ; hw.lcd.circular = false ; hw.lcd.density = 320 ; hw.lcd.depth = 32 ; hw.lcd.height = 1600 ; hw.lcd.transparent = false ; hw.lcd.vsync = 60 ; hw.lcd.width = 2560
+apk under test      = research/deliver/opencode-shell-web.apk (debug, md5 b716cbeb4c66e55fcb0f497640ae5e0c)
+
+==================== RUN 1 ====================
+--- marker lines (raw) ---
+  10-04 18:01:33.343  3088  3088 I OcPerf  : A.onCreate.enter t=543ms mode=gzip
+  10-04 18:01:33.973  3088  3088 I OcPerf  : Z.firstDraw t=1173ms
+  10-04 18:01:34.050  3088  3180 I OcPerf  : P.fwd t=1250ms path=/ code=200 upstreamMs=80 totalMs=81 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.164  3088  3180 I OcPerf  : P.fwd t=1364ms path=/_assets/index-Dadcbstg.js code=200 upstreamMs=8 totalMs=22 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.299  3088  3194 I OcPerf  : P.fwd t=1499ms path=/_assets/icon-DR7qgx3o.js code=200 upstreamMs=11 totalMs=20 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.304  3088  3196 I OcPerf  : P.fwd t=1503ms path=/_assets/preload-helper-Czpn1I53.js code=200 upstreamMs=21 totalMs=22 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.308  3088  3180 I OcPerf  : P.fwd t=1504ms path=/_assets/rolldown-runtime-hePW80VL.js code=200 upstreamMs=23 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.310  3088  3197 I OcPerf  : P.fwd t=1508ms path=/_assets/desktop-native-vJFY6KWL.js code=200 upstreamMs=27 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.358  3088  3195 I OcPerf  : P.fwd t=1557ms path=/_assets/eventListener-5JRELg8s.js code=200 upstreamMs=32 totalMs=74 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.407  3088  3197 I OcPerf  : P.fwd t=1607ms path=/_assets/icon-BDQzFLnz.css code=200 upstreamMs=21 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.416  3088  3196 I OcPerf  : P.fwd t=1615ms path=/_assets/runtime-ddCoIm8Y.css code=200 upstreamMs=38 totalMs=40 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.416  3088  3195 I OcPerf  : P.fwd t=1616ms path=/_assets/divider-C-h6JRGT.css code=200 upstreamMs=28 totalMs=33 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.418  3088  3194 I OcPerf  : P.fwd t=1617ms path=/_assets/dialog-BUYQZsMU.css code=200 upstreamMs=20 totalMs=34 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.426  3088  3180 I OcPerf  : P.fwd t=1626ms path=/_assets/button-CP8fzIZH.css code=200 upstreamMs=34 totalMs=59 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.465  3088  3180 I OcPerf  : P.fwd t=1665ms path=/_assets/surface-B48-YmDS.css code=200 upstreamMs=8 totalMs=10 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.500  3088  3195 I OcPerf  : P.fwd t=1700ms path=/_assets/icon-button-BCwmH1dS.css code=200 upstreamMs=19 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.510  3088  3204 I OcPerf  : P.fwd t=1710ms path=/_assets/text-input-BdrW1Dhu.css code=200 upstreamMs=18 totalMs=67 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.517  3088  3196 I OcPerf  : P.fwd t=1717ms path=/_assets/tooltip-DE8rGyLW.css code=200 upstreamMs=21 totalMs=40 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.522  3088  3194 I OcPerf  : P.fwd t=1718ms path=/_assets/settings-gAAmvXBQ.css code=200 upstreamMs=37 totalMs=39 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.526  3088  3180 I OcPerf  : P.fwd t=1725ms path=/_assets/index-W_zVL-x7.css code=200 upstreamMs=17 totalMs=44 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.528  3088  3197 I OcPerf  : P.fwd t=1728ms path=/_assets/project-avatar-B25rVzWO.css code=200 upstreamMs=9 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.574  3088  3197 I OcPerf  : P.fwd t=1774ms path=/_assets/registry-Bd8mdXya.js code=200 upstreamMs=20 totalMs=28 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.576  3088  3195 I OcPerf  : P.fwd t=1774ms path=/_assets/session-progress-indicator-v2-BJDdxLU-.css code=200 upstreamMs=13 totalMs=60 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.583  3088  3180 I OcPerf  : P.fwd t=1783ms path=/_assets/health-CIQGyytw.js code=200 upstreamMs=22 totalMs=35 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.599  3088  3194 I OcPerf  : P.fwd t=1799ms path=/_assets/runtime-CPxMNWhG.js code=200 upstreamMs=25 totalMs=47 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.628  3088  3204 I OcPerf  : P.fwd t=1828ms path=/_assets/button-BFiwHX2o.js code=200 upstreamMs=27 totalMs=90 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.629  3088  3088 I OcPerf  : M.g1.firstContent t=1829ms kind=raf at=null
+  10-04 18:01:34.632  3088  3197 I OcPerf  : P.fwd t=1831ms path=/_assets/UKTBL2JL-wTtWYT1h.js code=200 upstreamMs=36 totalMs=38 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.643  3088  3196 I OcPerf  : P.fwd t=1842ms path=/_assets/EHGSTO6V-FV9wNiWv.js code=200 upstreamMs=27 totalMs=75 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.651  3088  3180 I OcPerf  : P.fwd t=1850ms path=/_assets/dist-B3cU5Pub.js code=200 upstreamMs=12 totalMs=53 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.658  3088  3195 I OcPerf  : P.fwd t=1858ms path=/_assets/dist-CNFvywQ0.js code=200 upstreamMs=15 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.681  3088  3195 I OcPerf  : P.fwd t=1880ms path=/_assets/oc-2-DJL408O7.js code=200 upstreamMs=12 totalMs=14 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.684  3088  3197 I OcPerf  : P.fwd t=1884ms path=/_assets/V25KEN4T-DaMvtQux.js code=200 upstreamMs=18 totalMs=21 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.712  3088  3195 I OcPerf  : P.fwd t=1912ms path=/_assets/divider-DAv0p7wN.js code=200 upstreamMs=8 totalMs=9 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.726  3088  3196 I OcPerf  : P.fwd t=1926ms path=/_assets/command-djTfk7gH.js code=200 upstreamMs=30 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.727  3088  3204 I OcPerf  : P.fwd t=1927ms path=/_assets/button-HOYPhA6G.js code=200 upstreamMs=12 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.735  3088  3180 I OcPerf  : P.fwd t=1935ms path=/_assets/dialog-BfBFHP-m.js code=200 upstreamMs=12 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.751  3088  3197 I OcPerf  : P.fwd t=1951ms path=/_assets/dialog-2IVAZGoQ.js code=200 upstreamMs=9 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.759  3088  3194 I OcPerf  : P.fwd t=1959ms path=/_assets/text-input-BXW7NO2C.js code=200 upstreamMs=20 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.764  3088  3195 I OcPerf  : P.fwd t=1964ms path=/_assets/icon-button-DgkrDlZx.js code=200 upstreamMs=25 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.782  3088  3196 I OcPerf  : P.fwd t=1982ms path=/_assets/ZZYKR3VO-BO-mn2iO.js code=200 upstreamMs=9 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.787  3088  3204 I OcPerf  : P.fwd t=1987ms path=/_assets/surface-CFEzfnOI.js code=200 upstreamMs=15 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.806  3088  3180 I OcPerf  : P.fwd t=2006ms path=/_assets/tooltip-D7z2cFz8.js code=200 upstreamMs=18 totalMs=60 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.811  3088  3197 I OcPerf  : P.fwd t=2010ms path=/_assets/text-field-CmbZew2a.js code=200 upstreamMs=7 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.826  3088  3194 I OcPerf  : P.fwd t=2025ms path=/_assets/uploads-B8N2YKSq.js code=200 upstreamMs=5 totalMs=47 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.826  3088  3195 I OcPerf  : P.fwd t=2026ms path=/_assets/dist-CnByuFl8.js code=200 upstreamMs=5 totalMs=46 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.846  3088  3196 I OcPerf  : P.fwd t=2045ms path=/_assets/helpers-CbDJHSv7.js code=200 upstreamMs=6 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.846  3088  3204 I OcPerf  : P.fwd t=2045ms path=/_assets/project-avatar-D66hETA1.js code=200 upstreamMs=6 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.862  3088  3180 I OcPerf  : P.fwd t=2062ms path=/_assets/session-progress-indicator-v2-ph7IWpU6.js code=200 upstreamMs=7 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.863  3088  3197 I OcPerf  : P.fwd t=2062ms path=/_assets/location-M1zCuQYp.js code=200 upstreamMs=5 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:34.913  3088  3088 I OcPerf  : L.onPageFinished t=2113ms url=http://127.0.0.1:42585/
+  10-04 18:01:35.097  3088  3180 I OcPerf  : P.fwd t=2296ms path=/assets/Inter.ttf code=200 upstreamMs=8 totalMs=17 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:35.107  3088  3180 I OcPerf  : P.fwd t=2307ms path=/api/info code=200 upstreamMs=6 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:35.108  3088  3204 I OcPerf  : P.fwd t=2307ms path=/_assets/IBMPlexMono-Text-BtGO5jh3.woff2 code=200 upstreamMs=4 totalMs=8 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:35.151  3088  3088 I OcPerf  : L.onPageFinished t=2351ms url=http://127.0.0.1:42585/
+  10-04 18:01:35.172  3088  3204 I OcPerf  : P.fwd t=2372ms path=/api/location code=200 upstreamMs=13 totalMs=13 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:35.179  3088  3194 I OcPerf  : P.fwd t=2379ms path=/api/session/active code=200 upstreamMs=11 totalMs=11 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:35.187  3088  3180 I OcPerf  : P.fwd t=2387ms path=/api/project code=200 upstreamMs=23 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:35.188  3088  3196 I OcPerf  : P.fwd t=2388ms path=/api/session code=200 upstreamMs=27 totalMs=28 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:35.227  3088  3195 I OcPerf  : P.fwd t=2427ms path=/sw.js code=200 upstreamMs=18 totalMs=59 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:35.230  3088  3204 I OcPerf  : P.fwd t=2430ms path=/icons/prod/favicon.ico code=200 upstreamMs=9 totalMs=53 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.003  3088  3204 I OcPerf  : P.fwd t=3203ms path=/api/location code=200 upstreamMs=6 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.004  3088  3196 I OcPerf  : P.fwd t=3203ms path=/api/project code=200 upstreamMs=7 totalMs=8 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:36.004  3088  3195 I OcPerf  : P.fwd t=3204ms path=/api/vcs code=200 upstreamMs=8 totalMs=8 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.012  3088  3180 I OcPerf  : P.fwd t=3212ms path=/api/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y code=200 upstreamMs=12 totalMs=16 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.043  3088  3180 I OcPerf  : P.fwd t=3243ms path=/api/session/ses_f408ec4a0ffeKjpcGKG4kfGEBR code=200 upstreamMs=8 totalMs=9 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.502  3088  3180 I OcPerf  : P.fwd t=3701ms path=/web-app-manifest-512x512.png code=200 upstreamMs=4 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.527  3088  3180 I OcPerf  : P.fwd t=3727ms path=/web-app-manifest-192x192.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.549  3088  3180 I OcPerf  : P.fwd t=3749ms path=/social-share.png code=200 upstreamMs=6 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.574  3088  3180 I OcPerf  : P.fwd t=3773ms path=/social-share-zen.png code=200 upstreamMs=7 totalMs=8 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.635  3088  3180 I OcPerf  : P.fwd t=3834ms path=/site.webmanifest code=200 upstreamMs=3 totalMs=45 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:36.699  3088  3180 I OcPerf  : P.fwd t=3899ms path=/oc-theme-preload.js code=200 upstreamMs=3 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:36.766  3088  3180 I OcPerf  : P.fwd t=3966ms path=/index.html code=200 upstreamMs=7 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:36.827  3088  3180 I OcPerf  : P.fwd t=4026ms path=/favicon.svg code=200 upstreamMs=4 totalMs=46 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:36.847  3088  3180 I OcPerf  : P.fwd t=4047ms path=/favicon.ico code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.910  3088  3180 I OcPerf  : P.fwd t=4109ms path=/favicon-v3.svg code=200 upstreamMs=3 totalMs=46 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:36.929  3088  3180 I OcPerf  : P.fwd t=4129ms path=/favicon-v3.ico code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.950  3088  3180 I OcPerf  : P.fwd t=4149ms path=/favicon-96x96.png code=200 upstreamMs=2 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.969  3088  3180 I OcPerf  : P.fwd t=4168ms path=/favicon-96x96-v3.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:36.987  3088  3180 I OcPerf  : P.fwd t=4187ms path=/apple-touch-icon.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:37.010  3088  3180 I OcPerf  : P.fwd t=4209ms path=/apple-touch-icon-v3.png code=200 upstreamMs=4 totalMs=5 len=-1 ce=null reusable=false mode=false
+Z.firstDraw          = 1173 ms
+M.g1.firstContent    = 1829 ms   <== FCP / UI-usable marker (primary)
+P.fwd asset GET count= 76  (explicitly NOT used as first-screen)
+
+==================== RUN 2 ====================
+--- marker lines (raw) ---
+  10-04 18:01:40.988  3282  3282 I OcPerf  : A.onCreate.enter t=537ms mode=gzip
+  10-04 18:01:41.501  3282  3282 I OcPerf  : Z.firstDraw t=1049ms
+  10-04 18:01:41.562  3282  3356 I OcPerf  : P.fwd t=1111ms path=/ code=200 upstreamMs=59 totalMs=61 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.893  3282  3370 I OcPerf  : P.fwd t=1441ms path=/_assets/eventListener-5JRELg8s.js code=200 upstreamMs=27 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.896  3282  3368 I OcPerf  : P.fwd t=1445ms path=/_assets/rolldown-runtime-hePW80VL.js code=200 upstreamMs=30 totalMs=34 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.897  3282  3371 I OcPerf  : P.fwd t=1445ms path=/_assets/preload-helper-Czpn1I53.js code=200 upstreamMs=24 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.900  3282  3372 I OcPerf  : P.fwd t=1448ms path=/_assets/desktop-native-vJFY6KWL.js code=200 upstreamMs=23 totalMs=30 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.903  3282  3369 I OcPerf  : P.fwd t=1452ms path=/_assets/icon-DR7qgx3o.js code=200 upstreamMs=31 totalMs=40 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.906  3282  3356 I OcPerf  : P.fwd t=1455ms path=/_assets/index-Dadcbstg.js code=200 upstreamMs=25 totalMs=38 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.982  3282  3369 I OcPerf  : P.fwd t=1517ms path=/_assets/session-progress-indicator-v2-BJDdxLU-.css code=200 upstreamMs=37 totalMs=38 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.983  3282  3356 I OcPerf  : P.fwd t=1524ms path=/_assets/project-avatar-B25rVzWO.css code=200 upstreamMs=11 totalMs=52 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.995  3282  3371 I OcPerf  : P.fwd t=1544ms path=/_assets/button-CP8fzIZH.css code=200 upstreamMs=53 totalMs=61 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:41.999  3282  3372 I OcPerf  : P.fwd t=1548ms path=/_assets/index-W_zVL-x7.css code=200 upstreamMs=36 totalMs=68 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.022  3282  3368 I OcPerf  : P.fwd t=1571ms path=/_assets/runtime-ddCoIm8Y.css code=200 upstreamMs=36 totalMs=77 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.026  3282  3370 I OcPerf  : P.fwd t=1575ms path=/_assets/icon-BDQzFLnz.css code=200 upstreamMs=7 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.029  3282  3372 I OcPerf  : P.fwd t=1577ms path=/_assets/text-input-BdrW1Dhu.css code=200 upstreamMs=12 totalMs=13 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.047  3282  3356 I OcPerf  : P.fwd t=1596ms path=/_assets/dialog-BUYQZsMU.css code=200 upstreamMs=13 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.048  3282  3369 I OcPerf  : P.fwd t=1597ms path=/_assets/divider-C-h6JRGT.css code=200 upstreamMs=7 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.084  3282  3369 I OcPerf  : P.fwd t=1632ms path=/_assets/button-BFiwHX2o.js code=200 upstreamMs=16 totalMs=21 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.091  3282  3370 I OcPerf  : P.fwd t=1639ms path=/_assets/settings-gAAmvXBQ.css code=200 upstreamMs=14 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.098  3282  3368 I OcPerf  : P.fwd t=1647ms path=/_assets/tooltip-DE8rGyLW.css code=200 upstreamMs=17 totalMs=62 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.108  3282  3371 I OcPerf  : P.fwd t=1657ms path=/_assets/surface-B48-YmDS.css code=200 upstreamMs=32 totalMs=72 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.109  3282  3356 I OcPerf  : P.fwd t=1658ms path=/_assets/registry-Bd8mdXya.js code=200 upstreamMs=4 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.112  3282  3372 I OcPerf  : P.fwd t=1661ms path=/_assets/icon-button-BCwmH1dS.css code=200 upstreamMs=27 totalMs=67 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.143  3282  3370 I OcPerf  : P.fwd t=1691ms path=/_assets/runtime-CPxMNWhG.js code=200 upstreamMs=11 totalMs=44 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.152  3282  3369 I OcPerf  : P.fwd t=1701ms path=/_assets/health-CIQGyytw.js code=200 upstreamMs=7 totalMs=59 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.155  3282  3372 I OcPerf  : P.fwd t=1704ms path=/_assets/UKTBL2JL-wTtWYT1h.js code=200 upstreamMs=21 totalMs=24 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.168  3282  3368 I OcPerf  : P.fwd t=1717ms path=/_assets/EHGSTO6V-FV9wNiWv.js code=200 upstreamMs=16 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.188  3282  3370 I OcPerf  : P.fwd t=1736ms path=/_assets/V25KEN4T-DaMvtQux.js code=200 upstreamMs=15 totalMs=18 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.190  3282  3282 I OcPerf  : M.g1.firstContent t=1738ms kind=raf at=null
+  10-04 18:01:42.193  3282  3356 I OcPerf  : P.fwd t=1742ms path=/_assets/dist-B3cU5Pub.js code=200 upstreamMs=23 totalMs=67 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.193  3282  3371 I OcPerf  : P.fwd t=1742ms path=/_assets/dist-CNFvywQ0.js code=200 upstreamMs=29 totalMs=66 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.224  3282  3369 I OcPerf  : P.fwd t=1772ms path=/_assets/oc-2-DJL408O7.js code=200 upstreamMs=7 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.226  3282  3368 I OcPerf  : P.fwd t=1775ms path=/_assets/command-djTfk7gH.js code=200 upstreamMs=6 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.227  3282  3372 I OcPerf  : P.fwd t=1776ms path=/_assets/dialog-BfBFHP-m.js code=200 upstreamMs=9 totalMs=52 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.256  3282  3371 I OcPerf  : P.fwd t=1804ms path=/_assets/dialog-2IVAZGoQ.js code=200 upstreamMs=7 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.257  3282  3370 I OcPerf  : P.fwd t=1805ms path=/_assets/button-HOYPhA6G.js code=200 upstreamMs=8 totalMs=52 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.257  3282  3356 I OcPerf  : P.fwd t=1806ms path=/_assets/divider-DAv0p7wN.js code=200 upstreamMs=6 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.289  3282  3369 I OcPerf  : P.fwd t=1838ms path=/_assets/text-input-BXW7NO2C.js code=200 upstreamMs=6 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.291  3282  3368 I OcPerf  : P.fwd t=1840ms path=/_assets/ZZYKR3VO-BO-mn2iO.js code=200 upstreamMs=9 totalMs=53 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.292  3282  3372 I OcPerf  : P.fwd t=1840ms path=/_assets/surface-CFEzfnOI.js code=200 upstreamMs=6 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.319  3282  3371 I OcPerf  : P.fwd t=1867ms path=/_assets/text-field-CmbZew2a.js code=200 upstreamMs=9 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.322  3282  3370 I OcPerf  : P.fwd t=1871ms path=/_assets/tooltip-D7z2cFz8.js code=200 upstreamMs=7 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.324  3282  3356 I OcPerf  : P.fwd t=1872ms path=/_assets/icon-button-DgkrDlZx.js code=200 upstreamMs=14 totalMs=55 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.350  3282  3372 I OcPerf  : P.fwd t=1899ms path=/_assets/dist-CnByuFl8.js code=200 upstreamMs=5 totalMs=47 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.350  3282  3368 I OcPerf  : P.fwd t=1899ms path=/_assets/helpers-CbDJHSv7.js code=200 upstreamMs=4 totalMs=46 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.350  3282  3369 I OcPerf  : P.fwd t=1899ms path=/_assets/uploads-B8N2YKSq.js code=200 upstreamMs=6 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.371  3282  3371 I OcPerf  : P.fwd t=1920ms path=/_assets/project-avatar-D66hETA1.js code=200 upstreamMs=6 totalMs=47 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.382  3282  3370 I OcPerf  : P.fwd t=1931ms path=/_assets/session-progress-indicator-v2-ph7IWpU6.js code=200 upstreamMs=5 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.383  3282  3356 I OcPerf  : P.fwd t=1931ms path=/_assets/location-M1zCuQYp.js code=200 upstreamMs=4 totalMs=46 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.429  3282  3282 I OcPerf  : L.onPageFinished t=1978ms url=http://127.0.0.1:44883/
+  10-04 18:01:42.620  3282  3370 I OcPerf  : P.fwd t=2169ms path=/assets/Inter.ttf code=200 upstreamMs=10 totalMs=27 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:42.627  3282  3369 I OcPerf  : P.fwd t=2176ms path=/api/info code=200 upstreamMs=7 totalMs=9 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:42.629  3282  3371 I OcPerf  : P.fwd t=2177ms path=/_assets/IBMPlexMono-Text-BtGO5jh3.woff2 code=200 upstreamMs=7 totalMs=10 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:42.663  3282  3282 I OcPerf  : L.onPageFinished t=2211ms url=http://127.0.0.1:44883/
+  10-04 18:01:42.688  3282  3371 I OcPerf  : P.fwd t=2237ms path=/api/location code=200 upstreamMs=10 totalMs=11 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:42.695  3282  3370 I OcPerf  : P.fwd t=2243ms path=/api/project code=200 upstreamMs=8 totalMs=9 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.705  3282  3368 I OcPerf  : P.fwd t=2254ms path=/api/session code=200 upstreamMs=16 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:42.708  3282  3371 I OcPerf  : P.fwd t=2256ms path=/icons/prod/favicon.ico code=200 upstreamMs=10 totalMs=11 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:42.708  3282  3369 I OcPerf  : P.fwd t=2257ms path=/sw.js code=200 upstreamMs=11 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:43.539  3282  3369 I OcPerf  : P.fwd t=3088ms path=/api/location code=200 upstreamMs=12 totalMs=19 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:43.541  3282  3371 I OcPerf  : P.fwd t=3090ms path=/api/vcs code=200 upstreamMs=13 totalMs=15 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:43.544  3282  3368 I OcPerf  : P.fwd t=3092ms path=/api/session/active code=200 upstreamMs=17 totalMs=18 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:43.553  3282  3370 I OcPerf  : P.fwd t=3100ms path=/api/project code=200 upstreamMs=23 totalMs=33 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:43.971  3282  3370 I OcPerf  : P.fwd t=3520ms path=/api/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y code=200 upstreamMs=4 totalMs=5 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:43.973  3282  3368 I OcPerf  : P.fwd t=3522ms path=/api/session/ses_f408ec4a0ffeKjpcGKG4kfGEBR code=200 upstreamMs=6 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.026  3282  3368 I OcPerf  : P.fwd t=3575ms path=/web-app-manifest-512x512.png code=200 upstreamMs=5 totalMs=5 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.052  3282  3368 I OcPerf  : P.fwd t=3600ms path=/web-app-manifest-192x192.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.071  3282  3368 I OcPerf  : P.fwd t=3619ms path=/social-share.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.091  3282  3368 I OcPerf  : P.fwd t=3639ms path=/social-share-zen.png code=200 upstreamMs=5 totalMs=6 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.152  3282  3368 I OcPerf  : P.fwd t=3700ms path=/site.webmanifest code=200 upstreamMs=3 totalMs=45 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:44.218  3282  3368 I OcPerf  : P.fwd t=3767ms path=/oc-theme-preload.js code=200 upstreamMs=5 totalMs=52 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:44.283  3282  3368 I OcPerf  : P.fwd t=3831ms path=/index.html code=200 upstreamMs=4 totalMs=46 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:44.346  3282  3368 I OcPerf  : P.fwd t=3895ms path=/favicon.svg code=200 upstreamMs=4 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:44.365  3282  3368 I OcPerf  : P.fwd t=3914ms path=/favicon.ico code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.427  3282  3368 I OcPerf  : P.fwd t=3976ms path=/favicon-v3.svg code=200 upstreamMs=2 totalMs=45 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:44.446  3282  3368 I OcPerf  : P.fwd t=3994ms path=/favicon-v3.ico code=200 upstreamMs=2 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.466  3282  3368 I OcPerf  : P.fwd t=4015ms path=/favicon-96x96.png code=200 upstreamMs=2 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.484  3282  3368 I OcPerf  : P.fwd t=4033ms path=/favicon-96x96-v3.png code=200 upstreamMs=2 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.504  3282  3368 I OcPerf  : P.fwd t=4053ms path=/apple-touch-icon.png code=200 upstreamMs=2 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.524  3282  3368 I OcPerf  : P.fwd t=4073ms path=/apple-touch-icon-v3.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.544  3282  3368 I OcPerf  : P.fwd t=4093ms path=/icons/prod/web-app-manifest-512x512.png code=200 upstreamMs=3 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.568  3282  3368 I OcPerf  : P.fwd t=4117ms path=/icons/prod/web-app-manifest-192x192.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:44.589  3282  3368 I OcPerf  : P.fwd t=4137ms path=/icons/prod/favicon.ico code=200 upstreamMs=3 totalMs=5 len=-1 ce=null reusable=false mode=false
+Z.firstDraw          = 1049 ms
+M.g1.firstContent    = 1738 ms   <== FCP / UI-usable marker (primary)
+P.fwd asset GET count= 79  (explicitly NOT used as first-screen)
+
+==================== RUN 3 ====================
+--- marker lines (raw) ---
+  10-04 18:01:48.595  3418  3418 I OcPerf  : A.onCreate.enter t=579ms mode=gzip
+  10-04 18:01:49.103  3418  3418 I OcPerf  : Z.firstDraw t=1087ms
+  10-04 18:01:49.248  3418  3494 I OcPerf  : P.fwd t=1233ms path=/ code=200 upstreamMs=111 totalMs=112 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.344  3418  3506 I OcPerf  : P.fwd t=1329ms path=/_assets/eventListener-5JRELg8s.js code=200 upstreamMs=8 totalMs=11 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.375  3418  3494 I OcPerf  : P.fwd t=1360ms path=/_assets/icon-DR7qgx3o.js code=200 upstreamMs=39 totalMs=44 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.380  3418  3507 I OcPerf  : P.fwd t=1362ms path=/_assets/desktop-native-vJFY6KWL.js code=200 upstreamMs=21 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.380  3418  3508 I OcPerf  : P.fwd t=1364ms path=/_assets/button-BFiwHX2o.js code=200 upstreamMs=19 totalMs=25 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.383  3418  3509 I OcPerf  : P.fwd t=1367ms path=/_assets/registry-Bd8mdXya.js code=200 upstreamMs=25 totalMs=28 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.414  3418  3506 I OcPerf  : P.fwd t=1398ms path=/_assets/preload-helper-Czpn1I53.js code=200 upstreamMs=10 totalMs=64 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.461  3418  3513 I OcPerf  : P.fwd t=1445ms path=/_assets/text-input-BdrW1Dhu.css code=200 upstreamMs=11 totalMs=13 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.467  3418  3506 I OcPerf  : P.fwd t=1452ms path=/_assets/dialog-BUYQZsMU.css code=200 upstreamMs=14 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.475  3418  3507 I OcPerf  : P.fwd t=1459ms path=/_assets/runtime-ddCoIm8Y.css code=200 upstreamMs=18 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.478  3418  3509 I OcPerf  : P.fwd t=1463ms path=/_assets/icon-BDQzFLnz.css code=200 upstreamMs=4 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.478  3418  3508 I OcPerf  : P.fwd t=1463ms path=/_assets/button-CP8fzIZH.css code=200 upstreamMs=27 totalMs=30 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.506  3418  3494 I OcPerf  : P.fwd t=1491ms path=/_assets/divider-C-h6JRGT.css code=200 upstreamMs=24 totalMs=65 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.513  3418  3509 I OcPerf  : P.fwd t=1497ms path=/_assets/tooltip-DE8rGyLW.css code=200 upstreamMs=7 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.514  3418  3508 I OcPerf  : P.fwd t=1498ms path=/_assets/icon-button-BCwmH1dS.css code=200 upstreamMs=11 totalMs=15 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.516  3418  3506 I OcPerf  : P.fwd t=1501ms path=/_assets/settings-gAAmvXBQ.css code=200 upstreamMs=22 totalMs=24 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.548  3418  3513 I OcPerf  : P.fwd t=1533ms path=/_assets/surface-B48-YmDS.css code=200 upstreamMs=26 totalMs=64 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.556  3418  3507 I OcPerf  : P.fwd t=1541ms path=/_assets/project-avatar-B25rVzWO.css code=200 upstreamMs=19 totalMs=62 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.567  3418  3509 I OcPerf  : P.fwd t=1551ms path=/_assets/runtime-CPxMNWhG.js code=200 upstreamMs=12 totalMs=24 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.575  3418  3506 I OcPerf  : P.fwd t=1560ms path=/_assets/health-CIQGyytw.js code=200 upstreamMs=31 totalMs=36 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.592  3418  3494 I OcPerf  : P.fwd t=1576ms path=/_assets/session-progress-indicator-v2-BJDdxLU-.css code=200 upstreamMs=13 totalMs=62 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.610  3418  3508 I OcPerf  : P.fwd t=1595ms path=/_assets/index-W_zVL-x7.css code=200 upstreamMs=23 totalMs=76 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.631  3418  3506 I OcPerf  : P.fwd t=1615ms path=/_assets/index-Dadcbstg.js code=200 upstreamMs=20 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.631  3418  3507 I OcPerf  : P.fwd t=1616ms path=/_assets/UKTBL2JL-wTtWYT1h.js code=200 upstreamMs=13 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.634  3418  3513 I OcPerf  : P.fwd t=1617ms path=/_assets/EHGSTO6V-FV9wNiWv.js code=200 upstreamMs=11 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.642  3418  3508 I OcPerf  : P.fwd t=1626ms path=/_assets/dist-CNFvywQ0.js code=200 upstreamMs=17 totalMs=20 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.643  3418  3494 I OcPerf  : P.fwd t=1628ms path=/_assets/dist-B3cU5Pub.js code=200 upstreamMs=31 totalMs=32 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.659  3418  3509 I OcPerf  : P.fwd t=1644ms path=/_assets/rolldown-runtime-hePW80VL.js code=200 upstreamMs=15 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.676  3418  3507 I OcPerf  : P.fwd t=1660ms path=/_assets/dialog-BfBFHP-m.js code=200 upstreamMs=8 totalMs=9 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.691  3418  3418 I OcPerf  : M.g1.firstContent t=1676ms kind=raf at=null
+  10-04 18:01:49.694  3418  3508 I OcPerf  : P.fwd t=1678ms path=/_assets/command-djTfk7gH.js code=200 upstreamMs=14 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.711  3418  3513 I OcPerf  : P.fwd t=1696ms path=/_assets/V25KEN4T-DaMvtQux.js code=200 upstreamMs=10 totalMs=53 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.717  3418  3507 I OcPerf  : P.fwd t=1701ms path=/_assets/dialog-2IVAZGoQ.js code=200 upstreamMs=8 totalMs=10 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.730  3418  3506 I OcPerf  : P.fwd t=1714ms path=/_assets/text-input-BXW7NO2C.js code=200 upstreamMs=11 totalMs=14 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.730  3418  3494 I OcPerf  : P.fwd t=1714ms path=/_assets/oc-2-DJL408O7.js code=200 upstreamMs=10 totalMs=52 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.743  3418  3509 I OcPerf  : P.fwd t=1727ms path=/_assets/button-HOYPhA6G.js code=200 upstreamMs=17 totalMs=53 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.760  3418  3508 I OcPerf  : P.fwd t=1744ms path=/_assets/divider-DAv0p7wN.js code=200 upstreamMs=12 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.774  3418  3506 I OcPerf  : P.fwd t=1759ms path=/_assets/text-field-CmbZew2a.js code=200 upstreamMs=10 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.779  3418  3509 I OcPerf  : P.fwd t=1763ms path=/_assets/tooltip-D7z2cFz8.js code=200 upstreamMs=20 totalMs=23 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.806  3418  3513 I OcPerf  : P.fwd t=1791ms path=/_assets/ZZYKR3VO-BO-mn2iO.js code=200 upstreamMs=17 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.806  3418  3494 I OcPerf  : P.fwd t=1791ms path=/_assets/icon-button-DgkrDlZx.js code=200 upstreamMs=23 totalMs=53 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.815  3418  3507 I OcPerf  : P.fwd t=1800ms path=/_assets/surface-CFEzfnOI.js code=200 upstreamMs=23 totalMs=66 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.817  3418  3506 I OcPerf  : P.fwd t=1802ms path=/_assets/helpers-CbDJHSv7.js code=200 upstreamMs=15 totalMs=18 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.842  3418  3509 I OcPerf  : P.fwd t=1827ms path=/_assets/dist-CnByuFl8.js code=200 upstreamMs=5 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.843  3418  3508 I OcPerf  : P.fwd t=1828ms path=/_assets/uploads-B8N2YKSq.js code=200 upstreamMs=11 totalMs=59 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.875  3418  3513 I OcPerf  : P.fwd t=1859ms path=/_assets/session-progress-indicator-v2-ph7IWpU6.js code=200 upstreamMs=10 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.875  3418  3494 I OcPerf  : P.fwd t=1859ms path=/_assets/project-avatar-D66hETA1.js code=200 upstreamMs=11 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.883  3418  3506 I OcPerf  : P.fwd t=1868ms path=/_assets/location-M1zCuQYp.js code=200 upstreamMs=8 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:49.929  3418  3418 I OcPerf  : L.onPageFinished t=1913ms url=http://127.0.0.1:43097/
+  10-04 18:01:50.131  3418  3494 I OcPerf  : P.fwd t=2116ms path=/assets/Inter.ttf code=200 upstreamMs=7 totalMs=39 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:50.131  3418  3508 I OcPerf  : P.fwd t=2116ms path=/api/info code=200 upstreamMs=11 totalMs=11 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:50.139  3418  3513 I OcPerf  : P.fwd t=2124ms path=/_assets/IBMPlexMono-Text-BtGO5jh3.woff2 code=200 upstreamMs=18 totalMs=22 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:50.172  3418  3418 I OcPerf  : L.onPageFinished t=2157ms url=http://127.0.0.1:43097/
+  10-04 18:01:50.198  3418  3513 I OcPerf  : P.fwd t=2183ms path=/api/location code=200 upstreamMs=5 totalMs=6 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:50.206  3418  3507 I OcPerf  : P.fwd t=2191ms path=/icons/prod/favicon.ico code=200 upstreamMs=8 totalMs=10 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:50.215  3418  3508 I OcPerf  : P.fwd t=2200ms path=/api/project code=200 upstreamMs=22 totalMs=23 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:50.221  3418  3509 I OcPerf  : P.fwd t=2205ms path=/sw.js code=200 upstreamMs=23 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:50.231  3418  3494 I OcPerf  : P.fwd t=2207ms path=/api/session code=200 upstreamMs=25 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:50.232  3418  3513 I OcPerf  : P.fwd t=2211ms path=/api/session/active code=200 upstreamMs=7 totalMs=8 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.044  3418  3509 I OcPerf  : P.fwd t=3028ms path=/api/project code=200 upstreamMs=9 totalMs=9 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:51.045  3418  3513 I OcPerf  : P.fwd t=3029ms path=/api/location code=200 upstreamMs=11 totalMs=12 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.047  3418  3494 I OcPerf  : P.fwd t=3032ms path=/api/vcs code=200 upstreamMs=12 totalMs=14 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.066  3418  3508 I OcPerf  : P.fwd t=3050ms path=/api/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y code=200 upstreamMs=11 totalMs=16 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.473  3418  3508 I OcPerf  : P.fwd t=3458ms path=/api/session/ses_f408ec4a0ffeKjpcGKG4kfGEBR code=200 upstreamMs=11 totalMs=12 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.501  3418  3508 I OcPerf  : P.fwd t=3485ms path=/web-app-manifest-512x512.png code=200 upstreamMs=4 totalMs=6 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.529  3418  3508 I OcPerf  : P.fwd t=3513ms path=/web-app-manifest-192x192.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.548  3418  3508 I OcPerf  : P.fwd t=3533ms path=/social-share.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.574  3418  3508 I OcPerf  : P.fwd t=3559ms path=/social-share-zen.png code=200 upstreamMs=7 totalMs=8 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.634  3418  3508 I OcPerf  : P.fwd t=3619ms path=/site.webmanifest code=200 upstreamMs=3 totalMs=44 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:51.699  3418  3508 I OcPerf  : P.fwd t=3683ms path=/oc-theme-preload.js code=200 upstreamMs=6 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:51.766  3418  3508 I OcPerf  : P.fwd t=3751ms path=/index.html code=200 upstreamMs=5 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:51.830  3418  3508 I OcPerf  : P.fwd t=3815ms path=/favicon.svg code=200 upstreamMs=6 totalMs=49 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:51.851  3418  3508 I OcPerf  : P.fwd t=3836ms path=/favicon.ico code=200 upstreamMs=3 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.915  3418  3508 I OcPerf  : P.fwd t=3900ms path=/favicon-v3.svg code=200 upstreamMs=5 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:51.939  3418  3508 I OcPerf  : P.fwd t=3923ms path=/favicon-v3.ico code=200 upstreamMs=4 totalMs=6 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.959  3418  3508 I OcPerf  : P.fwd t=3943ms path=/favicon-96x96.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.979  3418  3508 I OcPerf  : P.fwd t=3963ms path=/favicon-96x96-v3.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:51.999  3418  3508 I OcPerf  : P.fwd t=3984ms path=/apple-touch-icon.png code=200 upstreamMs=2 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.020  3418  3508 I OcPerf  : P.fwd t=4005ms path=/apple-touch-icon-v3.png code=200 upstreamMs=3 totalMs=5 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.040  3418  3508 I OcPerf  : P.fwd t=4025ms path=/icons/prod/web-app-manifest-512x512.png code=200 upstreamMs=3 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.066  3418  3508 I OcPerf  : P.fwd t=4050ms path=/icons/prod/web-app-manifest-192x192.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.085  3418  3508 I OcPerf  : P.fwd t=4069ms path=/icons/prod/favicon.ico code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.103  3418  3508 I OcPerf  : P.fwd t=4088ms path=/icons/prod/apple-touch-icon.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.142  3418  3508 I OcPerf  : P.fwd t=4127ms path=/assets/JetBrainsMonoNerdFontMono-Regular.woff2 code=200 upstreamMs=4 totalMs=25 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:52.193  3418  3508 I OcPerf  : P.fwd t=4178ms path=/assets/Inter.ttf code=200 upstreamMs=6 totalMs=20 len=-1 ce=null reusable=false mode=false
+Z.firstDraw          = 1087 ms
+M.g1.firstContent    = 1676 ms   <== FCP / UI-usable marker (primary)
+P.fwd asset GET count= 82  (explicitly NOT used as first-screen)
+
+==================== RUN 4 ====================
+--- marker lines (raw) ---
+  10-04 18:01:56.161  3555  3555 I OcPerf  : A.onCreate.enter t=535ms mode=gzip
+  10-04 18:01:56.647  3555  3555 I OcPerf  : Z.firstDraw t=1020ms
+  10-04 18:01:56.750  3555  3625 I OcPerf  : P.fwd t=1124ms path=/ code=200 upstreamMs=109 totalMs=110 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:56.914  3555  3625 I OcPerf  : P.fwd t=1288ms path=/_assets/rolldown-runtime-hePW80VL.js code=200 upstreamMs=9 totalMs=11 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:56.957  3555  3642 I OcPerf  : P.fwd t=1331ms path=/_assets/eventListener-5JRELg8s.js code=200 upstreamMs=12 totalMs=14 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:56.967  3555  3641 I OcPerf  : P.fwd t=1340ms path=/_assets/index-Dadcbstg.js code=200 upstreamMs=18 totalMs=34 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:56.971  3555  3644 I OcPerf  : P.fwd t=1344ms path=/_assets/desktop-native-vJFY6KWL.js code=200 upstreamMs=17 totalMs=20 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:56.975  3555  3638 I OcPerf  : P.fwd t=1348ms path=/_assets/icon-DR7qgx3o.js code=200 upstreamMs=9 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.013  3555  3643 I OcPerf  : P.fwd t=1387ms path=/_assets/preload-helper-Czpn1I53.js code=200 upstreamMs=15 totalMs=64 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.017  3555  3644 I OcPerf  : P.fwd t=1391ms path=/_assets/button-CP8fzIZH.css code=200 upstreamMs=5 totalMs=6 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.054  3555  3625 I OcPerf  : P.fwd t=1428ms path=/_assets/runtime-ddCoIm8Y.css code=200 upstreamMs=10 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.057  3555  3644 I OcPerf  : P.fwd t=1426ms path=/_assets/divider-C-h6JRGT.css code=200 upstreamMs=6 totalMs=8 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.067  3555  3638 I OcPerf  : P.fwd t=1440ms path=/_assets/dialog-BUYQZsMU.css code=200 upstreamMs=16 totalMs=55 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.075  3555  3643 I OcPerf  : P.fwd t=1449ms path=/_assets/text-input-BdrW1Dhu.css code=200 upstreamMs=28 totalMs=37 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.092  3555  3641 I OcPerf  : P.fwd t=1466ms path=/_assets/icon-BDQzFLnz.css code=200 upstreamMs=22 totalMs=62 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.110  3555  3642 I OcPerf  : P.fwd t=1484ms path=/_assets/surface-B48-YmDS.css code=200 upstreamMs=10 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.111  3555  3625 I OcPerf  : P.fwd t=1484ms path=/_assets/icon-button-BCwmH1dS.css code=200 upstreamMs=26 totalMs=28 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.126  3555  3644 I OcPerf  : P.fwd t=1500ms path=/_assets/settings-gAAmvXBQ.css code=200 upstreamMs=6 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.138  3555  3643 I OcPerf  : P.fwd t=1512ms path=/_assets/project-avatar-B25rVzWO.css code=200 upstreamMs=14 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.146  3555  3638 I OcPerf  : P.fwd t=1519ms path=/_assets/tooltip-DE8rGyLW.css code=200 upstreamMs=10 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.158  3555  3643 I OcPerf  : P.fwd t=1532ms path=/_assets/health-CIQGyytw.js code=200 upstreamMs=10 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.169  3555  3641 I OcPerf  : P.fwd t=1542ms path=/_assets/session-progress-indicator-v2-BJDdxLU-.css code=200 upstreamMs=11 totalMs=60 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.181  3555  3642 I OcPerf  : P.fwd t=1554ms path=/_assets/button-BFiwHX2o.js code=200 upstreamMs=9 totalMs=55 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.189  3555  3644 I OcPerf  : P.fwd t=1563ms path=/_assets/registry-Bd8mdXya.js code=200 upstreamMs=13 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.191  3555  3625 I OcPerf  : P.fwd t=1564ms path=/_assets/index-W_zVL-x7.css code=200 upstreamMs=20 totalMs=65 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.195  3555  3638 I OcPerf  : P.fwd t=1565ms path=/_assets/runtime-CPxMNWhG.js code=200 upstreamMs=13 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.223  3555  3638 I OcPerf  : P.fwd t=1596ms path=/_assets/dist-B3cU5Pub.js code=200 upstreamMs=8 totalMs=10 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.223  3555  3643 I OcPerf  : P.fwd t=1597ms path=/_assets/EHGSTO6V-FV9wNiWv.js code=200 upstreamMs=13 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.224  3555  3641 I OcPerf  : P.fwd t=1597ms path=/_assets/UKTBL2JL-wTtWYT1h.js code=200 upstreamMs=8 totalMs=47 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.228  3555  3644 I OcPerf  : P.fwd t=1602ms path=/_assets/dialog-BfBFHP-m.js code=200 upstreamMs=14 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.263  3555  3555 I OcPerf  : M.g1.firstContent t=1637ms kind=raf at=null
+  10-04 18:01:57.277  3555  3638 I OcPerf  : P.fwd t=1651ms path=/_assets/command-djTfk7gH.js code=200 upstreamMs=25 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.278  3555  3643 I OcPerf  : P.fwd t=1652ms path=/_assets/dialog-2IVAZGoQ.js code=200 upstreamMs=22 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.279  3555  3642 I OcPerf  : P.fwd t=1653ms path=/_assets/oc-2-DJL408O7.js code=200 upstreamMs=20 totalMs=62 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.279  3555  3625 I OcPerf  : P.fwd t=1653ms path=/_assets/dist-CNFvywQ0.js code=200 upstreamMs=11 totalMs=60 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.283  3555  3641 I OcPerf  : P.fwd t=1657ms path=/_assets/V25KEN4T-DaMvtQux.js code=200 upstreamMs=17 totalMs=25 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.303  3555  3644 I OcPerf  : P.fwd t=1677ms path=/_assets/button-HOYPhA6G.js code=200 upstreamMs=14 totalMs=55 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.338  3555  3643 I OcPerf  : P.fwd t=1712ms path=/_assets/ZZYKR3VO-BO-mn2iO.js code=200 upstreamMs=21 totalMs=30 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.340  3555  3644 I OcPerf  : P.fwd t=1714ms path=/_assets/tooltip-D7z2cFz8.js code=200 upstreamMs=21 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.342  3555  3641 I OcPerf  : P.fwd t=1716ms path=/_assets/surface-CFEzfnOI.js code=200 upstreamMs=31 totalMs=40 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.354  3555  3642 I OcPerf  : P.fwd t=1728ms path=/_assets/text-input-BXW7NO2C.js code=200 upstreamMs=16 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.359  3555  3625 I OcPerf  : P.fwd t=1732ms path=/_assets/divider-DAv0p7wN.js code=200 upstreamMs=30 totalMs=61 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.359  3555  3638 I OcPerf  : P.fwd t=1733ms path=/_assets/icon-button-DgkrDlZx.js code=200 upstreamMs=14 totalMs=59 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.386  3555  3638 I OcPerf  : P.fwd t=1759ms path=/_assets/project-avatar-D66hETA1.js code=200 upstreamMs=7 totalMs=10 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.392  3555  3625 I OcPerf  : P.fwd t=1766ms path=/_assets/session-progress-indicator-v2-ph7IWpU6.js code=200 upstreamMs=8 totalMs=12 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.407  3555  3643 I OcPerf  : P.fwd t=1780ms path=/_assets/helpers-CbDJHSv7.js code=200 upstreamMs=6 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.408  3555  3641 I OcPerf  : P.fwd t=1780ms path=/_assets/dist-CnByuFl8.js code=200 upstreamMs=15 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.410  3555  3644 I OcPerf  : P.fwd t=1784ms path=/_assets/uploads-B8N2YKSq.js code=200 upstreamMs=18 totalMs=61 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.419  3555  3642 I OcPerf  : P.fwd t=1793ms path=/_assets/text-field-CmbZew2a.js code=200 upstreamMs=10 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.446  3555  3638 I OcPerf  : P.fwd t=1820ms path=/_assets/location-M1zCuQYp.js code=200 upstreamMs=6 totalMs=50 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.489  3555  3555 I OcPerf  : L.onPageFinished t=1863ms url=http://127.0.0.1:41457/
+  10-04 18:01:57.684  3555  3642 I OcPerf  : P.fwd t=2058ms path=/assets/Inter.ttf code=200 upstreamMs=11 totalMs=33 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.690  3555  3641 I OcPerf  : P.fwd t=2064ms path=/api/info code=200 upstreamMs=9 totalMs=9 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.692  3555  3644 I OcPerf  : P.fwd t=2064ms path=/_assets/IBMPlexMono-Text-BtGO5jh3.woff2 code=200 upstreamMs=8 totalMs=10 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.732  3555  3641 I OcPerf  : P.fwd t=2105ms path=/api/location code=200 upstreamMs=14 totalMs=15 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.743  3555  3644 I OcPerf  : P.fwd t=2116ms path=/api/project code=200 upstreamMs=19 totalMs=21 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.743  3555  3642 I OcPerf  : P.fwd t=2117ms path=/api/session code=200 upstreamMs=15 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.759  3555  3555 I OcPerf  : L.onPageFinished t=2132ms url=http://127.0.0.1:41457/
+  10-04 18:01:57.780  3555  3642 I OcPerf  : P.fwd t=2154ms path=/api/session/active code=200 upstreamMs=6 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.785  3555  3644 I OcPerf  : P.fwd t=2158ms path=/icons/prod/favicon.ico code=200 upstreamMs=5 totalMs=16 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.786  3555  3641 I OcPerf  : P.fwd t=2160ms path=/api/location code=200 upstreamMs=9 totalMs=13 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.787  3555  3643 I OcPerf  : P.fwd t=2161ms path=/api/vcs code=200 upstreamMs=5 totalMs=9 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:57.790  3555  3625 I OcPerf  : P.fwd t=2164ms path=/api/project code=200 upstreamMs=11 totalMs=12 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:57.857  3555  3642 I OcPerf  : P.fwd t=2231ms path=/sw.js code=200 upstreamMs=6 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:58.577  3555  3625 I OcPerf  : P.fwd t=2951ms path=/api/session/ses_f408ec4a0ffeKjpcGKG4kfGEBR code=200 upstreamMs=13 totalMs=14 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:58.578  3555  3642 I OcPerf  : P.fwd t=2951ms path=/api/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y code=200 upstreamMs=14 totalMs=15 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.084  3555  3642 I OcPerf  : P.fwd t=3458ms path=/web-app-manifest-512x512.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.109  3555  3642 I OcPerf  : P.fwd t=3483ms path=/web-app-manifest-192x192.png code=200 upstreamMs=5 totalMs=5 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.128  3555  3642 I OcPerf  : P.fwd t=3502ms path=/social-share.png code=200 upstreamMs=2 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.147  3555  3642 I OcPerf  : P.fwd t=3520ms path=/social-share-zen.png code=200 upstreamMs=3 totalMs=5 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.211  3555  3642 I OcPerf  : P.fwd t=3584ms path=/site.webmanifest code=200 upstreamMs=3 totalMs=47 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:59.279  3555  3642 I OcPerf  : P.fwd t=3653ms path=/oc-theme-preload.js code=200 upstreamMs=4 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:59.342  3555  3642 I OcPerf  : P.fwd t=3716ms path=/index.html code=200 upstreamMs=4 totalMs=44 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:59.407  3555  3642 I OcPerf  : P.fwd t=3781ms path=/favicon.svg code=200 upstreamMs=3 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:59.426  3555  3642 I OcPerf  : P.fwd t=3800ms path=/favicon.ico code=200 upstreamMs=3 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.495  3555  3642 I OcPerf  : P.fwd t=3868ms path=/favicon-v3.svg code=200 upstreamMs=3 totalMs=51 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:01:59.514  3555  3642 I OcPerf  : P.fwd t=3887ms path=/favicon-v3.ico code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.532  3555  3642 I OcPerf  : P.fwd t=3905ms path=/favicon-96x96.png code=200 upstreamMs=3 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.551  3555  3642 I OcPerf  : P.fwd t=3924ms path=/favicon-96x96-v3.png code=200 upstreamMs=2 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.576  3555  3642 I OcPerf  : P.fwd t=3949ms path=/apple-touch-icon.png code=200 upstreamMs=8 totalMs=9 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.595  3555  3642 I OcPerf  : P.fwd t=3968ms path=/apple-touch-icon-v3.png code=200 upstreamMs=2 totalMs=3 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.616  3555  3642 I OcPerf  : P.fwd t=3990ms path=/icons/prod/web-app-manifest-512x512.png code=200 upstreamMs=2 totalMs=6 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.639  3555  3642 I OcPerf  : P.fwd t=4013ms path=/icons/prod/web-app-manifest-192x192.png code=200 upstreamMs=5 totalMs=6 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.659  3555  3642 I OcPerf  : P.fwd t=4033ms path=/icons/prod/favicon.ico code=200 upstreamMs=5 totalMs=7 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.680  3555  3642 I OcPerf  : P.fwd t=4054ms path=/icons/prod/apple-touch-icon.png code=200 upstreamMs=3 totalMs=4 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.750  3555  3642 I OcPerf  : P.fwd t=4124ms path=/assets/JetBrainsMonoNerdFontMono-Regular.woff2 code=200 upstreamMs=3 totalMs=55 len=-1 ce=null reusable=false mode=false
+  10-04 18:01:59.796  3555  3642 I OcPerf  : P.fwd t=4169ms path=/assets/Inter.ttf code=200 upstreamMs=7 totalMs=19 len=-1 ce=null reusable=false mode=false
+Z.firstDraw          = 1020 ms
+M.g1.firstContent    = 1637 ms   <== FCP / UI-usable marker (primary)
+P.fwd asset GET count= 82  (explicitly NOT used as first-screen)
+
+==================== RUN 5 ====================
+--- marker lines (raw) ---
+  10-04 18:02:03.742  3690  3690 I OcPerf  : A.onCreate.enter t=516ms mode=gzip
+  10-04 18:02:04.252  3690  3690 I OcPerf  : Z.firstDraw t=1027ms
+  10-04 18:02:04.346  3690  3767 I OcPerf  : P.fwd t=1120ms path=/ code=200 upstreamMs=53 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.525  3690  3767 I OcPerf  : P.fwd t=1300ms path=/_assets/dialog-BfBFHP-m.js code=200 upstreamMs=10 totalMs=11 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.548  3690  3779 I OcPerf  : P.fwd t=1323ms path=/_assets/divider-DAv0p7wN.js code=200 upstreamMs=16 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.549  3690  3778 I OcPerf  : P.fwd t=1324ms path=/_assets/dialog-2IVAZGoQ.js code=200 upstreamMs=18 totalMs=22 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.550  3690  3776 I OcPerf  : P.fwd t=1325ms path=/_assets/command-djTfk7gH.js code=200 upstreamMs=24 totalMs=31 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.551  3690  3780 I OcPerf  : P.fwd t=1325ms path=/_assets/text-input-BXW7NO2C.js code=200 upstreamMs=25 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.574  3690  3777 I OcPerf  : P.fwd t=1349ms path=/_assets/button-HOYPhA6G.js code=200 upstreamMs=14 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.607  3690  3767 I OcPerf  : P.fwd t=1382ms path=/_assets/text-input-BdrW1Dhu.css code=200 upstreamMs=14 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.608  3690  3777 I OcPerf  : P.fwd t=1383ms path=/_assets/divider-C-h6JRGT.css code=200 upstreamMs=16 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.613  3690  3778 I OcPerf  : P.fwd t=1388ms path=/_assets/button-CP8fzIZH.css code=200 upstreamMs=20 totalMs=24 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.615  3690  3779 I OcPerf  : P.fwd t=1390ms path=/_assets/dialog-BUYQZsMU.css code=200 upstreamMs=10 totalMs=15 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.617  3690  3776 I OcPerf  : P.fwd t=1392ms path=/_assets/runtime-ddCoIm8Y.css code=200 upstreamMs=15 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.642  3690  3780 I OcPerf  : P.fwd t=1417ms path=/_assets/icon-BDQzFLnz.css code=200 upstreamMs=14 totalMs=56 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.662  3690  3776 I OcPerf  : P.fwd t=1437ms path=/_assets/surface-B48-YmDS.css code=200 upstreamMs=17 totalMs=23 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.664  3690  3778 I OcPerf  : P.fwd t=1439ms path=/_assets/icon-button-BCwmH1dS.css code=200 upstreamMs=8 totalMs=22 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.692  3690  3767 I OcPerf  : P.fwd t=1467ms path=/_assets/project-avatar-B25rVzWO.css code=200 upstreamMs=21 totalMs=23 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.696  3690  3776 I OcPerf  : P.fwd t=1471ms path=/_assets/oc-2-DJL408O7.js code=200 upstreamMs=11 totalMs=15 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.701  3690  3779 I OcPerf  : P.fwd t=1473ms path=/_assets/settings-gAAmvXBQ.css code=200 upstreamMs=8 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.711  3690  3778 I OcPerf  : P.fwd t=1486ms path=/_assets/index-W_zVL-x7.css code=200 upstreamMs=24 totalMs=30 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.712  3690  3777 I OcPerf  : P.fwd t=1487ms path=/_assets/tooltip-DE8rGyLW.css code=200 upstreamMs=8 totalMs=54 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.719  3690  3780 I OcPerf  : P.fwd t=1494ms path=/_assets/session-progress-indicator-v2-BJDdxLU-.css code=200 upstreamMs=12 totalMs=59 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.744  3690  3779 I OcPerf  : P.fwd t=1519ms path=/_assets/surface-CFEzfnOI.js code=200 upstreamMs=9 totalMs=11 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.764  3690  3778 I OcPerf  : P.fwd t=1539ms path=/_assets/rolldown-runtime-hePW80VL.js code=200 upstreamMs=13 totalMs=14 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.765  3690  3776 I OcPerf  : P.fwd t=1540ms path=/_assets/ZZYKR3VO-BO-mn2iO.js code=200 upstreamMs=13 totalMs=17 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.774  3690  3777 I OcPerf  : P.fwd t=1549ms path=/_assets/index-Dadcbstg.js code=200 upstreamMs=15 totalMs=28 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.808  3690  3690 I OcPerf  : M.g1.firstContent t=1583ms kind=raf at=null
+  10-04 18:02:04.815  3690  3780 I OcPerf  : P.fwd t=1590ms path=/_assets/icon-DR7qgx3o.js code=200 upstreamMs=20 totalMs=65 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.828  3690  3779 I OcPerf  : P.fwd t=1603ms path=/_assets/uploads-B8N2YKSq.js code=200 upstreamMs=24 totalMs=27 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.830  3690  3776 I OcPerf  : P.fwd t=1604ms path=/_assets/tooltip-D7z2cFz8.js code=200 upstreamMs=23 totalMs=32 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.833  3690  3778 I OcPerf  : P.fwd t=1608ms path=/_assets/text-field-CmbZew2a.js code=200 upstreamMs=31 totalMs=34 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.834  3690  3767 I OcPerf  : P.fwd t=1609ms path=/_assets/dist-CnByuFl8.js code=200 upstreamMs=24 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.861  3690  3777 I OcPerf  : P.fwd t=1636ms path=/_assets/icon-button-DgkrDlZx.js code=200 upstreamMs=24 totalMs=64 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.892  3690  3780 I OcPerf  : P.fwd t=1666ms path=/_assets/eventListener-5JRELg8s.js code=200 upstreamMs=16 totalMs=57 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.899  3690  3779 I OcPerf  : P.fwd t=1673ms path=/_assets/health-CIQGyytw.js code=200 upstreamMs=12 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.909  3690  3776 I OcPerf  : P.fwd t=1674ms path=/_assets/registry-Bd8mdXya.js code=200 upstreamMs=20 totalMs=21 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.909  3690  3777 I OcPerf  : P.fwd t=1675ms path=/_assets/desktop-native-vJFY6KWL.js code=200 upstreamMs=20 totalMs=22 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.909  3690  3767 I OcPerf  : P.fwd t=1677ms path=/_assets/preload-helper-Czpn1I53.js code=200 upstreamMs=21 totalMs=29 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.909  3690  3778 I OcPerf  : P.fwd t=1682ms path=/_assets/button-BFiwHX2o.js code=200 upstreamMs=23 totalMs=30 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.958  3690  3778 I OcPerf  : P.fwd t=1732ms path=/_assets/UKTBL2JL-wTtWYT1h.js code=200 upstreamMs=13 totalMs=19 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.958  3690  3767 I OcPerf  : P.fwd t=1733ms path=/_assets/EHGSTO6V-FV9wNiWv.js code=200 upstreamMs=10 totalMs=18 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.962  3690  3776 I OcPerf  : P.fwd t=1737ms path=/_assets/dist-B3cU5Pub.js code=200 upstreamMs=16 totalMs=24 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.974  3690  3777 I OcPerf  : P.fwd t=1748ms path=/_assets/runtime-CPxMNWhG.js code=200 upstreamMs=17 totalMs=36 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:04.995  3690  3767 I OcPerf  : P.fwd t=1769ms path=/_assets/project-avatar-D66hETA1.js code=200 upstreamMs=12 totalMs=14 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:05.007  3690  3777 I OcPerf  : P.fwd t=1782ms path=/_assets/location-M1zCuQYp.js code=200 upstreamMs=17 totalMs=20 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:05.008  3690  3779 I OcPerf  : P.fwd t=1783ms path=/_assets/V25KEN4T-DaMvtQux.js code=200 upstreamMs=6 totalMs=52 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:05.010  3690  3780 I OcPerf  : P.fwd t=1785ms path=/_assets/dist-CNFvywQ0.js code=200 upstreamMs=19 totalMs=58 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:05.026  3690  3776 I OcPerf  : P.fwd t=1801ms path=/_assets/helpers-CbDJHSv7.js code=200 upstreamMs=13 totalMs=48 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:05.037  3690  3778 I OcPerf  : P.fwd t=1811ms path=/_assets/session-progress-indicator-v2-ph7IWpU6.js code=200 upstreamMs=13 totalMs=60 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:05.082  3690  3690 I OcPerf  : L.onPageFinished t=1857ms url=http://127.0.0.1:33175/
+  10-04 18:02:05.260  3690  3776 I OcPerf  : P.fwd t=2035ms path=/assets/Inter.ttf code=200 upstreamMs=9 totalMs=20 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:05.272  3690  3780 I OcPerf  : P.fwd t=2047ms path=/_assets/IBMPlexMono-Text-BtGO5jh3.woff2 code=200 upstreamMs=7 totalMs=8 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:05.280  3690  3776 I OcPerf  : P.fwd t=2053ms path=/api/info code=200 upstreamMs=9 totalMs=10 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:05.319  3690  3776 I OcPerf  : P.fwd t=2094ms path=/api/location code=200 upstreamMs=4 totalMs=5 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.176  3690  3779 I OcPerf  : P.fwd t=2951ms path=/api/session/active code=200 upstreamMs=13 totalMs=14 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.177  3690  3690 I OcPerf  : L.onPageFinished t=2952ms url=http://127.0.0.1:33175/
+  10-04 18:02:06.183  3690  3780 I OcPerf  : P.fwd t=2958ms path=/api/session code=200 upstreamMs=25 totalMs=26 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:06.186  3690  3776 I OcPerf  : P.fwd t=2961ms path=/api/project code=200 upstreamMs=22 totalMs=23 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:06.191  3690  3777 I OcPerf  : P.fwd t=2966ms path=/api/location code=200 upstreamMs=7 totalMs=10 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.209  3690  3776 I OcPerf  : P.fwd t=2983ms path=/icons/prod/favicon.ico code=200 upstreamMs=9 totalMs=11 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.276  3690  3780 I OcPerf  : P.fwd t=3051ms path=/api/project code=200 upstreamMs=8 totalMs=9 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:06.278  3690  3776 I OcPerf  : P.fwd t=3052ms path=/sw.js code=200 upstreamMs=14 totalMs=16 len=-1 ce=gzip reusable=false mode=false
+  10-04 18:02:06.280  3690  3777 I OcPerf  : P.fwd t=3051ms path=/api/vcs code=200 upstreamMs=12 totalMs=12 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.322  3690  3777 I OcPerf  : P.fwd t=3097ms path=/api/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y code=200 upstreamMs=8 totalMs=12 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.323  3690  3776 I OcPerf  : P.fwd t=3097ms path=/api/session/ses_f408ec4a0ffeKjpcGKG4kfGEBR code=200 upstreamMs=5 totalMs=12 len=-1 ce=null reusable=false mode=false
+  10-04 18:02:06.875  3690  3777 I OcPerf  : P.fwd t=3650ms path=/web-app-manifest-512x512.png code=200 upstreamMs=8 totalMs=9 len=-1 ce=null reusable=false mode=false
+Z.firstDraw          = 1027 ms
+M.g1.firstContent    = 1583 ms   <== FCP / UI-usable marker (primary)
+P.fwd asset GET count= 62  (explicitly NOT used as first-screen)
+
+################ SUMMARY (UI-usable marker = M.g1.firstContent) ################
+runs captured       = 5 / 5
+firstContent values = 1829, 1738, 1676, 1637, 1583
+firstContent median = 1676 ms
+firstContent min/max= 1583 / 1829 ms
+firstDraw    values = 1173, 1049, 1087, 1020, 1027
+firstDraw    median = 1049 ms
+firstDraw    min/max= 1020 / 1173 ms
+R2 single-run value (for side-by-side): firstContent=1945 ms, firstDraw=1124 ms  <-- R2 ¡ì5
+DONE

@@ -1,0 +1,42 @@
+[
+  {
+    "dex": "classes.dex",
+    "rel_size": 8765764,
+    "dbg_size": 10745744,
+    "rel_md5": "16a2de0fa5d363ea56ee2ea116eff137",
+    "dbg_md5": "9c7b839f7d08eff3ac7ecdaa232dbfdb",
+    "IDENTICAL": false
+  },
+  {
+    "dex": "classes2.dex",
+    "rel_size": 960316,
+    "dbg_size": 124680,
+    "rel_md5": "f2cfd730aa83699cb93f91bf93cde73a",
+    "dbg_md5": "544a04e4e2e2b569d3e341c43962a9fd",
+    "IDENTICAL": false
+  },
+  {
+    "dex": "classes3.dex",
+    "rel_size": 0,
+    "dbg_size": 56632,
+    "rel_md5": "-",
+    "dbg_md5": "39a905565c7cfbc1b8640b7a0f2c70a2",
+    "IDENTICAL": false
+  },
+  {
+    "dex": "classes4.dex",
+    "rel_size": 0,
+    "dbg_size": 105356,
+    "rel_md5": "-",
+    "dbg_md5": "cb133c38675bf36e24b24b314ef4fb72",
+    "IDENTICAL": false
+  },
+  {
+    "dex": "classes5.dex",
+    "rel_size": 0,
+    "dbg_size": 834660,
+    "rel_md5": "-",
+    "dbg_md5": "e8fda0149714c01882e4d22455a73866",
+    "IDENTICAL": false
+  }
+]

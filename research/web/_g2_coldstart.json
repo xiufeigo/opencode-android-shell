@@ -1,0 +1,32 @@
+[
+  {
+    "run": 1,
+    "firstDraw": 1173,
+    "firstContent": 1829,
+    "fwd": 76
+  },
+  {
+    "run": 2,
+    "firstDraw": 1049,
+    "firstContent": 1738,
+    "fwd": 79
+  },
+  {
+    "run": 3,
+    "firstDraw": 1087,
+    "firstContent": 1676,
+    "fwd": 82
+  },
+  {
+    "run": 4,
+    "firstDraw": 1020,
+    "firstContent": 1637,
+    "fwd": 82
+  },
+  {
+    "run": 5,
+    "firstDraw": 1027,
+    "firstContent": 1583,
+    "fwd": 62
+  }
+]

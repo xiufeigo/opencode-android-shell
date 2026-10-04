@@ -1,0 +1,44 @@
+################ GAP#4  IME overlap retry (round 2) ################
+geometry 1080x2400@420; assert mInputShown=true BEFORE reading; copy RAW type=ime frame= line.
+
+wm size    : Physical size: 2560x1600 | Override size: 1080x2400
+wm density : Physical density: 320 | Override density: 420
+reverse    : host-16 tcp:4095 tcp:4095
+
+=== install ===
+Performing Streamed Install Success
+identity   : {\"t\":\"OpenCode\",\"r\":\"complete\",\"ih\":915}
+
+=== [1] open a session (so a composer exists) ===
+nav -> no_session_link
+after nav -> {\"url\":\"/\",\"ih\":915}
+
+=== [2] shadow-piercing composer search (R2's querySelectorAll returned []) ===
+search -> {\"n\":1,\"ih\":915,\"dpr\":2.625,\"items\":[{\"tag\":\"input\",\"ph\":\"Search sessions\",\"top\":115,\"bottom\":139,\"h\":24}]}
+
+=== [3] focus composer (raises IME) ===
+focus -> NOT_FOUND
+
+=== [4] REAL system tap on the composer ===
+rect -> NOT_FOUND
+
+=== [5] ASSERT mInputShown BEFORE reading insets ===
+  attempt 1: mInputShown = false
+  attempt 2: mInputShown = false
+  attempt 3: mInputShown = false
+  attempt 4: mInputShown = false
+  attempt 5: mInputShown = false
+  attempt 6: mInputShown = false
+  attempt 7: mInputShown = false
+  attempt 8: mInputShown = false
+ASSERT mInputShown = false
+
+=== [6] RAW dumpsys window insets: type=ime ===
+RAW: <no 'type=ime' line in dumpsys window insets>
+--- any line mentioning ime (for diagnosis) ---
+type=ime line count = 0
+
+=== [7] composer bounds + visualViewport ===
+bounds -> NOT_FOUND
+
+DONE
