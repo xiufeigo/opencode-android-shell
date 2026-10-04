@@ -1,147 +1,234 @@
 # 交接文档 —— OpenCode Android 壳（路线 A：托管官方前端）
 
-> 交接时间：**2026-10-04 22:3x（Asia/Shanghai）** · 硬期限：**2026-10-07 之前**
+> 交接时间：**2026-10-05（Asia/Shanghai）** · 硬期限：**2026-10-07 之前**
 > 上一版交接（原生 Kotlin 路线）见 `HANDOFF.md`；**本文件描述的是路线切换后的现状，以本文件为准。**
+> **本轮（F7）只做文档刷新**：未碰设备、未起模拟器、未跑 gradle、未改生产代码。唯一写入 = 本文件 + `research/web/HANDOFF_REFRESH_F7.md`。
 
 ---
 
 ## 0. 一句话现状
 
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
-⇒ **一致性达到满分（界面就是官方界面本身）**，代价集中在 **输入延迟与耗电**，且**代价已被量化**（见 §4）。
+⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
-**当前可交付（三份，都在 `research/deliver/`）**：
+### 0.1 当前可交付（**本轮已用 `Get-FileHash` 逐份复核，以磁盘为准**）
 
-> 🔄 **R2 重建（2026-10-05，`f989907` 之后）**：下表两份 APK 已**重新构建**，
-> **已包含通知点击修复（`f989907`）**。旧数（3,948,209 B / 8,636,901 B）**已作废**。
-> 重建与设备复验原始输出见 `research/web/DELIVER_REBUILD_R2.md`。
-
-> 🔄 **F4 重建（2026-10-05，本表之后）**：下表 release APK 已**再次重建**，
-> **新增"回合结束 ⇒ 释放常亮"修复（F4）**。重建、md5 与包内含源自查见
-> `research/web/FIX_F4_KEEPSCREEN.md` §8。
-
-> 🔄 **F5 重建（2026-10-05，本表之后）**：下表两份 APK 已**第四次重建**，
-> **新增两条接入健壮性修复（F5）**：
-> ① **后端不可达 ⇒ 友好错误页**（不再吐裸 JSON、不再泄露内部 URL/端口、带 ≥48dp 重试按钮）；
-> ② **口令错 ⇒ 明确"用户名或口令不对" + 可重试原生对话框**（不再永停 Loading 骨架屏）。
-> 新产物、md5、签名指纹与包内含源自查见 `research/web/FIX_F5.md` §5/§6。
-
-| 产物 | 体积 | md5 | 用途 |
+| 产物（`research/deliver/`） | 体积 | md5（本轮复核值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,975,389 B（≈3.79 MB）** | `76ca064b7de9246ee446f765a9198b37` | ✅ **推荐对外分发**（已签名 `sharedDebug`）；**含 F6 口令探测修复（正确口令不再被判错）**，以及此前全部修复（`f989907` 通知 / `c2eaa3b` 省电 / D1 常亮 / F4 回合释放常亮 / F5 友好错误页） |
-| `opencode-shell-web.apk`（debug） | **5,275,479 B（≈5.03 MB）** | `16c6cf8b7330e5d02879f30333800ad9` | 日常调试（debug 签名）；**同上** |
-| ~~`opencode-shell-web-*-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾用带 `-f5` 后缀的新名字落产物，与规范名并存会造成歧义 ⇒ **已归拢回上两行**（同内容、同体积；md5 差异来自签名时间戳） |
-| **R8 版** | **未产出** | — | ⚠️ **构建未成功**；12 项风险清单，**最高风险 = Tink 静默降级** ⇒ **设备验证前不要分发** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,975,389 B**（≈3.79 MB） | `76ca064b7de9246ee446f765a9198b37` | ✅ **推荐对外分发**（`sharedDebug` 签名，SHA-256 `e86b7006…0510a`）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
+| `opencode-shell-web.apk`（debug） | **5,275,479 B**（≈5.03 MB） | `16c6cf8b7330e5d02879f30333800ad9` | 日常调试（debug 签名）；同上 |
+| ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
+| **R8 版** | **未产出** | — | ⚠️ **构建未成功**；12 项风险清单，**最高 = Tink 静默降级** ⇒ **设备验证前不要分发** |
+| `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
+| `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
 
-> 🔄 **重建记录（2026-10-05）**：`f989907`（通知）→ R2 重建并设备复验；`c2eaa3b`（省电策略）→ 再次重建；**F4（回合结束释放常亮）→ 第三次重建**；**F5（接入健壮性：友好错误页 + 认证失败可重试）→ 第四次重建**。
-> **"交付物 = 代码"已用机械方式自查（F5 轮）**：release APK 的 `classes.dex` 内**确含** F5 新增串
-> （`用户名或口令不对` / `连不上服务器` / `请检查服务器地址是否正确` / `min-height:48px` / `oc-backend-probe` / `/api/info`，逐条 `contains = True`，见 `FIX_F5.md` §6）。
-> ⚠️ 上一条自查记录的 `bf542769…`（13,804 B）对应 **D1 那份**，已随 F4 重建作废。
-> ⚠️ **旧 md5 全部作废**（`9ab8ee30…` / `8dcffc57…` / `7b578cee…` / `b716cbeb…` / `b063148d…` / `bc7f3018…` / `90690556…`），它们对应的产物**不含后续修复**。
+包名统一 `com.xiufeigo.opencodeshell.web.debug`（**release 变体也用 debug 包名 + Android Debug 证书**——V5 §1.3 明确"不能据此判可用于对外分发"，是否改名/换证**待 Lead 定调**）。
+**体积对比**：原生壳 release 29.4 MB vs web 壳 release 3.98 MB ⇒ **小 7.4 倍**（**一个前端字节都不打包**）。
+**构建输出一致性**：`webapp/build/outputs/apk/release/webapp-release.apk` 与 `.../debug/webapp-debug.apk` 的 md5 与上表前两行**逐位相同** ⇒ 拿构建目录那份也安全。
 
-包名统一 `com.xiufeigo.opencodeshell.web.debug` · 签名 `CN=Android Debug`（SHA-256 `e86b7006…0510a`）
-**对比**：原生壳 debug **44.2 MB** / 原生壳 release **29.4 MB** ⇒ **web 壳 release 比原生 release 小 7.4 倍**（因为**一个前端字节都不打包**）。
+#### 已作废的旧 md5（**全部不得再被引用**）
 
-### 0.1 最新一批验证（2026-10-05，**每条都带证据**）
+| 代次 | release | debug |
+|---|---|---|
+| 更早（`9ab8ee30` 代） | `9ab8ee300027f9847c2b220bb26f2b98`（3,948,209 B） | `8dcffc572ad469f472f61594f12ea990`（8,636,901 B） |
+| R2 件 | `7b578ceec3d7e35e2fffa4da67fe2d3b`（3,961,217 B） | `b716cbeb4c66e55fcb0f497640ae5e0c`（5,145,604 B） |
+| **V5 复验的包**（**未登记在 R2 §2.1 任何一栏**，见 §0.2 裂缝 ①） | `b063148df53a1364bf5c42ce6bdca0d3`（3,965,033 B） | — |
+| F3 件 | `5aa0b63657cb599cd288ebc5597e9d21`（3,968,173 B） | `de1a476c32dc25c53d1034ea01ca1e6f`（5,200,219 B） |
+| **F4 件 = V6 复验的包**（**未登记在 R2 §2.1 任何一栏**，见 §0.2 裂缝 ①） | `bc7f30180775485ce887dc74e4489c72`（3,968,477 B） | `90690556fb509b3da6ed47fdf44f1365`（5,201,814 B，仅 F4 轮设备实测物，未进 `deliver/`） |
+| F5 `-f5` 副本（已删） | `a1484b271eab097bc3f6b9cd7e1e4b4d`（3,975,357 B） | `2b6f48224ed99d45c753a87cb6b11868`（5,275,479 B） |
+| F5 规范件（`554feb4`）= **V8 复验的包** | `627f8ed8a38aaa8caa24a39c6fe1678d0`（3,975,357 B） | — |
+
+> ⚠️ **上一版本文档把 `bf542769…`（13,804 B）列进了"已作废的 APK md5"，那是分类错误**：它是 **`assets/www/oc-host.js` 这份资产的 md5**，不是任何 APK 的 md5（R2 §2.4：source / debug APK / release APK 三者该资产 md5 均为 `bf542769…`，`MATCHES_SOURCE=True`）。**本版已订正。** 另注：F4 §8.1 记的 `oc-host.js` 是 `2b6ee8db…`（16,939 B），那是**另一份未提交的改动**（V5 §3 点名），两份后续包都带着它。
+
+**"交付物 = 代码"已用机械方式自查**（release APK 的 `classes.dex` 逐串 `contains`）：F5 轮确认 F5 新增串全在包内（`FIX_F5.md` §6）；**F6 轮确认 `buildProbeRequest` 这个 F6 新增符号在包内**（`FIX_F6_PROBE.md` §8）⇒ 同时排除了"交付的是旧包"。
+
+### 0.2 ⚠️ 文档与磁盘的裂缝（本轮发现，**需上报**）
+
+**裂缝 ① —— 两个被设备复验过的 release 包，从未登记进交付台账。**
+`research/web/DELIVER_REBUILD_R2.md` §2.1 的现行表与"显式作废清单"加起来只覆盖 **F6 / F5 / F3 / R2** 四个代次。而 **V5 复验的是 `b063148d…`（3,965,033 B）**、**V6 复验的是 `bc7f3018…`（3,968,477 B）**、**V8 复验的是 `627f8ed8…`（3,975,357 B）**——**这三个 md5 在 §2.1 里两栏都不在**。
+⇒ **后果**：§3.5「常亮三段 PASS」与 §2「错误态三态 PASS」**都是在 `bc7f3018…` / `627f8ed8…` 上验的，不是当前交付包 `76ca064b…`**。三者的代码差异很小（F6 只改 `BackendProbe` 一处、+32 B；F5/F6 的接入健壮性改动都在），但**严格讲当前交付包本身没有单独跑过这三段**。**接手人若要对外承诺，请先在 `76ca064b…` 上复跑一次。**
+
+**裂缝 ② —— R2 文件内部自相矛盾。** §2.1 宣布 R2 件（`7b578cee…` / `b716cbeb…`）"全部作废，不得再被引用"，但同一文件 **§8 交接 diff 与 §11 产物清单仍按旧值陈述**。
+
+**裂缝 ③ —— 相机权限的取证时间差。** `research/audit/PARITY_LEDGER_A4.md` §7 N-2 与 §9-4 记「`webapp/src/main/**` scoped grep `onPermissionRequest` / `RESOURCE_VIDEO_CAPTURE` / `CAMERA` = **零命中** ⇒ 相机权限未转授」；但该取证时间是 **2026-10-05 02:43–02:45**（A4 §11），而 **`FIX_F3.md`（04:1x–04:5x）之后**，`FIX_F5.md` §3.1 记「`WebHostActivity` 有 `onPermissionRequest` 对可信 origin 授 `RESOURCE_VIDEO_CAPTURE`」，`RELEASE_VERIFY_V6.md` §1.1 记设备端 `android.permission.CAMERA: granted=true`。
+⇒ **A4 的 N-2 结论已过期，需重取 grep 才能重新结账**。（N-2 的**另一半**——"用户可达路径未打通"——**依然成立**，见 §3.4。）
+
+**裂缝 ④ —— `dumpsys window` 侧证口径两轮互斥。** V5 §6.1 拿到过 `fl=KEEP_SCREEN_ON …` 行（0→1→仍 1）；V6 §5.4 记**全窗口 grep `KEEP_SCREEN_ON` 计数恒为 0**，**包括已确知 `flagSet=true` 的那 43 秒窗口内**。V6 明确「**我不能拿这个"MISS"当"没置起"的证据** —— 它与 `flagSet=true` 直接矛盾，矛盾时以 `flagSet` 为准」。⇒ **引用常亮结论时，只用宿主 `D1 applyKeepScreenOn` 日志这一路信源。**
+
+**裂缝 ⑤ —— 8,636,901 B 这个数字指向了两份不同的二进制。** G3 §4-3 指出 `RELEASE_DEVICE_VERIFY.md` 记的那版 debug `classes.dex` 与今天逐字节相同、但**当时没有 `classes5.dex`** ⇒ "那一版与今天不是同一个 APK，但其体积被当成了同一个"。引用这个旧数字时必须带上这句。
+
+### 0.3 最新一批验证（每条带证据）
 
 | 项 | 结论 | 证据 |
 |---|---|---|
-| **原生桥八项** | ✅ **全部 PASS**——含此前唯一"带保留"的**通知点击回会话**：判为**宿主缺陷**并修复 | `research/web/NOTIFICATION_CLICK_ROOTCAUSE.md`（真机 **展开通知栏→当场解析 bounds→`input tap` 真点→回读 location**；**7 条绊线，撤回即红**） |
-| **形态覆盖** | ✅ 小屏 **360dp** / 手机 **412dp** / 折叠 **442·708dp** / **切换边界 ≈768dp** / 平板 **1366×768** | `research/env/FORMFACTORS_F4.md`：**<768dp = 上游移动导航栏；≥768dp = 导航栏消失、出现 `review-toggle`**（**上游自己的响应式设计**） |
-| **IME 遮挡** | ✅ **重叠 0**（手机 / 平板 / 折叠屏都测到） | `research/web/IME_OCCLUSION_FIX.md`（**60 → 0**）+ `research/env/logs/e7_g3_phone.log`（composer `[454,514]` **整条在键盘上方**） |
-| **上游地基** | ✅ 最新 `origin/v2 = 0a46301` 上**四条全部成立**；区间 **5 个提交无一触及 `cli/src` / `app/src` / `gui-extensions/src`** | `research/web/UPSTREAM_REGRESSION_A3.md`（并纠正我们两处记录：`app-assets.ts:22` 非发布路径；`web-ui.ts` 行号原记录有误） |
-| **交付物=代码** | ✅ **机械证明**：APK 内 `assets/www/oc-host.js` 与源码 **md5 逐字节相同** | `research/web/DELIVER_REBUILD_R2.md` |
-| **dex 等价** | ✅ release 与 debug **方法级等价、差异 0 条**（条目 2 vs 5） | `research/web/GAP_CLOSE_G2.md` |
-| **首屏** | 🟢 5 次冷启**中位数 1,676 ms**（极值 1,583 / 1,829；**UI 可用标记**口径，非「最后一个 `_assets` GET」） | `research/web/GAP_CLOSE_G2.md` |
-| **设备兼容** | ✅ **WebView 预检**：阈值 **105** / 加载超时 **12 s** / **4 条绊线反向验证真红** / **不误挡 124·149·105 与"读不到版本"** | `research/web/WEBVIEW_PREFLIGHT.md` |
-
-**仍未闭环（3 条，都写清了原因）**
-1. **耗电** —— **必须真机**（模拟器无电池模型）；**套件已就绪**：`research/perf/battery_real_device.ps1` + `BATTERY_HOWTO.md`（**拒绝静默给 0**，7 条可比性判定 + 阈值 X=5% 及推导）。
-2. **debug 体积 8.64→5.15 MB 的逐 entry 明细** —— 已归因到 **dex**、且**与 `webapp/**` 任何提交无关**；**旧 APK 已不可取回**，明细需一份旧产物副本或能复现旧依赖解析的构建环境。
-3. **R8 版** —— **构建未成功**；12 项风险清单（最高：**Tink 静默降级**）⇒ **设备验证前不要分发**。
+| **接入健壮性三态** | ✅ 正确口令/错口令/不可达 **三条路径全 PASS** | §3.1；`research/web/FIX_F6_PROBE.md` §3（`emulator-6170`） |
+| **回合常亮三段** | ✅ 置起 → 释放 → 兜底不复发（**仅对 `bc7f3018…` / `627f8ed8…` 成立**） | §3.5；`FIX_F4_KEEPSCREEN.md` §5、`RELEASE_VERIFY_V6.md` §5.2、`V8_VERIFY.md` §5 |
+| **配对路径定性** | ✅ **上游行为，我们一致**（不是缺陷） | §3.3；`research/audit/PAIRING_ROUTE_VERDICT.md` |
+| **剪贴板 N-7** | ✅ PASS —— `CTRL+A`→`KEYCODE_COPY`→清空→`KEYCODE_PASTE`，哨兵串 `OC_CLIP_98765` 原样回填 | `V7_CLOSEOUT.md` §3（`adb shell cmd clipboard` 在本镜像**无实现** ⇒ 走真实 UI 路径） |
+| **原生桥八项** | ✅ 全 PASS（含"通知点击回会话"，判为宿主缺陷并修复） | `research/web/NOTIFICATION_CLICK_ROOTCAUSE.md`（真机展开通知栏→解析 bounds→`input tap` 真点→回读；7 条绊线撤回即红） |
+| **首屏** | 🟢 5 次冷启**中位数 1,676 ms**（极值 1,583 / 1,829；**UI 可用标记**口径） | `research/web/GAP_CLOSE_G2.md` §2 |
+| **dex 等价** | ✅ 两个宿主类**方法级等价、差异 0 条**（⚠️ 不是字节级等价，见 §5） | `GAP_CLOSE_G2.md` §1 |
+| **IME 遮挡** | ✅ **重叠 0**（手机实测，336.38 CSS px × dpr 2.625 = 883 px 与 `2400−1517` 逐像素相等） | `GAP_CLOSE_G3.md` §1 |
+| **WebView 预检** | ✅ 阈值 105 / 12 s / 4 条绊线反向验证真红 / 不误挡 124·149·105 | `research/web/WEBVIEW_PREFLIGHT.md` |
+| **上游地基** | ✅ `origin/v2 = 0a46301` 上四条全成立；区间 5 个提交**无一触及** `cli/src`/`app/src`/`gui-extensions/src` | `research/web/UPSTREAM_REGRESSION_A3.md` |
 
 ---
 
-## 1. 为什么是路线 A（决策依据，含行号）
+## 1. 为什么是路线 A（决策依据）
 
 | 事实 | 证据 |
 |---|---|
 | **服务端自己就托管那套 Web UI** | `packages/cli/src/app-assets.ts:22` 指向 `packages/app/dist`；SPA 回落 `packages/cli/src/services/web-ui.ts:12-24,27-33` |
-| 路由与资源前缀 | 根路径 **`/`**，资源前缀 **`/_assets/`**（无 `/app` 子路径） |
-| 运行期 | `GET /` = **200 text/html（免认证）**；`/api/info` 无认证 **401**、带 Basic **200 JSON** |
-| **上游演进速度** | `origin/v2` 两周 **526 个提交**；**会话界面已由 `packages/gui-extensions` 承载**（`btw/review/context/terminal/file/details/browser`），且该包**编译进 app**（`packages/app/package.json:66` workspace 依赖 + `gui-extensions/src/main.ts:19` 静态 `Extension.compose`） |
+| 路由与资源前缀 | 根路径 `/`，资源前缀 `/_assets/`（无 `/app` 子路径） |
+| 运行期 | `GET /` = 200 text/html（免认证）；`/api/info` 无认证 **401**、带 Basic **200 JSON** |
+| **上游演进速度** | `origin/v2` 两周 **526 个提交**；会话界面由 `packages/gui-extensions` 承载（`btw/review/context/terminal/file/details/browser`），且编译进 app |
 | 结论 | **Kotlin 重写永远追不上；托管官方 UI 才能长期一致** |
 
-**装配体积对比**（同一代码库）：
-| 形态 | 体积 |
-|---|---|
-| 原生壳 debug | 44,198,253 B |
-| 原生壳 release（已签） | 29,393,986 B |
-| 原生壳 release + R8 + shrinkResources | 17,809,425 B（−59.71%） |
-| Web 壳 debug（原有基线） | 8,636,901 B |
-| **✅ Web 壳 release 已签（非 R8，推荐分发）** | **3,948,209 B** |
-| Web 壳 release + R8 | **未产出**（见下） |
+**⇒ 由此派生一条贯穿全文的纪律**：**凡"官方界面自己就这么做"的现象，一律不改成"看起来更友好"**（配对页不可见就是典型，§3.3）。
 
-### 1.1 交付产物清单（E1 发布工程）
-
-`webapp` 现已有 **`release` 构建类型**，**对齐原生壳约定**：`sharedDebug` 签名 + `applicationIdSuffix = ".debug"`
-（见 `webapp/build.gradle.kts`；原先 web 壳的 release 缺 `.debug` 后缀，与原生壳不一致，已补齐）。
-R8 做成 **`-Pwebapp.r8=true` 开关**（默认关），不新增 buildType。
-
-| 产物 | 路径 | 体积 | MD5 | 签名 | 用途 |
-|---|---|---:|---|---|---|
-| Web 壳 debug（**R2 重建**） | `research/deliver/opencode-shell-web.apk` | **5,145,604 B** | `b716cbeb4c66e55fcb0f497640ae5e0c` | debug 签名 | 日常调试；**已含 `f989907`** |
-| **✅ Web 壳 release 已签（非 R8，R2 重建）** | `research/deliver/opencode-shell-web-release-nor8.apk` | **3,961,217 B** | `7b578ceec3d7e35e2fffa4da67fe2d3b` | **`sharedDebug`（v2，`apksigner verify` = `Verifies`）** | **推荐对外分发**；**已含 `f989907`** |
-| Web 壳 release + R8 | ❌ **未产出** | — | — | — | 被另一路的不可编译源码阻塞 |
-
-**推荐对外分发 = `opencode-shell-web-release-nor8.apk`。**
-
-**为什么暂不发 R8 版**：
-1. **未在设备上验证**（本轮无设备、无模拟器，未起停后端）——**不能**声称"已验证可运行"；
-2. R8 版**连构建成功都还没证明**：`:webapp:compileReleaseKotlin` 失败于
-   `webapp/src/.../WebHostActivity.kt` 的 7 个 `Unresolved reference`（`webViewMajor` /
-   `webViewVersionName` / `watchdogArmed` / `showDiagnostic` / `WebViewRenderProcessDetail` / `didCrash`），
-   **该文件属另一路在途改动**（本路无 `webapp/src/**` 写权限，已退避重试 11 次，未越权修）；
-3. 风险集中在**依赖侧**：本 APK **94.31% 是 dex**，R8 缩的主要是 okhttp / coroutines / **Tink**，
-   而**最可能被裁坏的 Tink 会让 `SecretStore` 静默退化成内存存储**（口令不落盘、首启反复要密码）——
-   这种"**不崩溃只降级**"的失败在静态检查里看不出来。
-
-⚠️ **另路完工提醒**：请确认 `WebHostActivity.kt` 能编译，否则**连 debug 包也构建不出来**（不只是 R8）。
-
-完整取证（命令、`BUILD SUCCESSFUL` 原文、badging、证书指纹、APK 拆包、12 项 R8 风险清单、
-建议 keep 规则、实机验收清单）见 **`research/web/WEB_RELEASE_BUILD.md`**。
+**装配体积对比**（同一代码库）：原生 debug 44,198,253 B · 原生 release 29,393,986 B · 原生 release+R8 17,809,425 B · web debug 5,275,479 B · **web release（非 R8，推荐分发）3,975,389 B** · web release+R8 **未产出**。
 
 ---
 
-## 2. 架构与实现（现在有什么）
+## 2. 架构与实现
 
-- **模块**：`webapp/`（独立 Gradle 子模块，产出第二个 APK，与原生壳并存，便于 A/B）
-- **核心文件**：`WebHostActivity.kt`（托管 + 首启流程 + 兜底）、`LoopbackProxy.kt`（**应用内回环 HTTP 代理**）、`InsetsHost.kt`（IME/insets）、`WebHostBridge.kt`（桥）、`SecretStore.kt`（凭据）
-- **为什么需要回环代理**：官方 UI 直接连后端会**撞 CORS**（旧壳靠 `LocalGateway` 剥 `Origin` 转发解决）。现在**页面与 API 同源**（都由应用内代理提供）⇒ **彻底免 CORS**，且**代理在转发时注入 Basic 头**，**口令只存 `EncryptedSharedPreferences`，页面永远拿不到口令**
-- **桥（八类，已真机验收 7 PASS + 1 PASS 带保留）**：通知 / 返回 / 文件选择保存 / 分享 / 凭据 / **IME+insets** / 屏幕常亮 / 主题
-- **首启流程**：`WebHostActivity.startProxyAndLoad()` —— 口令为空 ⇒ 弹配置框（后端地址 + 口令）；**新设备必须先播种口令**（见 §6 陷阱①）
+- **模块**：`webapp/`（独立 Gradle 子模块，产出第二个 APK，与原生壳并存便于 A/B）；R8 做成 `-Pwebapp.r8=true` 开关（默认关），不新增 buildType
+- **核心文件**：`WebHostActivity.kt`（托管+首启+兜底）、`LoopbackProxy.kt`（**应用内回环 HTTP 代理**）、`ConnectErrorPage.kt`（**F5 新增**，友好错误页）、`BackendProbe.kt`（**F5 新增**，探测+三态判定）、`InsetsHost.kt`、`WebHostBridge.kt`、`SecretStore.kt`
+- **为什么需要回环代理**：官方 UI 直连后端会撞 CORS。现在**页面与 API 同源**（都由应用内代理提供）⇒ **彻底免 CORS**；**代理转发时注入 Basic 头**，**口令只存 `EncryptedSharedPreferences`，页面永远拿不到口令**
+- **首启流程**：口令为空 ⇒ 弹配置框（后端地址+口令）；有口令 ⇒ `probeThenLaunch()` 先探 `/api/info` 再决定放行/报错
+- ⚠️ **闸门命令**（唯一验收）：`$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'` 后 `.\gradlew.bat --console=plain cleanTestDebugUnitTest testDebugUnitTest assembleDebug :webapp:testDebugUnitTest :webapp:assembleDebug`
 
 ---
 
-## 3. 已闭环（都有取证）
+## 3. 接入健壮性、配对、相机（**本轮新增/改写的三节**）
 
-| 项 | 结论 | 证据 |
+### 3.1 接入健壮性（错误态）—— 三条路径全 PASS
+
+**这是 F5 建立、F6 修好的一套机制**。核心改动：宿主在加载官方 UI **之前**主动探一次 `/api/info`（`BackendProbe.kt`），按**三态**判定分流。
+
+| 场景 | 用户看到什么 | 判定依据 | 证据 |
+|---|---|---|---|
+| **正确口令** | ✅ **直接进官方 UI**，无任何对话框 | `probe /api/info -> 200 … authHeaderSent=true` + `F5 probe OK code=200, loading official UI`；`HAS_AUTH_DIALOG=False` | `FIX_F6_PROBE.md` §3.1（`emulator-6170`）· 截图 `_f6_path1_officialui.png` |
+| **口令错** | ✅ 标题「**登录没通过**」；正文「服务器拒绝了登录：**用户名或口令不对**。请确认后重试，或重新输入口令。」；三按钮 **返回 / 继续加载 / 重试** | `probe -> 401` + `AUTH FAILED code=401; showing retryable dialog`；`uiautomator` 原文非看图转写 | `V8_VERIFY.md` §3.2 · `FIX_F6_PROBE.md` §3.2 · `FIX_F5.md` §2.4 |
+| **后端不可达** | ✅ 「**连不上服务器**」+「请检查服务器地址是否正确、设备是否连上了服务器所在的网络，然后重试。」+ 一个大号 **[重试]** 按钮 | `F5 probe unreachable reason=IOException, loading anyway`（**是 "unreachable" 不是 "AUTH FAILED"** ⇒ 三态确实分开） | `V8_VERIFY.md` §3.1 · `FIX_F6_PROBE.md` §3.3 |
+
+**四个硬要求逐条对账**（派单点名要的）：
+
+1. **不吐裸 JSON** ✅ —— 改前是整页一行 `{"error":"unexpected end of stream on http://127.0.0.1:4095/…"}`（`research/env/v7/v7_n5_noreverse2.png`）；改后是中文标题+说明+按钮。根因是原实现在 `LoopbackProxy.onForward` catch 分支把 `e.message` 原文直接序列化给 WebView；改后**异常原文仍进 logcat，但不印到用户眼前**（"日志保留原文、界面只放分类"这条分界写在 `ConnectErrorPage` 类注释里）。
+2. **不泄露内部 URL/端口** ✅ —— `ConnectErrorPage.redact` 把 `scheme://host:port/…` 整段替成 `<已隐藏>`；截图可见文本里**没有任何 host:port**。单测守着 `redact hides scheme url and host port` / `redact also covers bare host port without scheme` / `error page escapes html so detail cannot break out`。
+3. **503** ✅ —— `LoopbackProxy.kt:860 writeFriendlyPage` 用 **503 而不是 502**：事实是"我们连不上上游"。API 请求仍回 JSON，但**先 redact**。
+4. **`no-store`** ✅ —— `Cache-Control: no-store`，保证重试不被缓存挡。
+5. **≥48dp 重试按钮** ✅ —— `ConnectErrorPage.kt:126` 写死 `button{width:100%;min-height:48px;height:48px;…}`，常量 `MIN_TOUCH_TARGET_CSS_PX = 48`；`ConnectErrorPage.kt:40-44` 论证 **48 CSS px ≡ 48dp**（WebView `textZoom=1`、宿主不注入缩放）。单测 `error page retry button meets 48dp hard requirement` 钉住。三个对话框按钮另测得 142 px ≈ **54.1 dp** @420dpi。
+
+**三态判定**（`BackendProbe.kt:122 classify`，纯函数可单测）：`401/403 → AuthFailed` · `2xx/3xx → OK` · 无响应或 `5xx → Unreachable` · 其余 `→ Unknown`。探测超时 `PROBE_TIMEOUT_MS = 8_000L`，三条依据：必须小于代理 `connectTimeout` 15 s（`LoopbackProxy.kt:116`）、必须远大于实测耗时（设备侧 `/api/info` 毫秒级，带凭据探测实测 **31 ms**）、必须短到用户不感知卡住。设备侧实测带凭据探测与匿名探测**吃同一个 8 s 上界**。
+
+**「口令不进日志」= 三处核对的结论**（`FIX_F6_PROBE.md` §5，不是"看一眼觉得没有"）：
+
+| 核对面 | 方法 | 结果 |
 |---|---|---|
-| **一致性** | ✅ **满分**（就是官方界面） | 上机渲染，**Lead 亲自复核**：包已装、前台是 `WebHostActivity`、1366×768 真机截图、**684 行 logcat 里 CORS 命中 0** |
-| **手机窄屏** | ✅ **与官方一致** —— 窄屏用**上游的移动端视图导航栏**替代侧栏，非缺陷 | 结构化取证：`[data-slot=session-mobile-view-navigation]`、`box=[9,45,394,36]`、4 tab + `More options` |
-| **平板真实全屏** | ✅ `mode=fullscreen`、`mBounds=Rect(0,0-1080,2400)`、官方 UI 渲染（`title="OpenCode"`、909 DOM 节点、可见文本命中） | `research/env/NARROW_PHONE_E6.md` |
-| **IME 遮挡（可用性硬伤）** | ✅ **修复：重叠 60px → 0（手机与平板两侧）** | `research/web/IME_OCCLUSION_FIX.md` + 前后截图 |
-| **触摸靶** | ✅ 首启框 45dp → **≥48dp**，**8 条绊线 + 两次反向验证** | `research/web/TOUCH_TARGET_FIX.md` |
-| **原生桥** | ✅ 7 项 PASS + 1 项 PASS 带保留（通知"点击回会话"未从 UI 观测到，用等价 intent 验证并标注）；**修掉 1 处宿主高危安全 bug** | `research/web/BRIDGE_ACCEPTANCE.md` |
-| **闸门** | ✅ **APP 677 suites / 6136 tests / 0 failures / 0 errors / 0 skipped**；**WEBAPP 5 suites / 26 tests / 0 failures** | `research/v97_verify/gate_final.log` |
-| **v146 绊线** | ✅ 被结构变更触发后**等价改写**（未删未放宽，criteria ①–⑥ 与 `2068/2/0` 触发器一字未改） | `research/fix/CELL5_PIN_REALIGN.md` |
+| **① 日志串** | 单测扫 `BackendProbe.kt` 里每个 `Log.*(...)` 调用体，断言**不含** `$password` 插值；结论行只允许 `passLen=` 长度记法 | ✅ 通过 |
+| **② `Result` 类型** | 反射列出 `Result` 全部子类字段名，断言不含 `pass`/`secret` | ✅ 通过 |
+| **③ 打包产物** | 扫 release APK 的 `classes.dex` 字节，查字面量 `opencode:opencode` | ❌ 未找到 ⇒ 无硬编码口令 |
+| 旁证 | F5 轮机械计数：全量 logcat 中 `wrongpass123` 出现 **0 次**；三份 logcat 里口令一律只以 `passLen=8` 形式出现 | ✅ |
+
+**⇒ 落地口径：日志里只有 `passLen=<长度>` 与 `passwordPresent=true`，从不出现 `Basic <base64>`；错误文案 `HINT_AUTH` 是固定串，不含口令、不含内部 URL**（另有单测守 `HINT_AUTH` 不含"服务器地址"，避免把"改口令"误导成"查网络"）。
+
+**回归**：`:webapp` **147 / 0 失败**（F5 基线 141 ⇒ **+6**）；`:app` **6 136 / 0 失败**。`ConnectRobustnessTest` 13 → 19。**用例数只增不减，未删未放宽任何断言。**
+
+### 3.2 F6 修掉的那个缺陷（**新功能压坏旧行为的教科书案例**）
+
+**V8 轮撞上的**：即使口令**正确**，探测也必然 401。设备侧直连同一后端同一组凭据返回 **200**（`STATUS=200` / `NOAUTH_ERR=401`），而 App 播种了正确口令后拿到的是 `probe /api/info -> 401 … passLen=8 authHeaderSent=true`。
+
+**根因（`BackendProbe.kt` 两处）**：
+- `probe()` 在 `:139-148` 造了**带** `Authorization` 的 `builder`；
+- 但 `probeAsync()` 在 `:167-173` 为了让 `cancel()` 拿到在途 `Call`，**又造了一条匿名 `Request`**，并在 `:173` 把它传进 `probe()`；
+- `probe()` 的 `:148` 是 `call ?: httpClient.newCall(builder.build())` ⇒ **`?:` 左边恒命中，右边那个带凭据的 builder 被整份丢弃、永不执行**。
+⇒ **每一次探测都是匿名请求** ⇒ 后端一律 401 ⇒ 正确口令的用户被告知"用户名或口令不对"。
+
+**为什么旧日志具有欺骗性**：`authHeaderSent=${!password.isNullOrEmpty()}` 只是 `if` 分支的**局部布尔值**，表达的是"如果有口令就打算加头"，**不是"真的加了头"**。所以即使线上 401，日志照样打 `authHeaderSent=true` —— 排障时被这条日志带偏过。
+⇒ **F6 一并把它改成读实际请求**：`call0.request().header("Authorization") != null`，让"打算加头但没加"在日志里**立刻可见**。
+
+**修法**：抽出**唯一请求构造点** `buildProbeRequest(backend, password)`（认证头写死在里面），`probeAsync` 与 `probe()` 都只能从它拿请求 ⇒ **匿名分支在结构上不复存在**。外加两处支撑：`android.util.Base64` → `java.util.Base64`（前者是 framework 桩实现，**在 JVM 单测里抛 `RuntimeException("Stub!")`** ⇒ 换掉之后"探测是否带 Basic"这条断言才能在单测里守；`minSdk=26` 满足 `java.util.Base64` 的可用性——**这不是可选项，是让绊线成立的前提**）。
+
+**这一格曾被判成"界面 PASS / 判定逻辑 FAIL"**：V8 §0.3 的原话是——文案与三个按钮都对，**但触发条件是错的**（不是"口令错时出现"，而是"无论口令对错都出现"）⇒ **只能判「界面 PASS / 判定逻辑 FAIL」，不能整体记"通过"**。F6 修完后，V6/F6 各自拿到 `-> 200` + `loading official UI` 才升级为整体 PASS。
+
+### 3.3 配对 / 扫码路径的定性 —— ✅ **上游行为（我们一致）**
+
+**结论（二选一，必须选一个）：上游行为，我们在 WebView 壳里没有引入偏差，因此不是我们的缺陷。**
+
+**判定依据（四段代码，全带行号）**：
+
+| 环节 | 位置与原文 | 推论 |
+|---|---|---|
+| **① 播种点** | `_upstream/packages/app/src/runtime/platform/web.ts:55-64`，生产构建走 **`:63 return location.origin`**，恒非空 | 唯一能让它变 `undefined` 的开关是 `:56` 的 `VITE_OPENCODE_SERVER_MODE === "none"` |
+| **② 注入口** | `entry.tsx:80-89, 94-98`，`:97 servers={server ? [server] : []}` | `servers` prop 在生产构建下**至少含 1 项** |
+| **③ registry 合并** | `runtime/server/registry.tsx:213-215` `allServers = resolveServerList({ stored: store.list, props: props.servers })`；`resolveServerList` 在 `:101-123` 取**并集**；getter 在 `:255-257` | 只要 `props.servers` 非空，`servers.list.length` **就 ≥ 1** |
+| **④ 判定点** | `shell/routes/routes.tsx:76-89`，`:79` `<Show when={servers.list.length > 0} fallback={<ConnectServerScreen />}>` | **`ConnectServerScreen` 是 `fallback`，只有 registry 为空才渲染 ⇒ 永远不渲染** |
+
+**关键判据（回答"是不是我们的问题"）**：**桌面浏览器直连同一个后端，会完全一样。** 触发条件由 `entry.tsx:97` 决定，而该 prop 在**任何** web 构建下都由 `web.ts:63` 的 `location.origin` 填满；且这段判定**不在平台抽象之下** —— `routes.tsx` 是**共享路由层**，桌面浏览器打开同一个后端走的是同一份 bundle、同一个 `AppLayout`、同一个 `<Show>`。
+⇒ 正向表述：**"一个已经配置好服务器的客户端，不会再看到配对页"是 opencode web 客户端的固有属性。** 设备侧佐证：`emulator-6150` 冷启动到进 Home 全程，`ConnectServerScreen` / `connect-server` / `server-connect-title` **0 命中**。
+另：`servers/connect/screen.tsx:18-19, 44, 134-149` 显示 connect screen 本身**是健康的**（完整手填表单 + 扫码入口）—— **它没坏，只是"够不着"。**
+
+**"需要时如何进入配对"（按上游机制，不臆造）**：
+- **方式 A（推荐、唯一干净）**：用 `VITE_OPENCODE_SERVER_MODE=none` 构建上游前端。置 `none` 后 `web.ts:56` 返回 `undefined` ⇒ `entry.tsx:97` 的 `servers` 变成 `[]` ⇒ `registry.tsx:214` 合并后本地存储为空时 `list.length === 0` ⇒ `routes.tsx:79` 的 `fallback` 命中。**这正是配对页被设计出来的场景**（手填地址 / 扫 `opencode pair` 码）。
+- **方式 B（等价于 A 的运行态）**：换一个新的客户端身份（另一台设备 / 另一个 WebView 数据目录）**且**用 `none` 模式构建的包。
+- ⚠️ **常见误解纠正**：「清空浏览器/localStorage 就能看到配对页」**在默认 web 构建下不成立** —— `props.servers` 那一项来自 `location.origin`，与本地存储无关，**清空了 `store.list`，`length` 仍 ≥ 1**。要进配对页**必须**让构建侧的 `currentServerUrl` 为空。
+- 已配置客户端的服务器增删走 **Settings → Servers**，**不是**配对页。
+
+**"不改上游行为"是有意为之（一致性优先）**：强行让已配置的客户端再看到配对页，恰恰是**制造**与官方的不一致。若产品侧确实需要"已配置客户端里也能扫码换服务器"，那是**上游特性缺口**，应向上游提 issue 或在 Settings 里加入口，**不建议我们在壳里私自改上游路由判定**。
+
+> ⚠️ **取证口径声明**：`PAIRING_ROUTE_VERDICT.md` §6 如实记录，**`origin/v2` 这个 ref 在本 clone 里不存在**（`git rev-parse --verify origin/v2` → `fatal: Needed a single revision`），上述行号全部取自 **`_upstream/` 工作区检出**。**但因果链与"哪个 git ref"无关**，换 ref 不改变定性。
+
+### 3.4 相机能力的现状 —— **两件事，必须分清**
+
+> **❗ 别把这两件事混成一句。**
+
+**第一件：能力在宿主里 —— F3 用调试注入取到过 live 流（成立，未被推翻）。**
+- `FIX_F3.md` 记：`gUM=OK label=camera2 0, facing back state=live`。
+- **但 F3 自述**：取流探针走 **`oc_debug_eval` 调试注入通道，仅 DEBUG 构建**（`FIX_F3.md:195`）；探针脚本 `research/env/f3/camera_probe.js:4-34` **自建 `<video>` 挂到 `document.body`**，**不是在扫码组件里**。
+- **F3 明确写下的未验项**：**"未验的一步：没有真的走到 `PairingScanner` 组件去扫一个配对二维码……本轮验的是取流这一层"**（`FIX_F3.md:222`）；走到 `PairingScanner` 需上游 UI 进 `servers/connect` 并出示特定配对二维码，**未构造该场景**（`FIX_F3.md:379`）。
+- V7 §1.5 的结论：**取流那一层本身没有被推翻，也没有反证**；只只能说"**在交付用的 release 包上，这条证据不可复现**"。
+
+**第二件：用户可达路径未打通（在 release 交付包上）—— 三条退路全断。**
+1. **没有调试注入通道**：release 包 `BuildConfig.DEBUG=false` ⇒ `WebHostActivity.kt:725` `if (!BuildConfig.DEBUG) return` ⇒ `oc_debug_eval` 编译关闭。⚠️ **陷阱**：dex 里能搜到 `oc_debug_eval` 字符串常量，**容易误判成"通道可用"**。两条独立反证：全量 logcat（2,104 行）里 `OcWebHost/Eval` **零命中**；`run-as` 报 **`package not debuggable`**。
+2. **没有 CDP**：全仓 `WebView.setWebContentsDebuggingEnabled` **零调用** ⇒ 无 `webview_devtools_remote_*` socket，无法注入 JS、无法 `Page.navigate`。
+3. **没有 deep link**：manifest 只注册 `MAIN/LAUNCHER`（`AndroidManifest.xml:58-61`）；`STATE_URL="oc_web_url"`（`WebHostActivity.kt:69`）**只写不读**（写于 `:792`，`:391` 只从 `savedInstanceState` 取，**没有任何 intent extra 能指定 URL**）；`loadUrl` 的 origin 恒为 `LoopbackProxy.publicOrigin()`。
+4. **根因仍是 §3.3 那条**：唯一会渲染扫码入口的页面是 connect screen，而它是 `fallback` ⇒ 真机 UI 上到不了。
+
+**第三件（这属上游 connect 页的 fallback 行为，不是壳侧缺陷）**：见 §3.3 全文。
+
+**因此，当前对相机的准确表述是**：
+> **相机权限与取流能力在宿主侧具备（F3 在 DEBUG 构建上取到过 live 流；V6 实测设备端 `CAMERA: granted=true`、`uses-feature` 声明齐全）；但"用户从 App 里点进扫码"这条路径在 release 交付包上未打通，且打不通的原因是上游 connect 页的 fallback 语义（我们与官方一致）。三件分开记，不要合并。**
+
+**V7 固化的可复现脚本**：`research/env/camera_route.ps1`（12,490 B，7 个带断言的 STEP，卡在 **STEP 5 → STEP 7**）。
+🔴 **V7 明确标注的最大残留不确定性**：「**左边缘抽屉 → Settings → Add server → "Scan QR code"**」这条**唯一理论可达路径**是「**未测到**」而不是「**已排除**」—— 探测在设备掉线时中断，**不能声称它不存在**。**下一轮必须串行跑（同一时刻只开一个 adb 客户端）重试这条。**
+**要真正跑通，需要其一**：出一个 **DEBUG 构建**用于验收；**或**给 release 加一个**受控**的非 DEBUG 注入/深链钩子；**或**让 registry 可空。**需产品负责人决定。**
+
+### 3.5 回合常亮 —— 从"从未生效"到"置起 + 释放"
+
+| 阶段 | 状态 | 证据 |
+|---|---|---|
+| **V4 之前** | ❌ **死代码，功能从未生效**：`WebHostBridge.setKeepScreenOn` **零个生产调用点**；`PowerPolicy.kt:23` 的注释**自认是死代码**；`onPause` 无防御性 `clearFlags` | `FIX_D1.md` §1.2/§1.4 |
+| **D1** | ✅ **置起**：`applyKeepScreenOn` 成为**唯一 flag 写入口**（`shouldKeepScreenOn(foreground, roundActive)`），回合状态由代理喂宿主（新增 `RoundActivityTracker`），加 90 s 兜底 | `FIX_D1.md` §2/§3.4（设备原文 `0 → 1 → 0`） |
+| **D1 阶段 3** | 🔴 **兜底差点失效**：官方 UI **常驻**一条 `GET /event`，每 10 s 心跳把 `lastActivityAtMs` 顶住 ⇒ **90 s 空闲超时永不到期**。取舍原文：「超时的失败方向是"屏幕多灭一次"（无害），无限期的失败方向是"屏幕永远亮着"（耗电大户）。**宁可多灭，不可常亮。**」 | `FIX_D1.md` §3.3 |
+| **V5 抓到回归** | ❌ **"回合正常结束 ⇒ 释放"不成立**：置起 ✅（`20:11:01 flagSet=true`）、回合 4 s 正常结束 ✅、释放 ❌ —— **全程没有任何一条 `roundActive=false` 的释放行**；`+90s / +180s / +270s` **三次兜底复查全部读到 `roundActive=true` 并重新挂上**；回合结束 ~4 min 后 `dumpsys window` **仍是 1 命中**。五种办法全试过全失败（真实点击/等 35 s/等 90 s/离开会话断 EventSource/等 30 min 天花板**未等到**） | `RELEASE_VERIFY_V5.md` §6.1–§6.5（`emulator-6030`，包 `b063148d…`） |
+| **F4 修** | ✅ 在**字节层**认 `session.status`→`idle` / `session.idle`（窗口 `SSE_SCAN_WINDOW_CHARS = 2048`），**并且把心跳与回合数据分开：心跳不续命** ⇒ 90 s 兜底重新变成一条**真正可达**的安全网 | `FIX_F4_KEEPSCREEN.md` §4 |
+| **V6 独立复现 ✅** | 置起 `21:09:10 flagSet=true` → 释放 `21:09:53 flagSet=false`（+42.7 s）→ `+90 s` 落点仍 `roundActive=false flagSet=false` ⇒ **F4 改前那种"兜底又挂一次"不复发**；采样到 **T+235 s**（释放后 +192 s）全程 `WINDOW_FLAG=MISS` | `RELEASE_VERIFY_V6.md` §5.2/§5.3（`emulator-6090`，包 `bc7f3018…`） |
+| **V8 第三轮复现 ✅** | 官方 UI 真发一个回合，置起/释放/兜底三段齐全；回合结束 `+90 s` 落点 = `+121 s` 时 `dumpsys window` 无 `KEEP_SCREEN_ON` | `V8_VERIFY.md` §5（`emulator-6150`，包 `627f8ed8…`） |
+
+**⚠️ 必须一起读的三条诚实标注**：
+1. **F4 §5.4 的机制归因**：「设备上实际生效的是"**心跳不再续命 ⇒ 既有 35 s 判据首次可达**"；我新增的 `ROUND_END` 标记快路径**未被观测到触发**。」⇒ **"标记快路径已验证生效"这句话不成立**；释放延迟约 +42~59 s，**不是"回合结束的即刻"**。F4 §10 把它列为未闭环第 1 条。
+2. **30 min 硬天花板仍未在设备上验证**（V5 §6.5 明确"未等到"，D1 §3.4、F4 §10 沿用此未闭环）。
+3. **结论只对被验的那几份包成立**（`b063148d…` ❌ / `bc7f3018…` ✅ / `627f8ed8…` ✅ / `76ca064b…` **未单独验**），且**只用宿主 `D1 applyKeepScreenOn` 日志这一路信源**（裂缝 ④）。
+
+**离开前台 ⇒ 释放 ✅**（F4 §6）：回合中按 HOME，**4 s 内 `HIT → MISS`**；释放走 `onPause` 的无条件 `clearFlags`，**那条路径不打印 `D1` 行** ⇒ **没日志 ≠ 没释放**。
+**回归**：F4 恢复后 `:webapp` **128 / 0 失败**（新增 `RoundStreamSignalReleaseTest` 13 例）；⚠️ `:app:testDebugUnitTest` **F4 轮未跑**（未改 `app/**`），F6 轮才补跑（6 136 / 0）。
 
 ---
 
 ## 4. 量化结果（**同机 / 跨机必须分清**）
 
-### 4.1 输入延迟（**三层分离实验，2026-10-05 更新**）
-**同一台设备、同一几何、同一方法、每层 n=240（2 轮 × 120）**：
+### 4.1 输入延迟（三层分离实验，同一台设备、同一几何、每层 n=240）
 
 | 层 | 被测物 | p50 | p90 |
 |---|---|---|---|
@@ -149,102 +236,146 @@ R8 做成 **`-Pwebapp.r8=true` 开关**（默认关），不新增 buildType。
 | **L1** | **官方 UI 的 composer** | **30.73 ms** | **62.10 ms** |
 | **L2** | **原生壳的输入框** | **26.40 ms** | **32.71 ms** |
 
-**分解**：
 | 差 | p50 | p90 | 含义 |
 |---|---|---|---|
 | **L1 − L0** | **+6.05 ms** | **+32.88 ms** | ⇒ **代价来自"官方 UI 自己"**（受控输入 + 每次按键重渲染） |
 | **L0 − L2** | **−1.72 ms** | **−3.49 ms** | ⇒ **WebView 基线并不慢，p50 还比原生略快** |
 
-**判定：`可修（需改上游）`** —— 且**这推翻了更早"是 WebView 管线固有"的怀疑**。
-⇒ **剩余差距 = 使用官方 UI 的票价**，已量化（**+6.05 ms p50 / +32.88 ms p90**），**不是壳侧缺陷**；
-⇒ **因此"输入条走原生"的混合方案对 p50 并无必要**（WebView 不是瓶颈）；要压 p90 只能改上游的输入/渲染方式，**而按规矩不许改上游**。
-（前情：P5 曾测得"我们代码在输入路径上无重活"——`longtask n=0`、**输入处理器 p90 仅 0.1 ms**——那条**依然成立**。）
+**判定：`可修（需改上游）`** ⇒ **剩余差距 = 使用官方 UI 的票价，不是壳侧缺陷**；**"输入条走原生"的混合方案对 p50 并无必要**；要压 p90 只能改上游的输入/渲染方式，**而按规矩不许改上游**。
+**⇒ 若产品负责人仍要求压 p90，那需要改上游，与"不改上游"的约束冲突，需拍板。**（前情：P5 测得"我们代码在输入路径上无重活"——`longtask n=0`、输入处理器 p90 仅 0.1 ms——依然成立。）
 
+### 4.2 其它量
 
-### 4.2 其它三量
 | 量 | 值 | 备注 |
 |---|---|---|
-| 首屏 | **FCP 2130 ms / DOM 挂载 2572 ms**（P2） | 与原生（~2.7–3.3 s）相当；⚠️ 早期报过的 `≥15,395 ms` **是量错**（量成了"最后一个 `_assets` GET"） |
-| 帧时 | Web 28–31 ms vs 原生 17/26 ms | **87% 是模拟器地板**（400 行纯文字 DOM 对照 + 关动画对照证实）；跨轮/跨机，**只有方向可信** |
-| 耗电 | ❌ **测不到** | **模拟器无电池模型/无 rail 电流**；**只能真机** |
+| 首屏 | **5 次冷启中位数 1,676 ms**（UI 可用标记口径） | 与原生相当；⚠️ 早期报过的 `≥15,395 ms` **是量错**（量成了"最后一个 `_assets` GET"） |
+| 帧时 | Web 28–31 ms vs 原生 17/26 ms | **87% 是模拟器地板**；跨轮/跨机**只有方向可信** |
+| 耗电 | ❌ **测不到** | 模拟器无电池模型/无 rail 电流 ⇒ **只能真机**（§5 ①） |
 
 ---
 
-## 5. 未闭环（接手第一件事）
+## 5. 未闭环（**接手第一件事；诚实、短**）
 
-1. **耗电** —— **必须真机**（模拟器给不了）；需要跑 `batterystats` 的固定脚本（脚本已存在于 `research/measure/`）
-2. **真机帧时 / 真机输入延迟** —— 所有数字目前来自模拟器（软件渲染地板占 87%），**真机上的绝对值未知**
-3. **帧时同机复测** —— P5 补了一部分，跨机部分**不作结论**
-4. **输入延迟** —— 已定性为**上游 UI 的固有代价**（§4.1），**不是壳侧缺陷**；**混合输入条对 p50 无必要**（WebView 基线并不慢）。**若产品负责人仍要求压 p90，那需要改上游，与"不改上游"的约束冲突，需拍板。**
-5. **R8 版未产出** —— 构建未成功；有 12 项风险清单（最高：Tink 静默降级）；**设备验证前不要分发**。另：G1 自报 `onRenderProcessGone` 分支与 `:app` 回归两项未闭环（`:app` 由 Lead 跑过：**677/6136/0**）。
-6. **AVD 定义占 ≈39.8 GB**（进程已关；`OC_Phone_Test`/`B`/`C`、`OC_Narrow_Test`、`Medium_Desktop_B`）
-7. **上游快照** —— 工作区停在 `702a73d`（2026-09-20），**落后 `origin/v2` 526 提交**；所有审计已改用 **git 对象读 `origin/v2`**（不切工作区）
+### 🔴 两条硬骨头
+
+**① 耗电 mAh —— 必须真机，我们拒绝编数字。**
+模拟器**无电池模型、无 rail 电流** ⇒ 前几轮**全部是代理量，不是耗电**。P6 轮 §7.1 原文：「**本轮没有任何耗电数字。我们没有真机。**」P6 测到的 CPU **−5.6%** 低于其自定阈值 ⇒ 判为"**在测量噪声内，不构成证据**"（**这不等于"两者一样"，更不等于"省了 5.6% 电"**）；WakeLock 两边都是 `size=0` ⇒ **对本项目不具区分度**。
+**套件已就绪，可直接跑**：`research/perf/battery_real_device.ps1`（40,542 B）+ `research/perf/BATTERY_HOWTO.md`（21,138 B，含可比性判定与阈值推导）。
+**禁止**：没有真机数据就写 mAh 数字，或拿"连接断了"当"省电了"的证据。
+
+**② R8 版未产出 —— 设备验证前不要分发。**
+1. **连构建成功都还没证明**：`webapp/.../WebHostActivity.kt` 曾在 R8 编译下出现 7 个 `Unresolved reference`（`webViewMajor` / `webViewVersionName` / `watchdogArmed` / `showDiagnostic` / `WebViewRenderProcessDetail` / `didCrash`）。⚠️ **另路完工提醒：请先确认该文件能编译，否则连 debug 包都构建不出来。**
+2. **风险集中在依赖侧**：本 APK **约 94% 是 dex**，R8 缩的主要是 okhttp / coroutines / **Tink**，而**最可能被裁坏的 Tink 会让 `SecretStore` 静默退化成内存存储**（口令不落盘、首启反复要密码）—— 这种"**不崩溃只降级**"的失败在静态检查里看不出来。
+3. **12 项风险清单** + 建议 keep 规则见 `research/web/WEB_RELEASE_BUILD.md`。
+
+### 🟡 其余（照报告如实列出）
+
+| # | 项 | 状态 | 出处 |
+|---|---|---|---|
+| 3 | **相机扫码 live 流** | release 包不可复现；「左边缘抽屉→Settings→Add server」**未测到而非已排除** | §3.4；`V7_CLOSEOUT.md` §6 |
+| 4 | **N-4 文件选/存/上传三条分支** | 选文件成功路径未跑；`saveContent` 与 `onShowFileChooser` **从未设备验证** —— **这是最大的未测面** | `PARITY_LEDGER_A4.md` §7 N-4 |
+| 5 | **N-3 终端 PTY / WebSocket 通道** | 面板 UI 由官方 UI 提供，但**通道从未设备验证**；`pty.exited` 链未核对；SSE 无 soak | A4 §7 N-3；`ROUTE_A_WIRING.md:203-205` |
+| 6 | **N-1 通知投递策略** | "该会话有打开 tab 则静音"门控**未实现**（路线 A 下上游门控被绕过）；"有焦点即放弃 vs 延迟复查"策略差异**待产品裁决** | A4 §7 N-1 |
+| 7 | **release ⇄ debug 的 dex 逐条比对** | 只做了**方法签名集合**比对（差异 0 条）；**dex 字节级不等价**（5/5 条目全不同）。"携带同一路由路径"是**强推断，不是设备实测** | `GAP_CLOSE_G2.md` §1.4/§1.5 |
+| 8 | **当前交付包未单独复验三段结论** | 见 §0.2 裂缝 ① | — |
+| 9 | **常亮 `ROUND_END` 快路径 / 30 min 天花板** | 前者未被观测到触发；后者未在设备验证 | `FIX_F4_KEEPSCREEN.md` §10 |
+| 10 | **debug 体积 8.64→5.15 MB 的逐 entry 明细** | 已归因到 **dex**、与 `webapp/**` 任何提交无关（8 次提交逐行比对只加了 release 块）；但**旧 APK 既不在 git 也不在磁盘**（`.gitignore` 含 `*.apk`）⇒ **明细产不出来**，需一份旧产物副本 | `GAP_CLOSE_G3.md` §2.2/§2.4 |
+| 11 | **`onRenderProcessGone` 未接** | `WebViewPreflight.Reason` 枚举有 `RENDER_CRASH`，但未找到接线 ⇒ **该分支文案可能永远走不到** | `FIX_D1.md` §5 N-5 |
+| 12 | **模拟器静默退出根因** | F4/R2/V6/V7 多轮记录，形态与"几何 2400 > 物理 1600"一致，**各轮均不下因果结论** | `HOUSEKEEPING.md` 已执行记录 |
+| 13 | **CDP 在 release 包不可用** | 所有"CDP 取 title/节点数/可见文本"的口径均未按 CDP 完成，已降级为 `uiautomator` + 截图 + 应用自身 `web[LOG]`，并逐处标注 | `V8_VERIFY.md` §2.4/§8-2 |
+| 14 | **AVD 定义占 ≈39.8 GB** | 进程已关；`OC_Phone_Test`/`B`/`C`、`OC_Narrow_Test`、`Medium_Desktop_B` 仍在磁盘，**待产品负责人决定** | `HOUSEKEEPING.md` |
+| 15 | **上游快照滞后** | 工作区停在 `702a73d`（2026-09-20）；审计一律改用 git 对象读 `origin/v2`（**不切工作区**） | A4 抬头 |
+| 16 | **原生壳 `app/**` 的最终去留** | 属产品/架构决策 | A4 §10-6 |
 
 ---
 
 ## 6. 血泪教训（**接手必读，别再踩**）
 
+### 6.1 关于"测到了"
+
 | # | 教训 |
 |---|---|
-| ① | **新 AVD 必须先播种口令**，否则 `SecretStore` 为空 ⇒ 弹口令对话框 ⇒ **四量全测成对话框却看起来跑完了**（口令 = `opencode`）。**任何测量前先做前置检查：确认跑的是官方 UI** |
-| ② | **WebView 版本是硬门槛**：**WebView 83 解析不了官方前端的现代 ESM ⇒ 页面纯白**；**124/149 可解析** ⇒ 目标设备需较新 WebView |
-| ③ | **边到边 `setDecorFitsSystemWindows(false)` 会抵消 `adjustResize`**；**宿主给的 IME inset 正确，但页面必须自己用它** |
-| ④ | **不许把"最后一个 `_assets` GET"当成首屏**（曾因此报出错的 `≥15.4s`） |
-| ⑤ | **对比数字必须同轮、同参数、同设备指纹**；**不许跨轮沿用**（本冲刺三次结论反转都源于此：首屏 ≥15.4s、原生 17ms、输入延迟"无差异"） |
-| ⑥ | **`5636` 等 PC 形态镜像是 freeform**，**改 `wm size` 也不会让它全屏** ⇒ 验"真实全屏"必须用非 freeform 实例 |
-| ⑦ | **Goldfish 图形 HAL（`/vendor/lib64/hw/mapper.ranchu.so`）在导入图形缓冲时会 SIGABRT**，打死 `surfaceflinger` ⇒ `system_server` 无限重启（某台手机镜像上实测） |
-| ⑧ | **绊线必须能被反向验证触发**；**判据与守护对象必须一致**（本仓最看重的一条） |
+| ① | **「0 命中」可能只是「从没发生过」**。V4 记"事后全机 `KEEP_SCREEN_ON` 命中 0"、看着像"策略在位、按预期清干净了"——**错**。D1 §1.5 原文：**那 0 命中是"空集上的真命题"，因为置起从未发生过**；这是**功能缺失**，不是省电优化。**⇒ 不许把"清干净了"当成"功能正常工作"。反向验证时"无差异"同样要问：是"两者一样"，还是"这指标本来就没区分度"（P6 的 WakeLock 就是后一种）。** |
+| ② | **"修一半"是最难发现的一类**。F5 修好冷启动那条路径后，**"在配置对话框里新播错口令"那条仍原样落回骨架屏**（它绕过探测直接 `launch`），F5 §0 自曝并补修（`WebHostActivity.kt:649`）。**⇒ "新功能可能压坏旧行为"必须写成逐条检查项：新逻辑接了哪几条入口？每条入口都走到了吗？** |
+| ③ | **新加的"防御"可能把对的判成错的**。F6 的匿名化把**正确口令**判成"用户名或口令不对"——一个安全向的改动压坏主流程。**⇒ 同上检查项反向适用：新逻辑改变了"什么算成功"的判据吗？判据变了就要重跑旧的成功用例。** |
+| ④ | **改断言必须反向验证，且要防"假绿"**。F6 第一版绊线只断言 `buildProbeRequest` **单独调用**时带凭据，而真实路径 `probeAsync` 走的是另一条 ⇒ 把 `probeAsync` 改回匿名请求后 `BUILD SUCCESSFUL / TEST_EXIT=0`（**假绿**）。补上"守接线不守构造器"的用例后才真红。D1 另抓到一个**绊线自身失效**：原断言只判 `contains("scheduleKeepScreenOnBackstopCheck()")`，而函数**定义**就紧跟其后 ⇒ 删掉**调用点**照样绿。**⇒ 原文：「一个不会失败的绊线比没有绊线更危险（它给的是假安全感）。」两条教训都已写进对应用例的 KDoc。** |
+| ⑤ | **绊线的判据必须与守护对象一致**，且**用例数只增不减**（`ConnectRobustnessTest` 13→19、`:webapp` 128→141→147）。 |
+| ⑥ | **不许拿旧数顶替新数，不许把"没测到"写成"通过"**。R2 §7 原文：「"0"写上去就是造假」；G3 抬头：「**没有用旧数顶替、没有把"没测到"写成"通过"**」。G2 §3.1：「**我不拿新产物自己跟自己比来伪造差值表。**」 |
+| ⑦ | **矛盾时以更强的信源为准，并写明矛盾**。V6 §5.4 原文：「**我不能拿这个"MISS"当"没置起"的证据** —— 它与 §5.2 的 `flagSet=true` 直接矛盾，**矛盾时以 §5.2 为准**。」 |
+| ⑧ | **量对了才算数**：不许把"最后一个 `_assets` GET"当首屏（曾因此报出错的 `≥15.4s`）；对比数字必须同轮、同参数、同设备指纹，**不许跨轮沿用**（本冲刺三次结论反转都源于此）。 |
+| ⑨ | **`BUILD SUCCESSFUL` + `UP-TO-DATE` 不等于重建**（R2 §1.1：gradle 根本没重新打包，**收工的仍是旧字节**）。真重建的口径是"每一个 task 都真跑了"（R2 记 `35 actionable tasks: 35 executed`）。 |
+| ⑩ | **验证"修复在包里"要用真实标识符**。R2 §2.4 自曝：用自造关键字 grep 资产打出 `fix-marker hits: 0`，一度像"修复没进包"——**该结论是错的**，关键字根本不是代码里的真实标识符；改用与源码**逐字节比 md5** 后确认。 |
+
+### 6.2 关于交付物
+
+| # | 教训 |
+|---|---|
+| ⑪ | **交付物命名不许另起后缀**。F5 用 `opencode-shell-web-release-f5.apk` 落产物，与规范名 `…-nor8.apk` 并存 ⇒ 直接造成"**哪个才是交付物**"的歧义。**⇒ 新一轮一律落规范名。** |
+| ⑫ | **文档里的 md5 必须与磁盘产物一致**。Lead 两次靠自查抓到脱节（R2 轮、F6 轮各一次）。**⇒ 每次重建后第一件事：`Get-FileHash` 复核，并把该代次的 md5 显式登记进 `DELIVER_REBUILD_R2.md` §2.1 的现行表 + 作废清单两栏**（V5/V6/V8 复验过的那三个包当时就没登记进去，见 §0.2 裂缝 ①）。 |
+| ⑬ | **区分"APK 的 md5"和"包内资产的 md5"**。`bf542769…`（13,804 B）是 `oc-host.js` 的 md5，曾被误列进"已作废的 APK md5"（见 §0.1 末注）。 |
+| ⑬' | **别用文本级往返写回改含历史编码破损的文件**。F6 第一次改 `DELIVER_REBUILD_R2.md` §2.1 时用了"读成字符串再整体写回"，**把该文件里既有的非法 UTF-8 字节洗成了替换字符**，diff 从 10/3 炸到 160+/152-。已 `git checkout --` 还原，改用**按字节切行、只替换目标行字节**重做。**⇒ 该文件至今仍含坏字节，任何工具都读不回原字。** |
+| ⑭ | **改断言前先想清楚：是改断言还是改产品**。F5 有一条测试先红后绿（`auth page never echoes password`），**按规矩改的是产品文案、不是断言**（`HINT_AUTH` 补上"用户名或口令不对"），复跑通过。 |
+
+### 6.3 设备与安全纪律（**产品负责人明确要求**）
+
+**硬规矩**（原文见 `research/HOUSEKEEPING.md`）：
+
+1. **谁起谁关** —— 起了实例的必须收尾 `adb -s <serial> emu kill`，并**抄出复核输出**（`OC_*/Medium_Desktop_B` 残留进程 = 0 + 端口已释放 + `adb devices` 回读）。
+2. **只关自己起的** —— 判据是 **AVD 名**（我们的是 `OC_*` / `Medium_Desktop_B`）。**用户的 `MCRemote_*` / `DSH_*` / `T7x_*` 与任何来源不明的实例，一律禁止 kill。**
+3. **禁止 `adb kill-server`**（它服务的是**共享设备连接**，会扰动用户的设备）。
+4. **禁止 `-a` / 全量 kill / 通配符杀进程**；只按 **serial** 或**已确认属自己的 AVD 名**关。
+5. **故意保留必须显式声明** + 下一轮补关。⚠️ `emu kill` 会自拉一个**瞬时拆卸辅助进程**（`emulator -kill <pid> -sleep 20`，命令行**不带 `-avd`**）—— 按规则 2 判据**不属于你**，**不许 kill**，25 s 后自然归零再复查。
+6. **后端 `4095` 不是你的** —— 由 Lead 起，各轮**全程未起停**，只做 `adb reverse tcp:4095 tcp:4095`；收尾复核同一 pid 才算合格。
+7. **gradle 锁** `.agent-gradle-lock`：等 → 写 → 前台跑 → 用**顶层 `rm --`** 释放（`Remove-Item` 被本地安全策略拦，**不许绕过**）。
+8. **同一时刻只开一个 adb 客户端** —— V7 轮后台任务与前台检查并发发 adb，出现过"进程仍在但 `adb devices` 已空"的不一致状态；**串行跑是规避手段**。
+
+**两条环境坑（每轮都会踩）**：
+
+| 坑 | 现象 | 正确做法 |
+|---|---|---|
+| **`-skin pixel_tablet` 不是合法 skin 名** | 首次起机直接 `ERROR \| unknown skin name 'pixel_tablet'` 退出。`pixel_tablet` 是**设备档位/几何**，不是 skin 目录 | **不传 `-skin`**；几何一律走 `wm size 1080x2400` + `wm density 420` 覆盖，收尾 `wm size reset` / `wm density reset` 并回读确认**无 `Override` 行** |
+| **`adb reverse --remove` 被本机安全策略拦**（判为 delete-like） | 命令被拦下 | **未绕过**；改用"**指向错端口法**"制造不可达：`adb reverse tcp:4095 tcp:4099`（4099 无人监听），事后用 `reverse tcp:4095 tcp:4095` 覆盖恢复 |
+
+**其它两条测量坑**（本镜像）：① **软键盘下 `adb shell input text` 会丢字符/错位** ⇒ 播种口令前先 `ime disable …LatinIME` + `settings put secure show_ime_with_hard_keyboard 0`，并做一次**可见字段对照实验**证明输入保真（V8 §2.2），否则会把"输入丢字符"误判成"后端拒绝正确口令"；② **`dumpsys window insets` 在本 build 不存在**（`Bad window command, or no windows match: insets`）。
+
+**写盘纪律**：先写盘再动手；并发期间**禁止 `git add -A`**；**禁用 git 回退/checkout 改行尾**（`core.autocrlf=false`）。
 
 ---
 
-## 7. 环境与纪律
+## 7. 关键文件索引
 
-### 7.1 后端
+| 主题 | 文件 |
+|---|---|
+| **交付物台账（体积/md5/作废清单）** | `research/web/DELIVER_REBUILD_R2.md` §2.1 |
+| 路线决策（服务端自托管） | `research/web/SERVER_HOSTS_UI.md` |
+| Web 宿主骨架 / 路线 A 接线 | `research/web/WEBHOST_SKELETON.md` · `ROUTE_A_WIRING.md` |
+| **接入健壮性（错误态）** | `research/web/FIX_F5.md` · **`FIX_F6_PROBE.md`** |
+| **复验（规范名包）** | `research/web/V8_VERIFY.md` |
+| **配对路径定性** | `research/audit/PAIRING_ROUTE_VERDICT.md` |
+| **一致性结账（97 条）** | `research/audit/PARITY_LEDGER_A4.md` |
+| **相机 / N-5 / N-7 收尾** | `research/web/V7_CLOSEOUT.md` · 脚本 `research/env/camera_route.ps1` |
+| 常亮（置起 / 释放 / 兜底） | `research/web/FIX_D1.md` · `FIX_F4_KEEPSCREEN.md` · `RELEASE_VERIFY_V5.md` · `RELEASE_VERIFY_V6.md` |
+| 省电策略 | `research/perf/POWER_ACTIONS_P6.md` |
+| 发布工程 / R8 风险 | `research/web/WEB_RELEASE_BUILD.md` |
+| 桥契约 / 桥验收 / 通知点击 | `research/web/NATIVE_BRIDGES.md` · `BRIDGE_ACCEPTANCE.md` · `NOTIFICATION_CLICK_ROOTCAUSE.md` |
+| 预检 / IME / 触摸靶 / 窄屏 | `WEBVIEW_PREFLIGHT.md` · `IME_OCCLUSION_FIX.md` · `TOUCH_TARGET_FIX.md` · `NARROW_SIDEBAR_CHECK.md` |
+| 缺口收口（G2 / G3） | `research/web/GAP_CLOSE_G2.md` · `GAP_CLOSE_G3.md` |
+| 上游回归 | `research/web/UPSTREAM_REGRESSION_A3.md` |
+| 性能四量 | `research/perf/{STARTUP_AND_FRAMETIME,FRAMETIME_AND_GZIP,POST_FIX_RETEST,INPUT_PATH_P5}.md` |
+| **耗电套件（本轮未跑）** | `research/perf/battery_real_device.ps1` · `BATTERY_HOWTO.md` |
+| **环境与清理纪律** | `research/HOUSEKEEPING.md` |
+| **本轮改动摘要** | `research/web/HANDOFF_REFRESH_F7.md` |
+
+---
+
+## 8. 后端启动口径
+
 ```powershell
 $env:OPENCODE_SERVER_PASSWORD='opencode'
 Start-Process "$env:USERPROFILE\.bun\bin\opencode2.exe" -ArgumentList 'serve','--port','4095','--hostname','127.0.0.1' -WindowStyle Hidden
 # 必须用 v2 可执行文件（PATH 上的 opencode 是 npm opencode-ai@1.18.33 = v1，会遮住 v2）
 # 认证：用户名固定 opencode + Password = OPENCODE_SERVER_PASSWORD
 ```
-
-### 7.2 闸门（唯一验收命令）
-```powershell
-$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
-.\gradlew.bat --console=plain cleanTestDebugUnitTest testDebugUnitTest assembleDebug :webapp:testDebugUnitTest :webapp:assembleDebug
-```
-
-### 7.3 设备与清理（**产品负责人明确要求**）
-见 `research/HOUSEKEEPING.md`：
-- **谁起谁关**：起了实例的必须收尾 `adb -s <serial> emu kill`，并**抄出复核输出**（进程 0 残留 + 端口已释放）
-- **只关自己起的**：按 AVD 名判定（我们的是 `OC_*` / `Medium_Desktop_B`）；**用户的 `MCRemote_*`/`DSH_*`/`T7x_*` 与来源不明实例一律禁止 kill**
-- **禁止 `adb kill-server`**（扰动共享设备连接）、**禁止 `-a`/通配符杀进程**
-- 故意保留必须显式声明 + 下一轮补关
-- **可复用的现代镜像**：`android-35;google_apis_playstore_tablet` + `pixel_tablet` 外形（**boot ~71 s、WebView 124**）；**端口挑 ≥5830 偶数、冲突就换、不抢**
-- **gradle 锁**：`.agent-gradle-lock`（等→写→前台跑→**用顶层 `rm --`** 释放；`Remove-Item` 被本地安全策略拦截，**不许绕过**）
-
-### 7.4 写盘纪律
-- 先写盘再动手；并发期间**禁止 `git add -A`**（会把别的 agent 的半成品一起提交）
-- **禁用 git 回退/checkout 改行尾**（`core.autocrlf=false`）
-- 改断言必须有**反向验证**（撤回 ⇒ 必须红），**用例数只增不减**
-
----
-
-## 8. 关键文件索引
-
-| 主题 | 文件 |
-|---|---|
-| 路线决策（服务端自托管） | `research/web/SERVER_HOSTS_UI.md` |
-| Web 宿主骨架 | `research/web/WEBHOST_SKELETON.md` |
-| 路线 A 接线（代理/认证/上机） | `research/web/ROUTE_A_WIRING.md` + `ROUTE_A_device-5636_02-sessions.png` |
-| 桥契约 / 桥验收 | `research/web/NATIVE_BRIDGES.md` / `BRIDGE_ACCEPTANCE.md` |
-| IME 遮挡修复 | `research/web/IME_OCCLUSION_FIX.md`（60→0） |
-| 触摸靶修复 | `research/web/TOUCH_TARGET_FIX.md` |
-| 窄屏一致性 | `research/web/NARROW_SIDEBAR_CHECK.md` / `research/env/NARROW_BOTTOMBAR_E7.md` |
-| 形态验证（手机/平板） | `research/env/NARROW_PHONE_E6.md` / `PHONE_AVD_VERIFY.md` |
-| 性能（四量） | `research/measure/AB_NATIVE_VS_WEB.md` · `research/perf/{STARTUP_AND_FRAMETIME,FRAMETIME_AND_GZIP,POST_FIX_RETEST,INPUT_PATH_P5}.md` |
-| 一致性审计（v2.0.22 基线） | `research/audit/PARITY_GAP_V2BASELINE.md` |
-| 环境清理规矩 | `research/HOUSEKEEPING.md` |
-| 交付 APK | `research/deliver/opencode-shell-web.apk` |
 
 ---
 
@@ -253,3 +384,4 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 - `main` —— 路线 A 的全部工作（**已推到 `origin/main`**）
 - `native-kotlin-snapshot` —— 路线切换**之前**的原生 Kotlin 版本快照（`55c27a5`，**已推到远端**，便于回看/回退）
 - 远端：`https://github.com/xiufeigo/opencode-android-shell.git`
+- ⚠️ **`origin/v2` 这个 ref 在本 clone 里不存在**（`git rev-parse --verify origin/v2` → `fatal: Needed a single revision`）。上游证据一律走 `git show` / `git grep … origin/v2 -- packages/*/src`，**或读 `_upstream/` 只读检出**（并注明行号取自哪一处）。
