@@ -1,0 +1,274 @@
+# target: title=OpenCode url=http://127.0.0.1:38367/server/aHR0cDovLzEyNy4wLjAuMTozODM2Nw/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y
+{
+  "title": "OpenCode",
+  "origin": "http://127.0.0.1:38367",
+  "href": "http://127.0.0.1:38367/server/aHR0cDovLzEyNy4wLjAuMTozODM2Nw/session/ses_efc722bf9ffeWaRdoFTwbmYj1Y",
+  "nodeCount": 635,
+  "metaViewport": "width=device-width, initial-scale=1, interactive-widget=resizes-content, viewport-fit=cover",
+  "text200": "O Counting from 1 to 4000, one number per line 1 Session Changes Files Terminal E2ECHK5554u1z v151A1 reply in three words: A WINSE2ECHK5554u1z v151A2 reply in three words: A WINS Build · GPT-6.1 Sol ·",
+  "geom": {
+    "innerW": 442,
+    "innerH": 552,
+    "dpr": 4,
+    "screenW": 442,
+    "screenH": 552,
+    "docClientW": 442,
+    "docClientH": 552
+  },
+  "Q1_sidebar": {
+    "asideCount": 0,
+    "navCount": 0,
+    "asides": [],
+    "headerButtons": [
+      {
+        "aria": "Tabs",
+        "txt": "O\nCounting from 1 to",
+        "x": 9,
+        "y": 9,
+        "w": 418,
+        "h": 28
+      }
+    ]
+  },
+  "Q2_composer": {
+    "composerCount": 1,
+    "composers": [
+      {
+        "tag": "div",
+        "aria": "Prompt",
+        "x": 21,
+        "y": 427,
+        "w": 400,
+        "h": 60
+      }
+    ]
+  },
+  "Q3_touch": {
+    "totalMatched": 25,
+    "visible": 18,
+    "degenerateProxies": 0,
+    "realInteractive": 18,
+    "realBelow48": 16,
+    "below48": [
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Tabs",
+        "txt": "O\nCounting from 1 to 4",
+        "x": 9,
+        "y": 9,
+        "w": 418,
+        "h": 28,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": "tab",
+        "aria": null,
+        "txt": "Session",
+        "x": 9,
+        "y": 45,
+        "w": 97,
+        "h": 35,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": "tab",
+        "aria": null,
+        "txt": "Changes",
+        "x": 106,
+        "y": 45,
+        "w": 97,
+        "h": 35,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": "tab",
+        "aria": null,
+        "txt": "Files",
+        "x": 203,
+        "y": 45,
+        "w": 97,
+        "h": 35,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": "tab",
+        "aria": null,
+        "txt": "Terminal",
+        "x": 300,
+        "y": 45,
+        "w": 97,
+        "h": 35,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "More options",
+        "txt": "",
+        "x": 403,
+        "y": 51,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Jump to latest",
+        "txt": "",
+        "x": 208,
+        "y": 378,
+        "w": 26,
+        "h": 22,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Revert message",
+        "txt": "",
+        "x": 359,
+        "y": -65,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Copy message",
+        "txt": "",
+        "x": 393,
+        "y": -65,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Copy response",
+        "txt": "",
+        "x": 25,
+        "y": 44,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Revert message",
+        "txt": "",
+        "x": 359,
+        "y": 196,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Copy message",
+        "txt": "",
+        "x": 393,
+        "y": 196,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Copy response",
+        "txt": "",
+        "x": 25,
+        "y": 339,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Add images and files",
+        "txt": "",
+        "x": 29,
+        "y": 495,
+        "w": 28,
+        "h": 28,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": null,
+        "txt": "MiMo-V2.6-Pro",
+        "x": 61,
+        "y": 495,
+        "w": 161,
+        "h": 28,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "1"
+      },
+      {
+        "tag": "button",
+        "role": null,
+        "aria": "Send",
+        "txt": "",
+        "x": 389,
+        "y": 497,
+        "w": 24,
+        "h": 24,
+        "disp": "flex",
+        "vis": "visible",
+        "op": "0.4"
+      }
+    ]
+  },
+  "Q4_overflow": {
+    "deScrollW": 442,
+    "deClientW": 442,
+    "deScrollH": 552,
+    "deClientH": 552,
+    "bodyScrollW": 442,
+    "bodyClientW": 442,
+    "horizOverflow": false,
+    "deltaPx": 0,
+    "overflowElements": []
+  }
+}
