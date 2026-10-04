@@ -213,10 +213,24 @@ class WebHostBridge(
     }
 
     // ---- 通知点击回会话 ---------------------------------------------------
+    /**
+     * 把通知带回来的 sessionId 交给页面。
+     *
+     * 🔴 N1 修掉的 bug：原先这里把 sessionId **再包一层 JSON** 才发给页面——
+     * `JSONObject().put("sessionId", id).toString()` 得到 `'{"sessionId":"n1-x"}'`，
+     * 于是 `onOpenSession()` 收到的入参是这个**字符串**而不是会话 id 本身。
+     * facade 的 `onOpenSession(sessionId)` 把入参当裸 id 用
+     * （`oc-host.js:282-291`），页面最终拿到
+     * `e.detail.sessionId === '{"sessionId":"n1-session-777"}'`，
+     * 拿它当 session id 去查会话必然查不到 ⇒ **"点击回到会话"名存实亡**。
+     *
+     * 真机证据见 `research/web/NOTIFICATION_CLICK_CLOSE.md` §4。
+     * 现在直接发 sessionId 本身；`pageArg()` 是本仓唯一的取值口径。
+     */
     fun deliverOpenSession(sessionId: String?) {
-        val payload = JSONObject().apply { put("sessionId", sessionId ?: "") }.toString()
+        val arg = NotifierHost.clickPlan(sessionId).pageArg()
         ctx.runOnUiThread {
-            ctx.evaluateJs("window.__ocAndroid && window.__ocAndroid.onOpenSession(${quote(payload)});")
+            ctx.evaluateJs("window.__ocAndroid && window.__ocAndroid.onOpenSession(${quote(arg)});")
         }
     }
 

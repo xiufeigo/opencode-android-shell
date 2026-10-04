@@ -36,6 +36,8 @@ foreach ($p in $ours) {
 | 时间 | 动作 | 结果 |
 |---|---|---|
 | 2026-10-04 21:2x | 关闭 `OC_Narrow_Test`（`emulator-5824`） | `OK: killing emulator, bye bye`；**0 残留进程**；**端口 5824 已释放**；用户设备 `5606/5620` 未受影响 |
+| 2026-10-05 00:5x | 关闭 `OC_Perf_Test`（`emulator-5860`，端口 5860） | `adb -s emulator-5860 emu kill` → `OK: killing emulator, bye bye`；复核 **0 残留进程**（无 `OC_Perf_Test` 进程）、**端口 5860 无监听**（仅剩 `TimeWait` 残根 `OwningProcess=0`）；用户设备 `5654`(DSH_T80_Tablet)/`5656`(DSH_T80_Phone) **未受影响**；未执行 `adb kill-server`（收尾后 `adb devices` 仍正常列出 3 台） |
+| 2026-10-05 01:0x | **关闭** `OC_Notify_Test`（`emulator-5870`，端口 5870，N1 通知轮自建） | `adb -s emulator-5870 emu kill` → `OK: killing emulator, bye bye`；复核 **0 残留进程**（无 `OC_Notify_Test` 进程）、**端口 5870 无 LISTEN**；`adb devices` 已无 `5870`；用户设备 `5654`(DSH_T80_Tablet)/`5656`(DSH_T80_Phone) **仍在、未受影响**；未执行 `adb kill-server`、未用 `-a`/通配符。上表第 40 行"故意保留"已由本行闭环（那一路是 N1 起的就是 N1 关） |
 
 ## 四、仍未处理（等产品负责人决定）
 
