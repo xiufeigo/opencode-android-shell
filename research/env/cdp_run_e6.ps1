@@ -17,7 +17,6 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-[string]$Serial = 'emulator-5824'
 $serial = $Serial
 $pkg = 'com.xiufeigo.opencodeshell.web.debug'
 if (-not $Js -and -not $JsFile -and -not $SetupJson -and -not $ClearSetup) { Write-Error "need -Js/-JsFile/-SetupJson/-ClearSetup"; exit 1 }

@@ -1,0 +1,15 @@
+{
+  "side": "web",
+  "serial": "emulator-5840",
+  "A_passwordPresent": true,
+  "A_not_asking_dialog": true,
+  "B_OcPerfJS_occurrences": 116,
+  "B_page_markers": 4,
+  "C_cdp_title": "OpenCode",
+  "C_loose_keyword_diagnostic": "H",
+  "C_password_inputs": 0,
+  "C_cdp_text_sample": "Home\n0\nAll projects\nToday\nO\nCounting from 1 to 4000, one number per line\nopencode-android-shell\nYesterday\nD\nFriendly greeting\nDSH 临时会话\nOlder\nS\nandroid-e2e\nSyste",
+  "C_dom_nodes": 910,
+  "C_not_a_dialog": true,
+  "VERDICT_OFFICIAL_UI": true
+}
