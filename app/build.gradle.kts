@@ -39,6 +39,12 @@ android {
         }
         release {
             isMinifyEnabled = false
+            // Signed with the same shared debug key as `debug`, and shipped under
+            // `<applicationId>.debug` so it is a *separate* app from the official
+            // build: the two can sit side by side on one device, and the suffix
+            // makes them tellable apart in the launcher and in `adb shell pm list`.
+            signingConfig = signingConfigs.getByName("sharedDebug")
+            applicationIdSuffix = ".debug"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
