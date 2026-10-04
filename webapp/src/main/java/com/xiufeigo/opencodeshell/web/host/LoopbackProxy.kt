@@ -68,6 +68,18 @@ class LoopbackProxy(
     private val passwordProvider: () -> String?,
     private val httpClient: OkHttpClient = defaultClient(),
     private val sseIdleReadTimeoutMs: Long = SSE_IDLE_READ_TIMEOUT_MS,
+    /**
+     * P2 性能修复开关（同一个 APK 内 baseline/fixed 对照，见 `WebHostActivity.EXTRA_PERF_MODE`）。
+     *
+     * 打开后做两件事，都只影响**传输**，不改语义：
+     *  1. **透传压缩**：`Accept-Encoding: gzip` 转发给上游，拿回 gzip 字节。
+     *     （默认路径把它 drop 掉了 ⇒ 252 个 `_assets/` 下的 js/css 全是明文体积。）
+     *  2. **连接复用**：不再对每个响应强制 `Connection: close`，改成按
+     *     `Content-Length` 定界并在同一 socket 上连续服务多个请求。
+     *
+     * 认证、同源、CORS 语义、SSE/WS 行为均**不变**。
+     */
+    private val fixedMode: Boolean = false,
 ) : Closeable {
 
     companion object {
@@ -151,14 +163,19 @@ class LoopbackProxy(
             socket.use { sock ->
                 val input = BufferedInputStream(sock.getInputStream())
                 val output = sock.getOutputStream()
-                val parsed = readHttpRequest(input) ?: return
-                val target = base + (parsed.path.ifEmpty { "/" }) +
-                    (parsed.query?.let { "?$it" } ?: "")
-                if (isWebSocketUpgrade(parsed)) {
-                    tunnelWebSocket(sock, input, output, parsed, target)
-                    return
+                // P2：默认一 socket 一请求。`fixedMode` 下在同一 socket 上连续服务多个请求
+                // （HTTP/1.1 keep-alive），把 252 次 TCP 握手压到 WebView 的并发连接数。
+                while (true) {
+                    val parsed = readHttpRequest(input) ?: return
+                    val target = base + (parsed.path.ifEmpty { "/" }) +
+                        (parsed.query?.let { "?$it" } ?: "")
+                    if (isWebSocketUpgrade(parsed)) {
+                        tunnelWebSocket(sock, input, output, parsed, target)
+                        return
+                    }
+                    val reusable = onForward(output, parsed, target)
+                    if (!fixedMode || !reusable) return
                 }
-                onForward(output, parsed, target)
             }
         } catch (e: Exception) {
             Log.w(TAG, "client error: ${e.message}")
@@ -178,12 +195,20 @@ class LoopbackProxy(
      *     自己的 ACAO 丢掉，避免"代理以为自己是 CORS 边界"的误读。
      *  3. 目标地址是**逐字拼接**（不再有 token/prefix 改写），因为页面与 API 同源。
      */
-    private fun onForward(output: OutputStream, parsed: ParsedRequest, target: String) {
+    private fun onForward(output: OutputStream, parsed: ParsedRequest, target: String): Boolean {
         Log.i(TAG, "${parsed.method} $target")
+        val tStart = System.nanoTime()
         val builder = Request.Builder().url(target)
         for ((name, value) in parsed.headers) {
             if (shouldDropRequestHeader(name)) continue
             runCatching { builder.addHeader(name, value) }
+        }
+        // P2 · 修复 1：透传压缩。默认路径把 accept-encoding 一起 drop 了，
+        // 于是上游按 identity 回明文 —— 252 个 js/css 全是未压缩体积。
+        // 显式写而不是"原样转发客户端的"：WebView 发的 `br, gzip, deflate` 里
+        // br 只有在 OkHttp 装了 brotli 依赖时才会被上游回，且解码不了 ⇒ 只承诺 gzip。
+        if (fixedMode) {
+            runCatching { builder.header("Accept-Encoding", "gzip") }
         }
         val password = runCatching { passwordProvider() }.getOrNull()
         var authSent = false
@@ -221,9 +246,10 @@ class LoopbackProxy(
                 ),
                 msg.toByteArray(),
             )
-            return
+            return false
         }
 
+        var reusable = false
         response.use { resp ->
             if (resp.code == 401 || resp.code == 403) {
                 // 只在认证失败时打，且**只打长度/是否为空**，绝不回显口令本身。
@@ -243,9 +269,46 @@ class LoopbackProxy(
                 headers[name] = resp.headers.value(i)
             }
             // 由我们自己按实际字节数写，避免上游 Content-Length 与传输不一致。
-            headers.remove("Content-Length")
-            headers["Connection"] = "close"
-            if (isEventStreamRequest(parsed)) {
+            //
+            // P2 · 修复 2：默认路径丢掉 Content-Length 并强制 `Connection: close`
+            // —— 客户端无法定界，只能"读到一个连接关掉为止"，于是 252 个资源
+            // = 252 次 TCP 握手。`fixedMode` 下改为**用真实 body 长度定界**，
+            // 客户端读完就知道可以复用这条连接发下一个请求。
+            val isHead = method == "HEAD"
+            val streaming = isEventStreamRequest(parsed)
+            // P2 · 修复 2：让响应**有 Content-Length**，从而能被定界、连接能被复用。
+            //
+            // 上一轮只信任 `body.contentLength()`，结果 417 个响应里只有 12 个拿得到：
+            // 上游对大部分资源用 `Transfer-Encoding: chunked`，**没有** Content-Length，
+            // 于是 `contentLength()` = -1 → 我们只能 `Connection: close` →
+            // 客户端必须等 socket 关闭才知道 body 结束，每个请求白等 ~44ms。
+            //
+            // 所以这里在 fixedMode 下把**非流式**响应体读干净、自己算长度。
+            // SSE 绝不能这么做（无限流），走原路径。
+            var buffered: ByteArray? = null
+            if (fixedMode && !streaming) {
+                if (resp.body?.contentLength() ?: -1L >= 0) {
+                    val len = resp.body?.contentLength() ?: -1L
+                    headers["Content-Length"] = len.toString()
+                    reusable = true
+                } else {
+                    val bytes = runCatching { resp.body?.bytes() }.getOrNull()
+                    if (bytes != null) {
+                        buffered = bytes
+                        headers["Content-Length"] = bytes.size.toString()
+                        reusable = true
+                    }
+                }
+                headers["Connection"] = if (reusable) "keep-alive" else "close"
+            } else {
+                headers.remove("Content-Length")
+                headers["Connection"] = "close"
+            }
+            // 缓冲过就不能再把流写出去（body 已被消费）。
+            if (buffered != null) {
+                headers.remove("Transfer-Encoding")
+            }
+            if (streaming) {
                 Log.i(
                     TAG,
                     "sse response ${resp.code} ctype=${resp.headers["Content-Type"]} " +
@@ -253,15 +316,30 @@ class LoopbackProxy(
                         "ce=${resp.headers["Content-Encoding"]}",
                 )
             }
+            val tHdr = System.nanoTime()
             output.write("HTTP/1.1 ${resp.code} ${resp.message.ifBlank { "OK" }}\r\n".toByteArray())
             for ((name, value) in headers) output.write("$name: $value\r\n".toByteArray())
             output.write("\r\n".toByteArray())
             output.flush()
-            if (method != "HEAD") {
-                resp.body?.byteStream()?.let { copyStreaming(it, output) }
+            if (!isHead) {
+                val b = buffered
+                if (b != null) {
+                    output.write(b)
+                } else {
+                    resp.body?.byteStream()?.let { copyStreaming(it, output) }
+                }
             }
             output.flush()
+            val tEnd = System.nanoTime()
+            PerfMarks.markIfEnabled(
+                "P.fwd",
+                "path=${parsed.path.take(58)} code=${resp.code} " +
+                    "upstreamMs=${(tHdr - tStart) / 1_000_000} totalMs=${(tEnd - tStart) / 1_000_000} " +
+                    "len=${headers["Content-Length"] ?: -1} ce=${resp.headers["Content-Encoding"]} " +
+                    "reusable=$reusable mode=$fixedMode",
+            )
         }
+        return reusable
     }
 
     /** WebSocket 隧道（PTY 终端）。抄 legacy `tunnelWebSocket`，逐字握手 + 双向 copy。 */

@@ -1,0 +1,23 @@
+[
+  {
+    "run": 1,
+    "LaunchState": "COLD",
+    "TotalTime": 1553,
+    "WaitTime": 1555,
+    "ThisTimeTotal": null
+  },
+  {
+    "run": 2,
+    "LaunchState": "COLD",
+    "TotalTime": 1419,
+    "WaitTime": 1422,
+    "ThisTimeTotal": null
+  },
+  {
+    "run": 3,
+    "LaunchState": "COLD",
+    "TotalTime": 1329,
+    "WaitTime": 1333,
+    "ThisTimeTotal": null
+  }
+]

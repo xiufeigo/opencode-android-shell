@@ -1,0 +1,8 @@
+{
+  "label": "web",
+  "pkg": "com.xiufeigo.opencodeshell.web.debug",
+  "amstart_TotalTime_ms": 1330,
+  "last_app_log": "09:23:16.501",
+  "log_count": 252,
+  "content_ready_lower_bound_ms": 15395.0
+}

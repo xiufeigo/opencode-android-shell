@@ -35,6 +35,20 @@ object SecretStore {
     /** 没有配置过时的上游默认值（`adb reverse tcp:4095 tcp:4095` 之后的可达地址）。 */
     const val DEFAULT_BACKEND_URL = "http://127.0.0.1:4095"
 
+    /**
+     * **宿主专用键**：可以由回环代理 / Activity 读，但**拒绝**经 JS 桥读写。
+     *
+     * [KEY_SERVER_PASSWORD] 在这里的原因：代理转发时自己补 `Authorization`，页面全程
+     * 不需要知道口令（见 WebHostActivity 的启动链注释）。而 `getSecret` 是
+     * `@JavascriptInterface`，页面一行 `__ocAndroid.getSecret('serverPassword')` 就能把
+     * 明文口令读进 JS 作用域——等于把凭据散给页面上的每一个第三方脚本，与上面那条
+     * 设计前提直接冲突。挡住之后代理照常工作（它读的是 Kotlin 侧，不走桥）。
+     */
+    private val HOST_ONLY_KEYS = setOf(KEY_SERVER_PASSWORD)
+
+    /** 这个键是否禁止经 JS 桥访问。 */
+    fun isHostOnly(key: String): Boolean = key in HOST_ONLY_KEYS
+
     @Volatile
     private var prefs: SharedPreferences? = null
 

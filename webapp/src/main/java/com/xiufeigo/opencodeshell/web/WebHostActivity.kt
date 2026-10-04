@@ -28,6 +28,7 @@ import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
+import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import org.json.JSONObject
@@ -58,7 +59,35 @@ class WebHostActivity : AppCompatActivity() {
         const val FACADE_ASSET = "$ASSET_PREFIX/www/oc-host.js"
         private const val STATE_URL = "oc_web_url"
         private const val STATE_SCROLL_Y = "oc_web_scroll_y"
+
+        /**
+         * BR1 验收用的**调试**注入通道：`--es oc_debug_eval "<js>"` 让宿主把一段 JS
+         * 丢进当前页面（`evaluateJavascript`），结果打进 logcat 的 `OcWebHost/Eval`。
+         * 官方 UI 自己不会主动调 `postMessage`/`pickFile`/`share` 这些桥，没有这个
+         * 通道就只能从 UI 点，测不到它们。
+         *
+         * 只在 `BuildConfig.DEBUG` 生效（release 构建直接忽略），且不写文件、不回显口令。
+         */
+        const val EXTRA_DEBUG_EVAL = "oc_debug_eval"
+        private const val EVAL_TAG = "OcWebHost/Eval"
+        /** 页面还没加载完时注入要等一下，否则 evaluateJavascript 落在 about:blank 上。 */
+        private const val EVAL_SETTLE_MS = 1200L
+
+        /**
+         * P2 性能归因：同一个 APK 跑两种行为，**改前/改后二进制完全一致**，
+         * 避免"重编译带来的差异"污染对比。
+         *
+         *  - `baseline`（默认）：不改任何行为，作为改前基准。
+         *  - `fixed`：打开 gzip 透传 + 连接复用（见 [LoopbackProxy] 的 `fixedMode`）。
+         *
+         * 用 `--es oc_perf_mode fixed` 传。
+         */
+        const val EXTRA_PERF_MODE = "oc_perf_mode"
     }
+
+    /** P2：本次运行是 `baseline` 还是 `fixed`。 */
+    private var perfMode: String = "baseline"
+    private val fixedMode: Boolean get() = perfMode == "fixed"
 
     private lateinit var webView: WebView
     private lateinit var bridge: WebHostBridge
@@ -88,11 +117,16 @@ class WebHostActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        perfMode = intent?.getStringExtra(EXTRA_PERF_MODE) ?: "baseline"
+        PerfMarks.mark("A.onCreate.enter", "mode=$perfMode")
         super.onCreate(savedInstanceState)
+
+        PerfMarks.mark("A.onCreate.superDone", "mode=$perfMode")
 
         bridge = WebHostBridge(this) { proxy?.publicOrigin() }
         fileChooser = FileChooserHost(this)
         NotifierHost.ensureChannels(this)
+        PerfMarks.mark("B.helpersReady")
 
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -104,10 +138,14 @@ class WebHostActivity : AppCompatActivity() {
             overScrollMode = WebView.OVER_SCROLL_NEVER
         }
         setContentView(webView)
+        PerfMarks.mark("C.webviewCreated+setContentView")
 
         configureSettings(webView.settings)
         webView.addJavascriptInterface(bridge, WebHostBridge.INJECT_NAME)
+        PerfMarks.mark("D.settingsConfigured")
         installFacade(webView)
+        installPerfProbe(webView)
+        PerfMarks.mark("E.facadeInstalled")
         webView.webViewClient = HostWebViewClient()
         webView.webChromeClient = HostWebChromeClient()
         webView.setDownloadListener { url, ua, _, _, _ ->
@@ -115,8 +153,22 @@ class WebHostActivity : AppCompatActivity() {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         }
 
+        // P2：WebView 第一次真正把内容画进窗口的时刻（"首帧白屏"的终点）。
+        webView.viewTreeObserver.addOnDrawListener(
+            object : android.view.ViewTreeObserver.OnDrawListener {
+                private var first = true
+                override fun onDraw() {
+                    if (first) {
+                        first = false
+                        PerfMarks.mark("Z.firstDraw")
+                    }
+                }
+            }
+        )
+
         insets = InsetsHost(window, webView) { payload -> pushInsets(payload) }
         installBackHandler()
+        PerfMarks.mark("F.insetsReady")
 
         pendingPageScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0) ?: 0
         // R1：先确认凭据 → 起回环代理 → 从**代理 origin** 加载官方 UI。
@@ -124,6 +176,8 @@ class WebHostActivity : AppCompatActivity() {
         val restored = savedInstanceState?.getString(STATE_URL)
         startProxyAndLoad(restored)
         consumeNotificationIntent(intent)
+        consumeDebugEval(intent)
+        PerfMarks.mark("G.onCreate.exit")
     }
 
     /**
@@ -153,11 +207,13 @@ class WebHostActivity : AppCompatActivity() {
 
     /** 起代理并把首页指到代理 origin。 */
     private fun launch(backend: String) {
+        PerfMarks.mark("H.launch.enter", "backend=$backend mode=$perfMode")
         val p = runCatching {
             LoopbackProxy(
                 upstreamBase = backend,
                 // 每次转发现读 ⇒ 代理内存里不驻留明文，改密码立即生效。
                 passwordProvider = { SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD) },
+                fixedMode = fixedMode,
             ).also { it.start() }
         }.getOrElse {
             Log.e(TAG, "cannot start loopback proxy, falling back to placeholder", it)
@@ -171,7 +227,9 @@ class WebHostActivity : AppCompatActivity() {
         // 只报"有没有"，绝不回显口令本身。
         val hasPassword = !SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD).isNullOrEmpty()
         Log.i(TAG, "home=$url backend=$backend passwordPresent=$hasPassword")
+        PerfMarks.mark("I.proxyListening", "port=${p.port} mode=$perfMode")
         webView.loadUrl(url)
+        PerfMarks.mark("J.loadUrlIssued", "url=$url")
     }
 
     private var restoredUrlOrNull: String? = null
@@ -306,6 +364,28 @@ class WebHostActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * P2 性能归因：注册 `assets/www/oc-perf.js` 为**文档开始**脚本，
+     * 拿浏览器侧的 first-paint / DCL / 逐资源 waterfall。
+     *
+     * 读不到就跳过 —— 探针失败绝不能影响壳本身。
+     */
+    private fun installPerfProbe(wv: WebView) {
+        val script = runCatching {
+            assets.open("www/oc-perf.js").bufferedReader().use { it.readText() }
+        }.getOrElse {
+            Log.w(TAG, "oc-perf.js missing, skipping probe")
+            return
+        }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("*")) }
+                .onSuccess { PerfMarks.mark("E2.perfProbeRegistered") }
+                .onFailure { Log.w(TAG, "perf probe register failed", it) }
+        } else {
+            Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported -> perf probe skipped")
+        }
+    }
+
     // ---- 返回：canGoBack → 问页面 → 什么都不做 -----------------------------
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -370,6 +450,7 @@ class WebHostActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeNotificationIntent(intent)
+        consumeDebugEval(intent)
     }
 
     private fun consumeNotificationIntent(intent: Intent?) {
@@ -379,6 +460,19 @@ class WebHostActivity : AppCompatActivity() {
         Log.i(TAG, "opened from notification, session=$sessionId")
         // 等首屏脚本装好 facade 再发。
         webView.postDelayed({ bridge.deliverOpenSession(sessionId) }, 400)
+    }
+
+    // ---- BR1 验收用调试注入（仅 DEBUG 构建） ------------------------------
+    private fun consumeDebugEval(intent: Intent?) {
+        if (!BuildConfig.DEBUG) return
+        val js = intent?.getStringExtra(EXTRA_DEBUG_EVAL) ?: return
+        intent.removeExtra(EXTRA_DEBUG_EVAL)
+        // 等首屏 + facade 装好再注，否则 evaluateJavascript 落在中间态文档上。
+        webView.postDelayed({
+            webView.evaluateJavascript("(function(){try{return String($js)}catch(e){return 'ERR:'+e}})()") { r ->
+                Log.i(EVAL_TAG, "eval=${js.take(200)} -> ${r ?: "null"}")
+            }
+        }, EVAL_SETTLE_MS)
     }
 
     // ---- 文件 ------------------------------------------------------------
@@ -483,8 +577,28 @@ class WebHostActivity : AppCompatActivity() {
             request: WebResourceRequest,
         ): WebResourceResponse? = loader(view.context).shouldInterceptRequest(request.url)
 
+        // 参数用 `WebView?`：installFacade 的匿名子类里本来就有一个同签名的 override
+        // （`view: WebView?`）。这里若声明成非空，那个匿名子类就会"overrides nothing"。
+        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+            super.onPageStarted(view, url, favicon)
+            PerfMarks.mark("K.onPageStarted", "url=$url")
+        }
+
+        override fun onReceivedError(
+            view: WebView,
+            request: WebResourceRequest,
+            error: android.webkit.WebResourceError,
+        ) {
+            super.onReceivedError(view, request, error)
+            PerfMarks.mark(
+                "K2.onReceivedError",
+                "url=${request.url} code=${error.errorCode} desc=${error.description} main=${request.isForMainFrame}",
+            )
+        }
+
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
+            PerfMarks.mark("L.onPageFinished", "url=$url")
             // 首屏 insets / 主题补一次（此刻 documentElement 一定在了）。
             if (contextCompatDark(view)) {
                 Log.d(TAG, "page finished: $url")

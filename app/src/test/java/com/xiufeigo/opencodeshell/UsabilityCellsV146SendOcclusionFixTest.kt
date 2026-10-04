@@ -43,6 +43,28 @@ import org.junit.Test
  * (`2068 / 2 / 0`) as **regression triggers**: if the geometry ever moves again
  * the archived frame stops matching the model and this goes red.
  *
+ * ## v161 realign: the chip left, the cell did not
+ *
+ * v161 N1 removed the 28 dp `TerminalEntryButton` mount from the timeline pane —
+ * correctly, because it had no upstream counterpart (`_upstream` v2
+ * `session/files/session-side-panel.tsx:334-342` review, `:345-373` context,
+ * `:375` dynamic file tabs; the terminal is opened from the palette's
+ * `terminal.toggle` instead). That invalidated v146's **premise** — the pin that
+ * read `end = SessionTerminalEntryPolicy.END_DP,` as *applied trailing padding*
+ * could only go `false`.
+ *
+ * The **defect** the pin guarded is untouched by that, and this class still
+ * guards it:
+ *
+ * | v146's pin said | v161 equivalent | why it is the same defect |
+ * |---|---|---|
+ * | the anchor is *applied* as the chip's trailing padding | [theSelfInventedChipIsNotMountedInTheTimelinePaneAgain] | the collision needs a control composed in the viewport `Box`, which is the composer's **earlier** sibling, so `Send` draws over it. No mounted chip ⇒ no such control. Re-mounting it trips this **before** the geometry can re-collide |
+ * | (implicit) the terminal is reachable | [theTerminalEntryIsReachableThroughTheUpstreamPath] | v146 recorded `Send` sitting `enabled="false"` on top of a usable control — an entry that exists but cannot be used. Removing the chip without a wired replacement would be strictly worse than either |
+ *
+ * Criteria ①–⑥ and the `2068 / 2 / 0` triggers are **unchanged**: they still
+ * re-derive the box from the live `END_DP` and re-check it against the archived
+ * frames, so v145's readings remain regression triggers.
+ *
  * ## What this class does NOT prove
  *
  * It is a JVM test: the post-fix box is **derived**, not photographed. The
@@ -512,12 +534,116 @@ class UsabilityCellsV146SendOcclusionFixTest {
                 "divergence instead of preventing it.",
             composer.contains("END_DP"),
         )
+    }
+
+    // ================================================ v161 realign — no mounted chip
+
+    /**
+     * v161 realign, half 1: **the self-invented chip is not mounted any more.**
+     *
+     * This is the assertion that replaces v146's `screen.contains("end =
+     * SessionTerminalEntryPolicy.END_DP,")`. That one asked "is the pinned anchor
+     * still *applied*?" — a question about a control that no longer exists
+     * (`research/fix/RIGHT_PANEL_PARITY_FIX.md` §1.2). It could only be answered
+     * `false`, and satisfying it would mean re-mounting a control upstream does
+     * not have.
+     *
+     * The question that still describes the *same defect* is: **can a floating
+     * affordance in the timeline pane's trailing band end up under the
+     * composer's `Send` again?** v146's cell 5 was never "the chip is ugly" — it
+     * was "a usable control was drawn *below* the composer host `Box` and landed
+     * on `Send`'s rectangle with **0 visible pixels**". With no chip mounted there
+     * is no such control, and this is what pins that fact:
+     *
+     * - **no `TerminalEntryButton(` call site in `SessionScreen.kt`** — a *call*,
+     *   not the word. The import at `SessionScreen.kt:175` and the history
+     *   comments legitimately still say the name; what must not come back is a
+     *   composable that mounts it as the timeline pane's `Alignment.TopEnd`.
+     * - **the anchor is not applied as padding** either — `END_DP` may be
+     *   *declared* (it is: the pinned geometry, and `SessionPaneLayout` maths
+     *   still read it) but nothing may pad itself with it inside the pane.
+     *
+     * The second half is what makes this a guard rather than a description: if
+     * anyone re-mounts the chip, the first assertion goes red **before** the
+     * geometry can re-collide, which is precisely the tripwire v146 installed.
+     */
+    @Test
+    fun theSelfInventedChipIsNotMountedInTheTimelinePaneAgain() {
         val screen = readSource("app/src/main/java/com/xiufeigo/opencodeshell/ui/session/SessionScreen.kt")
-        assertTrue(
-            "v146: the anchor must still be *applied* as the chip's trailing padding " +
-                "(`SessionScreen.kt:2262`), not merely declared. If the modifier stopped using " +
-                "it, the geometry model above would be describing a value nothing reads.",
+
+        assertFalse(
+            "v146 CELL 5 (v161 realign): `SessionScreen.kt` must not **mount** a " +
+                "`TerminalEntryButton(` any more. The chip had no upstream counterpart " +
+                "(`_upstream` v2 `session/files/session-side-panel.tsx:334-342` = review, " +
+                "`:345-373` = context, `:375` = dynamic file tabs — no terminal trigger), and " +
+                "v146's cell 5 was never about the chip's looks: it was that this control is " +
+                "composed **inside the viewport `Box`**, which is the composer's *earlier* " +
+                "sibling, so `Send` drew over it — 2068 px² of overlap and 0 visible chip " +
+                "pixels. Re-mounting it here re-arms that defect; the terminal is opened from " +
+                "the command palette instead (asserted by " +
+                "`theTerminalEntryIsReachableThroughTheUpstreamPath`).",
+            screen.contains("TerminalEntryButton("),
+        )
+        assertFalse(
+            "v146 CELL 5 (v161 realign): and nothing may pad itself with the chip's trailing " +
+                "anchor inside the pane. `SessionTerminalEntryPolicy.END_DP` stays **declared** " +
+                "— it is the geometry the archived frames were measured against and " +
+                "`SessionTerminalEntryPolicyTest` still models it — but a modifier that " +
+                "applies `end = SessionTerminalEntryPolicy.END_DP,` is by definition " +
+                "positioning a control against the composer's own end inset, which is the " +
+                "independence bug v144 identified and v146 measured. If this is true, the " +
+                "geometry model in criteria 1-3 is describing a value something reads again.",
             screen.contains("end = SessionTerminalEntryPolicy.END_DP,"),
+        )
+    }
+
+    /**
+     * v161 realign, half 2: **the terminal is still reachable — the chip's job did
+     * not disappear with the chip.**
+     *
+     * Removing the self-invented control is only parity if the user keeps a way
+     * in. That is the other half of the same defect cell: v146 recorded that
+     * `Send` was left `enabled="false"` while burying a usable control, i.e. the
+     * terminal entry point was *present but unusable*. A delete that left the
+     * terminal unreachable would trade one unusable entry for none at all.
+     *
+     * Upstream's own path, re-checked on the `_upstream` v2 objects:
+     * `shell/commands/command.tsx:18` lists `terminal.toggle` among the
+     * `EDITABLE_KEYBIND_IDS`, `shell/commands/desktop-menu.ts:184` puts it in the
+     * desktop View menu, and `runtime/i18n/zh.ts:169` is its label. The shell
+     * mirrors the first of those in `ui/palette/AppCommands.kt`.
+     */
+    @Test
+    fun theTerminalEntryIsReachableThroughTheUpstreamPath() {
+        val commands = readSource("app/src/main/java/com/xiufeigo/opencodeshell/ui/palette/AppCommands.kt")
+        assertTrue(
+            "v146 CELL 5 (v161 realign): the palette must still carry the `terminal.toggle` row " +
+                "(upstream `_upstream` v2 `shell/commands/command.tsx:18`). Without it, deleting " +
+                "the chip would leave the terminal with **no** entry point — v146's cell 5 " +
+                "recorded that an entry which exists but cannot be used is the same failure as " +
+                "one that is covered, and 'no entry at all' is strictly worse.",
+            commands.contains("id = \"terminal.toggle\""),
+        )
+        assertTrue(
+            "v146 CELL 5 (v161 realign): …and the row must be a real toggle, not a decorative " +
+                "label — it has to dispatch the host action rather than resolve to null.",
+            commands.contains("onSelect = { onOpenTerminal?.invoke() }"),
+        )
+        assertTrue(
+            "v146 CELL 5 (v161 realign): the row's label must stay the upstream string " +
+                "`oc_command_terminal_toggle` (upstream `runtime/i18n/zh.ts:169` = 切换终端) — " +
+                "this realign relocates the entry, it does not re-word it.",
+            commands.contains("titleResId = R.string.oc_command_terminal_toggle"),
+        )
+
+        val app = readSource("app/src/main/java/com/xiufeigo/opencodeshell/ui/App.kt")
+        assertTrue(
+            "v146 CELL 5 (v161 realign): the host must hand the palette a **non-null** action. " +
+                "A null `onOpenTerminal` keeps the row visible but inert — the precise shape of " +
+                "v146's `enabled=\"false\"` observation, where a control was drawn and buried. " +
+                "The chip is gone, so this wiring is the only thing left that can open the " +
+                "terminal from the session screen.",
+            app.contains("onOpenTerminal = actions.onTerminalToggle,"),
         )
     }
 

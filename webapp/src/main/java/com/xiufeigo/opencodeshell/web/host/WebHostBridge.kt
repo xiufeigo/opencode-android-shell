@@ -130,12 +130,25 @@ class WebHostBridge(
     }
 
     // ---- 5. 凭据 ---------------------------------------------------------
+    // ⚠ 宿主专用键（serverPassword）**拒绝**经桥访问：回环代理自己在 Kotlin 侧补
+    // Authorization，页面不需要、也不该知道口令。挡住它不影响代理工作。
     @JavascriptInterface
-    fun getSecret(key: String?): String? = SecretStore.getSecret(ctx, key.orEmpty())
+    fun getSecret(key: String?): String? {
+        val k = key.orEmpty()
+        if (SecretStore.isHostOnly(k)) {
+            Log.w(TAG, "getSecret denied for host-only key")
+            return null
+        }
+        return SecretStore.getSecret(ctx, k)
+    }
 
     @JavascriptInterface
     fun setSecret(key: String?, value: String?): Boolean {
         if (key.isNullOrBlank()) return false
+        if (SecretStore.isHostOnly(key)) {
+            Log.w(TAG, "setSecret denied for host-only key")
+            return false
+        }
         SecretStore.setSecret(ctx, key, value)
         return true
     }

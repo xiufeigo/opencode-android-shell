@@ -1,0 +1,58 @@
+[
+  {
+    "key": "Total frames rendered",
+    "value": "859"
+  },
+  {
+    "key": "Janky frames",
+    "value": "94 (10.94%)"
+  },
+  {
+    "key": "Janky frames (legacy)",
+    "value": "350 (40.75%)"
+  },
+  {
+    "key": "50th percentile",
+    "value": "17ms"
+  },
+  {
+    "key": "90th percentile",
+    "value": "29ms"
+  },
+  {
+    "key": "95th percentile",
+    "value": "34ms"
+  },
+  {
+    "key": "99th percentile",
+    "value": "150ms"
+  },
+  {
+    "key": "Number Missed Vsync",
+    "value": "6"
+  },
+  {
+    "key": "Number High input latency",
+    "value": "1064"
+  },
+  {
+    "key": "Number Slow UI thread",
+    "value": "53"
+  },
+  {
+    "key": "Number Slow bitmap uploads",
+    "value": "0"
+  },
+  {
+    "key": "Number Slow issue draw commands",
+    "value": "44"
+  },
+  {
+    "key": "Number Frame deadline missed",
+    "value": "94"
+  },
+  {
+    "key": "50th gpu percentile",
+    "value": "11ms"
+  }
+]
