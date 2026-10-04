@@ -762,7 +762,8 @@ internal object SessionPaneLayout {
      * a second time.
      *
      * Measured on the emulator-5554 range the v155 round swept (1 dp == 1 px,
-     * keyboard claim 426 dp, 162 px of chrome above the pane box):
+     * **keyboard claim 426 dp as measured *at that moment***, 162 px of chrome
+     * above the pane box):
      *
      * ```
      * window 600 -> box 438 -> room = 438 - 426 = 12   compact = true   -> one row
@@ -775,6 +776,47 @@ internal object SessionPaneLayout {
      * see it. Below 588 the truth set of this predicate *re-entered* itself
      * (`{1 .. 223}` instead of the initial segment `{0 .. 223}`) — the same
      * non-monotonicity v154 removed from [composerMinimal] here.
+     *
+     * ### v158: that 426 is a *measured value*, not a constant — read this before trusting 588
+     *
+     * The table above is kept verbatim because it is the evidence the fix was made
+     * on, but **426 is a reading at one window height, not a property of the
+     * device.** v157 re-measured the keyboard at every level of the same sweep, off
+     * `dumpsys window`'s `InsetsSource id=3 type=ime frame=[..][1366,H]`, and found
+     * **three** distinct claims:
+     *
+     * ```
+     * H >= 605  ime = 426   (… frame=[0,194][1366,620])
+     * 600..604  ime = 339   (… frame=[0,261][1366,600])
+     * H <= 599  ime = 261   (… frame=[0,334][1366,599])
+     * ```
+     *
+     * **The keyboard collapses with the window — Gboard, on its own, across the
+     * single dp `600 -> 599`, dropping 78 px.** Consequences, all of which matter
+     * more than the arithmetic above:
+     *
+     * - **588 is not a breakpoint.** It is a *pseudo*-breakpoint: it is where `588`
+     *     lands **if the keyboard is assumed to hold 426**. At the real 588 the
+     *     keyboard had already collapsed to 261, so the room there is
+     *     `588 - 162 - 261 = 165`, nowhere near the 0 dp boundary this guard is
+     *     about. The defect and the `>= 0.dp` fix are real; **588 is an artefact of
+     *     a fixed-keyboard assumption and must not be cited as a device fact.**
+     * - **`room = box - ime`, and `ime` is not app state.** Because the keyboard
+     *     resizes itself, `H -> room` is **not a function the app controls**: at
+     *     `H = 600` the room is 99, at `H = 599` it is 176 — the room **grew** while
+     *     the window lost 1 dp. The composer growing into the richer form across
+     *     that dp is therefore **correct behaviour, not a reverse jump**, and it is
+     *     not a regression of this predicate.
+     * - **Consequently the monotonicity judge is `room`, never `H`.** The form must
+     *     be monotone non-increasing in the room it is handed; `H` may not be used
+     *     as the judge axis. `ReverseJumpRoomJudgeV158Test` is that pin, and it
+     *     re-sorts the same 620 -> 560 sweep by room so the 61 cells are judged in
+     *     the order the composer actually sees them.
+     *
+     * v154/v156's own grids were immune to this because each of their columns pins
+     * one `ime` value, which makes the room axis and the `H` axis the same axis
+     * there. The v157 ime ladder is what separates them, and it is why the sweep
+     * has to be re-sorted before it is judged.
      *
      * `>= 0.dp` also ends the **contradiction** the v154 fix would otherwise
      * leave behind: the composer is handed *two* form predicates
