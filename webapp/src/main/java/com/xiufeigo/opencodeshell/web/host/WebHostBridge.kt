@@ -214,7 +214,7 @@ class WebHostBridge(
 
     // ---- 通知点击回会话 ---------------------------------------------------
     /**
-     * 把通知带回来的 sessionId 交给页面。
+     * 把通知带回来的 sessionId 交给页面 —— 并且**真的让页面切到那个会话**。
      *
      * 🔴 N1 修掉的 bug：原先这里把 sessionId **再包一层 JSON** 才发给页面——
      * `JSONObject().put("sessionId", id).toString()` 得到 `'{"sessionId":"n1-x"}'`，
@@ -224,13 +224,38 @@ class WebHostBridge(
      * `e.detail.sessionId === '{"sessionId":"n1-session-777"}'`，
      * 拿它当 session id 去查会话必然查不到 ⇒ **"点击回到会话"名存实亡**。
      *
-     * 真机证据见 `research/web/NOTIFICATION_CLICK_CLOSE.md` §4。
-     * 现在直接发 sessionId 本身；`pageArg()` 是本仓唯一的取值口径。
+     * 🔴 N2 修掉的更深的 bug：就算入参是**裸 id**（N1 之后），这条链**依然切不了会话**，
+     * 因为 `oc:openSession` 这个 CustomEvent **上游 SPA 根本没有监听者**。
+     * 上游唯一支持的入口是路由 `/server/<base64url(serverKey)>/session/<id>`
+     * （`_upstream/packages/app/src/shell/routes/routes.tsx:39-40`、
+     *  `shell/routes/session.ts:5-7`），上游自己的
+     * `openNotificationSession()`（`shell/notifications/notification.tsx:54-59`）
+     * 做的也正是 `navigate(tabHref(tab))` —— **导航，而不是派发事件**。
+     *
+     * 所以这里改成：**宿主自己算出目标路由，让 facade 去导航**；
+     * 事件仍然照发（不破坏任何可能已经监听了它的东西）。
+     * 路径由 [NotifierHost.sessionRoutePath] 纯函数产出，可在单测里断言。
+     * 真机证据见 `research/web/NOTIFICATION_CLICK_ROOTCAUSE.md`。
      */
     fun deliverOpenSession(sessionId: String?) {
         val arg = NotifierHost.clickPlan(sessionId).pageArg()
+        val backendUrl = runCatching {
+            SecretStore.getSecret(ctx, SecretStore.KEY_BACKEND_URL)
+        }.getOrNull() ?: SecretStore.DEFAULT_BACKEND_URL
+        // 造得出路由就导航（真回会话）；造不出就退回旧行为（只派发事件，不硬造 404 路径）。
+        val route = NotifierHost.sessionRoutePath(backendUrl, arg)
+        Log.i(TAG, "deliverOpenSession session=$arg route=${route ?: "<none>"}")
         ctx.runOnUiThread {
-            ctx.evaluateJs("window.__ocAndroid && window.__ocAndroid.onOpenSession(${quote(arg)});")
+            if (route != null) {
+                ctx.evaluateJs(
+                    "window.__ocAndroid && window.__ocAndroid.__openSessionByRoute(" +
+                        "${quote(route)}, ${quote(arg)});"
+                )
+            } else {
+                ctx.evaluateJs(
+                    "window.__ocAndroid && window.__ocAndroid.onOpenSession(${quote(arg)});"
+                )
+            }
         }
     }
 

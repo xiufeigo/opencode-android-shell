@@ -38,9 +38,13 @@ foreach ($p in $ours) {
 | 2026-10-04 21:2x | 关闭 `OC_Narrow_Test`（`emulator-5824`） | `OK: killing emulator, bye bye`；**0 残留进程**；**端口 5824 已释放**；用户设备 `5606/5620` 未受影响 |
 | 2026-10-05 00:5x | 关闭 `OC_Perf_Test`（`emulator-5860`，端口 5860） | `adb -s emulator-5860 emu kill` → `OK: killing emulator, bye bye`；复核 **0 残留进程**（无 `OC_Perf_Test` 进程）、**端口 5860 无监听**（仅剩 `TimeWait` 残根 `OwningProcess=0`）；用户设备 `5654`(DSH_T80_Tablet)/`5656`(DSH_T80_Phone) **未受影响**；未执行 `adb kill-server`（收尾后 `adb devices` 仍正常列出 3 台） |
 | 2026-10-05 01:0x | **关闭** `OC_Notify_Test`（`emulator-5870`，端口 5870，N1 通知轮自建） | `adb -s emulator-5870 emu kill` → `OK: killing emulator, bye bye`；复核 **0 残留进程**（无 `OC_Notify_Test` 进程）、**端口 5870 无 LISTEN**；`adb devices` 已无 `5870`；用户设备 `5654`(DSH_T80_Tablet)/`5656`(DSH_T80_Phone) **仍在、未受影响**；未执行 `adb kill-server`、未用 `-a`/通配符。上表第 40 行"故意保留"已由本行闭环（那一路是 N1 起的就是 N1 关） |
+| 2026-10-05 01:3x | **关闭** `OC_NotifyRC`（`emulator-5880`，端口 5880，**N2 通知根因轮自建**） | 杀前确认 `pid=50964 avd=OC_NotifyRC port=5880 mine=True`；`adb -s emulator-5880 emu kill` → `OK: killing emulator, bye bye`；复核 **`OC_NotifyRC` 残留进程数 = 0**、**端口 5880 无 LISTEN**、`adb devices` 已无 `5880`；**未执行** `adb kill-server`、**未用** `-a`/通配符，只按 serial 关。<br>⚠️ **本行同时记录一个观察**：收尾复核时全机 emulator/qemu 进程数为 0，`5654`/`5656`/`5892` 也都不在了（用户实例 + 另一路 `OC_FF_F4`）。N2 全程**只**对 `emulator-5880` 发过 kill，原理上无法波及其它 serial；消失原因**未从本轮日志得出因果**，**如实记录、不代其它轮次下结论** |
+
+| 2026-10-05 01:0x–01:2x | **关闭** `OC_FF_F4`（`emulator-5892`，端口 5892，F4 形态覆盖自建；镜像 `android-35;google_apis_playstore_tablet` + `pixel_tablet`） | `wm size reset` + `wm density reset` → 复核 `Physical size: 2560x1600` / `Physical density: 320`（**已无 Override 行**）；`adb -s emulator-5892 emu kill` → `OK: killing emulator, bye bye`；复核 **0 残留进程**、**端口 5892 LISTEN=0**（仅 `TimeWait` 残根）；用户设备 `5654`(DSH_T80_Tablet)/`5656`(DSH_T80_Phone) **未受影响**；**`OC_NotifyRC`(5880) 不是本轮起的，全程未碰**；未执行 `adb kill-server`、未用 `-a`/通配符。**故意保留：无**。本轮共 boot 3 次（中途静默退出 2 次，同 E7 §1.2 模式，均发生在几何高度超出物理面板时）。报告：`research/env/FORMFACTORS_F4.md` |
 
 ## 四、仍未处理（等产品负责人决定）
 
 - 我们建过的 **AVD 定义**仍留在磁盘（`OC_Phone_Test`、`OC_Phone_Test_B`、`OC_Phone_Test_C`、
-  `OC_Narrow_Test`、`Medium_Desktop_B`）。**进程已关**，但镜像数据目录仍占磁盘。
+  `OC_Narrow_Test`、`OC_Perf_Test`、`OC_Notify_Test`、`OC_FF_F4`、`OC_NotifyRC`、`Medium_Desktop_B`）。
+  **进程已关**，但镜像数据目录仍占磁盘。
   需要的话可以用 `avdmanager delete avd -n <name>` 逐个删（**只删 `OC_*` 与 `Medium_Desktop_B`**）。
