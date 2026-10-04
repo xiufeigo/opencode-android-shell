@@ -746,9 +746,45 @@ internal object SessionPaneLayout {
     /** `EDITOR_MIN_HEIGHT` while the pane is short — see [COMPOSER_COMPACT_HEIGHT]. */
     val COMPOSER_EDITOR_COMPACT_HEIGHT: Dp = 40.dp
 
-    /** Whether a pane of this height can only afford the compact composer. */
+    /**
+     * Whether a pane of this height can only afford the compact composer.
+     *
+     * **v156: the lower guard is `>= 0.dp`, not `> 0.dp`, for the same reason as
+     * [composerMinimal] — this is the *second* copy of that one character, and
+     * the one v154's grid could not see.**
+     *
+     * The predicate asks one question — *can this room carry the full composer?*
+     * i.e. `available < 224` — and `> 0.dp` answered a second, different one
+     * (*is there any room at all?*) with 「no, so do not compact」. So the room
+     * that can least afford the **full** form was told it does not even need the
+     * **compact** one, and the composer grew back to 96 dp
+     * ([COMPOSER_COMPACT_HEIGHT]) on a room of nothing — the B-2 reverse jump,
+     * a second time.
+     *
+     * Measured on the emulator-5554 range the v155 round swept (1 dp == 1 px,
+     * keyboard claim 426 dp, 162 px of chrome above the pane box):
+     *
+     * ```
+     * window 600 -> box 438 -> room = 438 - 426 = 12   compact = true   -> one row
+     * window 588 -> box 426 -> room = 426 - 426 =  0   compact = FALSE  -> full composer
+     * window 580 -> box 418 -> room = 418 - 426 =  0   compact = false  -> full composer
+     * ```
+     *
+     * v155 sampled 600 and 580 and saw the form jump; the flip is at **588**,
+     * between the two, which is why the pair disagreed and no coarser grid could
+     * see it. Below 588 the truth set of this predicate *re-entered* itself
+     * (`{1 .. 223}` instead of the initial segment `{0 .. 223}`) — the same
+     * non-monotonicity v154 removed from [composerMinimal] here.
+     *
+     * `>= 0.dp` also ends the **contradiction** the v154 fix would otherwise
+     * leave behind: the composer is handed *two* form predicates
+     * (`SessionScreen.kt:1866` `compact` and `:1870` `minimal`), and on a room of
+     * 0 dp `composerMinimal` now says *one row* while this said *full composer*.
+     * The *staircase* is untouched: 223 dp compacts and 224 dp does not, exactly
+     * as v55 pins.
+     */
     fun composerCompact(available: Dp): Boolean =
-        available > 0.dp && available < COMPOSER_MIN_HEIGHT + CHROME_MIN_HEIGHT + TIMELINE_MIN_CONTENT
+        available >= 0.dp && available < COMPOSER_MIN_HEIGHT + CHROME_MIN_HEIGHT + TIMELINE_MIN_CONTENT
 
     // ------------------------------------------------------------- v57 P0:
     // the composer took 96 dp of the measured 146.7 dp pane.

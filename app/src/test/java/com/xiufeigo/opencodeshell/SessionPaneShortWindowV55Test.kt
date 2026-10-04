@@ -242,7 +242,34 @@ class SessionPaneShortWindowV55Test {
         assertTrue(SessionPaneLayout.composerCompact(196.2.dp))
         assertTrue(!SessionPaneLayout.composerCompact(250.dp))
         assertTrue(!SessionPaneLayout.composerCompact(700.dp))
-        assertTrue(!SessionPaneLayout.composerCompact(0.dp))
+        // v156: this line used to be `assertTrue(!composerCompact(0.dp))` — the same
+        // lower-bound guard v154 removed from `composerMinimal`, in the *second* form
+        // predicate (`SessionPaneLayout.kt:751`, threshold 224 instead of 164). It sat
+        // here as a trailing lower-bound guard, not on the 223/224 staircase above, and
+        // it pinned the defect itself: the room that can least afford even the compact
+        // composer was told it did not need compacting. On the v155 device range that
+        // is the flip at window 588 (room = box - ime = 0), between the 600 and the 580
+        // the round sampled. The staircase assertions above (196.2 compact, 250 and 700
+        // full) are untouched.
+        //
+        // STRENGTH, not relaxation: the old line asserted one negative single-point
+        // value; this asserts the whole initial-segment property — every room from 0 up
+        // to the staircase compacts, and only 224 dp and above stops.
+        assertTrue(
+            "a room of 0 dp can least of all carry the full composer, so it must still " +
+                "take the compact one — the truth set must be the initial segment {0 .. 223}",
+            SessionPaneLayout.composerCompact(0.dp),
+        )
+        for (room in 0..223) {
+            assertTrue(
+                "room $room dp is below the 224 dp staircase, so it must compact",
+                SessionPaneLayout.composerCompact(room.dp),
+            )
+        }
+        assertTrue(
+            "the staircase is untouched: 224 dp and above carries the full composer",
+            !SessionPaneLayout.composerCompact(224.dp),
+        )
     }
 
     @Test
