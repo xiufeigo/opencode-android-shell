@@ -393,21 +393,33 @@ internal const val SSE_SCAN_WINDOW_CHARS = 2048
             else -> builder.method(method, body(parsed)).build()
         }
 
+        // F5：这一条请求是不是"页面本体"。判据只用请求自身信息（路径 + Accept），
+        // 判错的后果只是给非文档请求多一层 HTML 外壳，不会泄露，也不会影响 API 语义。
+        val isDocument = isDocumentRequest(parsed)
+
         val response = try {
             val client = if (isEventStreamRequest(parsed)) sseClient else httpClient
             client.newCall(request).execute()
         } catch (e: Exception) {
             Log.e(TAG, "upstream ${parsed.method} $target failed: ${e.message}")
-            val msg = """{"error":${jsonString(e.message ?: "upstream failed")}}"""
-            writeStatus(
-                output, 502, "Bad Gateway",
-                mapOf(
-                    "Content-Type" to "application/json",
-                    "Content-Length" to msg.toByteArray().size.toString(),
-                    "Cache-Control" to "no-store",
-                ),
-                msg.toByteArray(),
-            )
+            // F5 缺陷1：V7 实测这一分支原来吐的是**裸 JSON 异常原文**，
+            // 界面上直接显示 `{"error":"unexpected end of stream on http://127.0.0.1:4095/…"}`
+            // —— 既不是人话，又**泄露内部 URL/端口**（`research/env/v7/v7_n5_noreverse2.png`）。
+            // 现在：**文档请求给友好错误页（可点重试）**；API 请求仍回 JSON，但**先 redact**。
+            if (isDocument) {
+                writeFriendlyPage(output, ConnectErrorPage.unreachableHtml(e.message))
+            } else {
+                val msg = """{"error":${jsonString(ConnectErrorPage.redact(e.message ?: "upstream failed"))}}"""
+                writeStatus(
+                    output, 502, "Bad Gateway",
+                    mapOf(
+                        "Content-Type" to "application/json",
+                        "Content-Length" to msg.toByteArray().size.toString(),
+                        "Cache-Control" to "no-store",
+                    ),
+                    msg.toByteArray(),
+                )
+            }
             return false
         }
 
@@ -822,6 +834,41 @@ internal const val SSE_SCAN_WINDOW_CHARS = 2048
         output.write("\r\n".toByteArray())
         if (body != null) output.write(body)
         output.flush()
+    }
+
+    /**
+     * F5：这条请求是不是"页面本体"（`GET /` 或明确要 HTML）。
+     *
+     * 判据故意保守：路径是 `/`（或空）**或** `Accept` 里含 `text/html`。
+     * 这样首屏、刷新、以及任何浏览器发起的导航请求都能拿到友好页，
+     * 而 `/api/…`、`/_assets/…` 这些仍走原语义。
+     */
+    private fun isDocumentRequest(parsed: ParsedRequest): Boolean {
+        if (parsed.method.uppercase(Locale.US) != "GET") return false
+        val path = parsed.path
+        if (path.isEmpty() || path == "/") return true
+        return header(parsed.headers, "Accept")?.contains("text/html", ignoreCase = true) == true
+    }
+
+    /**
+     * F5：把一页 HTML 友好错误页写给 WebView。
+     *
+     * 状态码用 **503**（Service Unavailable）而不是 502：`502 Bad Gateway` 语义上是
+     * "上游返回了坏响应"，而这里的事实是"**我们连不上上游**"，503 才是准的，
+     * 而且 WebView 对 5xx 不会做缓存，`location.reload()` 的重试不会被缓存挡住。
+     */
+    private fun writeFriendlyPage(output: OutputStream, html: String) {
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        writeStatus(
+            output, 503, "Service Unavailable",
+            mapOf(
+                "Content-Type" to "text/html; charset=utf-8",
+                "Content-Length" to bytes.size.toString(),
+                "Cache-Control" to "no-store",
+                "Connection" to "close",
+            ),
+            bytes,
+        )
     }
 
     private fun jsonString(value: String): String = buildString {

@@ -34,6 +34,8 @@ import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
+import com.xiufeigo.opencodeshell.web.host.BackendProbe
+import com.xiufeigo.opencodeshell.web.host.ConnectErrorPage
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
@@ -359,7 +361,112 @@ class WebHostActivity : AppCompatActivity() {
             showSetupDialog(backend)
             return
         }
-        launch(backend)
+        // F5 缺陷2：**先探一次再加载**。原来直接 `launch`，于是口令错时页面永远停在
+        // "Loading" 骨架屏（V7 实测 `research/env/v7/v7_n5_wrongpw.png`），用户无从自救。
+        // 探测在后台线程跑（不阻塞主线程），结论回来再决定加载还是报错。
+        probeThenLaunch(backend, password)
+    }
+
+    /**
+     * F5 缺陷2 · 接入探测 → 再加载。
+     *
+     * 判定与超时依据见 [BackendProbe]（探 `/api/info`，超时 [BackendProbe.PROBE_TIMEOUT_MS]
+     * = 8 s，依据三条写在那个类的注释里）。
+     *
+     * 关键设计：**探不通不阻塞"仍然可以试"**。
+     * - [BackendProbe.Result.OK] ⇒ 正常加载官方 UI。
+     * - [BackendProbe.Result.AuthFailed] ⇒ 明确告知"用户名或口令不对"，
+     *   并给**两条出路**：重试（回到输入口令的对话框）/ 继续看看（仍然加载，
+     *   也许后端刚重启好了）。**这一条是本缺陷的核心**：V7 的形态是用户既看不到
+     *   失败、也没有任何入口。
+     * - [BackendProbe.Result.Unreachable] / [Result.Unknown] ⇒ 也给可重试的原生提示，
+     *   但**默认不拦**（连不上时交给代理的友好错误页更合适，见 [ConnectErrorPage]），
+     *   用户点"重试"即可重新探测。
+     */
+    private fun probeThenLaunch(backend: String, password: String?) {
+        Log.i(TAG, "F5 probe before load path=${BackendProbe.PROBE_PATH}")
+        probeRef?.cancel()
+        val probe = BackendProbe()
+        probeRef = probe
+        probe.probeAsync(backend, password) { result ->
+            when (result) {
+                is BackendProbe.Result.OK -> {
+                    Log.i(TAG, "F5 probe OK code=${result.code}, loading official UI")
+                    launch(backend)
+                }
+                is BackendProbe.Result.AuthFailed -> {
+                    // 明确判定：用户名或口令不对。**不回显口令**。
+                    Log.w(TAG, "F5 probe AUTH FAILED code=${result.code}; showing retryable dialog")
+                    showConnectErrorDialog(ConnectErrorPage.Kind.AUTH_FAILED, backend)
+                }
+                is BackendProbe.Result.Unreachable -> {
+                    Log.w(TAG, "F5 probe unreachable reason=${result.reason}, loading anyway")
+                    launch(backend)
+                }
+                is BackendProbe.Result.Unknown -> {
+                    Log.w(TAG, "F5 probe unknown reason=${result.reason}, loading anyway")
+                    launch(backend)
+                }
+            }
+        }
+    }
+
+    /**
+     * F5 · 接入失败的**原生可重试**对话框。
+     *
+     * 与 [showSetupDialog] 的关系：这是**报错**界面，不是首次配置界面。
+     * 它必须让用户能（a）改口令重试、（b）返回、（c）继续加载。
+     * 三个按钮文案与 [ConnectErrorPage.Kind] 的文案同源，避免"原生说一套、网页说另一套"。
+     */
+    private fun showConnectErrorDialog(kind: ConnectErrorPage.Kind, backend: String) {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val minTargetPx = SetupDialogMetrics.minTouchTargetPx(resources.displayMetrics.densityDpi)
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        box.addView(android.widget.TextView(this).apply {
+            text = kind.hint
+            setTextColor(0xFFB9B9C0.toInt())
+            textSize = 14f
+        })
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(kind.heading)
+            .setView(box)
+            .setCancelable(false)
+            .setNeutralButton("返回") { _, _ ->
+                // 回到输入口令的对话框：用户在这里能改口令，也能改地址。
+                showSetupDialog(backend)
+            }
+            .setNegativeButton("继续加载") { _, _ -> launch(backend) }
+            .setPositiveButton("重试") { _, _ ->
+                // 重试 = 重新探一次。口令仍从 SecretStore 读，用户没改过就再探一遍；
+                // 若他刚刚在"返回"里改了口令，那次保存已经写回 SecretStore。
+                probeThenLaunch(
+                    backend,
+                    SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD),
+                )
+            }
+            .show()
+            .also { dialog ->
+                dialog.window?.setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+                )
+                // 触摸靶下限沿用 F2 的既有口径，保证按钮可达 48dp。
+                runCatching {
+                    dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+                        .minHeight = minTargetPx
+                    dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE)
+                        .minHeight = minTargetPx
+                    dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+                        .minHeight = minTargetPx
+                }
+            }
     }
 
     /** 起代理并把首页指到代理 origin。 */
@@ -422,6 +529,12 @@ class WebHostActivity : AppCompatActivity() {
     private var pendingProxy: LoopbackProxy? = null
 
     private var proxyPrewarm: Thread? = null
+
+    /**
+     * F5 缺陷2：当前这轮接入探测。点"重试"会再探一次，所以必须能**取消上一轮**，
+     * 否则两次探测的结果可能乱序到达、把界面带去错误的分支。
+     */
+    private var probeRef: BackendProbe? = null
 
     /**
      * P3：把「起回环代理」从导航前的串行段里挪出去。
@@ -529,7 +642,11 @@ class WebHostActivity : AppCompatActivity() {
                 SecretStore.setSecret(this, SecretStore.KEY_BACKEND_URL, url)
                 SecretStore.setSecret(this, SecretStore.KEY_SERVER_PASSWORD, pass)
                 Log.i(TAG, "credentials stored backend=$url passwordPresent=${pass.isNotEmpty()}")
-                launch(url)
+                // F5 缺陷2：**必须走探测**，不能直接 `launch`。
+                // V7 的缺陷形态正是"在这里播了错口令"——首测时这条分支直接 launch，
+                // 于是错口令 100% 落到"Loading 骨架屏永停"。探测后 401 会被判成
+                // AUTH_FAILED 并弹出可重试对话框（可改口令、可返回、可继续加载）。
+                probeThenLaunch(url, pass)
             }
             .show()
             .also { dialog ->
