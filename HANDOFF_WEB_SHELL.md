@@ -25,6 +25,24 @@
 包名统一 `com.xiufeigo.opencodeshell.web.debug` · 签名 `CN=Android Debug`（SHA-256 `e86b7006…0510a`）
 **对比**：原生壳 debug **44.2 MB** / 原生壳 release **29.4 MB** ⇒ **web 壳 release 比原生 release 小 7.4 倍**（因为**一个前端字节都不打包**）。
 
+### 0.1 最新一批验证（2026-10-05，**每条都带证据**）
+
+| 项 | 结论 | 证据 |
+|---|---|---|
+| **原生桥八项** | ✅ **全部 PASS**——含此前唯一"带保留"的**通知点击回会话**：判为**宿主缺陷**并修复 | `research/web/NOTIFICATION_CLICK_ROOTCAUSE.md`（真机 **展开通知栏→当场解析 bounds→`input tap` 真点→回读 location**；**7 条绊线，撤回即红**） |
+| **形态覆盖** | ✅ 小屏 **360dp** / 手机 **412dp** / 折叠 **442·708dp** / **切换边界 ≈768dp** / 平板 **1366×768** | `research/env/FORMFACTORS_F4.md`：**<768dp = 上游移动导航栏；≥768dp = 导航栏消失、出现 `review-toggle`**（**上游自己的响应式设计**） |
+| **IME 遮挡** | ✅ **重叠 0**（手机 / 平板 / 折叠屏都测到） | `research/web/IME_OCCLUSION_FIX.md`（**60 → 0**）+ `research/env/logs/e7_g3_phone.log`（composer `[454,514]` **整条在键盘上方**） |
+| **上游地基** | ✅ 最新 `origin/v2 = 0a46301` 上**四条全部成立**；区间 **5 个提交无一触及 `cli/src` / `app/src` / `gui-extensions/src`** | `research/web/UPSTREAM_REGRESSION_A3.md`（并纠正我们两处记录：`app-assets.ts:22` 非发布路径；`web-ui.ts` 行号原记录有误） |
+| **交付物=代码** | ✅ **机械证明**：APK 内 `assets/www/oc-host.js` 与源码 **md5 逐字节相同** | `research/web/DELIVER_REBUILD_R2.md` |
+| **dex 等价** | ✅ release 与 debug **方法级等价、差异 0 条**（条目 2 vs 5） | `research/web/GAP_CLOSE_G2.md` |
+| **首屏** | 🟢 5 次冷启**中位数 1,676 ms**（极值 1,583 / 1,829；**UI 可用标记**口径，非「最后一个 `_assets` GET」） | `research/web/GAP_CLOSE_G2.md` |
+| **设备兼容** | ✅ **WebView 预检**：阈值 **105** / 加载超时 **12 s** / **4 条绊线反向验证真红** / **不误挡 124·149·105 与"读不到版本"** | `research/web/WEBVIEW_PREFLIGHT.md` |
+
+**仍未闭环（3 条，都写清了原因）**
+1. **耗电** —— **必须真机**（模拟器无电池模型）；**套件已就绪**：`research/perf/battery_real_device.ps1` + `BATTERY_HOWTO.md`（**拒绝静默给 0**，7 条可比性判定 + 阈值 X=5% 及推导）。
+2. **debug 体积 8.64→5.15 MB 的逐 entry 明细** —— 已归因到 **dex**、且**与 `webapp/**` 任何提交无关**；**旧 APK 已不可取回**，明细需一份旧产物副本或能复现旧依赖解析的构建环境。
+3. **R8 版** —— **构建未成功**；12 项风险清单（最高：**Tink 静默降级**）⇒ **设备验证前不要分发**。
+
 ---
 
 ## 1. 为什么是路线 A（决策依据，含行号）
