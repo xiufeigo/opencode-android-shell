@@ -1,0 +1,107 @@
+[
+  {
+    "cx": 532,
+    "cy": 60,
+    "text": "Tabs"
+  },
+  {
+    "cx": 540,
+    "cy": 202,
+    "text": "Projects"
+  },
+  {
+    "cx": 540,
+    "cy": 1300,
+    "text": "scrollable content"
+  },
+  {
+    "cx": 540,
+    "cy": 1258,
+    "text": "Recent sessions"
+  },
+  {
+    "cx": 119,
+    "cy": 438,
+    "text": "Today"
+  },
+  {
+    "cx": 540,
+    "cy": 454,
+    "text": "O Counting from 1 to 4000, one number per line opencode-android-shell"
+  },
+  {
+    "cx": 150,
+    "cy": 616,
+    "text": "Yesterday"
+  },
+  {
+    "cx": 540,
+    "cy": 738,
+    "text": "D Friendly greeting DSH 临时会话"
+  },
+  {
+    "cx": 114,
+    "cy": 900,
+    "text": "Older"
+  },
+  {
+    "cx": 540,
+    "cy": 1020,
+    "text": "S android-e2e System32"
+  },
+  {
+    "cx": 540,
+    "cy": 1150,
+    "text": "C DRAFT__OK chenjieyan_test"
+  },
+  {
+    "cx": 540,
+    "cy": 1278,
+    "text": "S Count from 1 to 999, one number per line System32"
+  },
+  {
+    "cx": 540,
+    "cy": 1407,
+    "text": "D New session DSH 临时会话"
+  },
+  {
+    "cx": 540,
+    "cy": 1536,
+    "text": "D Android 启动时手动选择 server 连接 DSH-Remote"
+  },
+  {
+    "cx": 540,
+    "cy": 1664,
+    "text": "D Plugin activation failure waiting for conversationEvents DSH-Desktop"
+  },
+  {
+    "cx": 540,
+    "cy": 1792,
+    "text": "D 排查 dsh 崩溃与插件缺失问题 DSH-Remote"
+  },
+  {
+    "cx": 540,
+    "cy": 1921,
+    "text": "D New session DSH-Remote"
+  },
+  {
+    "cx": 540,
+    "cy": 2050,
+    "text": "D DSH插件致后端监听地址报错修复 DSH-Remote"
+  },
+  {
+    "cx": 540,
+    "cy": 2178,
+    "text": "D DSH后端启动失败排查 DSH-Desktop"
+  },
+  {
+    "cx": 540,
+    "cy": 2307,
+    "text": "F 执行 workbench-server-password-access 计划 foundation-contracts"
+  },
+  {
+    "cx": 540,
+    "cy": 2386,
+    "text": "M v2验证 MimoCodeUI"
+  }
+]

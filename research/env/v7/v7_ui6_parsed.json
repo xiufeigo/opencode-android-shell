@@ -1,0 +1,32 @@
+[
+  {
+    "cx": 540,
+    "cy": 1200,
+    "text": "OpenCode"
+  },
+  {
+    "cx": 532,
+    "cy": 60,
+    "text": "Tabs"
+  },
+  {
+    "cx": 540,
+    "cy": 202,
+    "text": "Projects"
+  },
+  {
+    "cx": 540,
+    "cy": 1300,
+    "text": "scrollable content"
+  },
+  {
+    "cx": 540,
+    "cy": 1300,
+    "text": "Recent sessions"
+  },
+  {
+    "cx": 135,
+    "cy": 438,
+    "text": "Loading"
+  }
+]
