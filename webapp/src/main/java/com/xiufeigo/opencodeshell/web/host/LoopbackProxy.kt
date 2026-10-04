@@ -80,6 +80,19 @@ class LoopbackProxy(
      * 认证、同源、CORS 语义、SSE/WS 行为均**不变**。
      */
     private val fixedMode: Boolean = false,
+    /**
+     * P3：gzip 透传**已合入为默认行为**（P2 §3.6 判定"保留并合入"）。
+     * 与 [fixedMode] 解耦：后者是 P2 已判"不该合入"的整体缓冲定界，只留给对照复现。
+     */
+    private val gzipMode: Boolean = true,
+    /**
+     * P3 帧时归因：文档渲染档位（只对 `GET /` 生效，见 [rewriteDocument]）。
+     *  - `full`  ：原样转发官方 UI
+     *  - `noanim`：注入关掉 animation/transition/box-shadow 的 CSS
+     *  - `min`   ：返回一份极小 DOM 的合成页面（隔离"内容复杂度"）
+     *  - `flat`  ：`min` + `noanim`（帧时地板值）
+     */
+    private val renderMode: String = "full",
 ) : Closeable {
 
     companion object {
@@ -203,12 +216,17 @@ class LoopbackProxy(
             if (shouldDropRequestHeader(name)) continue
             runCatching { builder.addHeader(name, value) }
         }
-        // P2 · 修复 1：透传压缩。默认路径把 accept-encoding 一起 drop 了，
-        // 于是上游按 identity 回明文 —— 252 个 js/css 全是未压缩体积。
+        // P2 · 修复 1（P3 已合入）：透传压缩。默认路径把 accept-encoding 一起 drop 了，
+        // 于是上游按 identity 回明文 —— js/css 全是未压缩体积。
         // 显式写而不是"原样转发客户端的"：WebView 发的 `br, gzip, deflate` 里
         // br 只有在 OkHttp 装了 brotli 依赖时才会被上游回，且解码不了 ⇒ 只承诺 gzip。
-        if (fixedMode) {
-            runCatching { builder.header("Accept-Encoding", "gzip") }
+        // ⚠️ 显式设置后 OkHttp **不会自动解压** ⇒ 代理线上原样搬运的就是 gzip 字节，
+        //    Content-Length 与 Content-Encoding 语义不变，SSE / WebSocket 不受影响。
+        val rewriteDoc = renderMode != "full" && parsed.method.equals("GET", true) &&
+            (parsed.path == "/" || parsed.path.isEmpty())
+        if (gzipMode || fixedMode) {
+            // 文档要被改写（注入 CSS / 换页）时必须拿明文，否则注入点落在 gzip 字节里。
+            runCatching { builder.header("Accept-Encoding", if (rewriteDoc) "identity" else "gzip") }
         }
         val password = runCatching { passwordProvider() }.getOrNull()
         var authSent = false
@@ -286,7 +304,27 @@ class LoopbackProxy(
             // 所以这里在 fixedMode 下把**非流式**响应体读干净、自己算长度。
             // SSE 绝不能这么做（无限流），走原路径。
             var buffered: ByteArray? = null
-            if (fixedMode && !streaming) {
+            if (rewriteDoc) {
+                // 帧时归因专用：文档要改写 ⇒ 必须整体缓冲（拿到明文 body），并重算 Content-Length。
+                val raw = runCatching { resp.body?.bytes() }.getOrNull()
+                if (raw != null) {
+                    val html = String(raw, Charsets.UTF_8)
+                    val out = rewriteDocument(html)
+                    val bytes = out.toByteArray(Charsets.UTF_8)
+                    buffered = bytes
+                    headers["Content-Length"] = bytes.size.toString()
+                    // 改写后不可能还是上游那份编码；统一声明无编码。
+                    headers.remove("Content-Encoding")
+                    headers.remove("Transfer-Encoding")
+                    headers["Connection"] = "close"
+                    reusable = false
+                    PerfMarks.markIfEnabled(
+                        "Q.docRewrite",
+                        "renderMode=$renderMode inBytes=${raw.size} outBytes=${bytes.size}",
+                    )
+                }
+            }
+            if (buffered == null && fixedMode && !streaming) {
                 if (resp.body?.contentLength() ?: -1L >= 0) {
                     val len = resp.body?.contentLength() ?: -1L
                     headers["Content-Length"] = len.toString()
@@ -340,6 +378,37 @@ class LoopbackProxy(
             )
         }
         return reusable
+    }
+
+    /**
+     * P3 帧时归因用：把官方 UI 的文档改成"更轻"的样子，用来分离
+     * **「官方 UI 本身更重」** 与 **「WebView 合成更慢」**。
+     *
+     * 只在 `renderMode != full` 时被调用，且只对 `GET /` 生效（见 [onForward]）。
+     * 返回值是**要写给 WebView 的完整 HTML**；调用方负责重算 Content-Length。
+     */
+    private fun rewriteDocument(html: String): String {
+        // 极小 DOM：纯静态文字，**零 script / 零资源请求**，但**足够长可滚动**。
+        // （第一版只有 12 行 ⇒ 不可滚动 ⇒ 滑动只产出 39 帧，样本量不足；
+        //   加长到 400 行后滑动能产出与官方 UI 同量级的帧数，地板值才可比。）
+        val minimal = """<!doctype html><html lang="en"><head><meta charset="utf-8">""" +
+            """<title>min</title><style>html,body{margin:0;padding:0;background:#080808;color:#ddd;""" +
+            """font:16px/1.5 monospace}div{padding:8px;border-bottom:1px solid #222}""" +
+            """*{box-shadow:none!important}</style></head><body>""" +
+            (1..400).joinToString("") { "<div>row $it</div>" } +
+            "</body></html>"
+
+        if (renderMode == "min" || renderMode == "flat") return minimal
+
+        // noanim / full-路径之外的 noanim：注入关停动画与阴影的 CSS。
+        val kill = """<style id="oc-perf-noanim">*,*::before,*::after{""" +
+            """animation:none!important;animation-duration:0s!important;""" +
+            """transition:none!important;transition-duration:0s!important;""" +
+            """box-shadow:none!important;text-shadow:none!important;""" +
+            """filter:none!important;backdrop-filter:none!important;background-image:none!important}""" +
+            """</style>"""
+        val at = html.indexOf("</head>")
+        return if (at >= 0) html.substring(0, at) + kill + html.substring(at) else kill + html
     }
 
     /** WebSocket 隧道（PTY 终端）。抄 legacy `tunnelWebSocket`，逐字握手 + 双向 copy。 */

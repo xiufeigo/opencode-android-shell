@@ -1,0 +1,14 @@
+{
+  "side": "web",
+  "mode": "noanim",
+  "wall_s": 43.0,
+  "p50": "31ms",
+  "p90": "42ms",
+  "p99": "57ms",
+  "frames": "808",
+  "janky": "158 (19.55%)",
+  "jankyLegacy": "765 (94.68%)",
+  "slowUI": "123",
+  "slowDraw": "127",
+  "gpuP50": "7ms"
+}

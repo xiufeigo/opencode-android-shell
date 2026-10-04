@@ -1,0 +1,14 @@
+{
+  "side": "native",
+  "mode": "native",
+  "wall_s": 42.3,
+  "p50": "26ms",
+  "p90": "38ms",
+  "p99": "150ms",
+  "frames": "890",
+  "janky": "106 (11.91%)",
+  "jankyLegacy": "773 (86.85%)",
+  "slowUI": "70",
+  "slowDraw": "72",
+  "gpuP50": "11ms"
+}

@@ -83,11 +83,23 @@ class WebHostActivity : AppCompatActivity() {
          * 用 `--es oc_perf_mode fixed` 传。
          */
         const val EXTRA_PERF_MODE = "oc_perf_mode"
+        /** P3：代理预热（并行化）开关。P3 实测在模拟器上更慢，默认 false。 */
+        const val EXTRA_PREWARM = "oc_perf_prewarm"
     }
 
-    /** P2：本次运行是 `baseline` 还是 `fixed`。 */
-    private var perfMode: String = "baseline"
+    /** P2/P3：本次运行的 `oc_perf_mode`。见 [EXTRA_PERF_MODE]。 */
+    private var perfMode: String = "gzip"
     private val fixedMode: Boolean get() = perfMode == "fixed"
+    /** P3：gzip 透传**已合入**，除 `baseline`（改前基准）外都开。 */
+    private val gzipMode: Boolean get() = perfMode != "baseline"
+    /** P3 帧时归因：文档渲染档位 full / noanim / min / flat。 */
+    private val renderMode: String
+        get() = when (perfMode) {
+            "min" -> "min"
+            "noanim" -> "noanim"
+            "flat" -> "flat"
+            else -> "full"
+        }
 
     private lateinit var webView: WebView
     private lateinit var bridge: WebHostBridge
@@ -117,7 +129,7 @@ class WebHostActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        perfMode = intent?.getStringExtra(EXTRA_PERF_MODE) ?: "baseline"
+        perfMode = intent?.getStringExtra(EXTRA_PERF_MODE) ?: "gzip"
         PerfMarks.mark("A.onCreate.enter", "mode=$perfMode")
         super.onCreate(savedInstanceState)
 
@@ -127,6 +139,13 @@ class WebHostActivity : AppCompatActivity() {
         fileChooser = FileChooserHost(this)
         NotifierHost.ensureChannels(this)
         PerfMarks.mark("B.helpersReady")
+        // P3 实测结论：把代理预热挪到后台与 WebView 创建并行，**在模拟器上更慢**
+        // （loadUrl 1102ms → 1171ms，TotalTime 无改善）。代理 bind 本身 ~225-246ms 且是
+        // CPU 密集，与主线程的 WebView 类加载抢核 ⇒ 默认**不开**，仅留 opt-in 供复现。
+        if (intent?.getBooleanExtra(EXTRA_PREWARM, false) == true) {
+            prewarmProxyAsync()
+            PerfMarks.mark("B2.prewarmKicked")
+        }
 
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -208,18 +227,23 @@ class WebHostActivity : AppCompatActivity() {
     /** 起代理并把首页指到代理 origin。 */
     private fun launch(backend: String) {
         PerfMarks.mark("H.launch.enter", "backend=$backend mode=$perfMode")
-        val p = runCatching {
+        // P3：预热线程若还在跑就等它 —— 与 WebView 创建的并行已经赚到了重叠部分。
+        runCatching { proxyPrewarm?.join(3000) }
+        val p = runCatching { synchronized(proxyLock) { pendingProxy } }.getOrElse { null } ?: runCatching {
             LoopbackProxy(
                 upstreamBase = backend,
                 // 每次转发现读 ⇒ 代理内存里不驻留明文，改密码立即生效。
                 passwordProvider = { SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD) },
                 fixedMode = fixedMode,
+                gzipMode = gzipMode,
+                renderMode = renderMode,
             ).also { it.start() }
         }.getOrElse {
             Log.e(TAG, "cannot start loopback proxy, falling back to placeholder", it)
             webView.loadUrl(LEGACY_PLACEHOLDER_URL)
             return
         }
+        pendingProxy = null
         proxy = p
         val origin = p.publicOrigin()
         val restored = restoredUrlOrNull
@@ -230,6 +254,45 @@ class WebHostActivity : AppCompatActivity() {
         PerfMarks.mark("I.proxyListening", "port=${p.port} mode=$perfMode")
         webView.loadUrl(url)
         PerfMarks.mark("J.loadUrlIssued", "url=$url")
+    }
+
+    private val proxyLock = Object()
+
+    /** P3：预热线程已经建好的代理（见 [prewarmProxyAsync]）。 */
+    private var pendingProxy: LoopbackProxy? = null
+
+    private var proxyPrewarm: Thread? = null
+
+    /**
+     * P3：把「起回环代理」从导航前的串行段里挪出去。
+     *
+     * 原来它排在 `onCreate` **末尾**，`WebView` 创建（实测 ~370 ms）必须先跑完，
+     * 代理监听（实测 ~186 ms）才开始 —— 两者无依赖，纯串行浪费。
+     * 现在在 `onCreate` 一进来就把代理起在**后台线程**上，与主线程的
+     * WebView 创建 / settings 配置**并行**；到 `launch()` 时若还没起好就 join。
+     *
+     * 失败语义逐字不变：起不来仍然走 `LEGACY_PLACEHOLDER_URL` 兜底页。
+     */
+    private fun prewarmProxyAsync() {
+        val backend = SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL)
+            ?: SecretStore.DEFAULT_BACKEND_URL
+        proxyPrewarm = Thread({
+            val t0 = System.nanoTime()
+            runCatching {
+                LoopbackProxy(
+                    upstreamBase = backend,
+                    passwordProvider = { SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD) },
+                    fixedMode = fixedMode,
+                    gzipMode = gzipMode,
+                    renderMode = renderMode,
+                ).also { it.start() }
+            }.onSuccess { p ->
+                synchronized(proxyLock) { pendingProxy = p }
+                PerfMarks.mark("I2.proxyPrewarmed", "port=${p.port} ms=${(System.nanoTime() - t0) / 1_000_000}")
+            }.onFailure {
+                Log.w(TAG, "proxy prewarm failed: ${it.message}")
+            }
+        }, "oc-proxy-prewarm").apply { isDaemon = true; start() }
     }
 
     private var restoredUrlOrNull: String? = null
