@@ -30,6 +30,7 @@ import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.SecretStore
+import com.xiufeigo.opencodeshell.web.host.SetupDialogMetrics
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import org.json.JSONObject
 
@@ -300,9 +301,18 @@ class WebHostActivity : AppCompatActivity() {
     /**
      * 首次启动的配置对话框。用**原生**对话框而不是让页面自己弹：密码必须在进 JS
      * 之前落到 EncryptedSharedPreferences。
+     *
+     * F2：两个输入框原先是 `WRAP_CONTENT` 且无 `minHeight`，实测只有 **45dp** 触摸靶
+     * （`118px ÷ 2.625`，`research/env/PHONE_AVD_VERIFY.md` §6.2）⇒ 差 3dp 不达 48dp 硬要求。
+     * 现在两者都显式 `minHeight = SetupDialogMetrics.minTouchTargetPx(density)`。
+     * 取 `minHeight` 而不是 `TouchDelegate` 撑触摸区，理由见 [SetupDialogMetrics] 与
+     * `research/web/TOUCH_TARGET_FIX.md` §4（`TouchDelegate` 不改无障碍节点 bounds，
+     * 产出这份缺陷证据的 `uiautomator` 将**看不见**修复，判据与守护对象就对不上了）。
      */
     private fun showSetupDialog(defaultBackend: String) {
         val pad = (16 * resources.displayMetrics.density).toInt()
+        val densityDpi = resources.displayMetrics.densityDpi
+        val minTargetPx = SetupDialogMetrics.minTouchTargetPx(densityDpi)
         val box = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             // 必须给 MATCH_PARENT：不设宽度的话 AlertDialog 按内容收缩成一个极窄的框，
@@ -322,6 +332,8 @@ class WebHostActivity : AppCompatActivity() {
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
             )
             setInputType(android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI)
+            // F2：45dp → 48dp 触摸靶（WRAP_CONTENT 下的固有文本高度只有 45dp）。
+            minHeight = minTargetPx
         }
         val passInput = android.widget.EditText(this).apply {
             hint = "服务器密码（用户名固定 ${LoopbackProxy.BASIC_USER}）"
@@ -335,6 +347,8 @@ class WebHostActivity : AppCompatActivity() {
                 android.text.InputType.TYPE_CLASS_TEXT or
                     android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
             )
+            // F2：同上，密码框也抬到 48dp 触摸靶。两个框必须**都**写，漏一个测试就红。
+            minHeight = minTargetPx
         }
         // 顺序很重要：**密码框放第一个**。AlertDialog 默认把焦点给第一个可编辑控件，
         // 放第一个就等于"打开即可直接输密码"，不用先点一下 URL 框。
