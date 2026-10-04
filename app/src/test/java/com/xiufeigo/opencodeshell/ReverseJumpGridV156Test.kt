@@ -299,7 +299,7 @@ class ReverseJumpGridV156Test {
      * This is the second face of the same fact and it is reader-independent.
      */
     @Test
-    fun theBodyNeverGrowsAsTheWindowGetsShorter() {
+    fun theBodyNeverGrowsAsTheRoomGetsSmaller() {
         val growth = mutableListOf<String>()
         var pairs = 0
         for (ime in imeCross) {

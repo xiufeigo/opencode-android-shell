@@ -1,3 +1,28 @@
+> # ⛔ 本文件的「断点 588」结论已作废 —— 正文一字未改，仅加此横幅
+>
+> **作废范围**：本文件正文里关于**「断点 588」**的结论（以及由它推出的
+> 「回翻点在 588」）。**正文其余部分一字未改**，保留原文以便追溯。
+>
+> **实测依据**：`research/v97_verify/5554_md/REPORT_MONOTONE_FORM2.md`（v157，
+> emulator-5554，`dumpsys window` 的 `InsetsSource id=3 type=ime frame=[..][1366,H]`
+> 逐级读数）：
+>
+> - **IME 随窗口塌缩：426 → 339 → 261**，不是常数；
+> - **塌缩点 `600 → 599`**（单个 dp，掉 78px），`room` 反而**变大 77px**；
+> - 真机在 `H=600`（`room=261`）读到 **ONEROW**、`H=595`（`room=334`）读到
+>   **STACKED**；`588 ± 3` 逐 dp 全部同形态，**588 邻域没有任何跳变**。
+>
+> **为什么 588 是伪断点**：它是「假定 ime 恒为 426」算出来的
+> （`room = H − 162 − 426`）。真机上 588 处的 ime 早已塌到 261，
+> `room = 588 − 162 − 261 = 165`，根本没落到 `composerCompact` 的 0 dp 边界。
+>
+> **判据裁定（Lead）**：单调性的自变量是 **`room`**（composer 真正被递给谓词的
+> 那个量），**窗口高 `H` 不得作判据** —— `H → room` 不是应用能控制的函数。
+> 源码侧对应修订见 `SessionPaneLayout.composerCompact` 的 KDoc（v158）与
+> `research/v97_fix/MONOTONE_JUDGE_FIX.md`。
+>
+> 本横幅由 **v159** 添加（`research/v97_fix/RENDER_THRESHOLD_ROOTCAUSE.md`）。
+
 # REPORT_MONOTONE_FORM —— v155：真机复验「键盘越高/房越小，形态不再翻回大形态」
 
 - 执行：mavis（mcode），**v155 · 真机复验测试员**
