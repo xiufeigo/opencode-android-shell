@@ -211,6 +211,18 @@
       }
     },
 
+    // ---- 9. 诊断页重试（G1）-----------------------------------------------
+    // 透传原生 retry()：宿主会重新做 WebView 版本前置检查并重走启动链，
+    // 所以用户在诊断页上更新完 "Android System WebView" 后点它就能真的进官方 UI。
+    retry: function () {
+      try {
+        N.retry();
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+
     // ---- 8. 主题 -------------------------------------------------------
     // 页面把自己的 data-color-scheme 报上来，宿主据此切系统栏图标明暗。
     reportTheme: function (dark) {

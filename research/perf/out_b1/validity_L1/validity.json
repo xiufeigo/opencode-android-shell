@@ -1,0 +1,12 @@
+{
+  "layer": "L1",
+  "V1_state_changed": false,
+  "V1_detail": "",
+  "V2_input_frames": 120,
+  "p50": 45.43,
+  "p90": 65.86,
+  "p95": 72.07,
+  "state_before": "{\"title\":\"OpenCode\",\"docScrollTop\":0,\"winScrollY\":0,\"bodyScrollTop\":0,\"biggestScroller\":{\"sh\":2539,\"ch\":821,\"st\":0,\"cls\":\"scroll-view__viewport\"},\"nodes\":910}",
+  "state_after": "{\"title\":\"OpenCode\",\"docScrollTop\":0,\"winScrollY\":0,\"bodyScrollTop\":0,\"biggestScroller\":{\"sh\":2539,\"ch\":821,\"st\":0,\"cls\":\"scroll-view__viewport\"},\"nodes\":910}",
+  "VERDICT_SWIPES_DID_REAL_WORK": false
+}

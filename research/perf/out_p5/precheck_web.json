@@ -1,9 +1,9 @@
 {
   "side": "web",
-  "serial": "emulator-5840",
+  "serial": "emulator-5854",
   "A_passwordPresent": true,
   "A_not_asking_dialog": true,
-  "B_OcPerfJS_occurrences": 116,
+  "B_OcPerfJS_occurrences": 109,
   "B_page_markers": 4,
   "C_cdp_title": "OpenCode",
   "C_loose_keyword_diagnostic": "H",

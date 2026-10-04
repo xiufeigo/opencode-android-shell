@@ -1,0 +1,12 @@
+{
+  "layer": "L0",
+  "V1_state_changed": false,
+  "V1_detail": "",
+  "V2_input_frames": 120,
+  "p50": 24.7,
+  "p90": 27.03,
+  "p95": 30.42,
+  "state_before": "{\"title\":\"L0-MINIMAL\",\"docScrollTop\":0,\"winScrollY\":0,\"bodyScrollTop\":0,\"textareaScrollTop\":0,\"textareaScrollHeight\":80016,\"textareaClientHeight\":915,\"biggestScroller\":null,\"nodes\":10}",
+  "state_after": "{\"title\":\"L0-MINIMAL\",\"docScrollTop\":0,\"winScrollY\":0,\"bodyScrollTop\":0,\"textareaScrollTop\":0,\"textareaScrollHeight\":80016,\"textareaClientHeight\":915,\"biggestScroller\":null,\"nodes\":10}",
+  "VERDICT_SWIPES_DID_REAL_WORK": false
+}

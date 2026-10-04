@@ -30,7 +30,39 @@
 |---|---|
 | 原生壳 debug | 44,198,253 B |
 | 原生壳 release（已签） | 29,393,986 B |
-| **Web 壳（路线 A）** | **8,636,901 B** |
+| 原生壳 release + R8 + shrinkResources | 17,809,425 B（−59.71%） |
+| Web 壳 debug（原有基线） | 8,636,901 B |
+| **✅ Web 壳 release 已签（非 R8，推荐分发）** | **3,948,209 B** |
+| Web 壳 release + R8 | **未产出**（见下） |
+
+### 1.1 交付产物清单（E1 发布工程）
+
+`webapp` 现已有 **`release` 构建类型**，**对齐原生壳约定**：`sharedDebug` 签名 + `applicationIdSuffix = ".debug"`
+（见 `webapp/build.gradle.kts`；原先 web 壳的 release 缺 `.debug` 后缀，与原生壳不一致，已补齐）。
+R8 做成 **`-Pwebapp.r8=true` 开关**（默认关），不新增 buildType。
+
+| 产物 | 路径 | 体积 | MD5 | 签名 | 用途 |
+|---|---|---:|---|---|---|
+| Web 壳 debug（原有，**未改动**） | `research/deliver/opencode-shell-web.apk` | 8,636,901 B | `8dcffc572ad469f472f61594f12ea990` | debug 签名 | 现状基线；A/B 对比老包 |
+| **✅ Web 壳 release 已签（非 R8）** | `research/deliver/opencode-shell-web-release-nor8.apk` | **3,948,209 B** | `9ab8ee300027f9847c2b220bb26f2b98` | **`sharedDebug`（v2，`apksigner verify` = `Verifies`）** | **推荐对外分发** |
+| Web 壳 release + R8 | ❌ **未产出** | — | — | — | 被另一路的不可编译源码阻塞 |
+
+**推荐对外分发 = `opencode-shell-web-release-nor8.apk`。**
+
+**为什么暂不发 R8 版**：
+1. **未在设备上验证**（本轮无设备、无模拟器，未起停后端）——**不能**声称"已验证可运行"；
+2. R8 版**连构建成功都还没证明**：`:webapp:compileReleaseKotlin` 失败于
+   `webapp/src/.../WebHostActivity.kt` 的 7 个 `Unresolved reference`（`webViewMajor` /
+   `webViewVersionName` / `watchdogArmed` / `showDiagnostic` / `WebViewRenderProcessDetail` / `didCrash`），
+   **该文件属另一路在途改动**（本路无 `webapp/src/**` 写权限，已退避重试 11 次，未越权修）；
+3. 风险集中在**依赖侧**：本 APK **94.31% 是 dex**，R8 缩的主要是 okhttp / coroutines / **Tink**，
+   而**最可能被裁坏的 Tink 会让 `SecretStore` 静默退化成内存存储**（口令不落盘、首启反复要密码）——
+   这种"**不崩溃只降级**"的失败在静态检查里看不出来。
+
+⚠️ **另路完工提醒**：请确认 `WebHostActivity.kt` 能编译，否则**连 debug 包也构建不出来**（不只是 R8）。
+
+完整取证（命令、`BUILD SUCCESSFUL` 原文、badging、证书指纹、APK 拆包、12 项 R8 风险清单、
+建议 keep 规则、实机验收清单）见 **`research/web/WEB_RELEASE_BUILD.md`**。
 
 ---
 

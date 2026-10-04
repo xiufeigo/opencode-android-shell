@@ -1,0 +1,16 @@
+{
+  "layer": "L2",
+  "serial": "emulator-5854",
+  "pkg": "com.xiufeigo.opencodeshell",
+  "method": "gfxinfo framestats HandleInputStart->FrameCompleted; 10 up + 10 down window-relative swipe, 250ms/250ms; cold start + 22s settle",
+  "metric": "platform input-handle-start -> frame-completed (NOT end-to-end hardware-to-photon)",
+  "interaction_wall_s": 11.7,
+  "n": 120,
+  "i2f_p50": 27.64,
+  "i2f_p90": 33.31,
+  "i2f_p95": 33.84,
+  "i2f_p99": 34.52,
+  "i2f_mean": 26.71,
+  "i2f_max": 35.04,
+  "i2s_p50": 26.65
+}

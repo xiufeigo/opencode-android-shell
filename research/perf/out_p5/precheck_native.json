@@ -1,0 +1,15 @@
+{
+  "side": "native",
+  "serial": "emulator-5854",
+  "A_passwordPresent": false,
+  "A_not_asking_dialog": true,
+  "B_OcPerfJS_occurrences": 8,
+  "B_page_markers": 0,
+  "C_cdp_title": "native-uiautomator nodes=63 EditText=1",
+  "C_loose_keyword_diagnostic": "",
+  "C_password_inputs": -1,
+  "C_cdp_text_sample": "",
+  "C_dom_nodes": 63,
+  "C_not_a_dialog": false,
+  "VERDICT_OFFICIAL_UI": false
+}

@@ -67,12 +67,42 @@
     </style>
   </head>
   <body>
-    <h1>无法连接到 OpenCode 服务</h1>
-    <p class="sub">
+    <h1 id="title">无法连接到 OpenCode 服务</h1>
+    <p class="sub" id="lead">
       本页是<b>回环代理起不来时的兜底页</b>（<code>WebHostActivity.kt:244</code>）。<br />
       代理没能监听端口 ⇒ 上游 UI 拿不到，下面这些是宿主侧的自检读数，用于区分
       「代理没起来」和「页面全白」。<b>它们不提供 OpenCode 功能</b>。
     </p>
+
+    <!-- G1：诊断区。只有宿主带 ?r=<reason> 进来时才显示（见 WebViewPreflight.diagnosticUrl）。
+         没有 reason 参数时保持隐藏，C1 记的「代理起不来」默认文案一字不动。 -->
+    <section id="diag" hidden>
+      <div class="row diag-row">
+        <div class="k">发生了什么</div>
+        <div class="v" id="d-what">…</div>
+      </div>
+      <div class="row">
+        <div class="k">当前 WebView 版本号（真实读数）</div>
+        <div class="v" id="d-ver">…</div>
+      </div>
+      <div class="row">
+        <div class="k">本壳要求</div>
+        <div class="v" id="d-req">…</div>
+      </div>
+      <div class="row">
+        <div class="k">怎么办</div>
+        <div class="v" id="d-fix">…</div>
+      </div>
+      <div class="row">
+        <div class="k">技术细节（提 issue 时贴这段）</div>
+        <div class="v" id="d-detail">…</div>
+      </div>
+      <div class="row">
+        <div class="k">重试</div>
+        <div class="v" id="d-retry">会重新检查 WebView 版本并重连。</div>
+        <button id="retryBtn">重新加载</button>
+      </div>
+    </section>
 
     <div class="row"><div class="k">origin（应=https://appassets.androidplatform.net）</div><div class="v" id="origin">…</div></div>
     <div class="row"><div class="k">WebViewAssetLoader 是否生效</div><div class="v" id="loader">…</div></div>
@@ -102,6 +132,97 @@
       function set(id, html) { $(id).innerHTML = html; }
       function ok(t) { return '<span class="ok">' + t + '</span>'; }
       function bad(t) { return '<span class="bad">' + t + '</span>'; }
+      function esc(t) {
+        return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+        });
+      }
+
+      // ---- G1 诊断区 ------------------------------------------------------
+      // 版本号等**全部**来自宿主 query 参数（真实读数），本页不写死任何版本号 ——
+      // `WebViewPreflightDiagnosticTest` 钉这条。
+      (function renderDiag() {
+        var q = {};
+        (location.search || "").replace(/^\?/, "").split("&").forEach(function (kv) {
+          if (!kv) return;
+          var i = kv.indexOf("=");
+          var k = i < 0 ? kv : kv.slice(0, i);
+          var v = i < 0 ? "" : kv.slice(i + 1);
+          try { q[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, " ")); }
+          catch (e) { q[k] = v; }
+        });
+
+        var r = q["r"];
+        if (!r) return; // 没有 reason 参数 ⇒ 保持 C1 的默认兜底文案，诊断区隐藏
+
+        var COPY = {
+          version: {
+            title: "这个 WebView 太旧，打不开 OpenCode",
+            what: "系统里的 WebView 版本 <b>低于本壳要求</b>，官方前端用的现代 ESM 它解析不了。" +
+                  "这种失败**不会**报网络错误：页面照样加载完，只是<b>一片空白</b>。" +
+                  "所以本壳在加载前就拦下来，直接显示这一页。",
+            fix: "① 更新 <b>Android System WebView</b> 或 <b>Chrome</b>（应用商店里搜 " +
+                 "<i>Android System WebView</i> 就能更新，它决定 WebView 内核版本）；" +
+                 "② 更新完回到本页点「重新加载」即可；" +
+                 "③ 若这台设备的 WebView 停更在旧版本上（部分定制 ROM / 老旧平板），" +
+                 "只能<b>换一台设备</b>。",
+          },
+          loaderror: {
+            title: "OpenCode 页面加载失败",
+            what: "官方 UI 的主文档<b>没能加载出来</b>（网络错误或连接被拒）。" +
+                  "如果后端服务没起，或密码/地址填错，也会走到这里。",
+            fix: "① 确认 opencode 后端在跑，且配置里的<b>地址</b>和<b>密码</b>正确；" +
+                 "② 确认手机与后端<b>同一网络**且能互通</b>；" +
+                 "③ 修好后点「重新加载」。",
+          },
+          rendercrash: {
+            title: "页面渲染进程崩溃了",
+            what: "WebView 的渲染进程在加载过程中<b>崩溃或被系统杀掉</b>，" +
+                  "屏幕因此变空，且不会再有任何页面回调。",
+            fix: "① 先点「重新加载」；② 若反复崩溃，多半是<b>内存不足</b>，" +
+                 "关掉后台应用后重试；③ 仍然崩溃说明这台设备的 WebView 有问题，建议换设备。",
+          },
+          stalled: {
+            title: "页面在规定时间内没有出现内容",
+            what: "发出了加载请求，但首屏<b>一直没有任何内容出现</b>" +
+                  "（既没报错，也没画出来）。这正是「白屏」最典型的形态。",
+            fix: "① 点「重新加载」；② 若反复如此，先确认网络与后端可达；" +
+                 "③ 若只有这台设备如此，多半是 WebView 版本太旧或被系统限制，点上面的版本号行对照一下。",
+          },
+        };
+        var c = COPY[r];
+        if (!c) {
+          set("d-what", "未知原因：<code>" + esc(r) + "</code>");
+          $("diag").hidden = false;
+          return;
+        }
+
+        document.title = "OpenCode Web Host — " + c.title;
+        set("title", c.title);
+        // reason 已知时，顶部那句「代理起不来」默认文案会误导人，收起来。
+        $("lead").hidden = true;
+        set("d-what", c.what);
+        set("d-ver", "<b>" + esc(q["v"] || "未读到") + "</b>" +
+          "（主版本 " + esc(q["m"] || "?") + "）<br />" +
+          '<span style="color:var(--muted)">user agent：' + esc(navigator.userAgent) + "</span>");
+        set("d-req", "主版本 <b>≥ " + esc(q["min"] || "?") + "</b>；" +
+          "首屏看门狗 <b>" + esc(q["t"] || "?") + " ms</b>");
+        set("d-fix", c.fix);
+        set("d-detail", esc(q["d"] || "（宿主未附细节）"));
+        $("diag").hidden = false;
+
+        $("retryBtn").onclick = function () {
+          set("d-retry", "正在重试…");
+          var oc = window.__ocAndroid;
+          if (oc && typeof oc.retry === "function") {
+            oc.retry();
+          } else if (window.__ocAndroidNative && typeof window.__ocAndroidNative.retry === "function") {
+            window.__ocAndroidNative.retry();
+          } else {
+            set("d-retry", bad("本页没有拿到原生桥，无法重试 —— 请重启应用。"));
+          }
+        };
+      })();
 
       // ---- origin / AssetLoader / fetch -----------------------------------
       var origin = String(location.origin);

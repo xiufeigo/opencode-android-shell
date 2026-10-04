@@ -185,6 +185,33 @@ class WebHostBridge(
         ctx.runOnUiThread { ctx.applyPageTheme(dark) }
     }
 
+    // ---- 9. 诊断页重试 + 首屏内容信号（G1）--------------------------------
+    /**
+     * `assets/www/oc-preflight.js` 回报「首屏真的有内容了」⇒ 解除宿主看门狗。
+     *
+     * 走的是**内容**信号而不是 `onPageFinished`：实测 WebView 83 上资源全部 200、
+     * `onPageFinished` 照常回调，可页面是纯白的 —— 拿「加载完成」当信号永远抓不到它。
+     */
+    @JavascriptInterface
+    fun onFirstContent(kind: String?, atMs: Long?) {
+        ctx.runOnUiThread { ctx.onFirstContent(kind, atMs) }
+    }
+
+    /**
+     * 诊断页的「重试」按钮调它：**重新走一遍完整的启动链**（重新做 G1 前置检查 →
+     * 重新 loadUrl 官方 UI），而不是简单地 `webView.reload()`。
+     *
+     * 为什么不用 `reload()`：用户在诊断页上看到的 URL 是 `assets/www/index.html`，
+     * reload 只会把诊断页自己再加载一遍，永远回不到官方 UI。
+     *
+     * 这条同时闭环了 `CLEANUP_C1.md` §4 第 4 条的未闭环（"兜底页没有重试按钮"）。
+     */
+    @JavascriptInterface
+    fun retry() {
+        Log.i(TAG, "G1 retry requested from diagnostic page")
+        ctx.runOnUiThread { ctx.retryFromDiagnosticPage() }
+    }
+
     // ---- 通知点击回会话 ---------------------------------------------------
     fun deliverOpenSession(sessionId: String?) {
         val payload = JSONObject().apply { put("sessionId", sessionId ?: "") }.toString()

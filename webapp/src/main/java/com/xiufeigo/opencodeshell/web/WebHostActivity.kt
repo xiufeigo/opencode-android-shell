@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
@@ -32,6 +33,7 @@ import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.SetupDialogMetrics
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
+import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
 
 /**
@@ -86,6 +88,26 @@ class WebHostActivity : AppCompatActivity() {
         const val EXTRA_PERF_MODE = "oc_perf_mode"
         /** P3：代理预热（并行化）开关。P3 实测在模拟器上更慢，默认 false。 */
         const val EXTRA_PREWARM = "oc_perf_prewarm"
+
+        /**
+         * G1：诊断页 URL（就是 C1 留下的那套兜底页资产，只是多带 query 参数换文案）。
+         * 阈值与超时的依据全在 [WebViewPreflight] 里。
+         *
+         * ⚠️ 这里**不能**读实例字段（`webViewMajor`/`webViewVersionName`）—— companion object
+         * 没有实例上下文。真实读数由实例侧的 [showDiagnostic] 传进来。
+         */
+        fun diagnosticUrl(
+            reason: WebViewPreflight.Reason,
+            major: Int?,
+            versionName: String?,
+            detail: String? = null,
+        ): String = WebViewPreflight.diagnosticUrl(
+            baseUrl = LEGACY_PLACEHOLDER_URL,
+            reason = reason,
+            major = major,
+            versionName = versionName,
+            detail = detail,
+        )
     }
 
     /** P2/P3：本次运行的 `oc_perf_mode`。见 [EXTRA_PERF_MODE]。 */
@@ -111,6 +133,81 @@ class WebHostActivity : AppCompatActivity() {
     private var pickedUri: Uri? = null
     private var pendingPageScrollY: Int = 0
     private var pageReportedDark: Boolean? = null
+
+    // ---- G1：WebView 版本前置检查 + 首屏看门狗 -----------------------------
+    /** 真实读数（不写死）：`WebView.getCurrentWebViewPackage()?.versionName`，读不到就是 `null`。 */
+    private var webViewVersionName: String? = null
+    private var webViewMajor: Int? = null
+
+    /** 已加载官方 UI ⇒ 看门狗才有意义（诊断页自己不需要被诊断）。 */
+    private var watchdogArmed = false
+    private var firstContentSeen = false
+    private var loadIssuedAtMs = 0L
+    private val watchdog = Runnable {
+        val reason = WebViewPreflight.stallVerdict(
+            elapsedMs = SystemClock.elapsedRealtime() - loadIssuedAtMs,
+            contentSeen = firstContentSeen,
+        )
+        if (reason != null) {
+            // 到点还没内容 ⇒ 白屏/卡死。实测 WebView 83 就是这种：资源全 200、页面全白。
+            Log.w(TAG, "G1 watchdog fired: no first content in ${WebViewPreflight.LOAD_STALL_TIMEOUT_MS}ms")
+            showDiagnostic(reason, "首屏 ${WebViewPreflight.LOAD_STALL_TIMEOUT_MS}ms 内没有任何内容")
+        }
+    }
+
+    /**
+     * 诊断页「重试」按钮的落点：重走一遍启动链。
+     *
+     * 关键是**重新读一次 WebView 版本**再决定 —— 用户可能刚更新了
+     * "Android System WebView"，这时重试就该真的进官方 UI 了。
+     */
+    fun retryFromDiagnosticPage() {
+        Log.i(TAG, "G1 retry: re-running preflight + launch")
+        readWebViewVersion()
+        restoredUrlOrNull = null
+        // `launch` 里会先做 preflight：通过 ⇒ 重新挂看门狗并加载官方 UI；
+        // 仍过旧 ⇒ 又回到诊断页（且带上新的真实读数）。
+        launch(SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL)
+    }
+
+    /** 读一次 WebView 版本。取不到就留 `null` —— **不得**因此判过旧（见 [WebViewPreflight]）。 */
+    private fun readWebViewVersion() {
+        val pkg = runCatching { WebViewCompat.getCurrentWebViewPackage(this) }.getOrNull()
+        val name = runCatching { pkg?.versionName }.getOrNull()
+        webViewVersionName = name
+        webViewMajor = WebViewPreflight.parseMajor(name)
+        Log.i(
+            TAG,
+            "G1 webview version=$name major=${webViewMajor} " +
+                "min=${WebViewPreflight.MIN_MAJOR} tooOld=${WebViewPreflight.isTooOld(webViewMajor)}",
+        )
+    }
+
+    /** 切到诊断页：先关掉看门狗（诊断页不需要被诊断），再加载带参数的自建页面。 */
+    private fun showDiagnostic(reason: WebViewPreflight.Reason, detail: String?) {
+        watchdogArmed = false
+        firstContentSeen = true
+        val url = diagnosticUrl(reason, webViewMajor, webViewVersionName, detail)
+        Log.w(TAG, "G1 showing diagnostic page reason=${reason.wire} detail=$detail")
+        PerfMarks.mark("M.g1.diagnostic", "reason=${reason.wire}")
+        webView.loadUrl(url)
+    }
+
+    private fun armWatchdog() {
+        watchdogArmed = true
+        firstContentSeen = false
+        loadIssuedAtMs = SystemClock.elapsedRealtime()
+        webView.removeCallbacks(watchdog)
+        webView.postDelayed(watchdog, WebViewPreflight.LOAD_STALL_TIMEOUT_MS)
+    }
+
+    /** 桥从 `oc-preflight.js` 收到首屏内容信号 ⇒ 解除看门狗。 */
+    fun onFirstContent(kind: String?, atMs: Long?) {
+        if (firstContentSeen) return
+        firstContentSeen = true
+        PerfMarks.mark("M.g1.firstContent", "kind=$kind at=$atMs")
+        webView.post { webView.removeCallbacks(watchdog) }
+    }
 
     val imeModeName: String
         get() = if (::insets.isInitialized) insets.imeMode.name.lowercase() else "vars"
@@ -165,7 +262,10 @@ class WebHostActivity : AppCompatActivity() {
         PerfMarks.mark("D.settingsConfigured")
         installFacade(webView)
         installPerfProbe(webView)
+        installPreflightProbe(webView)
         PerfMarks.mark("E.facadeInstalled")
+        // G1：版本读数必须在 [launch] 之前拿到 —— 前置检查要靠它决定加载官方 UI 还是诊断页。
+        readWebViewVersion()
         webView.webViewClient = HostWebViewClient()
         webView.webChromeClient = HostWebChromeClient()
         webView.setDownloadListener { url, ua, _, _, _ ->
@@ -253,6 +353,24 @@ class WebHostActivity : AppCompatActivity() {
         val hasPassword = !SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD).isNullOrEmpty()
         Log.i(TAG, "home=$url backend=$backend passwordPresent=$hasPassword")
         PerfMarks.mark("I.proxyListening", "port=${p.port} mode=$perfMode")
+
+        // ---- G1 前置能力检查 ------------------------------------------------
+        // 过旧就**不加载**官方 UI：实测 WebView 83 加载它只会得到一片纯白
+        // （资源全 200、ESM 解析失败、`onPageFinished` 照常回调）。
+        // 加载它再报错，等于让用户在白屏前多等一轮无意义的网络与解析。
+        when (val verdict = WebViewPreflight.preflight(webViewVersionName)) {
+            is WebViewPreflight.Verdict.ShowDiagnostic -> {
+                showDiagnostic(verdict.reason, "WebView ${verdict.versionName} < ${WebViewPreflight.MIN_MAJOR}")
+                PerfMarks.mark("J.g1.blockedOldWebview", "major=${verdict.major}")
+                return
+            }
+            is WebViewPreflight.Verdict.LoadOfficialUi -> {
+                // 读不到版本（unknownVersion=true）**照样放行**，只多挂一层运行期看门狗。
+                PerfMarks.mark("J.g1.preflightOk", "major=${verdict.major} unknown=${verdict.unknownVersion}")
+            }
+        }
+
+        armWatchdog()
         webView.loadUrl(url)
         PerfMarks.mark("J.loadUrlIssued", "url=$url")
     }
@@ -463,6 +581,28 @@ class WebHostActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * G1：把 `assets/www/oc-preflight.js` 注册成**文档开始**脚本，回报首屏内容信号。
+     *
+     * 拿不到特性（老 WebView）时退回 `onPageStarted` 注入 —— 那时也已经晚了，
+     * 但 83 那种设备在**前置检查**就被拦住了，走不到这里。
+     */
+    private fun installPreflightProbe(wv: WebView) {
+        val script = runCatching {
+            assets.open("www/oc-preflight.js").bufferedReader().use { it.readText() }
+        }.getOrElse {
+            Log.w(TAG, "oc-preflight.js missing, first-content signal unavailable", it)
+            return
+        }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("*")) }
+                .onSuccess { PerfMarks.mark("E3.g1ProbeRegistered") }
+                .onFailure { Log.w(TAG, "g1 probe register failed", it) }
+        } else {
+            Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported -> g1 probe falls back to onPageStarted")
+        }
+    }
+
     // ---- 返回：canGoBack → 问页面 → 什么都不做 -----------------------------
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -639,7 +779,8 @@ class WebHostActivity : AppCompatActivity() {
     }
 
     // ---- WebViewClient ----------------------------------------------------
-    private open class HostWebViewClient : WebViewClient() {
+    // G1：必须是 `inner` —— 运行期兜底要读 Activity 的 `watchdogArmed` 并调 `showDiagnostic`。
+    private inner open class HostWebViewClient : WebViewClient() {
         private var assetLoader: WebViewAssetLoader? = null
 
         fun loader(ctx: android.content.Context): WebViewAssetLoader =
@@ -671,7 +812,30 @@ class WebHostActivity : AppCompatActivity() {
                 "K2.onReceivedError",
                 "url=${request.url} code=${error.errorCode} desc=${error.description} main=${request.isForMainFrame}",
             )
+            // G1：**只有主文档**挂掉才切诊断页。子资源 404 不切 —— 那会误伤能正常用的页面。
+            val reason = WebViewPreflight.loadErrorVerdict(request.isForMainFrame) ?: return
+            if (!watchdogArmed) return
+            showDiagnostic(
+                reason,
+                "code=${error.errorCode} ${error.description} url=${request.url}",
+            )
         }
+
+        /**
+         * G1：渲染进程崩溃兜底 —— **本轮未接线**，诚实记为未闭环。
+         *
+         * 想接的是 `onRenderProcessGone`（API 26），但本模块编译期解析不到
+         * `android.webkit.WebViewRenderProcessDetail`（真跑报错：
+         * `Unresolved reference 'WebViewRenderProcessDetail'` / `'onRenderProcessGone' overrides nothing`）。
+         * 根因**未核对**（本机 SDK 的 android.jar 路径未能定位，来不及深挖）。
+         *
+         * 代价评估：该 hook 缺位**不影响**本轮修的故障 —— WebView 83 那次白屏里
+         * 渲染进程**没有**崩（资源全 200、`onPageFinished` 照常回调），本来也抓不到它；
+         * 真要崩了，12 s 看门狗仍会兜住（崩了就更不会有首屏内容信号）。
+         * 诊断页的「渲染进程崩溃」文案已就位（`Reason.RENDER_CRASH`），
+         * 宿主补上这个 override 就能直接用。
+         */
+        private fun onRenderProcessGoneNotWired() = Unit
 
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)

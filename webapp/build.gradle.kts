@@ -38,9 +38,21 @@ android {
             signingConfig = signingConfigs.getByName("sharedDebug")
             applicationIdSuffix = ".debug"
         }
+        // E1 发布工程：release 变体**对齐原生壳约定**（app/build.gradle.kts 的 release 块）——
+        // 同一份 `sharedDebug` 签名 + `applicationIdSuffix = ".debug"`，
+        // 于是 web 壳的 release 是个"可安装、与官方壳互不覆盖"的包，而不是只装得上的调试包。
+        //
+        // R8 是**开关式**的：默认关（release 产物与非 R8 完全一致），
+        // 要实验产物时显式 `-Pwebapp.r8=true`，`isShrinkResources` 一并跟随。
+        // 用开关而不是新建 `releaseR8` buildType，是为了不把变体集合撑大
+        // （会多出 lintVitalReleaseR8 / testReleaseR8 之类的任务），
+        // 也免得"哪份是发布件"在变体列表里出现两个候选。
         release {
-            isMinifyEnabled = false
+            val r8 = providers.gradleProperty("webapp.r8").orNull == "true"
+            isMinifyEnabled = r8
+            isShrinkResources = r8
             signingConfig = signingConfigs.getByName("sharedDebug")
+            applicationIdSuffix = ".debug"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

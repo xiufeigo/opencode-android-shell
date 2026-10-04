@@ -1,0 +1,18 @@
+{
+  "side": "native",
+  "serial": "emulator-5854",
+  "gate": "b1_precheck_native (corrected: positively identifies official native composer)",
+  "E_web_shell_stopped": true,
+  "web_shell_pid": "",
+  "A_topResumedActivity": "topResumedActivity=ActivityRecord{1f5fa6a u0 com.xiufeigo.opencodeshell/.OcActivity t80}",
+  "A_is_OcActivity": true,
+  "B_password_nodes": 0,
+  "B_no_password_dialog": true,
+  "C_save_and_connect_button": false,
+  "C_no_dialog_button": true,
+  "D_composer_hint_hit": true,
+  "D_dom_nodes": 63,
+  "D_is_official_composer": true,
+  "F_no_asking_dialog": true,
+  "VERDICT_OFFICIAL_UI": true
+}
