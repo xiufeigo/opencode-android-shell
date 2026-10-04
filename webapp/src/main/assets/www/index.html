@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- initialScale=1 + 无固定宽度：保证 1 CSS px == 1 dp，宿主给的 inset 变量才准 -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>OpenCode Web Host — W1 骨架自检</title>
+    <title>OpenCode Web Host — 连接失败</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -52,6 +52,9 @@
       button {
         font: inherit; margin-top: 6px; padding: 6px 10px; border-radius: 6px;
         border: 1px solid var(--line); background: transparent; color: var(--fg);
+        /* C1/F2：触摸靶地板 48dp。固有盒高只有 21(行盒)+12(padding)+2(border)=35px，
+           低于 48dp 硬要求 ⇒ 显式抬到 48px。`FallbackPageTouchTargetTest` 钉这条。 */
+        min-height: 48px;
       }
       /* 底部压条：证明 --oc-ime-bottom 真的在推内容 */
       #probe {
@@ -64,10 +67,11 @@
     </style>
   </head>
   <body>
-    <h1>OpenCode Web Host — W1 骨架自检</h1>
+    <h1>无法连接到 OpenCode 服务</h1>
     <p class="sub">
-      占位页。真正的上游产物（<code>@opencode-ai/app</code> dist）在后续轮次塞进
-      <code>assets/www/</code>，把本页换掉即可。
+      本页是<b>回环代理起不来时的兜底页</b>（<code>WebHostActivity.kt:244</code>）。<br />
+      代理没能监听端口 ⇒ 上游 UI 拿不到，下面这些是宿主侧的自检读数，用于区分
+      「代理没起来」和「页面全白」。<b>它们不提供 OpenCode 功能</b>。
     </p>
 
     <div class="row"><div class="k">origin（应=https://appassets.androidplatform.net）</div><div class="v" id="origin">…</div></div>

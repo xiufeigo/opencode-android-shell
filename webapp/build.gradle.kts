@@ -90,8 +90,20 @@ dependencies {
 // 只改注入层、不改任何 .kt 时，`testDebugUnitTest` 会被判为 UP-TO-DATE **整段跳过**，
 // 绊线于是"假绿"——本轮真跑验证过：撤回修法后 gradle 仍然 BUILD SUCCESSFUL。
 // 声明成输入后，注入层一改，测试必重跑；撤回修法 ⇒ 必红。
+//
+// C1 绊线（`CLEANUP_C1.md` §1/§2）：同样是「资产/构建脚本契约」型断言，必须显式声明 ——
+//  `FallbackPageTouchTargetTest` 直接读 `assets/www/index.html`；
+//  `DebugEvalChannelTest` 直接读 `build.gradle.kts` + `WebHostActivity.kt`。
+//  不声明的话，撤回 `min-height: 48px` 或改 buildTypes 都会让任务被判 UP-TO-DATE 而"假绿"。
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
-    inputs.file(layout.projectDirectory.file("src/main/assets/www/oc-host.js"))
-        .withPropertyName("ocHostFacadeAsset")
-        .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    listOf(
+        "src/main/assets/www/oc-host.js",
+        "src/main/assets/www/index.html",
+        "build.gradle.kts",
+        "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
+    ).forEach { rel ->
+        inputs.file(layout.projectDirectory.file(rel))
+            .withPropertyName("contractAsset_$rel")
+            .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    }
 }
