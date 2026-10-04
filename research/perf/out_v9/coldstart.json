@@ -1,0 +1,37 @@
+[
+  {
+    "run": 1,
+    "uiAvailableMs": 7334,
+    "amTotalMs": 706,
+    "dialogDismissed": true,
+    "proxyGET": 63
+  },
+  {
+    "run": 2,
+    "uiAvailableMs": 7252,
+    "amTotalMs": 662,
+    "dialogDismissed": true,
+    "proxyGET": 63
+  },
+  {
+    "run": 3,
+    "uiAvailableMs": 7095,
+    "amTotalMs": 515,
+    "dialogDismissed": true,
+    "proxyGET": 53
+  },
+  {
+    "run": 4,
+    "uiAvailableMs": 7240,
+    "amTotalMs": 641,
+    "dialogDismissed": true,
+    "proxyGET": 52
+  },
+  {
+    "run": 5,
+    "uiAvailableMs": 7266,
+    "amTotalMs": 662,
+    "dialogDismissed": true,
+    "proxyGET": 53
+  }
+]
