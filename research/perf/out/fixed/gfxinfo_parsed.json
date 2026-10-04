@@ -1,42 +1,42 @@
 [
   {
     "key": "Total frames rendered",
-    "value": "831"
+    "value": "833"
   },
   {
     "key": "Janky frames",
-    "value": "119 (14.32%)"
+    "value": "149 (17.89%)"
   },
   {
     "key": "Janky frames (legacy)",
-    "value": "794 (95.55%)"
+    "value": "790 (94.84%)"
   },
   {
     "key": "50th percentile",
-    "value": "29ms"
+    "value": "31ms"
   },
   {
     "key": "90th percentile",
-    "value": "38ms"
-  },
-  {
-    "key": "95th percentile",
     "value": "44ms"
   },
   {
+    "key": "95th percentile",
+    "value": "48ms"
+  },
+  {
     "key": "99th percentile",
-    "value": "57ms"
+    "value": "65ms"
   },
   {
     "key": "Number Slow UI thread",
-    "value": "89"
+    "value": "114"
   },
   {
     "key": "Number Slow issue draw commands",
-    "value": "85"
+    "value": "121"
   },
   {
     "key": "50th gpu percentile",
-    "value": "3ms"
+    "value": "10ms"
   }
 ]
