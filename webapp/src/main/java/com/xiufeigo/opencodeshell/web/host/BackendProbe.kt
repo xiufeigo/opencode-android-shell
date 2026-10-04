@@ -1,6 +1,5 @@
 package com.xiufeigo.opencodeshell.web.host
 
-import android.util.Base64
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -40,10 +39,24 @@ import java.util.concurrent.TimeUnit
  *
  * | 观察 | 判定 | 界面上给用户的话 |
  * |---|---|---|
- * | `401` / `403` | [Result.AUTH_FAILED] | **用户名或口令不对**（不说哪个，因为分不清） |
- * | `2xx` / `3xx` | [Result.OK] | 不打扰，继续加载官方 UI |
- * | 连不上 / 超时 / `5xx` | [Result.UNREACHABLE] | 连不上服务器，请检查地址与网络 |
- * | 其它 | [Result.UNKNOWN] | 出了点问题，可重试 |
+ * | **带凭据** `2xx` / `3xx` | [Result.OK] | 不打扰，**直接 `launch()` 进官方 UI** |
+ * | **带凭据** `401` / `403` | [Result.AuthFailed] | **用户名或口令不对**（不说哪个，因为分不清），可重试 |
+ * | 连不上 / 超时 / `5xx` | [Result.Unreachable] | 连不上服务器，请检查地址与网络 |
+ * | 其它 | [Result.Unknown] | 出了点问题，可重试 |
+ *
+ * ### F6：三态必须是"带凭据"下的三态（这一条曾经是坏的）
+ *
+ * 关键在于**上面每一行都预设了请求带着 Basic 凭据**。F5 引发的缺陷正是这一点被打破：
+ * 那时每一次探测都是**匿名**请求（见 [buildProbeRequest] 的注释与
+ * `research/web/V8_VERIFY.md` §0），于是后端一律回 401，**口令正确的用户也被判成
+ * [Result.AuthFailed]** —— 明明输对了，却被告知"用户名或口令不对"。
+ * 也就是说：**"判 AuthFailed"这个动作本身没错，错的是判它所依据的那次请求根本没带凭据。**
+ *
+ * 修好后的三态（这是本类现在守住的不变量）：
+ * **带凭据 200 ⇒ [Result.OK] ⇒ 正常 `launch()` 进官方 UI**；
+ * **带凭据 401 ⇒ [Result.AuthFailed]**（"用户名或口令不对" + 可重试）；
+ * **连不上/超时 ⇒ [Result.Unreachable]**（与认证失败**严格分开**：前者引导查地址网络，
+ * 后者引导改口令）。
  *
  * ## 超时值与依据
  *
@@ -128,30 +141,69 @@ class BackendProbe(
     }
 
     /**
+     * F6：**唯一**的探测请求构造点 —— 每次探测都从这里出，**必然带 Basic 凭据**。
+     *
+     * ## 为什么必须只有这一个构造点（V8 缺陷的根因）
+     *
+     * F5 之前有**两处**各造一次请求：[probe] 造带 `Authorization` 的 `builder`，
+     * [probeAsync] 为了让 [cancel] 能拿到在途 `Call`，**又造了一个不带 `Authorization`
+     * 的 `Request`**。而 [probe] 里的 `call ?: httpClient.newCall(builder.build())`
+     * 会**优先采用那个匿名 `call`**，于是那份带凭据的 `builder` 被整份丢弃。
+     *
+     * 后果（V8 §0 实测）：**每一次探测都是匿名请求** ⇒ 后端一律回 **401**
+     * ⇒ [classify] 判成 [Result.AuthFailed] ⇒ **口令正确的用户也被告知
+     * "用户名或口令不对"**（`V8_VERIFY.md` L74 / L309-310 / L453）。
+     *
+     * **修法不是"再补一个 header"，而是让这条路径在结构上不可能匿名**：
+     * 认证头写死在这里，[probeAsync] 不再自己造 Request，而是调用本方法。
+     * 这样 `call` 与 `builder` 永远来自同一份带凭据的请求，匿名分支不复存在。
+     *
+     * 顺带把 `Base64` 从 `android.util` 换成 `java.util`：
+     * 前者是 Android framework 的桩实现，**在 JVM 单测里会抛
+     * `RuntimeException("Stub!")`**，所以"探测请求是否带 Basic"这条断言
+     * 只能在设备上验证。`java.util.Base64` 自 **API 26** 起可用（本模块
+     * `minSdk = 26`），于是本方法**可以在 `:webapp:testDebugUnitTest` 里直接
+     * 构造请求并断言请求头**（见 `ConnectRobustnessTest`）。
+     *
+     * @param password 口令；空/null ⇒ **不发** `Authorization`（此时后端回 401，
+     *   判定为 [Result.AuthFailed]，与"口令错"同归一 —— 反正都要用户去输口令）。
+     */
+    internal fun buildProbeRequest(backend: String, password: String?): Request {
+        val builder = Request.Builder()
+            .url(backend.trim().trimEnd('/') + PROBE_PATH)
+            .get()
+        if (!password.isNullOrEmpty()) {
+            val token = java.util.Base64.getEncoder().encodeToString(
+                "$BASIC_USER:$password".toByteArray(Charsets.UTF_8),
+            )
+            builder.header("Authorization", "Basic $token")
+        }
+        return builder.build()
+    }
+
+    /**
      * 同步探一次。**必须在后台线程调用**（[probeAsync] 负责这件事）。
      *
      * @param backend 后端基址，例如 `http://127.0.0.1:4095`
      * @param password 口令；空 ⇒ 不发 Authorization（后端应回 401，判为 [Result.AuthFailed]）
+     * @param call 可选的在途 `Call`（供 [probeAsync] 登记以便 [cancel]）。
+     *   **F6**：它若非 null，必须是由 [buildProbeRequest] 造出来的（[probeAsync]
+     *   就是这么做的）⇒ 一定带凭据。留这个参数是为了"取消"能力，不是为了
+     *   "换一条不带凭据的请求去探"。
      */
     fun probe(backend: String, password: String?, call: okhttp3.Call? = null): Result {
-        val url = backend.trim().trimEnd('/') + PROBE_PATH
         val passLen = password?.length ?: -1
-        val builder = Request.Builder().url(url).get()
-        if (!password.isNullOrEmpty()) {
-            val token = Base64.encodeToString(
-                "$BASIC_USER:$password".toByteArray(Charsets.UTF_8),
-                Base64.NO_WRAP,
-            )
-            builder.header("Authorization", "Basic $token")
-        }
         return try {
-            val call0 = call ?: httpClient.newCall(builder.build())
+            val call0 = call ?: httpClient.newCall(buildProbeRequest(backend, password))
             call0.execute().use { resp ->
                 // 只打"有没有/多长"，与 LoopbackProxy 的既有记法一致：**绝不回显口令**。
+                // 这里的 authHeaderSent 是 F6 的"实际线上行为"证据位：读的是
+                // **真的发出去的那条请求**（call0.request()），不是某个局部变量。
+                val sentAuth = call0.request().header("Authorization") != null
                 Log.i(
                     TAG,
                     "probe $PROBE_PATH -> ${resp.code}; user=$BASIC_USER passLen=$passLen " +
-                        "authHeaderSent=${!password.isNullOrEmpty()}",
+                        "authHeaderSent=$sentAuth",
                 )
                 classify(resp.code, null)
             }
@@ -165,9 +217,9 @@ class BackendProbe(
 
     /** 探完在主线程回调。[onResult] 一定被调用（成功或失败都回调），便于界面收敛。 */
     fun probeAsync(backend: String, password: String?, onResult: (Result) -> Unit) {
-        val call = httpClient.newCall(
-            Request.Builder().url(backend.trim().trimEnd('/') + PROBE_PATH).get().build(),
-        )
+        // F6：**用带凭据的请求**建 `Call`（此前这里造的是匿名请求，
+        // 并且在 probe() 里顶替掉了带凭据的 builder —— 见 buildProbeRequest 的注释）。
+        val call = httpClient.newCall(buildProbeRequest(backend, password))
         inflight.add(call)
         Thread({
             val result = probe(backend, password, call)

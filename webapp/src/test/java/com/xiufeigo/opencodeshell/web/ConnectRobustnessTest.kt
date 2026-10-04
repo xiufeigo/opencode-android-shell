@@ -4,8 +4,11 @@ import com.xiufeigo.opencodeshell.web.host.BackendProbe
 import com.xiufeigo.opencodeshell.web.host.ConnectErrorPage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * F5 · 接入健壮性守卫。
@@ -136,6 +139,136 @@ class ConnectRobustnessTest {
         for (f in fields) {
             assertFalse("Result 不得带口令字段: $f", f.contains("pass", ignoreCase = true))
             assertFalse("Result 不得带口令字段: $f", f.contains("secret", ignoreCase = true))
+        }
+    }
+
+    // ---- F6：探测必须带 Basic 凭据（V8 缺陷的正面守卫）---------------------
+
+    @Test
+    fun `probe request carries basic credentials with fixed user and given password`() {
+        // 这就是 F6 的核心断言。V8 实测：每一次探测都是**匿名**请求 ⇒ 后端回 401
+        // ⇒ 口令正确的用户被告知"用户名或口令不对"（V8_VERIFY.md §0.1）。
+        // 断言的是**真的要发出去的那条请求**的请求头。
+        val probe = BackendProbe()
+        val req = probe.buildProbeRequest("http://127.0.0.1:4095", "opencode")
+        val auth = req.header("Authorization")
+
+        assertNotNull("探测请求必须带 Authorization: 实际=$auth", auth)
+        assertTrue("必须是 Basic 认证: $auth", auth!!.startsWith("Basic "))
+        // 解码核对：用户名固定 opencode，口令原样带上。
+        val decoded = String(
+            java.util.Base64.getDecoder().decode(auth.removePrefix("Basic ")),
+            Charsets.UTF_8,
+        )
+        assertEquals("opencode:opencode", decoded)
+        assertEquals("探的端点必须是 /api/info", "/api/info", req.url.encodedPath)
+    }
+
+    @Test
+    fun `probe request drops trailing slash and appends probe path exactly once`() {
+        // 地址拼接是"会不会把 /api/info 探成 /api//api/info"这类问题的守门。
+        val probe = BackendProbe()
+        for (base in listOf("http://127.0.0.1:4095", "http://127.0.0.1:4095/")) {
+            val url = probe.buildProbeRequest(base, "opencode").url
+            assertEquals(
+                "base=$base 拼接必须恰好一次",
+                "http://127.0.0.1:4095/api/info",
+                url.toString(),
+            )
+        }
+    }
+
+    @Test
+    fun `probe request without password carries no authorization header`() {
+        // 反向的另一半：空口令时**确实不发** header（不能硬塞一个空口令的 Basic）。
+        // 此时的 401 依然判 AuthFailed，语义是"去输口令"，不是"你输错了"。
+        val probe = BackendProbe()
+        for (empty in listOf(null, "")) {
+            val req = probe.buildProbeRequest("http://127.0.0.1:4095", empty)
+            assertNull("空口令不得发 Authorization: pass=$empty", req.header("Authorization"))
+        }
+    }
+
+    @Test
+    fun `three state classification is distinct for credentialed responses`() {
+        // F6 要求三态严格分开：带凭据 200 = 放行；带凭据 401 = 口令不对；
+        // 连不上/超时 = 不可达（**不是**认证失败）。这里守住"AuthFailed 与
+        // Unreachable 互不吞并"这条线。
+        val probe = BackendProbe()
+        val ok = probe.classify(200, null)
+        val auth = probe.classify(401, null)
+        val unreach = probe.classify(null, "timeout")
+
+        assertTrue("带凭据 200 ⇒ OK（正常放行进官方 UI）", ok is BackendProbe.Result.OK)
+        assertTrue("带凭据 401 ⇒ AuthFailed", auth is BackendProbe.Result.AuthFailed)
+        assertTrue("连不上/超时 ⇒ Unreachable", unreach is BackendProbe.Result.Unreachable)
+
+        assertFalse("OK 与 AuthFailed 不得同形", ok is BackendProbe.Result.AuthFailed)
+        assertFalse("Unreachable 不得被当成 AuthFailed", unreach is BackendProbe.Result.AuthFailed)
+        assertEquals("OK 必须带回状态码", 200, (ok as BackendProbe.Result.OK).code)
+        assertEquals("AuthFailed 必须带回状态码", 401, (auth as BackendProbe.Result.AuthFailed).code)
+        // 不可达引导的是"查地址/网络"，认证失败引导的是"改口令" —— 文案不得串。
+        assertTrue(
+            ConnectErrorPage.Kind.UNREACHABLE.hint.contains("服务器地址"),
+        )
+        // F6：带凭据 401 判 AuthFailed 时，给用户看的那句话必须**明确**是认证问题
+        // （"用户名或口令不对"在 HINT_AUTH 里；heading 是"登录没通过"）。
+        assertTrue(
+            ConnectErrorPage.Kind.AUTH_FAILED.hint.contains("用户名或口令不对"),
+        )
+        // 认证失败的文案不得混进"连不上/查地址"那套引导，否则用户会去查网络而反复失败。
+        assertFalse(
+            ConnectErrorPage.Kind.AUTH_FAILED.hint.contains("服务器地址"),
+        )
+    }
+
+    @Test
+    fun `probe log line never contains the password`() {
+        // 口令纪律的**机械**核对：凡是拼进日志的字符串，都不得直接插值口令。
+        // 用源码接线检查来守 —— 反射看不到字符串模板的内容。
+        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/BackendProbe.kt")
+        assertTrue("必须能读到 BackendProbe.kt 源文件: ${f.absolutePath}", f.exists())
+        val text = f.readText()
+
+        val logCallBodies = Regex("""Log\.[a-z]\(([\s\S]*?)\n\s*\)""")
+            .findAll(text).map { it.groupValues[1] }.toList()
+        assertTrue("应当能扫到日志调用", logCallBodies.isNotEmpty())
+        for (body in logCallBodies) {
+            assertFalse(
+                "日志里不得插值口令: $body",
+                body.contains("\$password") || body.contains("\${password"),
+            )
+        }
+        // 结论行只能记长度，不能记口令
+        assertTrue("结论行应只记 passLen", text.contains("passLen=\$passLen"))
+    }
+
+    @Test
+    fun `every probe call site must build its request from buildProbeRequest`() {
+        // F6 反向验证总结的教训：**只测 buildProbeRequest 是不够的**。
+        //
+        // F6 第一版绊线只断言了 `buildProbeRequest` 单独调用时会带凭据，于是把
+        // `probeAsync` 改回 V8 原始形态（自己造一条匿名 Request）时，**测试照样绿** ——
+        // 那正是"假绿"：断言的对象（构造器）与真实发出去的那条请求**不是同一条路**。
+        //
+        // 本条断言改成守**接线**：文件里每一处 `httpClient.newCall(` 都必须
+        // 用 `buildProbeRequest(...)` 造请求。任何人再引入一条匿名探测请求，
+        // 这里必红。
+        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/BackendProbe.kt")
+        assertTrue("必须能读到 BackendProbe.kt 源文件: ${f.absolutePath}", f.exists())
+        val lines = f.readLines()
+
+        val callSites = lines
+            .mapIndexed { i, l -> i to l }
+            .filter { (_, l) -> l.contains("httpClient.newCall(") && !l.trimStart().startsWith("*") }
+        assertTrue("应当至少有一处 newCall", callSites.isNotEmpty())
+
+        for ((idx, line) in callSites) {
+            val n = idx + 1
+            assertTrue(
+                "第 $n 行的 newCall 必须用 buildProbeRequest 造请求（否则探测变匿名）: $line",
+                line.contains("buildProbeRequest("),
+            )
         }
     }
 }

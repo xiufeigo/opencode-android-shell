@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!-- initialScale=1 + 无固定宽度：保证 1 CSS px == 1 dp，宿主给�?inset 变量才准 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>OpenCode Web Host �?连接失败</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        /* 宿主 JS 会写这些变量；这里给 0 作为"没收到注�?的可见信�?*/
+        --oc-safe-top: 0px;
+        --oc-safe-bottom: 0px;
+        --oc-safe-left: 0px;
+        --oc-safe-right: 0px;
+        --oc-ime-bottom: 0px;
+        --oc-window-height: 0px;
+        --oc-scheme: light;
+        --fg: #16161a;
+        --bg: #fafafa;
+        --muted: #6b7280;
+        --ok: #15803d;
+        --bad: #b91c1c;
+        --line: #e5e7eb;
+      }
+      html[data-scheme="dark"] {
+        --fg: #f2f2f4;
+        --bg: #080808;
+        --muted: #9ca3af;
+        --ok: #4ade80;
+        --bad: #fca5a5;
+        --line: #2a2a2e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: var(--fg);
+        background: var(--bg);
+        /* 安全区全部来自宿主变�?*/
+        padding: calc(var(--oc-safe-top) + 12px) calc(var(--oc-safe-right) + 12px)
+          calc(var(--oc-ime-bottom) + 12px) calc(var(--oc-safe-left) + 12px);
+        transition: padding-bottom 120ms ease;
+      }
+      h1 { font-size: 15px; margin: 0 0 4px; }
+      p.sub { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+      .row { border-top: 1px solid var(--line); padding: 8px 0; }
+      .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+      .v { word-break: break-all; margin-top: 2px; }
+      .ok { color: var(--ok); font-weight: 700; }
+      .bad { color: var(--bad); font-weight: 700; }
+      button {
+        font: inherit; margin-top: 6px; padding: 6px 10px; border-radius: 6px;
+        border: 1px solid var(--line); background: transparent; color: var(--fg);
+        /* C1/F2：触摸靶地板 48dp。固有盒高只�?21(行盒)+12(padding)+2(border)=35px�?           低于 48dp 硬要�?�?显式抬到 48px。`FallbackPageTouchTargetTest` 钉这条�?*/
+        min-height: 48px;
+      }
+      /* 底部压条：证�?--oc-ime-bottom 真的在推内容 */
+      #probe {
+        position: fixed; left: 0; right: 0; bottom: 0;
+        background: color-mix(in srgb, var(--ok) 22%, transparent);
+        border-top: 2px solid var(--ok);
+        padding: 4px 8px; font-size: 11px; color: var(--fg);
+        transform: translateY(calc(-1 * var(--oc-ime-bottom)));
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">无法连接�?OpenCode 服务</h1>
+    <p class="sub" id="lead">
+      本页�?b>回环代理起不来时的兜底页</b>�?code>WebHostActivity.kt:244</code>）�?br />
+      代理没能监听端口 �?上游 UI 拿不到，下面这些是宿主侧的自检读数，用于区�?      「代理没起来」和「页面全白」�?b>它们不提�?OpenCode 功能</b>�?    </p>
+
+    <!-- G1：诊断区。只有宿主带 ?r=<reason> 进来时才显示（见 WebViewPreflight.diagnosticUrl）�?         没有 reason 参数时保持隐藏，C1 记的「代理起不来」默认文案一字不动�?-->
+    <section id="diag" hidden>
+      <div class="row diag-row">
+        <div class="k">发生了什�?/div>
+        <div class="v" id="d-what">�?/div>
+      </div>
+      <div class="row">
+        <div class="k">当前 WebView 版本号（真实读数�?/div>
+        <div class="v" id="d-ver">�?/div>
+      </div>
+      <div class="row">
+        <div class="k">本壳要求</div>
+        <div class="v" id="d-req">�?/div>
+      </div>
+      <div class="row">
+        <div class="k">怎么�?/div>
+        <div class="v" id="d-fix">�?/div>
+      </div>
+      <div class="row">
+        <div class="k">技术细节（�?issue 时贴这段�?/div>
+        <div class="v" id="d-detail">�?/div>
+      </div>
+      <div class="row">
+        <div class="k">重试</div>
+        <div class="v" id="d-retry">会重新检�?WebView 版本并重连�?/div>
+        <button id="retryBtn">重新加载</button>
+      </div>
+    </section>
+
+    <div class="row"><div class="k">origin（应=https://appassets.androidplatform.net�?/div><div class="v" id="origin">�?/div></div>
+    <div class="row"><div class="k">WebViewAssetLoader 是否生效</div><div class="v" id="loader">�?/div></div>
+    <div class="row"><div class="k">能否 fetch 本地资源（同�?fetch 测试�?/div><div class="v" id="fetch">�?/div></div>
+    <div class="row"><div class="k">user agent</div><div class="v" id="ua">�?/div></div>
+    <div class="row"><div class="k">原生�?window.__ocAndroid</div><div class="v" id="bridge">�?/div></div>
+    <div class="row"><div class="k">hostInfo()</div><div class="v" id="hostinfo">�?/div></div>
+    <div class="row"><div class="k">insets（来自宿�?CSS 变量 + oc:insets 事件�?/div><div class="v" id="insets">�?/div></div>
+    <div class="row"><div class="k">主题（prefers-color-scheme + oc:theme�?/div><div class="v" id="theme">�?/div></div>
+    <div class="row"><div class="k">返回�?/div><div class="v" id="back">�?/div>
+      <button id="backBtn">注册 back handler（点系统返回键测试）</button>
+    </div>
+    <div class="row"><div class="k">凭据（EncryptedSharedPreferences�?/div><div class="v" id="secret">�?/div>
+      <button id="secretBtn">�?1 �?secret 并读�?/button>
+    </div>
+    <div class="row"><div class="k">通知</div><div class="v" id="notify">�?/div>
+      <button id="notifyBtn">申请权限并发一条通知</button>
+    </div>
+    <div class="row"><div class="k">IME</div><div class="v" id="ime">�?/div>
+      <button id="imeBtn">�?imeMode（vars �?resize�?/button>
+    </div>
+
+    <div id="probe">--oc-ime-bottom = 0px（IME 关闭�?/div>
+
+    <script>
+      var $ = function (id) { return document.getElementById(id); };
+      function set(id, html) { $(id).innerHTML = html; }
+      function ok(t) { return '<span class="ok">' + t + '</span>'; }
+      function bad(t) { return '<span class="bad">' + t + '</span>'; }
+      function esc(t) {
+        return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+        });
+      }
+
+      // ---- G1 诊断�?------------------------------------------------------
+      // 版本号等**全部**来自宿主 query 参数（真实读数），本页不写死任何版本�?—�?      // `WebViewPreflightDiagnosticTest` 钉这条�?      (function renderDiag() {
+        var q = {};
+        (location.search || "").replace(/^\?/, "").split("&").forEach(function (kv) {
+          if (!kv) return;
+          var i = kv.indexOf("=");
+          var k = i < 0 ? kv : kv.slice(0, i);
+          var v = i < 0 ? "" : kv.slice(i + 1);
+          try { q[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, " ")); }
+          catch (e) { q[k] = v; }
+        });
+
+        var r = q["r"];
+        if (!r) return; // 没有 reason 参数 �?保持 C1 的默认兜底文案，诊断区隐�?
+        var COPY = {
+          version: {
+            title: "这个 WebView 太旧，打不开 OpenCode",
+            what: "系统里的 WebView 版本 <b>低于本壳要求</b>，官方前端用的现�?ESM 它解析不了�? +
+                  "这种失败**不会**报网络错误：页面照样加载完，只是<b>一片空�?/b>�? +
+                  "所以本壳在加载前就拦下来，直接显示这一页�?,
+            fix: "�?更新 <b>Android System WebView</b> �?<b>Chrome</b>（应用商店里�?" +
+                 "<i>Android System WebView</i> 就能更新，它决定 WebView 内核版本）；" +
+                 "�?更新完回到本页点「重新加载」即可；" +
+                 "�?若这台设备的 WebView 停更在旧版本上（部分定制 ROM / 老旧平板），" +
+                 "只能<b>换一台设�?/b>�?,
+          },
+          loaderror: {
+            title: "OpenCode 页面加载失败",
+            what: "官方 UI 的主文档<b>没能加载出来</b>（网络错误或连接被拒）�? +
+                  "如果后端服务没起，或密码/地址填错，也会走到这里�?,
+            fix: "�?确认 opencode 后端在跑，且配置里的<b>地址</b>�?b>密码</b>正确�? +
+                 "�?确认手机与后�?b>同一网络**且能互�?/b>�? +
+                 "�?修好后点「重新加载」�?,
+          },
+          rendercrash: {
+            title: "页面渲染进程崩溃�?,
+            what: "WebView 的渲染进程在加载过程�?b>崩溃或被系统杀�?/b>�? +
+                  "屏幕因此变空，且不会再有任何页面回调�?,
+            fix: "�?先点「重新加载」；�?若反复崩溃，多半�?b>内存不足</b>�? +
+                 "关掉后台应用后重试；�?仍然崩溃说明这台设备�?WebView 有问题，建议换设备�?,
+          },
+          stalled: {
+            title: "页面在规定时间内没有出现内容",
+            what: "发出了加载请求，但首�?b>一直没有任何内容出�?/b>" +
+                  "（既没报错，也没画出来）。这正是「白屏」最典型的形态�?,
+            fix: "�?点「重新加载」；�?若反复如此，先确认网络与后端可达�? +
+                 "�?若只有这台设备如此，多半�?WebView 版本太旧或被系统限制，点上面的版本号行对照一下�?,
+          },
+        };
+        var c = COPY[r];
+        if (!c) {
+          set("d-what", "未知原因�?code>" + esc(r) + "</code>");
+          $("diag").hidden = false;
+          return;
+        }
+
+        document.title = "OpenCode Web Host �?" + c.title;
+        set("title", c.title);
+        // reason 已知时，顶部那句「代理起不来」默认文案会误导人，收起来�?        $("lead").hidden = true;
+        set("d-what", c.what);
+        set("d-ver", "<b>" + esc(q["v"] || "未读�?) + "</b>" +
+          "（主版本 " + esc(q["m"] || "?") + "�?br />" +
+          '<span style="color:var(--muted)">user agent�? + esc(navigator.userAgent) + "</span>");
+        set("d-req", "主版�?<b>�?" + esc(q["min"] || "?") + "</b>�? +
+          "首屏看门�?<b>" + esc(q["t"] || "?") + " ms</b>");
+        set("d-fix", c.fix);
+        set("d-detail", esc(q["d"] || "（宿主未附细节）"));
+        $("diag").hidden = false;
+
+        $("retryBtn").onclick = function () {
+          set("d-retry", "正在重试�?);
+          var oc = window.__ocAndroid;
+          if (oc && typeof oc.retry === "function") {
+            oc.retry();
+          } else if (window.__ocAndroidNative && typeof window.__ocAndroidNative.retry === "function") {
+            window.__ocAndroidNative.retry();
+          } else {
+            set("d-retry", bad("本页没有拿到原生桥，无法重试 —�?请重启应用�?));
+          }
+        };
+      })();
+
+      // ---- origin / AssetLoader / fetch -----------------------------------
+      var origin = String(location.origin);
+      set("origin", origin === "https://appassets.androidplatform.net"
+        ? ok(origin) : bad(origin + "  �?不是 asset origin�?));
+      // AssetLoader 生效的判据：https �?+ 本地路径能取到内容（file:// 做不到）
+      set("loader", location.protocol === "https:" && /^\/assets\/www\//.test(location.pathname)
+        ? ok("YES �?https + /assets/www/ 路径")
+        : bad("NO �?protocol=" + location.protocol + " path=" + location.pathname));
+
+      fetch("./oc-host.js", { cache: "no-store" })
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, len: t.length }; }); })
+        .then(function (r) {
+          set("fetch", r.ok
+            ? ok("YES �?同源 fetch ./oc-host.js = " + r.len + " bytes")
+            : bad("HTTP " + r.ok));
+        })
+        .catch(function (e) { set("fetch", bad("FAIL �?" + e.message)); });
+
+      // EventSource 存在性（同源 SSE 的前提；真连接留给后续轮�?      set("ua", navigator.userAgent + "<br>EventSource=" + (typeof EventSource !== "undefined"));
+
+      // ---- �?-------------------------------------------------------------
+      var oc = window.__ocAndroid;
+      set("bridge", oc
+        ? ok("已注�?v" + oc.version + " �?" + Object.keys(oc).length + " 个方�?)
+        : bad("未注�?));
+      if (oc) {
+        set("hostinfo", JSON.stringify(JSON.parse(oc.hostInfo()), null, 2));
+
+        // insets 事件（要�?§6：必须在 JS 侧暴露变化事件）
+        window.addEventListener("oc:insets", function (e) { renderInsets(e.detail); });
+        window.addEventListener("oc:theme", function (e) { renderTheme(e.detail); });
+        if (oc.getInsets()) renderInsets(oc.getInsets());
+        renderTheme({ dark: matchMedia("(prefers-color-scheme: dark)").matches });
+
+        $("backBtn").onclick = function () {
+          oc.setBackHandler(function () {
+            set("back", ok("页面已处理（alert 一次）"));
+            alert("back handler 触发�?�?宿主�?*�?* finish()");
+            return true;
+          });
+          set("back", "已注册。现在按系统返回键："
+            + "�?�?handler �?弹窗，不退出；�?再点一次把 handler 置空�?�?回落�?canGoBack/什么都不做�?);
+        };
+
+        $("secretBtn").onclick = function () {
+          var k = "w1.demo." + Date.now();
+          var v = "hello-" + Math.random().toString(36).slice(2, 8);
+          var wrote = oc.setSecret(k, v);
+          var back = oc.getSecret(k);
+          set("secret", ok("set=" + wrote + " get=" + back
+            + (back === v ? "（回读一致）" : "（不一致！�?)));
+        };
+
+        $("notifyBtn").onclick = function () {
+          // F3: the self-check page no longer calls oc.postMessage directly.
+          //
+          // Calling postMessage directly is a SELF-MADE delivery mouth that
+          // bypasses every upstream gate: no web.ts:24-28 permission gate,
+          // no web.ts:29 / coordinator.ts:62 focus gate, no
+          // coordinator.ts:73-93 eventID dedup, and no
+          // notification.tsx:240 "only sessions with an open tab notify".
+          //
+          // Upstream's notification kinds are a CLOSED union
+          // (origin/v2 notification.tsx:26-29 = turn-complete | error only).
+          // So the self-check now goes through the window.Notification shim
+          // in oc-host.js -- the same path the upstream SPA uses.
+          //
+          // It must not lie about permission: the Android grant round-trip is
+          // async, so the shim's requestPermission returns "default" while
+          // pending (oc-host.js:402-411) and web.ts:28 drops that turn.
+          // Correct order: ask first, then verify on the NEXT turn.
+          oc.requestNotificationPermission();
+          setTimeout(function () {
+            var granted = oc.hasNotificationPermission();
+            if (granted !== 1) {
+              set("notify", bad("host has not granted POST_NOTIFICATIONS; this turn is dropped by web.ts:28"));
+              return;
+            }
+            try {
+              new window.Notification("W1 self-check via upstream web.ts:21-40", {
+                body: "F3: routed through the shim, all upstream gates active",
+              });
+              set("notify", ok("delivered through upstream path (web.ts:21-40)") + " perm=" + granted);
+            } catch (e) {
+              set("notify", bad("shim unavailable: " + e));
+            }
+          }, 800);
+        };
+
+        $("imeBtn").onclick = function () {
+          var next = oc.getImeMode() === "vars" ? "resize" : "vars";
+          oc.setImeMode(next);
+          set("ime", "imeMode �?" + next + "（再看下�?--oc-ime-bottom 与压条）");
+        };
+        set("ime", "imeMode = " + oc.getImeMode());
+      }
+
+      function renderInsets(d) {
+        if (!d) return;
+        set("insets",
+          "safeTop=" + d.safeTop + "  safeBottom=" + d.safeBottom +
+          "  safeLeft=" + d.safeLeft + "  safeRight=" + d.safeRight +
+          "  <b>imeBottom=" + d.imeBottom + "</b>" +
+          "  imeVisible=" + d.imeVisible +
+          "  windowHeight=" + d.windowHeight + "  imeMode=" + d.imeMode);
+        $("probe").textContent = "--oc-ime-bottom = " + d.imeBottom
+          + (d.imeVisible ? "（键盘可见，页面 bottom padding 已被顶高�? : "（IME 关闭�?);
+      }
+      function renderTheme(t) {
+        if (!t) return;
+        document.documentElement.setAttribute("data-scheme", t.scheme);
+        set("theme", "scheme=" + t.scheme
+          + "  prefers-color-scheme=" + (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+          + "  <span style=\"color:var(--muted)\">（系统栏图标明暗由宿主跟随此值）</span>");
+        // 把页面自己的深浅色报给宿主，宿主据此切状态栏图标
+        if (window.__ocAndroid) window.__ocAndroid.reportTheme(!!t.dark);
+      }
+    </script>
+  </body>
+</html>

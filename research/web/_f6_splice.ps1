@@ -1,0 +1,34 @@
+$ErrorActionPreference = 'Stop'
+$f = "C:\sensorsdata\main\program\opencode-android-shell\research\web\DELIVER_REBUILD_R2.md"
+$lines = [System.IO.File]::ReadAllLines($f, [System.Text.Encoding]::UTF8)
+
+# sanity: the block we replace must be the 体积/md5 table (1-based 89..92)
+$probe = ($lines[88..91] -join " ")
+if ($probe -notmatch "5aa0b63657cb599cd288ebc5597e9d21" -or $probe -notmatch "de1a476c32dc25c53d1034ea01ca1e6f") {
+  Write-Output "ABORT: unexpected block at 89..92"
+  Write-Output $probe
+  exit 2
+}
+
+$new = @(
+"| 产物 | 产物路径 | 体积 | md5 | sha256 |",
+"|---|---|---|---|---|",
+"| **release（F6，R8 未开启）** | ``research/deliver/opencode-shell-web-release-nor8.apk`` | **3,975,389 B**（约 3.79 MB） | ``76ca064b7de9246ee446f765a9198b37`` | ``293f25bfd2266a0e2fd47c497e3b67af104851f434527718926868f4aa2c9892`` |",
+"| **debug** | ``research/deliver/opencode-shell-web.apk`` | **5,275,479 B**（约 5.03 MB） | ``16c6cf8b7330e5d02879f30333800ad9`` | ``6308275a082c9885c35a62d8ad08ad5214bc7a7e2e4a18a9b8d6e582dd90cc0a`` |",
+"",
+"> **F6 显式作废旧值（2026-10-05 22:5x–23:0x）**：上表为本轮唯一有效值。",
+"> 以下**全部作废，不得再被引用**：",
+"> - F3 件：release ``5aa0b63657cb599cd288ebc5597e9d21``（3,968,173 B）/ debug ``de1a476c32dc25c53d1034ea01ca1e6f``（5,200,219 B）",
+"> - F5 / 规范 release（``554feb4``）：release ``627f8ed8a38aaa8caa24a39c6fe1678d0``（3,975,357 B）",
+"> - R2 件：release ``7b578ceec3d7e35e2fffa4da67fe2d3b``（3,961,217 B）/ debug ``b716cbeb4c66e55fcb0f497640ae5e0c``（5,145,604 B）",
+">",
+"> 体积变化（相对 F5 规范件 +32 B）只来自 `BackendProbe` 一处改动：`Base64` 由 `android.util` 换成 `java.util`，"
+)
+
+$out = @()
+$out += $lines[0..87]
+$out += $new
+$out += $lines[92..($lines.Count-1)]
+
+[System.IO.File]::WriteAllLines($f, $out, (New-Object System.Text.UTF8Encoding($false)))
+Write-Output "SPLICED_OK lines_before=$($lines.Count) lines_after=$($out.Count)"
