@@ -82,3 +82,16 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     testImplementation("junit:junit:4.13.2")
 }
+
+// IME1 绊线（IME_OCCLUSION_FIX.md §5）：`ImeOcclusionTest` 的「资产契约层」直接读
+// `src/main/assets/www/oc-host.js`，断言 IME 抬升修法真的在注入层里。
+//
+// **为什么必须显式声明**：单测任务默认不把 `src/main/assets` 当输入。
+// 只改注入层、不改任何 .kt 时，`testDebugUnitTest` 会被判为 UP-TO-DATE **整段跳过**，
+// 绊线于是"假绿"——本轮真跑验证过：撤回修法后 gradle 仍然 BUILD SUCCESSFUL。
+// 声明成输入后，注入层一改，测试必重跑；撤回修法 ⇒ 必红。
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    inputs.file(layout.projectDirectory.file("src/main/assets/www/oc-host.js"))
+        .withPropertyName("ocHostFacadeAsset")
+        .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+}

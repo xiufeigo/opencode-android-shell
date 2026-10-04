@@ -27,6 +27,70 @@
   // insets 可能在 documentElement 就绪前到达，先存住，DOMContentLoaded 再补一次。
   var lastInsets = null;
 
+  // ======================================================================
+  // IME 抬升（composer 被键盘完全遮挡的修法）
+  //
+  // 前提事实（不要改坏）：
+  // - AndroidManifest 已声明 windowSoftInputMode="adjustResize"；
+  // - 但 InsetsHost.init 调了 WindowCompat.setDecorFitsSystemWindows(window, false)
+  //   ⇒ 边到边。API 30+ 上边到边窗口不再因 IME 压矮，adjustResize 的效果被抵消
+  //   （InsetsHost.applyResize 又被 "lp.height != -1" 守卫挡住，对 MATCH_PARENT
+  //     的 WebView 永远不生效）⇒ **布局视口不随键盘变矮**。
+  // - 宿主仍然把**实测正确**的 IME 高度交到 --oc-ime-bottom（IME1 实测
+  //   336.38 CSS px × dpr 2.625 = 883px = type=ime frame 高度，完全一致）。
+  // - 上游 SPA 不认识 --oc-ime-*，也不消费 env(safe-area-inset-bottom)
+  //   （WebView 边到边 ⇒ env() 恒为 0）⇒ composer 停在视口底部、被键盘盖住。
+  //
+  // 所以修法落在**页面消费侧**：由宿主注入层给 composer 容器垫 --oc-ime-bottom。
+  // ======================================================================
+  var IME_STYLE_ID = "oc-ime-lift";
+
+  function installImeLiftStyle() {
+    if (document.getElementById(IME_STYLE_ID)) return;
+    var css = [
+      // 边到边下 env() 恒为 0；用宿主实测的 nav/cutout 补出一个可用的"有效安全区"。
+      ":root{--oc-safe-bottom-eff:max(var(--oc-safe-bottom,0px),env(safe-area-inset-bottom,0px));}",
+      // composer 容器是 <form class="group/composer ...">（上游结构）。
+      // 用 :has() 按**语义**锚定，不绑上游类名/标签名。
+      // WebView 124 = Chrome 124，:has() 已支持。
+      "form:has(textarea),form:has([contenteditable=\"true\"]){",
+      "padding-bottom:var(--oc-ime-bottom,0px);",
+      "box-sizing:border-box;",
+      "transition:padding-bottom .12s ease;",
+      "}",
+      // 兜底：若 composer 不是 <form>，退到"最近 fixed/sticky 祖先"上抬。
+      "[data-oc-ime-lift]{padding-bottom:calc(var(--oc-ime-bottom,0px) + var(--oc-safe-bottom-eff,0px));",
+      "box-sizing:border-box;transition:padding-bottom .12s ease;}",
+    ].join("\n");
+    var st = document.createElement("style");
+    st.id = IME_STYLE_ID;
+    st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  /** 兜底路径：给"聚焦可编辑元素最近的 fixed/sticky 祖先"打标。 */
+  function tagFixedAncestor(ed) {
+    var c = ed && ed.parentElement;
+    while (c && c !== document.body) {
+      var pos = window.getComputedStyle(c).position;
+      if (pos === "fixed" || pos === "sticky") {
+        c.setAttribute("data-oc-ime-lift", "1");
+        return true;
+      }
+      c = c.parentElement;
+    }
+    return false;
+  }
+
+  function onImeFocusIn(e) {
+    var t = e && e.target;
+    if (!t || !t.closest) return;
+    if (!t.matches("textarea, [contenteditable=\"true\"]")) return;
+    // :has() 规则不生效（composer 不是 <form>）时才需要兜底，代价极小。
+    tagFixedAncestor(t);
+  }
+
+
   function doApply(d) {
     var el = document.documentElement;
     if (!el) return;
@@ -271,12 +335,18 @@
     document.addEventListener(
       "DOMContentLoaded",
       function () {
+        installImeLiftStyle();
         if (lastInsets) doApply(lastInsets);
         window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
       },
       { once: true }
     );
   } else {
+    installImeLiftStyle();
     window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
   }
+  // focusin 委托：composer 是 SPA 动态挂载的，不能只绑一次。
+  document.addEventListener("focusin", onImeFocusIn, true);
+  // insets 每变一次都刷新一次（IME 收起时 --oc-ime-bottom 归 0，留白自动撤掉）。
+  if (lastInsets) doApply(lastInsets);
 })();
