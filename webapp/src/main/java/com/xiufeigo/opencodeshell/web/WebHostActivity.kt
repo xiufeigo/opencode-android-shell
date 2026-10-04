@@ -30,6 +30,7 @@ import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
+import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.SetupDialogMetrics
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
@@ -133,6 +134,20 @@ class WebHostActivity : AppCompatActivity() {
     private var pickedUri: Uri? = null
     private var pendingPageScrollY: Int = 0
     private var pageReportedDark: Boolean? = null
+
+    /**
+     * P6：宿主是否在前台。
+     *
+     * ⚠️ 为什么不用 `lifecycle.currentState.isAtLeast(STARTED)`：[WebHostBridge] 的
+     * `@JavascriptInterface` 方法跑在** WebView 的 JS 桥线程**上，不是主线程。
+     * 读 `lifecycleScope`/lifecycle registry 在跨线程读时是可见的，但 Activity
+     * 已 `destroy` 时访问会抛；这里用一个 `@Volatile` 布尔，语义更窄也更安全。
+     */
+    @Volatile
+    private var foreground: Boolean = false
+
+    /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上问"现在在前台吗"。 */
+    fun isForeground(): Boolean = foreground
 
     // ---- G1：WebView 版本前置检查 + 首屏看门狗 -----------------------------
     /** 真实读数（不写死）：`WebView.getCurrentWebViewPackage()?.versionName`，读不到就是 `null`。 */
@@ -755,18 +770,56 @@ class WebHostActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        // P6：先落状态再清 flag。顺序有意为之 —— 让此刻之后任何 `setKeepScreenOn(true)`
+        // 的桥调用都立刻被 [isForeground] 拒掉（哪怕 `clearFlags` 还没跑到主线程）。
+        foreground = false
+        // P6 · 省电 · 刀 1：切后台**无条件**清常亮。
+        //
+        // 为什么是"无条件"而不是"只在页面发过 false 时清"：这正是 T1 §7.3 点名的
+        // **忘关路径** —— 回合中途页面崩溃 / WebView 渲染进程被杀 / 用户切走而没发
+        // `setKeepScreenOn(false)`，flag 会一直留到 Activity 销毁。屏幕常亮是耗电大户，
+        // 所以这里把"宿主离开前台"当作**硬边界**：只要不在前台，就不许常亮。
+        // 决策在 [PowerPolicy.shouldKeepScreenOn]（纯 Kotlin、可单测）。
+        clearKeepScreenOnOnBackground()
+        // P6 · 省电 · 刀 2（本轮最该砍的一条）：切后台掐断 SSE 长连接。
+        //
+        // 依据 T1 §7.2：`LoopbackProxy` 自 `start()` 起常驻（`:137-155`），
+        // 而 `close()` **只有 `onDestroy` 调**（旧 `:776`）⇒ 退到后台后上游 `/event`
+        // 每 10 s 的心跳继续唤醒射频，**且与屏幕亮度无关**。
+        //
+        // 只掐**流式**连接，不碰 `ServerSocket`/`port`（不是 `proxy?.close()`，
+        // 那会把 port 置空导致 `onResume` 恢复失败 —— T1 §7.2 明确警告过）。
+        val pruned = runCatching { proxy?.suspendStreaming() ?: 0 }.getOrDefault(0)
+        PerfMarks.markIfEnabled("P6.onPause", "prunedStreaming=$pruned")
         if (::webView.isInitialized) webView.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        foreground = true
+        // P6：解除后台拒绝，页面下一次 EventSource 重试即恢复（与代理 35 s 半开
+        // 主动断开是同一条恢复路径，不引入新行为类别）。
+        runCatching { proxy?.resumeStreaming() }
         if (::webView.isInitialized) {
             webView.onResume()
             insets.refresh()
         }
     }
 
+    /**
+     * P6 · 兜底清常亮。
+     *
+     * 用 `clearFlags` 而不是 `addFlags(x and x.inv())`：直接 `clearFlags` 不依赖
+     * "当前值是什么"，因此**幂等**、且天然清掉别人（或历史代码）设的同一 flag。
+     */
+    fun clearKeepScreenOnOnBackground() {
+        runCatching { window.clearFlags(PowerPolicy.FLAG_KEEP_SCREEN_ON_BIT) }
+    }
+
     override fun onDestroy() {
+        // P6：销毁时也清一次（窗口虽马上就没了，但 flag 泄漏会在 `onSaveInstanceState`
+        // 重建路径上被观察到；清掉是零成本的）。
+        clearKeepScreenOnOnBackground()
         if (::webView.isInitialized) {
             webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
             (webView.parent as? ViewGroup)?.removeView(webView)

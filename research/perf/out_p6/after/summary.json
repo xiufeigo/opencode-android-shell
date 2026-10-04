@@ -1,0 +1,18 @@
+{
+  "tag": "after",
+  "apk_md5": "46E2ADDDDF4DD24D885A8BBD88D1BDFD",
+  "proxy_port": 32965,
+  "fg_sec": 25,
+  "bg_sec": 60,
+  "fg_cpu_ticks": 1179,
+  "fg_cpu_ms": 11790,
+  "bg_cpu_ticks": 979,
+  "bg_cpu_ms": 9790,
+  "bg_window_s": 60.2,
+  "sock_before_home": 2,
+  "sock_3s_after_home": 1,
+  "sock_bg_end": 0,
+  "p6_log_lines": 31,
+  "p6_closed": "1",
+  "p6_refused": ""
+}

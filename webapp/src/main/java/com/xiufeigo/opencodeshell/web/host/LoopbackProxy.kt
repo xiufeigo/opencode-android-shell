@@ -120,6 +120,20 @@ class LoopbackProxy(
     private var executor: ExecutorService? = null
     private val activeClients = java.util.concurrent.CopyOnWriteArrayList<Socket>()
 
+    // ---- P6 · 省电：后台断开流式连接 --------------------------------------
+    // 只记**流式**（SSE）那条 socket。普通请求的 socket 留在 [activeClients] 里，
+    // 否则回前台第一次点击会 502（页面正在导航、图标/字体等资源还在路上）。
+    private val streamingClients = java.util.concurrent.CopyOnWriteArrayList<Socket>()
+
+    /** 后台期间为 `true`：此时**任何**新的 SSE 请求都直接 503 拒绝，不回上游。 */
+    private val streamingSuspended = AtomicBoolean(false)
+
+    /** 被 [suspendStreaming] 掐断的流式连接数（诊断用，`Log.i` 也会打）。 */
+    private val streamingClosed = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** 被后台拒绝掉的流式请求数（诊断用）。 */
+    private val streamingRefused = java.util.concurrent.atomic.AtomicInteger(0)
+
     var port: Int = -1
         private set
 
@@ -158,12 +172,68 @@ class LoopbackProxy(
 
     fun isBoundPort(candidate: Int): Boolean = candidate == port
 
+    // ---- P6 · 后台省电开关 -------------------------------------------------
+    /**
+     * **进入后台：掐断所有流式连接。**
+     *
+     * 决策在 [PowerPolicy]（纯 Kotlin、可单测），这里只做接线。
+     *
+     * ## 为什么必须"关 + 拒绝"两步
+     *
+     * 只"关"是**假省电**：页面的 `EventSource` 会自动重连，重连又打回代理，
+     * 于是变成"关一条、再连一条"的拉锯 —— 上游 `/event` 每 10 s 的心跳
+     * （`LoopbackProxy.kt:129-133` 的注释）照旧把射频唤醒，一分没省。
+     * 所以关掉之后必须**继续拒绝**新的流式请求（见 [onForward] 里的
+     * [PowerPolicy.StreamingAction.REFUSE_WHILE_BACKGROUND]），
+     * 让重连只打回环、碰不到上游。
+     *
+     * ## 为什么不直接 [close]
+     *
+     * [close] 会 `running.set(false)` + 关 `ServerSocket` + `shutdownNow()`，
+     * 于是 `port` 留在一个已死的代理上，`onResume` 再也恢复不了。
+     * 本方法**只碰流式 socket**，`ServerSocket` / `port` / 线程池原封不动。
+     *
+     * @return 被掐断的流式连接数（0 表示本来就没有 —— 这本身是有用信息）
+     */
+    fun suspendStreaming(): Int {
+        streamingSuspended.set(true)
+        val victims = streamingClients.toList()
+        for (s in victims) runCatching { s.close() }
+        streamingClients.clear()
+        streamingClosed.addAndGet(victims.size)
+        Log.i(
+            TAG,
+            "P6 suspendStreaming: closed=${victims.size} remainingActive=${activeClients.size} " +
+                "portStillBound=${port > 0}",
+        )
+        return victims.size
+    }
+
+    /**
+     * **回到前台：解除拒绝，让页面重连。**
+     *
+     * 不主动重连（代理是服务端，推不出"页面该重建哪条 EventSource"）；
+     * 页面下一次重试就恢复，与 T1 §7.2 说的"35 s 静默判半开让页面重连"同一条路径。
+     */
+    fun resumeStreaming() {
+        if (streamingSuspended.compareAndSet(true, false)) {
+            Log.i(TAG, "P6 resumeStreaming: closed=${streamingClosed.get()} refused=${streamingRefused.get()}")
+        }
+    }
+
+    /** 诊断读数：后台是否处于拒绝态。 */
+    fun isStreamingSuspended(): Boolean = streamingSuspended.get()
+
+    /** 诊断读数：被掐断 + 被拒绝的流式事件累计数。 */
+    fun streamingPruned(): Int = streamingClosed.get() + streamingRefused.get()
+
     override fun close() {
         running.set(false)
         runCatching { serverSocket?.close() }
         serverSocket = null
         for (c in activeClients) runCatching { c.close() }
         activeClients.clear()
+        streamingClients.clear()
         executor?.shutdownNow()
         executor = null
     }
@@ -186,6 +256,9 @@ class LoopbackProxy(
                         tunnelWebSocket(sock, input, output, parsed, target)
                         return
                     }
+                    // P6：登记"这条 socket 正在跑流式通道"，后台只掐这些。
+                    // 判定用 onForward 同一套 [isEventStreamRequest]，不另立标准。
+                    if (isEventStreamRequest(parsed)) streamingClients.add(socket)
                     val reusable = onForward(output, parsed, target)
                     if (!fixedMode || !reusable) return
                 }
@@ -194,6 +267,7 @@ class LoopbackProxy(
             Log.w(TAG, "client error: ${e.message}")
         } finally {
             activeClients.remove(socket)
+            streamingClients.remove(socket)
             runCatching { socket.close() }
         }
     }
@@ -210,6 +284,34 @@ class LoopbackProxy(
      */
     private fun onForward(output: OutputStream, parsed: ParsedRequest, target: String): Boolean {
         Log.i(TAG, "${parsed.method} $target")
+        // P6 · 后台省电：流式连接在后台**不回上游**。
+        // 放在这里（建上游请求之前）⇒ 连 socket 都不建，更谈不上射频唤醒。
+        // 决策见纯逻辑 [PowerPolicy]；这里只接线。
+        if (isEventStreamRequest(parsed) &&
+            PowerPolicy.streamingAction(foreground = !streamingSuspended.get()) ==
+            PowerPolicy.StreamingAction.REFUSE_WHILE_BACKGROUND
+        ) {
+            streamingRefused.incrementAndGet()
+            val msg = """{"error":${jsonString("oc: backgrounded, streaming refused")}}"""
+            Log.i(
+                TAG,
+                "P6 refuse SSE while backgrounded: ${parsed.path} " +
+                    "(no upstream call; page EventSource retries -- measured 2s cadence, " +
+                    "loopback only so no radio wakeup)",
+            )
+            writeStatus(
+                output, PowerPolicy.BACKGROUND_STREAM_REFUSE_STATUS, "Service Unavailable",
+                mapOf(
+                    "Content-Type" to "application/json",
+                    "Content-Length" to msg.toByteArray().size.toString(),
+                    "Cache-Control" to "no-store",
+                    // 显式 close：让 WebView 立刻判定这条 EventSource 失败并进入重连退避
+                    "Connection" to "close",
+                ),
+                msg.toByteArray(),
+            )
+            return false
+        }
         val tStart = System.nanoTime()
         val builder = Request.Builder().url(target)
         for ((name, value) in parsed.headers) {

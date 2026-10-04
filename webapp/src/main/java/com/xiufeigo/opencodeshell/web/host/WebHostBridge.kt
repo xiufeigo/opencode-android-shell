@@ -154,9 +154,21 @@ class WebHostBridge(
     }
 
     // ---- 7. 常亮 ---------------------------------------------------------
-    /** 回合进行中传 true 置 FLAG_KEEP_SCREEN_ON，结束传 false 清掉。 */
+    /**
+     * 回合进行中传 true 置 FLAG_KEEP_SCREEN_ON，结束传 false 清掉。
+     *
+     * P6：置位**多一道前台校验** —— 不在前台时 `on=true` 直接被拒并记日志。
+     * 理由：常亮是 T1 §7.3 认定"接上之后 = 高风险"的项（耗电大户、且是看起来很
+     * 合理的那类 bug）。页面若在 `visibilitychange` 时序错位（先发 `true` 后退后台），
+     * 旧实现会把 flag 挂到一个不可见的窗口上。判据见 [PowerPolicy.shouldKeepScreenOn]。
+     */
     @JavascriptInterface
     fun setKeepScreenOn(on: Boolean) {
+        val foreground = ctx.isForeground()
+        if (on && PowerPolicy.mustClearKeepScreenOn(foreground = foreground, roundActive = true)) {
+            Log.w(TAG, "setKeepScreenOn(true) ignored: not in foreground")
+            return
+        }
         ctx.runOnUiThread {
             if (on) {
                 ctx.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

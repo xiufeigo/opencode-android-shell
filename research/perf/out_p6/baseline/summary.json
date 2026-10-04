@@ -1,0 +1,18 @@
+{
+  "tag": "baseline",
+  "apk_md5": "B716CBEB4C66E55FCB0F497640AE5E0C",
+  "proxy_port": 33869,
+  "fg_sec": 25,
+  "bg_sec": 60,
+  "fg_cpu_ticks": 1232,
+  "fg_cpu_ms": 12320,
+  "bg_cpu_ticks": 1037,
+  "bg_cpu_ms": 10370,
+  "bg_window_s": 60.2,
+  "sock_before_home": 2,
+  "sock_3s_after_home": 2,
+  "sock_bg_end": 1,
+  "p6_log_lines": 0,
+  "p6_closed": "",
+  "p6_refused": ""
+}
