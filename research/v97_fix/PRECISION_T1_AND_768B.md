@@ -419,3 +419,54 @@ BUILD SUCCESSFUL in 3s
 
 3. **未复验项（沿用 v146，本轮未动）**：CELL ⑤ 的遮挡面积仍需真机 tap 复验
    （静态几何已判，但命中顺序静态不可判定）。
+
+---
+
+## 7. v149 订正：androidx 那一层的源码原文（已补齐）
+
+> **本节是订正节，追加于 §6.1 之后；§6 第 1 条的原结论与原文一律保留不改。**
+> 依据：`research/v97_fix/ANDROIDX_EVIDENCE_AND_ANCHORS.md`（v149）。
+
+§6 第 1 条把"androidx 内部如何分配撑开量"列为**仓外边界**，并注明需授权拉取 sources artifact。
+**v149 拿到该授权并成功拉取**（material3 `1.3.1` / foundation `1.7.6`，Google Maven，
+落 `research/v97_fix/_androidx_src/`）。边界**已解除**，补上三条：
+
+**(1) 包名订正：撑开 48dp 靶的不是 `foundation`，是 `material3`。**
+§6 第 1 条写的是"`androidx.compose.foundation`"。实测 `foundation-1.7.6-sources` 与
+`foundation-layout-1.7.6-sources` 全树 grep **0 命中**（含对应 AAR `classes.jar` 的类名与常量池扫描）；
+`material3-1.3.1-sources` **8 处命中**，定义处唯一：
+`commonMain/androidx/compose/material3/InteractiveComponentSize.kt`。
+本仓代码本来就没记错——`composer/Composer.kt:32` import 的正是
+`androidx.compose.material3.LocalMinimumInteractiveComponentSize`。**结论方向不变（48dp 由 material3 强制），仅归属层订正。**
+
+**(2) 源码原文（逐字）——`InteractiveComponentSize.kt:139-142`**
+```kotlin
+val LocalMinimumInteractiveComponentSize: ProvidableCompositionLocal<Dp> =
+    staticCompositionLocalOf {
+        48.dp
+    }
+```
+**`:100-104`（measure 里的撑开与摆位）**
+```kotlin
+return layout(width, height) {
+    val centerX = ((width - placeable.width) / 2f).roundToInt()
+    val centerY = ((height - placeable.height) / 2f).roundToInt()
+    placeable.place(centerX, centerY)
+}
+```
+（宽度侧 `:87-92` 为 `maxOf(placeable.width, sizePx)`；`sizePx` 见 `:85`；
+`enforcement` 门槛见 `:83`。）
+
+**(3) 扩张方向 —— 与本仓 `:1371`「向零截断」**不等价，且 1px 落点相反**。**
+官方是 **`/2f` 再 `roundToInt()`（半值进位）**，作为**起点偏移**放置 ⇒ 起点侧 `ceil(e/2)`、尾侧 `floor(e/2)`。
+本仓 `:1371` 是 `Int / Int`（**截断**）⇒ 起点侧 `floor(e/2)`、尾侧 `ceil(e/2)`。
+奇数余数 `e = 5` 时：官方起点 `3`，本仓起点 `2`，**本仓比官方偏下 1px**。
+
+⇒ §1.4 记的 `unionPx 49 vs 基线 48` 那个 1px，**两侧原因现已闭合**：
+本仓截断（起点少 1px）+ 官方进位（起点多 1px）。
+§1.4 原文的「方向 = 居中」**仍成立**（两者都是居中，非钉顶沿）；需订正的只是
+「官方也是截断、余数落尾侧」这半句——**官方是进位、余数落起点侧**。
+
+**⚠️ 未闭环（待裁定，本轮未改生产代码）**：`:1371` 与官方 `:101` 在奇数余数上不等价。
+请裁定：(a) 把 `:1371` 对齐官方进位语义（会动既有真值表，且可能破坏 v136 钉的"同位"判据），
+还是 (b) 保留截断 + 在 KDoc 注明与官方的 1px 差异。**倾向 (b)**。
