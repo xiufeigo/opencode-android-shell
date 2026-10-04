@@ -403,8 +403,33 @@ class ComposerPaneBottomCriterionV108Test {
         //    union shows there cannot be the 768-only 8px showing up again.
     }
 
+    /**
+     * v150: **this method is a declaration, not a criterion.** It records message
+     * text and it deliberately carries **no** duty to tell the readings apart.
+     *
+     * **Why the old form was not a criterion.** As v125 §9.1 first noticed and
+     * v150 *proved by running it*, this assertion could not distinguish `426`
+     * from `474`: substituting one for the other as the `imeBottomPx` argument
+     * left the whole class green (`research/v97_fix/_v150_probe.log`, 9 tests /
+     * 0 failures / `BUILD SUCCESSFUL`). The reason is
+     * [theProductionImePathIsSaturatingSoFourTwoSixAndFourSevenFourAreOneEquivalenceClass]:
+     * `believedImeBottomPx` is a **saturating** function, so above the room every
+     * reading collapses onto one number and no assertion on its return value can
+     * separate two readings that are both above the room.
+     *
+     * **Production really has no discriminating power here** — see
+     * `SessionPaneLayout.kt:1574-1587`. The class's `imeBottom768 = 426` is the
+     * right input, but it is an *input datum*, not something the return value
+     * can testify to. So the honest disposition is to say so here, and to carry
+     * the real criteria in the two tests that follow: the saturation boundary
+     * ([theProductionImePathIsSaturatingSoFourTwoSixAndFourSevenFourAreOneEquivalenceClass])
+     * and the **source** of the value
+     * ([theRawPlatformImeInsetIsTheOnlyImeSourceTheSessionPaneReads]) — the
+     * latter is the only place where `426` and `474` actually differ, because it
+     * is the only place production decides *what to read*.
+     */
     @Test
-    fun fourSixSixIsNotAValueTheProductionImePathCanProduce() {
+    fun theRetiredReadingsAreRecordedAsTextOnlyAndTheProductionImePathCannotTellThemApart() {
         val believed = SessionPaneLayout.believedImeBottomPx(
             visibleBoxPx = paneBox768,
             floorPx = navFloor768, // v126: was 0 — the measured navigation bar
@@ -412,45 +437,268 @@ class ComposerPaneBottomCriterionV108Test {
             essentialPx = essentialPx(),
         )
 
-        // v126 restatement, and it is **tighter**, not looser.
-        //
-        // v125 left a two-way disjunction here — `believed == 426 || believed ==
-        // 322` — because the retired `floorPx = 0` made the clamp return
-        // `roomPx + 0 = 322`, and the v125 report itself recorded (§9.1) that
-        // this assertion therefore **could not tell 426 from 474**. With the
-        // measured floor the return value is `roomPx + floorPx`, so the reachable
-        // set collapses to ONE number and the disjunction is replaced by an
-        // equality — strictly more constraining than what it replaced:
-        //
-        //   claimed = 426 − 48 = 378 ; room = 606 − 284 = 322 ; 378 > 322 ⇒ clamp
-        //   believed = room + floor = 322 + 48 = **370**
-        //
-        // 370 is also the value the sibling classes already pin from the same
-        // insets (`ComposerDivergenceLocateV119Test`: `believed = 370`,
-        // `panePx = 606 − 370 = 236 = essentialPx − floorPx`). Two classes,
-        // written in different rounds, now agree digit-for-digit; under the
-        // retired `0` they did not (322 vs 370), which is the fork itself.
+        // The value itself, on the measured reading. 370, and the sibling classes
+        // (`ComposerDivergenceLocateV119Test`) already pin the same 370.
         assertEquals(
-            "the clamp returns room + floor: 322 + 48 = 370, exactly one reachable value",
+            "the clamp returns room + floor: 322 + 48 = 370 on the measured reading",
             paneBox768 - essentialPx() + navFloor768,
             believed,
         )
         assertEquals(
-            "…which is digit-exact with the sibling class's 370, not the retired 322",
+            "…digit-exact with the sibling class's 370, not the retired 322",
             370,
             believed,
         )
+        // v126's separation, still true: the retired `floorPx = 0` reading is what
+        // produced 322, and it is not what this returns.
         assertNotEquals(
-            "and the retired floorPx = 0 reading is what produced 322 — it is gone",
+            "the retired floorPx = 0 reading is what produced 322 — it is gone",
             paneBox768 - essentialPx(),
             believed,
         )
         assertNotEquals(
-            "466 is unreachable from believedImeBottomPx",
+            "466 is unreachable from believedImeBottomPx on these inputs",
             466,
             believed,
         )
+
+        // ---- the declaration, stated as an assertion so it cannot rot ----
+        //
+        // The two readings are 48 apart — exactly the navigation bar — and the
+        // clamp is asked with both. They return the **same** number, so the
+        // return value is not evidence about which reading is current. This
+        // assertion is what v150 promoted from a report claim to a pin: if the
+        // clamp ever stops saturating (i.e. someone makes the return value
+        // sensitive to the raw reading), it goes red and the *old* framing has
+        // to be reconsidered on the merits.
+        assertEquals(
+            "426 and 474 are the same value to production: the clamp saturates, " +
+                "so this class's return-value assertions carry no reading-epoch duty",
+            SessionPaneLayout.believedImeBottomPx(
+                visibleBoxPx = paneBox768,
+                floorPx = navFloor768,
+                imeBottomPx = 426,
+                essentialPx = essentialPx(),
+            ),
+            SessionPaneLayout.believedImeBottomPx(
+                visibleBoxPx = paneBox768,
+                floorPx = navFloor768,
+                imeBottomPx = 474,
+                essentialPx = essentialPx(),
+            ),
+        )
     }
+
+    /**
+     * v150 **new criterion #1 — the saturation boundary**, and the first test in
+     * this class that is *decidable about the reading epoch* rather than about
+     * one pinned number.
+     *
+     * `believedImeBottomPx` (`SessionPaneLayout.kt:1574-1587`) is piecewise:
+     *
+     * ```
+     * imeBottomPx <= 0                          -> imeBottomPx        (1580)
+     * visibleBoxPx < essentialPx * 2            -> imeBottomPx        (1582)
+     * claimedPx <= roomPx                       -> imeBottomPx        (1585)
+     * otherwise                                 -> roomPx + floorPx   (1586)
+     * ```
+     *
+     * The third branch is the interesting one: below the boundary the function
+     * is the **identity** (injective — every reading is its own answer), above it
+     * the function is **constant** (saturated). That is a real, falsifiable
+     * property of the production function, and it is what decides whether a
+     * return value can carry the epoch at all:
+     *
+     * ```
+     * roomPx        = 606 − 284 = 322
+     * boundary      = roomPx + floorPx = 322 + 48 = 370
+     * 300 -> 300    (identity branch: 252 <= 322)
+     * 370 -> 370    (identity branch: 322 <= 322, the last injective reading)
+     * 371 -> 370    (clamped)
+     * 426 -> 370    (clamped)  <- the measured reading
+     * 474 -> 370    (clamped)  <- the retired reading
+     * ```
+     *
+     * So the measured reading sits **48 px inside the saturated region**, and
+     * that is the real reason no return-value assertion can tell it from the
+     * retired one — not an accident of which literals this class happens to use.
+     * A production change that moved the boundary below 426 (e.g. a different
+     * [PANE_ESSENTIAL_HEIGHT], or dropping `floorPx` from the clamp's return)
+     * would put the measured reading back on the injective branch, and these
+     * assertions would go red.
+     */
+    @Test
+    fun theProductionImePathIsSaturatingSoFourTwoSixAndFourSevenFourAreOneEquivalenceClass() {
+        val room = paneBox768 - essentialPx() // 322
+        val boundary = room + navFloor768 // 370
+
+        // the boundary itself, from production constants rather than a literal
+        assertEquals("roomPx is box − essentialPx", 322, room)
+        assertEquals("the saturation boundary is roomPx + floorPx", 370, boundary)
+
+        // **Injective below the boundary** — production does return the reading
+        // itself there, so the return value *is* evidence about the reading.
+        assertEquals(
+            "300 is below the boundary, so the clamp believes it verbatim: 252 <= 322",
+            300,
+            SessionPaneLayout.believedImeBottomPx(
+                visibleBoxPx = paneBox768,
+                floorPx = navFloor768,
+                imeBottomPx = 300,
+                essentialPx = essentialPx(),
+            ),
+        )
+        assertEquals(
+            "370 is the last injective reading: claimedPx == roomPx exactly",
+            370,
+            SessionPaneLayout.believedImeBottomPx(
+                visibleBoxPx = paneBox768,
+                floorPx = navFloor768,
+                imeBottomPx = boundary,
+                essentialPx = essentialPx(),
+            ),
+        )
+
+        // **Constant above it** — and this is the leg the whole class rests on.
+        val saturated = listOf(boundary + 1, imeBottom768, 474, 474 + 48, 768)
+            .map {
+                SessionPaneLayout.believedImeBottomPx(
+                    visibleBoxPx = paneBox768,
+                    floorPx = navFloor768,
+                    imeBottomPx = it,
+                    essentialPx = essentialPx(),
+                )
+            }
+        assertEquals(
+            "every reading above the boundary collapses onto roomPx + floorPx: " +
+                "371 / 426 / 474 / 522 / 768 all answer 370",
+            List(saturated.size) { 370 },
+            saturated,
+        )
+
+        // The two epochs, explicitly, as one equivalence class.
+        assertTrue(
+            "the measured 426 is above the boundary, i.e. inside the saturated region",
+            imeBottom768 > boundary,
+        )
+        assertEquals(
+            "so 426 and 474 are indistinguishable *to production*, by 48 = one nav bar",
+            navFloor768,
+            474 - imeBottom768,
+        )
+        // ...and the identity branch is genuinely reachable on the same inputs,
+        // so the saturation above is the clamp's choice and not a dead branch.
+        assertTrue(
+            "the identity branch is live on these inputs: 300 < boundary",
+            300 < boundary,
+        )
+    }
+
+    /**
+     * v150 **new criterion #2 — the source**, which is the only place in
+     * production where `426` and `474` actually differ.
+     *
+     * `believedImeBottomPx` cannot separate the readings (criterion #1), and no
+     * amount of return-value pinning will. The decision that *does* separate
+     * them is upstream: **what production reads**. `426` is
+     * `WindowInsets.ime`'s bottom on the v125 insets
+     * (`frame=[0,342][1366,768]` ⇒ `768 − 342`), and `474` back-solves to an
+     * `imeTop` of `294` — one navigation bar higher, i.e. a different epoch's
+     * reading rather than a different value of the same quantity.
+     *
+     * So this pins the three production lines that make the reading what it is,
+     * read out of the source rather than restated:
+     *
+     *  * `SessionScreen.kt:2362` — the floor is the **platform's** navigation bar;
+     *  * `SessionScreen.kt:2363` — and is dropped to `0` only on the
+     *    titlebar-bottom form;
+     *  * `SessionScreen.kt:2367` — the IME inset is `WindowInsets.ime`'s
+     *    **raw** bottom, handed to the clamp untouched.
+     *
+     * Together they say the epoch is a *device reading* this app does not
+     * compute, and the only arithmetic on it is the navigation-bar floor that
+     * the clamp spends at `SessionPaneLayout.kt:1583` and returns at `:1586`.
+     */
+    @Test
+    fun theRawPlatformImeInsetIsTheOnlyImeSourceTheSessionPaneReads() {
+        assertEquals(
+            "the session pane must read the IME bottom from exactly one place, raw",
+            1,
+            rawImeReads(sessionScreen),
+        )
+        assertEquals(
+            "that place is the call that hands it to believedImeBottomPx, in the " +
+                "believedImeBottomPx(...) argument list (the definition lives in " +
+                "SessionPaneLayout.kt; this file only calls it)",
+            true,
+            Regex(
+                """believedImeBottomPx\([\s\S]{0,320}?imeBottomPx\s*=\s*WindowInsets\.ime\.getBottom\(density\)""",
+            ).containsMatchIn(sessionScreen),
+        )
+
+        // the floor, and the one form that drops it
+        assertEquals(
+            "the floor is the platform navigation bar, not a constant",
+            true,
+            Regex("""val navBottomPx\s*=\s*WindowInsets\.navigationBars\.getBottom\(density\)""")
+                .containsMatchIn(sessionScreen),
+        )
+        assertEquals(
+            "and it is dropped only on the titlebar-bottom form",
+            true,
+            Regex("""val paneFloorPx\s*=\s*if\s*\(titlebarBottom\s*&&\s*!desktop\)\s*0\s*else\s*navBottomPx""")
+                .containsMatchIn(sessionScreen),
+        )
+
+        // The reverse leg, on a seam — no production file is touched. The retired
+        // "8px" was, in the end, `48 − 40`: one navigation bar of wrong input
+        // (see the class note and `IME_EPOCH_UNIFY.md`). This is that shape: a
+        // source that folds the nav bar into the IME reading instead of passing
+        // it through as the floor. The same criterion, pointed at it, must
+        // **fail** — which is what makes the forward leg above a criterion
+        // rather than a description.
+        val retiredEpochSource = sessionScreen.replace(
+            "imeBottomPx = WindowInsets.ime.getBottom(density)",
+            "imeBottomPx = WindowInsets.ime.getBottom(density) + navBottomPx",
+        )
+        assertTrue(
+            "the retired epoch's source really is different text (426 + 48 = 474)",
+            retiredEpochSource != sessionScreen,
+        )
+        assertEquals(
+            "the retired epoch's source still *contains* the raw read as a prefix — " +
+                "which is why a substring test would pass it. It must be rejected on " +
+                "the whole expression, not on a prefix of it",
+            0,
+            rawImeReads(retiredEpochSource),
+        )
+        assertEquals(
+            "...while the real source satisfies it exactly once",
+            1,
+            rawImeReads(sessionScreen),
+        )
+    }
+
+    /**
+     * How many times [text] reads the IME bottom **raw** — i.e. the whole
+     * `imeBottomPx = …` argument is `WindowInsets.ime.getBottom(density)` and
+     * nothing else.
+     *
+     * Deliberately not a substring count, and deliberately not a
+     * "next character is not an identifier" test either. The retired epoch's
+     * source has the raw read as a *prefix* of its argument
+     * (`WindowInsets.ime.getBottom(density) + navBottomPx`), so a substring
+     * test would wave it through — and so would an identifier-boundary test,
+     * because the character right after the closing paren is a **space**, not
+     * an operator. The bound is instead the *end of the Kotlin expression*: the
+     * raw read must be followed, after any whitespace, by a `,` or a `)`. An
+     * argument with arithmetic on it is then rejected, which is exactly the
+     * shape of the retired epoch.
+     */
+    private fun rawImeReads(text: String): Int =
+        Regex("""imeBottomPx\s*=\s*WindowInsets\.ime\.getBottom\(density\)\s*[,)]""")
+            .findAll(text)
+            .count()
 
     /**
      * v126 **new pin**: the `floorPx` axis is the measured navigation bar, and it
