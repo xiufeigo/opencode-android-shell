@@ -549,9 +549,10 @@ class SelfProofEquivalenceV153Test {
         assertTrue("426: one row", oneRowAt(426))
         assertEquals("474: the body is pinned at 0", 0, bodyAt(474))
         assertTrue(
-            "474: `available > 0.dp` is the guard, so body 0 turns the form OFF — the " +
-                "reverse jump, keyboard taller and the composer asking for more",
-            !oneRowAt(474),
+            "474: the body is 0 and the one-row form **holds** — v154 removed the " +
+                "`available > 0.dp` guard that used to turn the form OFF here and ask the " +
+                "full 116 dp composer for a room of nothing (the reverse jump)",
+            oneRowAt(474),
         )
 
         // the risk surface, made detectable rather than merely described
@@ -562,9 +563,10 @@ class SelfProofEquivalenceV153Test {
             inflated,
         )
         assertTrue(
-            "and it must be observable: the over-report drives the body to 0 and flips " +
-                "the form, so the risk cannot land silently",
-            !oneRowAt(inflated) && bodyAt(inflated) == 0,
+            "and it must be observable: the over-report drives the body to 0 — and since v154 " +
+                "the one-row form **holds** there, so the 51 px risk lands without ever growing " +
+                "the composer back into the full form",
+            oneRowAt(inflated) && bodyAt(inflated) == 0,
         )
         // the v110 misread, one navigation bar short
         assertTrue(

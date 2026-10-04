@@ -89,7 +89,17 @@ class SessionPaneShortWindowV57Test {
         assertTrue(SessionPaneLayout.composerMinimal(163.dp))
         assertTrue(!SessionPaneLayout.composerMinimal(164.dp))
         assertTrue(!SessionPaneLayout.composerMinimal(700.dp))
-        assertTrue(!SessionPaneLayout.composerMinimal(0.dp))
+        // v154: the lower guard used to be `available > 0.dp`, which made the
+        // predicate **non-monotone**: a room of 0 dp — the room that can least
+        // afford the stacked composer — was told it could have one, and the
+        // 600 tier's reverse jump (「键盘变高时形态反向跳变」) fell out of it
+        // (`research/v97_fix/REVERSE_JUMP_FIX.md`). The staircase itself is
+        // untouched: 163 is one row, 164 is the full form.
+        assertTrue(
+            "a room of 0 dp can least of all carry the stacked form, so it takes the one row; " +
+                "the truth set of composerMinimal must be the initial segment {0 .. 163}",
+            SessionPaneLayout.composerMinimal(0.dp),
+        )
     }
 
     @Test

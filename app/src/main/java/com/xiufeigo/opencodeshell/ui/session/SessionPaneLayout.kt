@@ -1004,9 +1004,36 @@ internal object SessionPaneLayout {
      * Monotone in [available] and disjoint from nothing — [composerCompact] is
      * still true here, because the minimal form *is* the compact form with the
      * editor's floor removed.
+     *
+     * **v154: the lower guard is `>= 0.dp`, not `> 0.dp`.** The predicate above
+     * is one question — *can this room carry the stacked form?* — and the room
+     * that can least afford it is the one with nothing in it. `> 0.dp` answered a
+     * second, different question (*is there any room at all?*) with "no, so do not
+     * pick a form", which made the predicate **non-monotone**: at exactly 0 dp it
+     * turned the one-row form *off* and let the shell ask the full 116 dp
+     * [COMPOSER_COMPACT_HEIGHT] composer to fit in nothing.
+     *
+     * That is the B-2 reverse jump, measured on the 600 tier (`paneBox600 = 438`):
+     *
+     * ```
+     * ime 387 -> body  51, one row      (the measured reading)
+     * ime 426 -> body  12, one row
+     * ime 438 -> body   0, FULL FORM    <- keyboard taller, asking for 116 dp
+     * ```
+     *
+     * The room is monotone non-increasing in the keyboard (a taller keyboard can
+     * only take room away), so the form has to be monotone too — otherwise the
+     * two disagree about which way is 「tighter」. `>= 0.dp` makes the truth set
+     * an initial segment of `[0, 164)` — `{0 .. 163}` — which is what
+     * 「monotone in [available]」 above always claimed and never was. The
+     * *staircase* is untouched: 163 dp is one row and 164 dp is the stacked form,
+     * exactly as v57 and v74 pin it.
+     *
+     * [composerCeiling] reads this too, and is unaffected: it returns on
+     * `pane <= 0.dp` before asking, so no ceiling moves.
      */
     fun composerMinimal(available: Dp): Boolean =
-        available > 0.dp &&
+        available >= 0.dp &&
             available < COMPOSER_MINIMAL_HEIGHT + CHROME_MIN_HEIGHT + TIMELINE_MIN_CONTENT
 
     /**

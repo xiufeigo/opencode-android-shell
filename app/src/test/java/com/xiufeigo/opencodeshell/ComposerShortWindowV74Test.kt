@@ -84,7 +84,17 @@ class ComposerShortWindowV74Test {
         // The boundary is the stacked form's own budget.
         assertTrue(SessionPaneLayout.composerOneRow(windowIsShort = false, body = 163.dp))
         assertFalse(SessionPaneLayout.composerOneRow(windowIsShort = false, body = 164.dp))
-        assertFalse(SessionPaneLayout.composerOneRow(windowIsShort = false, body = 0.dp))
+        // v154: 0 dp is the room that can least carry the stacked form, so it
+        // takes the one row. This used to be the *other* way round — `available > 0.dp`
+        // turned the one-row form off at exactly 0 dp, so a taller keyboard grew
+        // the composer back into the full 116 dp one with nothing to put it in
+        // (`research/v97_fix/REVERSE_JUMP_FIX.md`). The 163/164 boundary above is
+        // the staircase and is unchanged.
+        assertTrue(
+            "0 dp takes the cheapest form, never the full one — the form must not grow as the " +
+                "keyboard grows",
+            SessionPaneLayout.composerOneRow(windowIsShort = false, body = 0.dp),
+        )
     }
 
     @Test
