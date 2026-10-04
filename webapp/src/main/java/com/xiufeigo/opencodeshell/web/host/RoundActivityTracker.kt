@@ -150,6 +150,75 @@ class RoundActivityTracker {
         return had
     }
 
+    /**
+     * F4 · **流上字节的三分类**（纯函数，无状态）。
+     *
+     * ## 为什么需要它（= "回合结束不释放"的根因）
+     *
+     * 修之前，[onRoundActivity] 拿到**任何**流上字节都续命，包括官方 UI 常驻那条
+     * `GET /event` 的 ~10 s 心跳。于是 [idleMs] 永远 < 10 s，`LoopbackProxy` 那条
+     * `idleMs >= SSE_IDLE_READ_TIMEOUT_MS` 的释放条件**在任何流退出那一刻都不成立**，
+     * 90 s 兜底 [roundHoldTimeoutMs] 同样永远不到期 ⇒ 回合正常结束后 flag 仍挂着，
+     * 并被兜底每 90 s 重新挂一次（V5 设备原文：`+90/+180/+270 s` 三行 `flagSet=true`）。
+     *
+     * 所以必须把"心跳"和"回合自己的数据"分开：心跳**不续命**。
+     *
+     * ## 回合结束的权威信号来自**上游协议**，不是页面
+     *
+     * 页面那侧根本没有"回合结束"信号：上游官方 UI 从不调 `setKeepScreenOn`
+     * （`_upstream/packages` 全量检索零命中），也没有任何 `__ocAndroid` 调用者。
+     * 而回合的**全部真实流量**都经回环代理，且上游后端在 `/event` 上明确发了
+     * 回合状态事件（`_upstream/packages/ai/node_modules/@opencode/schema/src/session-status-event.ts:8-13`
+     * `type: "idle"` / `:27-32` `type: "busy"`；`:43-49` 旧的 `session.idle` 事件）。
+     * ⇒ 宿主在**字节流**上认这两处标记即可精确收口，不必等 35 s 静默。
+     */
+    enum class RoundStreamSignal {
+        /** 流上出现了上游的"回合结束"标记（`session.status`→`idle` / `session.idle`）。 */
+        ROUND_END,
+
+        /** 回合自己的数据帧（有 `"type"` 的事件负载）⇒ 续命。 */
+        ACTIVITY,
+
+        /** 纯心跳 / 空负载 ⇒ **不续命**（这是"忘关路径"的正解）。 */
+        HEARTBEAT,
+    }
+
+    /**
+     * 纯逻辑分类器：给一段 SSE 文本定级。**可在 JVM 单测里直接穷举**（无 android 依赖）。
+     *
+     * @param text 扫描窗口内的文本（代理里是"上一次的尾巴 + 本次新到的字节"，
+     *   以免标记被读切成两半）。
+     */
+    fun classifyRoundStream(text: String): RoundStreamSignal = when {
+        text.isEmpty() -> RoundStreamSignal.HEARTBEAT
+        containsRoundEndMarker(text) -> RoundStreamSignal.ROUND_END
+        containsSubstantivePayload(text) -> RoundStreamSignal.ACTIVITY
+        else -> RoundStreamSignal.HEARTBEAT
+    }
+
+    /**
+     * 把一个 [RoundStreamSignal] 作用到跟踪器上。@return 回合状态是否**变化**。
+     *
+     * 只有 [RoundStreamSignal.HEARTBEAT] 是"什么也不做"—— 这正是修复点。
+     */
+    fun onRoundStreamSignal(nowMs: Long, signal: RoundStreamSignal): Boolean = when (signal) {
+        RoundStreamSignal.ROUND_END -> onRoundEnd()
+        RoundStreamSignal.ACTIVITY -> onRoundActivity(nowMs)
+        RoundStreamSignal.HEARTBEAT -> false
+    }
+
+    /** 上游是否明确发了"这个会话不忙了"= 回合结束。 */
+    fun containsRoundEndMarker(text: String): Boolean {
+        if (text.contains(ROUND_END_LEGACY_MARKER)) return true
+        if (!text.contains(ROUND_STATUS_MARKER)) return false
+        // `session.status` 帧里 `status.type` 才是判据：idle 收口，busy/retry 继续。
+        return text.contains(STATUS_IDLE_COMPACT) || text.contains(STATUS_IDLE_SPACED)
+    }
+
+    /** 帧里是否带得上游事件的类型标记（= 真的业务负载，而不是心跳）。 */
+    fun containsSubstantivePayload(text: String): Boolean =
+        text.contains(SUBSTANTIVE_MARKER)
+
     /** 诊断读数：回合已持续多久（无回合 = 0）。 */
     fun roundAgeMs(nowMs: Long): Long =
         if (roundStartAtMs.get() == 0L) 0L else nowMs - roundStartAtMs.get()
@@ -189,5 +258,25 @@ class RoundActivityTracker {
         private const val MESSAGE_SUFFIX = "/message"
         private const val MESSAGE_ASYNC_SUFFIX = "/message_async"
         private const val PROMPT_SUFFIX = "/prompt"
+
+        /**
+         * F4 · 回合结束标记（依据：`_upstream/.../@opencode/schema/src/session-status-event.ts:8-13`
+         * `type: "idle"`、`:27-32` `type: "busy"`、`:43-49` 已废弃的 `session.idle` 事件）。
+         */
+
+        /** 上游已废弃但仍在发的回合结束事件名。 */
+        const val ROUND_END_LEGACY_MARKER: String = "\"session.idle\""
+
+        /** 现行回合状态事件名；它本身**不代表**结束，还要看 `status.type`。 */
+        const val ROUND_STATUS_MARKER: String = "\"session.status\""
+
+        /** `{"type":"idle"}` 紧凑写法。 */
+        const val STATUS_IDLE_COMPACT: String = "\"type\":\"idle\""
+
+        /** `{"type": "idle"}` 带空格写法（上游序列化也可能带空格）。 */
+        const val STATUS_IDLE_SPACED: String = "\"type\": \"idle\""
+
+        /** 任何上游事件负载都带 `"type"`；心跳 / 空帧不带。 */
+        const val SUBSTANTIVE_MARKER: String = "\"type\""
     }
 }

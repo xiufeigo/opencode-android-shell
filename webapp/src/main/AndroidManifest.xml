@@ -12,6 +12,27 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      F3 / N-2: camera, for the server pairing QR scan.
+
+      Upstream really opens the camera: origin/v2
+      packages/app/src/servers/connect/scanner.tsx:19-34 constructs a QrScanner
+      over a <video> element, and :38 calls scanner.start() which calls
+      getUserMedia (available because createCameraAvailability at
+      packages/app/src/servers/connect/camera.ts:6 already required
+      !!navigator.mediaDevices?.getUserMedia).
+      WebView routes that through
+      WebChromeClient.onPermissionRequest with RESOURCE_VIDEO_CAPTURE, so
+      without CAMERA + an onPermissionRequest override that actually grants,
+      server pairing scan cannot work in this host.
+
+      required="false" on purpose: it must not keep camera-less devices (or
+      emulator AVDs declared without one) out of the install set. Mirrors the
+      native shell's app/src/main/AndroidManifest.xml:16-17 spelling.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!--
       没有 INTERNET 权限上的全局明文开关。
       明文（http://）**只**对回环 / 模拟器宿主 / 自建局域网地址放行，
       范围由 res/xml/network_security_config.xml 逐条列出；

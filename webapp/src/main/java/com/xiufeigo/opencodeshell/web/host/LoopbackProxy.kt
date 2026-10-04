@@ -103,6 +103,13 @@ class LoopbackProxy(
 
         internal const val SSE_IDLE_READ_TIMEOUT_MS = 35_000L
 
+/**
+ * F4: how many trailing characters of a streaming read stay in the round-signal
+ * scan window, so an upstream round-end marker split across two reads is still
+ * matched. Bounded on purpose: the window must not grow with the stream.
+ */
+internal const val SSE_SCAN_WINDOW_CHARS = 2048
+
         internal fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
@@ -671,8 +678,41 @@ class LoopbackProxy(
         else -> false
     }
 
+    /**
+     * F4: classify the bytes of one streaming read into a round-lifecycle signal.
+     *
+     * Why this exists: the official UI keeps ONE long-lived `GET /event`
+     * subscription whose ~10 s heartbeat used to refresh
+     * [RoundActivityTracker.onRoundActivity] unconditionally, so `idleMs` never
+     * reached `SSE_IDLE_READ_TIMEOUT_MS` and the round-end branch in
+     * [copyStreaming] could not fire. V5 device log: the flag stayed set and was
+     * re-set at +90/+180/+270 s after the turn had already finished.
+     *
+     * Fix: heartbeat frames no longer keep the round alive, and the upstream
+     * `session.status`->`idle` / `session.idle` frame ends the round immediately.
+     *
+     * The scan window keeps the previous tail so a marker split across two reads
+     * is still seen. It is cleared as soon as a payload is classified, so an old
+     * marker cannot be re-matched on the next read.
+     */
+    private fun scanRoundStream(
+        window: StringBuilder,
+        bytes: ByteArray,
+        n: Int,
+    ): RoundActivityTracker.RoundStreamSignal {
+        window.append(String(bytes, 0, n, Charsets.UTF_8))
+        val signal = roundActivity.classifyRoundStream(window.toString())
+        if (signal != RoundActivityTracker.RoundStreamSignal.HEARTBEAT) {
+            window.setLength(0)
+        } else if (window.length > SSE_SCAN_WINDOW_CHARS) {
+            window.delete(0, window.length - SSE_SCAN_WINDOW_CHARS)
+        }
+        return signal
+    }
+
     private fun copyStreaming(input: InputStream, output: OutputStream) {
         val buf = ByteArray(8192)
+        val scanWindow = StringBuilder()
         var total = 0L
         var exit = "eof"
         while (true) {
@@ -690,7 +730,13 @@ class LoopbackProxy(
             if (n < 0) break
             if (n == 0) continue
             // D1：搬到了字节 = 回合还活着，续命（防 90s 兜底超时把活跃回合判死）。
-            if (roundActivity.onRoundActivity(System.currentTimeMillis())) publishRoundActive()
+            if (roundActivity.onRoundStreamSignal(
+                    System.currentTimeMillis(),
+                    scanRoundStream(scanWindow, buf, n),
+                )
+            ) {
+                publishRoundActive()
+            }
             total += n
             try {
                 output.write(buf, 0, n)

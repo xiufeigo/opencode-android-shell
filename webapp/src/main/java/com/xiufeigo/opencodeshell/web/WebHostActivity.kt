@@ -3,6 +3,7 @@ package com.xiufeigo.opencodeshell.web
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -12,6 +13,7 @@ import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -22,6 +24,7 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -1022,9 +1025,117 @@ class WebHostActivity : AppCompatActivity() {
             return true
         }
 
+        override fun onPermissionRequest(request: PermissionRequest) {
+            // F3 / N-2: upstream's server pairing scanner really opens the camera
+            // (origin/v2 servers/connect/scanner.tsx:19-34 QrScanner over <video>,
+            //  :38 scanner.start() -> getUserMedia). WebView surfaces that as
+            // onPermissionRequest with RESOURCE_VIDEO_CAPTURE, so we must grant it
+            // or pairing scan is dead in this host (upstream then degrades
+            // gracefully, screen.tsx:136-155 disables the button).
+            //
+            // SECURITY: a PermissionRequest carries the ORIGIN that asked
+            // (PermissionRequest.getOrigin()). We never grant to an arbitrary
+            // origin -- only to this host's own loopback proxy origin (the page we
+            // ourselves load in loadUrl) or the configured backend origin.
+            val origin = request.origin?.toString()
+            val trusted = origin != null && isTrustedWebOrigin(origin)
+            val wanted = request.resources.filter { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }
+            if (!trusted || wanted.isEmpty()) {
+                Log.i(TAG, "camera permission DENIED origin=$origin resources=${request.resources.toList()}")
+                request.deny()
+                return
+            }
+
+            // Already granted at runtime (API 23+): hand it over now.
+            if (ContextCompat.checkSelfPermission(
+                    this@WebHostActivity,
+                    Manifest.permission.CAMERA,
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.i(TAG, "camera permission GRANTED (already held) origin=$origin")
+                request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+                return
+            }
+
+            // Not held yet. Do NOT grant now: the Android round-trip is async and
+            // granting before the user answers would hand the page a stream that
+            // then silently dies. Instead ask, remember the pending request, and
+            // answer from the ActivityResult callback.
+            //
+            // Denying is safe: upstream camera.ts:10-14 only marks the permission
+            // denied, and screen.tsx:140,148-154 then disables the scan button and
+            // shows its own "camera unavailable" copy. We add no self-made UI text.
+            Log.i(TAG, "camera permission REQUEST origin=$origin (runtime grant pending)")
+            pendingCameraPermission = request
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+
         override fun onConsoleMessage(m: ConsoleMessage): Boolean {
             Log.i(TAG, "web[${m.messageLevel()}] ${m.message()} @${m.lineNumber()}")
             return true
         }
+    }
+
+    // ---- F3 / N-2: camera runtime permission for the pairing scanner -------
+
+    private var pendingCameraPermission: PermissionRequest? = null
+
+    private val cameraPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val request = pendingCameraPermission
+        pendingCameraPermission = null
+        if (request == null) {
+            Log.i(TAG, "camera permission result=$granted but no pending request")
+            return@registerForActivityResult
+        }
+        if (granted) {
+            // Grant ONLY the whitelisted resource, never request.resources itself:
+            // passing the whole array through would auto-allow any resource type
+            // the page asks for later (e.g. RESOURCE_AUDIO_CAPTURE).
+            Log.i(TAG, "camera permission GRANTED origin=${request.origin}")
+            request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+        } else {
+            Log.i(TAG, "camera permission DENIED (user) origin=${request.origin}")
+            request.deny()
+        }
+    }
+
+    /**
+     * F3: 该 origin 是否是本宿主**自己**加载的页面。
+     *
+     * 两种可信来源：
+     *  1. 回环代理的 public origin（`http://127.0.0.1:<port>`，LoopbackProxy.kt:169）
+     *     —— 这正是 [launch] 里 `webView.loadUrl` 用的那个 origin（WebHostActivity.kt:412）；
+     *  2. 配置的后端 origin（SecretStore.KEY_BACKEND_URL，默认 `http://127.0.0.1:4095`）——
+     *     页面直接跑后端时（不经代理）也是我们配的。
+     *
+     * 刻意**不做**的：不按域名/正则泛化、不允许任意站点。
+     * 一个 origin 拿到摄像头 = 用户不知道自己正被谁看着。
+     */
+    private fun isTrustedWebOrigin(origin: String): Boolean {
+        val candidates = buildList {
+            proxy?.publicOrigin()?.let { add(it) }
+            runCatching {
+                SecretStore.getSecret(this@WebHostActivity, SecretStore.KEY_BACKEND_URL)
+            }.getOrNull()?.let { add(it) }
+            add(SecretStore.DEFAULT_BACKEND_URL)
+        }
+        return candidates.any { trusted ->
+            trusted.isNotBlank() && sameOrigin(trusted, origin)
+        }
+    }
+
+    /** 只比 scheme://host:port，路径与末尾斜杠无关。 */
+    private fun sameOrigin(a: String, b: String): Boolean = try {
+        val ua = Uri.parse(a.trim())
+        val ub = Uri.parse(b.trim())
+        val portOf = { u: Uri -> if (u.port != -1) u.port else if (u.scheme == "https") 443 else 80 }
+        ua.scheme != null && ua.scheme == ub.scheme &&
+            ua.host != null && ua.host.equals(ub.host, ignoreCase = true) &&
+            portOf(ua) == portOf(ub)
+    } catch (t: Throwable) {
+        Log.w(TAG, "sameOrigin failed a=$a b=$b", t)
+        false
     }
 }
