@@ -7,6 +7,10 @@
 > **F9（2026-10-05，当前状态）= 按 `research/audit/ADVERSARIAL_AUDIT_A5.md` 的对抗性审计结论修正本文件**。同样**纯文档**：未碰设备、未起模拟器、未跑 gradle、未改生产代码。唯一写入 = 本文件 + `research/web/HANDOFF_FIX_F9.md`。
 > **F9 改了六类东西**（逐条对照见 `HANDOFF_FIX_F9.md`）：① **修掉 2 条被 A5 推翻的声明**（§0.1「一个前端字节都不打包」→ 实为 40,801 B facade 资产在包内；§0.2 裂缝①「三个 md5 两栏都不在」→ 实为**两个**，F5 规范件 `627f8ed8…` 已登记）；② **修掉 8 处自相矛盾 C1–C8**（重点 C3：`origin/v2` 三处互斥已统一到**主仓不存在 / `_upstream` 内 `ecfa884` 存在**，`0a46301` 标为无效）；③ **混轴数字加口径块**（§4.1 / §4.2 底层是**已作废包**）；④ **新增 §4.5「证据出处与强度」**（按证据类型分级，并写清设备证据取自哪两包、当前交付包是哪一份）；⑤ U1–U4 按 A5 建议改写或保留"无法复验"标注；⑥ md5 逐份 `Get-FileHash` 复核（4/4 仍一致）。
 > ⚠️ **F9 没有做的事**：**没有重跑任何设备验证**。凡 A5 判为"仅方向性/无法复验"的数字，本轮**只加口径、不加证据**。
+>
+> **F16（2026-10-05，当前状态）= 把 F11–F15 这一批并进本文件，让明晚交付时它是完整的**。同样**纯文档**：未碰设备、未起模拟器、未跑 gradle、未改生产代码。唯一写入 = 本文件 + `research/web/HANDOFF_FINAL_F16.md`。
+> **F16 改了五类东西**（逐条对照见 `HANDOFF_FINAL_F16.md`）：① **新增 §0.4「R8：从失败到 −63.90%」**（为什么第一次失败、这次靠什么成功、体积/首屏/风险逐条、证据怎么一步步变硬）；② **§0.1 交付物表改写 R8 那行**（常亮三段已闭环，不再写"未闭环"）并把 R8 包纳入 md5 复核表（**5/5 逐位一致**）；③ **§4.5 证据分级补进 R8 那一批**；④ **§5 未闭环重排**（R8"未产出"那条已过期、删除；换成"对外分发的正式包名+证书"，耗电写成"一行命令"）；⑤ **§6 追加 2 条教训**。
+> ⚠️ **F16 没有做的事**：**没有重跑任何设备验证、没有改任何设备结论**。R8 的一切设备结论都**只做并入，不做升级**；凡本轮只是"转述"的地方都标了出处报告路径。**⚠️ 并且 F16 查出一处上一版的过期表述**：§1 装配体积对比里的「**web release+R8 未产出**」**已不成立**（R8 早已产出 1,435,193 B）—— 这是 F11 之前写的句子在 F11 之后没跟上，本轮已按磁盘实况订正（见 §1）。
 
 ---
 
@@ -22,7 +26,7 @@
 | **`opencode-shell-web-release-nor8.apk`** | **3,975,389 B**（≈3.79 MB） | `76ca064b7de9246ee446f765a9198b37` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、SHA-256 `e86b7006…0510a`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
 | `opencode-shell-web.apk`（debug） | **5,275,479 B**（≈5.03 MB） | `16c6cf8b7330e5d02879f30333800ad9` | 日常调试（debug 签名）；同上 |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 新增**） | **1,435,193 B**（≈1.37 MB，比非 R8 **−63.90%**） | `0598817026665544a08803055107a9fd` | 🟡 **已设备验证核心项，但默认推荐仍是上一行的非 R8 版**。✅ 已过：构建成功（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`）、**Tink 口令存储（杀进程重开免密、静默降级命中 0）**、JS 桥、错误态三态、`shrinkResources`、全程无崩溃；同轮首屏中位数 644 ms vs 非 R8 691 ms（**只快 47 ms，不构成"明显更快"**）。❌ **未闭环**：常亮"回合进行中 0x80 置起"段未验（空闲三段含 +90 s 已验且正确）⇒ 分发前需补该段。构建/验证原文：`research/web/R8_ATTEMPT_F11.md` |
+| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,435,193 B**（≈1.37 MB，比非 R8 **−63.90%**） | `0598817026665544a08803055107a9fd` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储**（杀进程重开免密、`EncryptedSharedPreferences unavailable` 命中 0 ⇒ 未静默降级）· **JS 桥**（代理吐出 31 条官方 UI 资产、`@JavascriptInterface` 方法名未改）· **错误态三态**（正确/错口令/不可达，三态不串态）· **`shrinkResources`**（首启配置框截图证伪）· **全程无崩溃无渲染进程丢失** · **常亮三段**（**真点官方 UI Send 驱动**，含 tap 前基线 + 连续两回合 + +95 s 不回弹）。⚠️ 仍未闭环见 §5。**设备端 `base.apk` md5 = `0598817026…`，`DEVICE_MD5_MATCH=True`**。原文：`R8_ATTEMPT_F11.md` · `R8_KEEPAWAKE_F12.md` · `R8_UITAP_F13.md` · `R8_UITAP_F15.md` |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
 
@@ -48,10 +52,12 @@
 | 路径 | 体积 | 磁盘 md5 | 与上表 |
 |---|---|---|---|
 | `research/deliver/opencode-shell-web-release-nor8.apk` | 3,975,389 B | `76CA064B7DE9246EE446F765A9198B37` | ✅ 一致 |
+| **`research/deliver/opencode-shell-web-release-r8.apk`（R8，F11 新增）** | **1,435,193 B** | **`0598817026665544A08803055107A9FD`** | ✅ **一致（F16 第 5 次独立复核）** |
 | `research/deliver/opencode-shell-web.apk` | 5,275,479 B | `16C6CF8B7330E5D02879F30333800AD9` | ✅ 一致 |
 | `research/deliver/opencode-shell-debug.apk`（原生壳） | 44,198,253 B | `BD21FF21E72E75DB62FC371D290F438E` | ✅ 一致 |
 | `research/deliver/opencode-shell-release-debugsigned.apk`（原生壳） | 29,393,986 B | `B6073AC63F5D8796708FB269FC855A8D` | ✅ 一致 |
 | `webapp/build/outputs/apk/release/webapp-release.apk` | 3,975,389 B | `76CA064B7DE9246EE446F765A9198B37` | ✅ 与 deliver 同字节 |
+| **`webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk`** | **1,435,193 B** | **`0598817026665544A08803055107A9FD`** | ✅ **与 deliver 的 R8 同字节** |
 | `webapp/build/outputs/apk/debug/webapp-debug.apk` | 5,275,479 B | `16C6CF8B7330E5D02879F30333800AD9` | ✅ 与 deliver 同字节 |
 
 ⇒ **两行交付物 md5（release `76ca064b…` / debug `16c6cf8b…`）本轮复核有效，无需订正**；§4.3 的形态数据也正是取自这份 `76ca064b…`（V11 抬头实测同值同字节）。
@@ -111,6 +117,83 @@
 | **IME 遮挡** | ✅ **重叠 0**（手机实测，336.38 CSS px × dpr 2.625 = 883 px 与 `2400−1517` 逐像素相等） | `GAP_CLOSE_G3.md` §1 | 🟡 **设备运行期观测** |
 | **WebView 预检** | ✅ 阈值 105 / 12 s / 4 条绊线反向验证真红 / 不误挡 124·149·105 | `research/web/WEBVIEW_PREFLIGHT.md` | ✅ **静态可复验**（`dexdump` 搜到 `MIN_MAJOR` **实值 105**，见 §4.5） |
 | **上游地基** | ✅ **`_upstream` 内 `origin/v2 = ecfa884`** 上四条全成立；区间 5 个提交**无一触及** `cli/src`/`app/src`/`gui-extensions/src` | `research/web/UPSTREAM_REGRESSION_A3.md`；**ref 口径见 §9（F9 已更正）** | ✅ **静态可复验** |
+| **R8 版核心项**（`0598817026…`） | 🟡 **口令存储 / JS 桥 / 错误态三态 / `shrinkResources` / 无崩溃 = 全 PASS**；**常亮三段已闭环**（真点 Send 驱动 + tap 前基线 + 连续两回合 + +95 s 不回弹），**设备端 `base.apk` md5 逐位一致** | §0.4；`R8_ATTEMPT_F11.md` · `R8_KEEPAWAKE_F12.md` · `R8_UITAP_F13.md` · `R8_UITAP_F15.md` | 🟡 **设备运行期观测**（混淆产物侧已静态可复验，见 §4.5） |
+| **R8 体积 −63.90%** | ✅ **1,435,193 B vs 3,975,389 B**（静态实测，两包同轮） | §0.4.3；`R8_ATTEMPT_F11.md` §3.4 | ✅ **静态可复验**（`Get-FileHash` + 字节数） |
+| **R8 首屏 644 vs 691 ms** | 🔶 **只快 47 ms（−6.8%），n=3** ⇒ **不构成"明显更快"**，**不支撑改默认推荐**；且此为 `emulator-6290` 同机同轮，**不可与 §4.2 的 1,676 ms（已作废 R2 件）相减** | §0.4.3；`R8_ATTEMPT_F11.md` §5.3 | 🔶 **仅方向性**（n 太小） |
+
+### 0.4 R8：从失败到 −63.90%（F11–F15 这一批的完整交代）
+
+> **一句话**：R8 版**从"连编译都过不去"变成"设备验证核心项全过、体积只有非 R8 的 36.10%"**。
+> **但默认推荐仍然是非 R8 版**——**收益几乎全部在体积/分发侧，不在首屏侧**，这条判断三轮（F11/F12/F13）都没变过。
+
+#### 0.4.1 为什么第一次失败（E1 轮，`WEB_RELEASE_BUILD.md` §5）
+
+E1 轮只做了**纯静态评估**，留下三样东西：一份 **12 项风险清单**、一个开关式方案 `-Pwebapp.r8=true`、以及一个**已经编译不过**的事实——`WebHostActivity.kt` 在 R8 编译下有 **7 个 `Unresolved reference`**（`webViewMajor` / `webViewVersionName` / `watchdogArmed` / `showDiagnostic` / `WebViewRenderProcessDetail` / `didCrash`）。⇒ **连包都产不出来**，谈不上验证。
+
+#### 0.4.2 这次靠什么成功（三件事，各有出处）
+
+**① 把 12 项风险逐条映射成 keep 规则，而不是"先把构建弄过再说"。**
+落盘在 `webapp/proguard-rules.pro`（F11 整体重写，每条规则标注对应哪一项风险），并**先落盘再动手**。关键映射（F11 §2）：
+
+| 风险 | 为什么会被裁坏 | keep/配置 | 实测 |
+|---|---|---|---|
+| 🔴 **#7 Tink / `EncryptedSharedPreferences`** | Tink 内部**基于反射**装配 keyset 与 AEAD；裁坏后**不崩**，只触发 `SecretStore.kt:76` 的 `falling back to in-memory only` ⇒ **静默降级** ⇒ 口令不落盘 ⇒ 重启反复要密码 | `proguard-rules.pro:63-66` 整包 keep Tink + `androidx.security.crypto` | ✅ **PASS** |
+| **#1/#4 JS 桥 `WebHostBridge`** | `addJavascriptInterface` 是 **native 侧按方法名反射** ⇒ 改名/删方法时 JS 侧**静默拿到 `undefined`**，编译期与单测都测不出 | `:44-46` `@JavascriptInterface <methods>` + `:58` 整包 keep 兜底 | ✅ **PASS** |
+| **#2 manifest 组件** | 被裁 ⇒ 启动即崩 | AGP 自动 keep + `:58` | ✅ 冷启 3 次无崩 |
+| **#5 宿主工具类** | 反射调用点被裁 | `:58` `-keep class …web.** { *; }` | ✅ mapping 逐个查未改名 |
+| **#3 `assets/www/*` 注入** | 被裁 ⇒ IME 抬升/首屏探针全哑 | **正确处置是"不加"**（R8 与 `shrinkResources` 不处理 `assets/`） | ✅ 三个探针注册齐全 |
+| **#6/#8/#9 依赖侧** | 库自带 consumer rules | 只补 `:80-81` `-dontwarn`（**只压警告，不改裁剪行为**） | ✅ |
+| **#10 `res/` 收缩** | `@string/app_name`/主题/`@mipmap` 被裁 ⇒ 首启配置框缺文案/图标 | **不加 `tools:keep` 兜底**，用**实机截图证伪**代替规则掩盖 | ✅ 截图正常 |
+| **#11/#12 反射/序列化** | — | #12 静态闭环（本模块无 `@Serializable`/Gson/Moshi）；#11 🟡 未单独触发 | 🟡 见 §5 |
+
+> **一条总原则钉死**：**没有为了让构建通过而把混淆放宽成"等于没混淆"**——文件里**没有任何** `-dontshrink` / `-dontobfuscate` / `-dontoptimize`。混淆确实生效的证据在 F11 §3.3：依赖类实改（`okhttp3.OkHttpClient -> q0.q`、`AppCompatActivity -> g.l`），`usage.txt` 被删 **21,927** 条，两个 dex（8,745,636 + 960,316 B）压成**单 dex 2,594,228 B**。
+
+**② 把"开关式"改成**独立 `releaseR8` 变体**，从机制上保证非 R8 交付物一字未动。
+E1 留的开关式隐患是：同一个输出路径 `outputs/apk/release/webapp-release.apk` 在带不带 `-P` 时**静默变成两份不同的包**——只要有人顺手带上那个开关，**已验收的分发物就被顶替**，而从变体列表上看不出来。F11 改成：
+
+```kotlin
+release      { isMinifyEnabled = false; isShrinkResources = false; … }   // 永远是已验收的非 R8
+create("releaseR8") { initWith(getByName("release")); isMinifyEnabled = true; isShrinkResources = true }
+```
+
+⇒ **`assembleRelease` 仍产出非 R8**（已验收产物零风险）；`releaseR8` 沿用 `applicationIdSuffix = ".debug"` ⇒ 与 release **同 applicationId** ⇒ 可互相覆盖安装，**这正是同机同轮 A/B 需要的**。⚠️ 遗留事实：**`-Pwebapp.r8=true` 现在是 no-op**，仍依赖它的脚本会**静默拿到非 R8 包**（未闭环，见 §5）。
+**F11 收尾实测**：非 R8 交付物 `research/deliver/opencode-shell-web-release-nor8.apk` **一个字节都没动**（md5 复核仍 `76CA064B…`）。
+
+**③ 契约测试真跑过，不是静态推断**：`BUILD SUCCESSFUL` + `1 executed`（`build.gradle.kts` 本身是该任务的声明输入，改了就必重跑），**16 suites / 147 tests / 0 failures**，含 `DebugEvalChannelTest` 2/2、`KeepScreenOnWiringTest` 14/14。**未删、未放宽任何断言**，`webapp/src/**` 本轮 **0 个文件被改**。
+
+#### 0.4.3 体积与首屏（**同机同轮**：`emulator-6290`，2026-10-05 10:03–10:14，不跨轮）
+
+| 维度 | 非 R8 `76ca064b…` | R8 `0598817026…` | 差 | 判读 |
+|---|---:|---:|---:|---|
+| **体积** | 3,975,389 B | **1,435,193 B** | **−2,540,196 B（−63.90%）** | ✅ **R8 只有非 R8 的 36.10%**；收益显著且静态可复验 |
+| **首屏中位数（n=3，冷启×3，已鉴权）** | **691 ms**（625/691/665） | **644 ms**（618/612/644） | **−47 ms（−6.8%）** | 🔶 **量级小，不构成"明显更快"**；n=3 不足以定论 |
+
+- 首屏口径 = `M.g1.firstContent t=`（`kind=dcl`），冷启 = `force-stop` + 3 s 停顿，已鉴权，两包**同一台机同一轮**取数。
+- ⚠️ **两个首屏数字绝对不许混轴**：`644 / 691 ms` 是 **F11 轮 `emulator-6290` 同机同轮**；§4.2 的 **1,676 ms** 是 **已作废 R2 件 `7b578cee…` + `emulator-5910`**；§4.5 的 **667 ms** 是 **V12 轮 `76ca064b…` + `emulator-6250`**。**三组不同轮、不同包、不同机，彼此不能相减。**
+
+#### 0.4.4 风险逐条验证结果 + **默认推荐为什么仍是非 R8**
+
+**F11–F15 逐条结果**：口令存储（Tink 静默降级）✅ · JS 桥 ✅ · 错误态三态 ✅ · `shrinkResources` ✅ · 注入层与 WebView 特性判定 ✅ · 全程无崩溃 ✅ · **常亮三段 ✅（F12 补置起段 → F13 改真点驱动 → F15 补基线/两回合/空格正文）**。
+
+**但默认推荐仍是 `opencode-shell-web-release-nor8.apk`，理由三条**：
+1. **首屏只快 47 ms（−6.8%）**，"改推荐必须有量化理由（如明显更快）"这个门槛**没达到**；n=3 也不足以定论。
+2. **收益几乎全部在体积/分发侧**（−63.90%），不在体验侧。
+3. F12 明确写过一条**方法论红线**：改默认推荐**必须用同机同轮的数**支撑，而 F12 轮**非 R8 对照侧没跑出来** ⇒ 理由不足。F13 虽然把两包都跑通了"真点 Send + 常亮三段"（**行为一致，R8 未因 minify/shrink 引入差异**），但**那一轮没有首屏对照数** ⇒ 门槛仍未跨过。
+
+⇒ **表述**：`0598817026…` **已设备验证核心项**，可作为**体积敏感场景**（内网分发 / 带宽受限）的候选；**是否提为默认推荐，等产品负责人拍板**（见 §5）。
+
+#### 0.4.5 证据是怎么一步步变硬的（这一段是本节最该读的）
+
+同一个问题——"R8 版的常亮置起到底成不成立"——被四轮**逐层加固**，每一步都写清了自己的口径弱点：
+
+| 轮次 | 怎么驱动的 | 拿到什么 | **当时的弱点（当轮自曝）** |
+|---|---|---|---|
+| **F11** | 只测**空闲态** | 三段空闲态 `flagSet=false`（**这是正确值**）+ `D1 applyKeepScreenOn` 日志存活 | ❌ **回合进行中那一段根本没验**；`dumpsys window` 三版探针全失败 ⇒ 0x80 位只能靠应用自身日志判读，**缺独立窗口属性佐证** |
+| **F12** | ⚠️ **`curl` 打回环代理的 `…/message`**（**不是真点**） | 置起 `flagSet=true` @ `02:31:53.237` + 窗口属性 `fl=KEEP_SCREEN_ON` **16/16** 命中 | ⚠️ 自曝：**不覆盖"手指点官方 UI 发送按钮"这条交互路径**；且**设备端 `base.apk` md5 没取到**（正则被压平污染路径） |
+| **F13** | ✅ **真点官方 UI Send 按钮**（`uiautomator` 解析 `text=[Send]` bounds → `input tap` → 2 s 后 `roundActive=true`），**零 `curl` 注入** | 三段齐全；**设备端 `base.apk` md5 = `0598817026…`，`MATCH=True`**；**非 R8 同机同轮也跑通**，行为一致 | ⚠️ **自曝 4 条**：① `SEG0_idle` **标签名不副实**（实际落在回合开始后 0.2 s，**不是真空闲基线**）② `VERDICT` 的 `release` 字段是**脚本 bug**（`Write-Output` 污染管道 ⇒ 数组比较恒 False）③ `input text` 词间**空格丢失** ④ **未测连续两回合** |
+| **F15** | ✅ 仍是真点，但**每步单条命令 + 边做边写盘** | **4 条全部闭环**：`SEG0` 挪到 **tap 前 3 ms 纯读取**取样（`11:44:43.229` < tap `11:44:43.285`，**同一次执行里前后相邻的带时间戳日志**）；`VERDICT` bug 定位并修（`Write-Output`→`Write-Host`，**前后 flag 真值都是 `false`，只有比较结果不同** ⇒ 证明是脚本 bug 不是产品行为）；带空格正文**从屏幕读回验证**；**连续两回合 raise/release 均成立、+95 s 仍 false** | ⚠️ 仍如实记：`input text` **打不进 CJK**（`KeyCharacterMap` 只支持 ASCII，**超出派单范围、非被测应用缺陷**）；`_f12_keep.ps1` 等**同源脚本的同一 bug 未修** |
+
+> **F14 中途夭折也记在这里**：F14 起了两回合循环，**轮次在脚本还在跑的时候就结束了** ⇒ **报告没写出来、还留下一个自建模拟器没关**。留下的半份产物按 git 提交信息如实登记（`wip(web): partial output from the cleanup round…`），那 4 条**保持未闭环**，由 F15 重做并闭环。⇒ 教训见 §6.1 ⑯。
 
 ---
 
@@ -126,7 +209,8 @@
 
 **⇒ 由此派生一条贯穿全文的纪律**：**凡"官方界面自己就这么做"的现象，一律不改成"看起来更友好"**（配对页不可见就是典型，§3.3）。
 
-**装配体积对比**（同一代码库）：原生 debug 44,198,253 B · 原生 release 29,393,986 B · 原生 release+R8 17,809,425 B · web debug 5,275,479 B · **web release（非 R8，推荐分发）3,975,389 B** · web release+R8 **未产出**。
+**装配体积对比**（同一代码库）：原生 debug 44,198,253 B · 原生 release 29,393,986 B · 原生 release+R8 17,809,425 B · web debug 5,275,479 B · **web release（非 R8，默认推荐）3,975,389 B** · **web release+R8 1,435,193 B（F11 产出，F16 订正 —— 此前此处写的"未产出"已过期）**。
+⚠️ **两个 R8 不是一回事，别混**：`17,809,425 B` 是**原生壳** `:app` 的 R8（早于路线 A 切换时的历史数据）；`1,435,193 B` 是**web 壳** `:webapp` 的 `releaseR8` 变体（现行，见 §0.4）。**两者不可相减、不可并列比较。**
 
 ---
 
@@ -421,6 +505,19 @@
 > **测量前必须先断言被测系统处于"真正可用"的状态 —— 这里是"已鉴权 + 数据已到"；否则量到的可能是空转。**
 > V9 那 6 个 cell **无一例外** `proxyGET=0`（**后端从未向页面交付过数据**），**连 1366dp 平板也是 99.7% 白屏** ⇒ **与视口宽度毫无相关性**，却被读成了"360dp 小屏问题"（V10 §三-4）。V11 已把这两条做成**脚本里的硬门禁**（`_v11_sweep.ps1`）：任一不满足即 `PRECONDITION_VALID=False`、该格结论作废。
 
+**F16 追加两条（F11–F15 这一批换来的，均为过程性教训）**：
+
+⑯ **"轮次结束但脚本还在跑"会同时毁掉两样东西：报告和设备。**
+F14 轮起了两回合常亮循环，**轮次在脚本还在跑的时候就结束了** ⇒ ① **报告根本没写出来**（四条的证据散在未落盘的输出里）；② **留下一个自建模拟器还开着**（违反 §6.3「谁起谁关」）。留下的半份产物只能按 git 提交信息如实登记（`wip(web): partial output from the cleanup round…`），那 4 条**保持未闭环**，由 F15 重做并闭环。
+**⇒ 纪律（F15 就是照这三条做的）**：
+- **边做边写盘**：每完成一步就追加落盘，**不要攒到最后一次性写**（F15 的 `R8_UITAP_F15.md` 是逐步追加的，每节都有"状态：闭环 ✅"）。
+- **不许长脚本空等**：**每步单独执行 + 单独取证**，不要"启动一个大脚本然后等它跑完"——轮次可能在它跑完前就结束。
+- **收尾无论成败先关实例**：先按 AVD 名 + 端口确认是自己的，`emu kill`，再抄复核输出（残留 = 0 / 端口 FREE / `adb devices` 回读）。**报告没写成事小，设备没关是持续伤害别人的资源。**
+
+⑰ **"标签不能代替事实" —— 自己起的变量名/段名也会骗自己。**
+F13 的 `SEG0_idle` 那一格，**标签写着 `idle`（空闲基线），实际却落在「回合已开始后 0.2 s」**（`11:16:42.6` vs `ROUND_STARTED_BY_UI_TAP=YES @ 11:16:42.454`）⇒ **它其实是"回合进行中"，不是空闲基线**。若照着标签解读，会得出"flag 一直就 true"或"空闲态也置旗"这类**与事实相反**的结论。F13 自曝、F15 重采（tap **前 3 ms 纯读取**取样）才真正闭环。
+**⇒ 纪律**：**命名必须与实际采样时刻绑定**；关键段要能**用同一次执行里相邻的两条带时间戳日志证明先后顺序**（F15 用 `11:44:43.229`（SEG0 取样）< `11:44:43.285`（tap），差 3 ms，因果才闭合）。**⇒ 推广：任何"基线/对照/空闲态"这类断言，都要能自证它真的发生在被比较的事件之前，否则就不是基线。**
+
 ### 4.5 证据出处与强度（本节由 F9 新增，依据 A5）
 
 > **为什么加这一节**：A5 复核 33 条编号声明后发现，**本文最大的风险不是某个数字算错，而是"不同构建/不同设备的数字被当成同一口径引用"**。本节把关键结论按**证据类型**分三级，让接手人一眼看出**哪些现在就能自己验、哪些必须重跑设备、哪些只能当方向**。
@@ -485,6 +582,24 @@
 | **"用例数只增不减"（128→141→147）** | 🟡 **过程性断言，静态无法证伪** | 当前值 147/6136 ✅ 可复算；**历史值 141/128 磁盘无证据**（A5 §2.3） |
 | **耗电 mAh** | ❌ **无证据**（不是"待复验"，是**从来没测过**） | §5 ①；套件就绪未跑 |
 
+**F16 追加：R8 那一批（`0598817026…`）的归档 —— 按同一三级标准，不因"是新证据"就升格**
+
+| 结论 | 级别 | 出处与复验方式 |
+|---|---|---|
+| **R8 产物体积 1,435,193 B + md5 `0598817026…`** | ✅ 静态可复验 | `Get-FileHash research/deliver/opencode-shell-web-release-r8.apk`（F11/F12/F13/F15/**F16** 复核，**逐位一致**）；构建目录 `webapp-releaseR8.apk` 同字节 |
+| **构建目录与 `deliver/` 的 R8 同字节** | ✅ 静态可复验 | 两个 md5 双证（`webapp/build/outputs/apk/releaseR8/`） |
+| **体积 −63.90%（vs 非 R8 同轮）** | ✅ 静态可复验 | 两个字节数相减即可；**同轮 `emulator-6290` 取的**（`R8_ATTEMPT_F11.md` §3.4） |
+| **`releaseR8` 是独立变体；`assembleRelease` 仍产非 R8** | ✅ 静态可复验 | `webapp/build.gradle.kts`（F11 §3.1 diff）；⚠️ 与之相对的一条**同样静态可复验**：`research/deliver/opencode-shell-web-release-nor8.apk` **一字节未动**（md5 仍 `76CA064B…`） |
+| **混淆确实生效**（依赖实改 `q0.q`/`g.l`/`i0.d`、删 21,927 条、双 dex→单 dex 2,594,228 B） | ✅ 静态可复验 | `webapp/build/outputs/mapping/releaseR8/{mapping,usage}.txt`（F11 §3.3） |
+| **12 项风险 → keep 规则映射** | ✅ 静态可复验 | `webapp/proguard-rules.pro`（每条规则自带风险编号注释）+ `R8_ATTEMPT_F11.md` §2 |
+| **R8 的口令存储 / JS 桥 / 错误态三态 / `shrinkResources` / 无崩溃** | 🟡 **设备运行期观测** | `R8_ATTEMPT_F11.md` §5.4–§5.6（`emulator-6290`）—— 复验**必须重跑设备** |
+| **R8 的常亮三段（含真点驱动 + 基线重采 + 两回合 + +95 s）** | 🟡 **设备运行期观测** | `R8_KEEPAWAKE_F12.md` §4（`emulator-6310`）→ `R8_UITAP_F13.md` §4（`emulator-6330`，真点 Send）→ `R8_UITAP_F15.md` ②④（`emulator-6370`，闭环 4 条） |
+| **R8 设备端 `base.apk` md5 = `0598817026…`** | 🟡 设备运行期观测 | `R8_UITAP_F13.md` §2.3（`DEVICE_MD5_MATCH=True`；F12 那轮**没取到**，已由 F13 补上） |
+| **R8 首屏 644 vs 非 R8 691 ms（同机同轮 n=3）** | 🔶 **仅方向性** | `R8_ATTEMPT_F11.md` §5.3 —— **−47 ms / −6.8%，n 太小不足定论**；**且不可与 §4.2 的 1,676 ms（已作废 R2 件）相减** |
+| **R8 与非 R8 的"真点 Send + 常亮三段"行为一致** | 🟡 设备运行期观测 | `R8_UITAP_F13.md` §5 —— **两包同机同轮**（`emulator-6330`），这是 R8 批里**唯一一组真正的双包对照** |
+| **R8 的通知点击回跳（风险 #11）** | ❌ **未验** | `R8_ATTEMPT_F11.md` §9.1-3：**非 R8 基线同轮也未测** ⇒ **不构成 R8 特有缺口**，但也**没有证据** |
+| **`-Pwebapp.r8=true` 现为 no-op** | ✅ 静态可复验（**是事实，不是缺陷**） | F11 §3.1；⚠️ **任何仍依赖它的脚本会静默拿到非 R8 包**（§5 留账） |
+
 **⇒ 使用规则（并入 §6.1 ⑧ 的执行细则）**
 1. **凡 🟡 / 🔶 级数字，禁止写进对外承诺、SOP 或验收标准**；只能写"方向 + 来源构建"。
 2. **引用任何 APK 必须带 md5**（§4.2 文件名陷阱：`…-nor8.apk` 对应过 ≥2 个字节体）。
@@ -494,28 +609,34 @@
 
 ## 5. 未闭环（**接手第一件事；诚实、短**）
 
-### 🔴 三条硬骨头
+### 🔴 两条硬骨头（F16 重排：**原"② R8 版未产出"已过期，本轮删除**）
 
-**① 耗电 mAh —— 必须真机，我们拒绝编数字。**
+> ⚠️ **F16 改了 §5 的结构**：上一版的「② R8 版未产出 —— 设备验证前不要分发」**整条已经不成立**——R8 早已产出（1,435,193 B）且核心项已设备验证（§0.4）。**过期条目不留在文档里当"另一种说法"**（§6.1 ⑪ 的同一条纪律）。它下面的 3 条子项去向：① **7 个 `Unresolved reference` 已不复存在**（F11 §3.2：`compileReleaseKotlin` 正常通过，只剩 4 条 deprecation 警告）→ 转为历史，见 §0.4.1；② **Tink 静默降级风险已实测排除**（杀进程重开免密 + `EncryptedSharedPreferences unavailable` 命中 0）→ 见 §0.4.4；③ **12 项风险清单**仍是有效文档 → 见下。**取代它的新 ② 是"对外分发的正式包名 + 证书"。**
+
+**① 耗电 mAh —— 必须真机，我们拒绝编数字。现在只差"插上手机跑一行"。**
 模拟器**无电池模型、无 rail 电流** ⇒ 前几轮**全部是代理量，不是耗电**。P6 轮 §7.1 原文：「**本轮没有任何耗电数字。我们没有真机。**」P6 测到的 CPU **−5.6%** 低于其自定阈值 ⇒ 判为"**在测量噪声内，不构成证据**"（**这不等于"两者一样"，更不等于"省了 5.6% 电"**）；WakeLock 两边都是 `size=0` ⇒ **对本项目不具区分度**。
-**套件已就绪，可直接跑**：`research/perf/battery_real_device.ps1`（40,542 B）+ `research/perf/BATTERY_HOWTO.md`（21,138 B，含可比性判定与阈值推导）。
-**禁止**：没有真机数据就写 mAh 数字，或拿"连接断了"当"省电了"的证据。
+**T2 已把这一步做到最省事（F16 并入）**：套件离线自检 **11/11 PASS**（语法 `ParseErrors.Count=0`、依赖逐项核对、新加的 `-DryRun` 干跑、四条错误路径全是人话），**自检过程真抓出并修掉一个 bug**（`adb devices -l` 长格式下 `$` 行尾锚定会把**在线真机**误判成"不是 device"，已改为取第二个 token，短/长格式各跑一个用例都过）。⚠️ **自检用的是假 adb 夹具，不产生任何耗电读数**——**本仓至今没有任何 mAh 数字**。
+**产品负责人要做的（就这三步，完整版 `research/perf/BATTERY_HOWTO.md` §0）**：
+```powershell
+adb devices -l                                    # 拿串号（emulator-* 开头测不了耗电）
+pwsh -NoProfile -File research\perf\battery_real_device.ps1 -DryRun -Serial <串号> -Package com.xiufeigo.opencodeshell.web.debug   # 3 秒确认这台机能测
+pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <串号> -Package com.xiufeigo.opencodeshell.web.debug -Tag web    -Minutes 10
+pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <串号> -Package com.xiufeigo.opencodeshell          -Tag native -Minutes 10
+```
+两轮跑完自动出 `research/perf/out_battery/COMPARE.md`，**把整个 `out_battery/` 目录贴回来即可**。前置条件与判定阈值见 `BATTERY_HOWTO.md` / `BATTERY_READY_T2.md` §6–§7。
+**禁止**：没有真机数据就写 mAh 数字，或拿"连接断了"当"省电了"的证据；**`0 mAh` 不是"很省电"，是"没测到"**（五道闸已逐闸验过）。
+出处：`research/perf/BATTERY_READY_T2.md` · `BATTERY_HOWTO.md` §0 · `battery_real_device.ps1`（40,542 B / 740 行）。
 
-**② R8 版未产出 —— 设备验证前不要分发。**
-1. **连构建成功都还没证明**：`webapp/.../WebHostActivity.kt` 曾在 R8 编译下出现 7 个 `Unresolved reference`（`webViewMajor` / `webViewVersionName` / `watchdogArmed` / `showDiagnostic` / `WebViewRenderProcessDetail` / `didCrash`）。⚠️ **另路完工提醒：请先确认该文件能编译，否则连 debug 包都构建不出来。**
-2. **风险集中在依赖侧**：本 APK **约 94% 是 dex**，R8 缩的主要是 okhttp / coroutines / **Tink**，而**最可能被裁坏的 Tink 会让 `SecretStore` 静默退化成内存存储**（口令不落盘、首启反复要密码）—— 这种"**不崩溃只降级**"的失败在静态检查里看不出来。
-3. **12 项风险清单** + 建议 keep 规则见 `research/web/WEB_RELEASE_BUILD.md`。
-
-**③ release 身份 —— 对外分发前必须换包名 + 换证书。**
+**② 对外分发的正式包名 + 证书 —— 现为 debug 包名 + Android Debug 证书，文档已标注"仅内部灰度"。**
 本包**包名带 `.debug` 后缀**（`com.xiufeigo.opencodeshell.web.debug`；`webapp/build.gradle.kts:55` 的 release 变体带后缀，V11 抬头 `aapt2 dump packagename` 读回一致）**且用 Android Debug 证书签名**（`sharedDebug`）。`RELEASE_VERIFY_V5.md` §1.3 明确「**不能据此判可用于对外分发**」。
-⇒ **§0.1 那行已按 F9 改成 ⚠️「仅内部灰度可用」**（F9 之前那里是一个孤零零的 ✅"推荐对外分发"，与本节打架）。是否改名/换证**待 Lead 定调**。
+⇒ **§0.1 两行 release（R8 与非 R8）都已标注 ⚠️「仅内部灰度可用」**。是否改名/换证**待 Lead 定调**。
 **同一条卡着两件事**：§3.4 的相机扫码路径要验收，就必须有一个**DEBUG 构建**或给 release 加**受控**的非 DEBUG 注入/深链钩子；§4.3 想要的 CDP 数字也要在 `WebHostActivity` 里加 `setWebContentsDebuggingEnabled`。**⇒ 这三条（对外分发 / 相机验收 / CDP 读数）其实卡在同一个待裁决项上，建议一次性拍板。**
 
 ### 🟡 其余（照报告如实列出）
 
 | # | 项 | 状态 | 出处 |
 |---|---|---|---|
-| 3 | **相机扫码 live 流** | release 包不可复现；「左边缘抽屉→Settings→Add server」**未测到而非已排除** | §3.4；`V7_CLOSEOUT.md` §6 |
+| 3 | **相机扫码 live 流** | release 包不可复现；「左边缘抽屉→Settings→Add server」**未测到而非已排除**。⚠️ **定性要说清**：**"用户可达路径打不通"属上游 connect 页的 `fallback` 语义、我们与官方一致，不是我们的缺陷**（§3.3）——真正缺的是**验收手段**（需要一个 DEBUG 构建或受控注入钩子），不是缺一个修复 | §3.4 · §3.3；`V7_CLOSEOUT.md` §6；`PAIRING_ROUTE_VERDICT.md` |
 | 4 | **N-4 文件选/存/上传三条分支** | 选文件成功路径未跑；`saveContent` 与 `onShowFileChooser` **从未设备验证** —— **这是最大的未测面** | `PARITY_LEDGER_A4.md` §7 N-4 |
 | 5 | **N-3 终端 PTY / WebSocket 通道** | 面板 UI 由官方 UI 提供，但**通道从未设备验证**；`pty.exited` 链未核对；SSE 无 soak | A4 §7 N-3；`ROUTE_A_WIRING.md:203-205` |
 | 6 | **N-1 通知投递策略** | "该会话有打开 tab 则静音"门控**未实现**（路线 A 下上游门控被绕过）；"有焦点即放弃 vs 延迟复查"策略差异**待产品裁决** | A4 §7 N-1 |
@@ -532,6 +653,11 @@
 | 17 | **形态扫描拿不到 CDP 数字与 DOM 级断言** | `:webapp` 无 `setWebContentsDebuggingEnabled` ⇒ 9/9 格 `nodes` 数 / `data-slot`·`data-action` 选择器命中**一个都没取到**；形态判定靠**像素 + 人工读图 + 后端日志**。要 CDP 数字**必须先改代码**（超本轮权限，未动） | §4.3「测不到的量」；`FORMFACTOR_V11.md` §八-1/§八-2 |
 | 18 | **形态扫描为单次采样、未覆盖真实形态** | 每格只冷启 1 次（未取中位数）；折叠档是 `wm` 覆盖模拟宽度，**不是真机折叠态**；横屏/多窗口未测 | §4.3「测不到的量」；`FORMFACTOR_V11.md` §八-3/§八-6 |
 | 19 | ~~会话消息 composer 的 IME 重叠未测~~ **已闭环（F10）** | F10 在交付包 `76ca064b…` 上进入真实会话、聚焦 composer、断言 `mInputShown=true`，composer 内容最低节点 `1422` vs 键盘绘制带 `1474` ⇒ **内容级重叠 0 px / 余量 52 px**。⚠️ 口径提示：composer 矩形取自**无障碍节点树**（非 CDP `client rect`），且**页面级**可视视口度量仍测不到 | §4.3；`research/perf/IME_CONTENT_OVERLAP_F10.md` |
+| 20 | **R8 的通知点击回跳（风险 #11）未触发** | R8 批**没有单独触发**通知点击；**非 R8 基线同轮也未测** ⇒ **不构成 R8 特有缺口，但也没有证据**。要补需在 R8 上单独触发一次 | `R8_ATTEMPT_F11.md` §9.1-3 |
+| 21 | **R8 首屏 n=3，−47 ms 不足以定论** | 想用它支撑"改默认推荐"需 **n≥5 同机同轮复测**；现状只能写"方向性偏好 R8，收益几乎全在体积" | `R8_ATTEMPT_F11.md` §9.1-5 · §0.4.3 |
+| 22 | **`-Pwebapp.r8=true` 开关已失效（no-op）** | **遗留事实**：`release` 的 minify 已改成常量，任何仍依赖那个 `-P` 的脚本会**静默拿到非 R8 包**且从变体列表看不出来。要么删掉这些调用点，要么在 CI 里禁用 | `R8_ATTEMPT_F11.md` §3.1/§9.1-6 |
+| 23 | **`input text` 打不进 CJK** | `KeyCharacterMap` 只支持 ASCII 可打印字符 ⇒ 这是 **`input` 命令本身的限制，不是被测应用的缺陷**，也**超出 F15 派单范围**。若将来要用它驱动中文回合，需另找输入方法（如 ADB 键盘） | `R8_UITAP_F15.md` ③ |
+| 24 | **同源脚本的同一 `VERDICT` bug 未修** | F15 只修了主脚本 `_f13_uitap.ps1`；`_f12_keep.ps1` 与 `_f13_uitap_b/_v2/_v3/_v4.ps1` **同源同 bug 未修**（不在那 4 条派单内） | `R8_UITAP_F15.md` ① + 未闭环清单 |
 
 ---
 
@@ -603,7 +729,12 @@
 | **相机 / N-5 / N-7 收尾** | `research/web/V7_CLOSEOUT.md` · 脚本 `research/env/camera_route.ps1` |
 | 常亮（置起 / 释放 / 兜底） | `research/web/FIX_D1.md` · `FIX_F4_KEEPSCREEN.md` · `RELEASE_VERIFY_V5.md` · `RELEASE_VERIFY_V6.md` |
 | 省电策略 | `research/perf/POWER_ACTIONS_P6.md` |
-| 发布工程 / R8 风险 | `research/web/WEB_RELEASE_BUILD.md` |
+| 发布工程 / R8 风险 | `research/web/WEB_RELEASE_BUILD.md`（E1 轮 12 项风险清单，**历史**） |
+| **R8 试产（F11，−63.90% + 首项设备验证）** | `research/web/R8_ATTEMPT_F11.md` |
+| **R8 常亮置起段（F12，curl 驱动）** | `research/web/R8_KEEPAWAKE_F12.md` |
+| **R8 真点官方 UI Send（F13，设备端 md5 匹配 + 自曝 4 条）** | `research/web/R8_UITAP_F13.md` |
+| **R8 收尾（F15，4 条全闭环）** | `research/web/R8_UITAP_F15.md` |
+| **R8 12 项风险 → keep 规则** | `webapp/proguard-rules.pro`（每条规则自带风险编号注释） |
 | 桥契约 / 桥验收 / 通知点击 | `research/web/NATIVE_BRIDGES.md` · `BRIDGE_ACCEPTANCE.md` · `NOTIFICATION_CLICK_ROOTCAUSE.md` |
 | 预检 / IME / 触摸靶 / 窄屏 | `WEBVIEW_PREFLIGHT.md` · `IME_OCCLUSION_FIX.md` · `TOUCH_TARGET_FIX.md` · `NARROW_SIDEBAR_CHECK.md` |
 | 缺口收口（G2 / G3） | `research/web/GAP_CLOSE_G2.md` · `GAP_CLOSE_G3.md` |
