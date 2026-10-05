@@ -1044,6 +1044,37 @@ class WebHostActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * UX4 · 深浅色配置变更（`uiMode` 在 manifest 的 configChanges 里 ⇒ Activity 不重建，
+     * 配置直接投递到这里）。
+     *
+     * 改前**没有这个 override**：系统切深/浅色后宿主侧所有派生状态
+     * （`--oc-scheme` / `colorScheme` CSS 变量、系统栏图标明暗兜底）都停留在
+     * 旧值 —— [InsetsHost.publish] 只在 payload 变化时通知，而 insets 读数本身
+     * 没变（状态栏高度不会因为深浅色变化），所以 scheme 翻转**不会**触发重发；
+     * 页面主题本身靠 WebView 的 `prefers-color-scheme` 自动跟随（上游
+     * `context.tsx` 监听其 change 事件），但宿主自己手里这份"系统深浅色"
+     * 不复查就一直 stale。
+     *
+     * 这里做三件事：
+     *  1. `super` 交给 AppCompat 走 DayNight 主题的标准处理；
+     *  2. `insets.refresh()` 重推一次 payload —— `dark`/`scheme` 字段已翻转，
+     *     去重比较会通过，页面侧 `applyInsets` 拿到新 `--oc-scheme`；
+     *  3. 清掉 `pageReportedDark`：它是**页面某次**上报的快照，深浅色切换后
+     *     必须让 [applySystemBarTheme] 的兜底重新读当前 `uiMode`，
+     *     等页面下一次 reportTheme 再精确跟随（页面若不再上报，兜底也正确）。
+     *
+     * 安全的重入性：`onResume` 本来就会 `insets.refresh()`，重复 refresh
+     * 只会被 payload 去重挡掉，不会重复打扰页面。
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::insets.isInitialized) return
+        pageReportedDark = null
+        insets.refresh()
+        applySystemBarTheme()
+    }
+
     override fun onPause() {
         super.onPause()
         // P6：先落状态再清 flag。顺序有意为之 —— 让此刻之后任何 `setKeepScreenOn(true)`

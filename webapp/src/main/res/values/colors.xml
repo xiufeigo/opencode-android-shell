@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="oc_host_bg">#FF080808</color>
+    <!--
+      UX4：窗口底色**按模式给**（DayNight 白天浅色 / 夜晚深色，深色见 values-night/）。
+      改前恒为 #FF080808 —— 浅色主题下 WebView 首帧背后是一整块深灰，与页面 #fafafa
+      首屏之间有一条"黑闪"，且主题资源里根本没有 night 变体（values-night/ 缺失），
+      DayNight 主题名存实亡。浅色值取上游页面浅色底色 #fafafa（oc-2 主题
+      applyThemeCss：浅色 backgroundColor "#fafafa"），深浅都与页面协调。
+    -->
+    <color name="oc_host_bg">#FFFAFAFA</color>
     <color name="ic_launcher_background">#FF080808</color>
 </resources>

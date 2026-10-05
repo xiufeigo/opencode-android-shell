@@ -133,6 +133,10 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         // （断言 replay() 存在）与新纯函数件本身。撤回任一处修法都必须能反向变红。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",
         "src/main/java/com/xiufeigo/opencodeshell/web/host/PhoneFormDefect.kt",
+        // UX4 绊线：`Ux4ThemeTripwireTest` 断言面板不硬编码深色（oc-host.js 已在上列）
+        // 且窗口背景按模式给（values/colors.xml + values-night/colors.xml 成对存在）。
+        "src/main/res/values/colors.xml",
+        "src/main/res/values-night/colors.xml",
     ).forEach { rel ->
         inputs.file(layout.projectDirectory.file(rel))
             .withPropertyName("contractAsset_$rel")

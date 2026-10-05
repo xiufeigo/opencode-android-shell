@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      UX4：夜间窗口底色。DayNight 主题在系统切到深色时自动换到本文件；
+      深色值取上游页面深色底色 #080808（oc-2 主题 applyThemeCss：深色
+      backgroundColor "#080808"），与 WebView 里的页面首帧无缝衔接。
+      改前没有 values-night/，oc_host_bg 恒为 #FF080808（见 values/colors.xml 注释）。
+    -->
+    <color name="oc_host_bg">#FF080808</color>
+</resources>

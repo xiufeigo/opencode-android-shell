@@ -730,12 +730,56 @@
       return null;
     }
 
+    /* UX4：面板配色**全部取自上游主题 token**（:root 上的 CSS 变量），
+     * 不再硬编码深浅色 —— 上游换主题/切深浅色时面板自动跟随。
+     *
+     * token 依据（_upstream/packages/ui/src/theme/themes/oc-2.json，
+     * light / dark 两套值都在；由 context.tsx applyThemeCss 写进 :root）：
+     *   --surface-raised-base        浮层面板底   light #F3F3F3 / dark #232323
+     *   --surface-raised-base-hover  菜单项 hover 底 light #EDEDED / dark #282828
+     *   --border-weaker-base         面板描边     light #E8E8E8 / dark #232323
+     *   --text-strong                菜单项文字   light #171717 / dark #EDEDED
+     *   --text-weak                  "打开"小标题 light #8F8F8F / dark #707070
+     * var() 的兜底值 = 改前深色配色：上游 token 缺失（改版）时面板退回深色仍可读。
+     * 阴影深浅按 :root[data-color-scheme=…] 分流（浅色 .18 / 深色 .55），
+     * data-color-scheme 是上游 applyThemeCss 写的模式标记。 */
+    var PANEL_STYLE_ID = "oc-plus-chooser-style";
+
+    function installPlusChooserStyle() {
+      if (document.getElementById(PANEL_STYLE_ID)) return;
+      var st = document.createElement("style");
+      st.id = PANEL_STYLE_ID;
+      st.textContent = [
+        "[data-oc-plus-chooser=panel]{",
+        "background:var(--surface-raised-base,#18181b);",
+        "border:1px solid var(--border-weaker-base,#2e2e35);",
+        "color:var(--text-strong,#e8e8ea);",
+        "box-shadow:0 10px 30px rgba(0,0,0,.55);",
+        "}",
+        ":root[data-color-scheme=light] [data-oc-plus-chooser=panel]{",
+        "box-shadow:0 10px 30px rgba(0,0,0,.18);",
+        "}",
+        "[data-oc-plus-chooser=panel] [data-oc-plus-chooser=title]{",
+        "color:var(--text-weak,#8b8b95);",
+        "}",
+        "[data-oc-plus-chooser=panel] button[data-oc-plus-chooser]{",
+        "color:var(--text-strong,#e8e8ea);",
+        "background:transparent;",
+        "}",
+        "[data-oc-plus-chooser=panel] button[data-oc-plus-chooser]:hover{",
+        "background:var(--surface-raised-base-hover,#2a2a30);",
+        "}",
+      ].join("\n");
+      (document.head || document.documentElement).appendChild(st);
+    }
+
     function closePanel() {
       if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
       panel = null;
     }
 
     function buildPanel(anchor) {
+      installPlusChooserStyle();
       var r = anchor.getBoundingClientRect();
       var vw = window.innerWidth || 0;
       var vh = window.innerHeight || 0;
@@ -752,14 +796,15 @@
       p.style.cssText = [
         "position:fixed", "z-index:2147483000",
         "left:" + left + "px", "top:" + top + "px", "width:" + w + "px",
-        "background:#18181b", "border:1px solid #2e2e35", "border-radius:10px",
-        "box-shadow:0 10px 30px rgba(0,0,0,.55)", "padding:6px",
-        "font:14px/1.4 -apple-system,Roboto,'Noto Sans CJK SC',sans-serif", "color:#e8e8ea",
+        // 颜色全部在 installPlusChooserStyle() 的 <style> 里按上游 token 给 —— 这里只留版式。
+        "border-radius:10px", "padding:6px",
+        "font:14px/1.4 -apple-system,Roboto,'Noto Sans CJK SC',sans-serif",
       ].join(";");
 
       var title = document.createElement("div");
       title.textContent = "打开";
-      title.style.cssText = "font-size:11px;color:#8b8b95;padding:6px 10px 4px";
+      title.setAttribute("data-oc-plus-chooser", "title");
+      title.style.cssText = "font-size:11px;padding:6px 10px 4px";
       p.appendChild(title);
 
       [
@@ -774,7 +819,7 @@
         b.style.cssText = [
           "display:flex", "align-items:center", "width:100%",
           "min-height:" + MIN_TAP_PX + "px",
-          "border:0", "border-radius:8px", "background:transparent", "color:#e8e8ea",
+          "border:0", "border-radius:8px",
           "font-size:15px", "text-align:left", "padding:0 10px", "cursor:pointer",
         ].join(";");
         b.addEventListener("click", function (e) {
