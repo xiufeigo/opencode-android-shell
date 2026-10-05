@@ -58,10 +58,18 @@
 #>
 [CmdletBinding()]
 param(
-  # ---- 设备与被测对象（必填）-----------------------------------------------
-  [Parameter(Mandatory)][string]$Serial,
-  [Parameter(Mandatory)][string]$Package,
+  # ---- 设备与被测对象（必填，但**故意不用** [Parameter(Mandatory)]）------------
+  #   Mandatory 的自动报错是英文的 "Missing an argument for parameter 'Serial'"，
+  #   对"插上手机跑一行"的人毫无用处（还要再查一次 -Serial 是什么）。
+  #   ⇒ 改为手写校验，走 exit 6 的中文说明 + 直接打印 adb devices 真实输出。
+  #   用法全文见文件末尾 §"最短路径"。
+  [string]$Serial,
+  [string]$Package,
   [string]$Activity,                       # 省略则用 cmd package resolve-activity 自动解析
+
+  # ---- T2 新增：自检用开关（**不测耗电**）-----------------------------------
+  [switch]$DryRun,                         # 只做前置体检：不起 App、不 force-stop、不清零、不采样
+  [string]$AdbPath = '',                    # 显式指定 adb；**给了就不回退搜索**（自检夹具/异机运行需要这个语义）
 
   # ---- 测量窗口 ------------------------------------------------------------
   [int]$Minutes = 5,                        # 测量窗口总时长（建议 >= 5，>= 10 更稳）
@@ -86,28 +94,96 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$AdbCandidates = @(
-  "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
-  "$env:ANDROID_HOME\platform-tools\adb.exe",
-  "adb.exe"
-)
-$Adb = $null
-foreach ($c in $AdbCandidates) {
-  if (Test-Path $c) { $Adb = $c; break }
-  if ($c -eq 'adb.exe' -and (Get-Command adb -ErrorAction SilentlyContinue)) { $Adb = 'adb'; break }
-}
-if (-not $Adb) { Write-Error "FATAL 找不到 adb.exe。请装 Android platform-tools，或把 adb 加进 PATH。"; exit 2 }
 
-$OutDir = Join-Path $OutRoot $Tag
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-$Stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
-$T0 = Get-Date
+# =============================================================================
+# 人话出口：Say / Die 必须排在**所有**检查之前 —— 缺参数的时候也要能说话
+# =============================================================================
 function Say { param($m) Write-Output ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m) }
 function Die { param($code, $msg, $why) Write-Output ""; Write-Output "=========== 测量失败（exit $code）==========="; Write-Output "  问题：$msg"; if ($why) { Write-Output "  原因：$why" }; Write-Output "  本次**没有产出任何耗电数字**（不会用 0 顶替）。"; Write-Output "==========================================="; Write-Output ""; exit $code }
 function A { & $Adb -s $Serial @args }
 function Dump { param([string]$name, $lines) $p = Join-Path $OutDir "$name"; $lines | Out-File -Encoding utf8 $p; return $p }
 function Grab { param($text, $key) if ($text -match ("(?m)^\s*" + [regex]::Escape($key) + ":\s*(.+?)\s*$")) { return $Matches[1].Trim() } return $null }
 function NA { param($why) "N/A($why)" }
+
+# 用法全文（注意：这是可展开字符串，行内不要出现 $ 变量）
+$USAGE = @"
+最短路径（插上手机就能跑的那一行）：
+
+  adb devices -l
+  pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <上面第一列的串号> -Package com.xiufeigo.opencodeshell.web.debug -Tag web -Minutes 10
+
+参数：
+  -Serial    必填。真机串号 = adb devices -l 的第一列（emulator-* 开头的机器测不了耗电）
+  -Package   必填。原生壳 com.xiufeigo.opencodeshell / web 壳 com.xiufeigo.opencodeshell.web.debug
+  -Tag       输出子目录名。原生轮用 native、web 轮用 web，两轮都跑完自动出 out_battery\COMPARE.md
+  -Minutes   测量窗口分钟数，默认 5，建议 10
+  -Activity  省略则自动用 cmd package resolve-activity 解析
+  -DryRun    只做前置体检：不起 App、不清零、不测量。先用它确认这台机能测
+  -AdbPath   显式指定 adb 可执行文件（给了就不再自己找）
+  -SetBrightness  0..255，才会改亮度；结束必定复原并复核（证据见 restore_check.txt）
+  -Backend   只记录 + 从本机做可达性校验，**不改设备**
+
+退出码：0 成功 / 2 设备没连上或状态不对 / 3 App 没装或 Activity 解析不出来 /
+        4 无电池模型（模拟器、插电）/ 5 其它测量问题 / 6 参数没给全
+"@
+
+# =============================================================================
+# adb 定位
+#   -AdbPath 给了就**不回退**：否则"以为在用替身、其实用真 adb"这种误判无法排除
+#   （research/perf/selfcheck/ 下的自检夹具就靠这个开关接入，不联机、不碰任何设备）
+# =============================================================================
+$Adb = $null
+if ($AdbPath) {
+  if (Test-Path $AdbPath) { $Adb = $AdbPath }
+  else { Die 2 "指定的 adb 不存在：$AdbPath" "检查路径拼写；或去掉 -AdbPath，让脚本自己在 %LOCALAPPDATA%\Android\Sdk\platform-tools、%ANDROID_HOME%\platform-tools、PATH 里找。" }
+} else {
+  $AdbCandidates = @(
+    "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
+    "$env:ANDROID_HOME\platform-tools\adb.exe",
+    "adb.exe"
+  )
+  foreach ($c in $AdbCandidates) {
+    if (Test-Path $c) { $Adb = $c; break }
+    if ($c -eq 'adb.exe' -and (Get-Command adb -ErrorAction SilentlyContinue)) { $Adb = 'adb'; break }
+  }
+  if (-not $Adb) { Die 2 "找不到 adb.exe" "装 Android platform-tools（developer.android.com/tools/releases/platform-tools），或把它的目录加进 PATH，或直接 -AdbPath <路径>。" }
+}
+
+# =============================================================================
+# 参数体检 —— 之所以不用 [Parameter(Mandatory)]，就是为了在这里说人话
+# =============================================================================
+if ([string]::IsNullOrWhiteSpace($Serial) -or [string]::IsNullOrWhiteSpace($Package)) {
+  $missing = @()
+  if ([string]::IsNullOrWhiteSpace($Serial))  { $missing += '-Serial（真机串号）' }
+  if ([string]::IsNullOrWhiteSpace($Package)) { $missing += '-Package（App 包名）' }
+  Write-Output ""
+  Write-Output "=========== 跑不起来（exit 6）==========="
+  Write-Output "  缺参数：$($missing -join '、')"
+  Write-Output ""
+  Write-Output $USAGE
+  Write-Output "  --- 你这台机器上 adb devices 的真实输出（照第一列填 -Serial）---"
+  # Serial 为空时不能带 -s，否则 adb 会先抱怨"设备为空"而看不到真正的列表
+  $peek = if ([string]::IsNullOrWhiteSpace($Serial)) { (& $Adb devices 2>&1) -join "`n" } else { (A devices 2>&1) -join "`n" }
+  $peekBody = ($peek -split "`r?`n" | Where-Object { $_.Trim() -ne '' -and $_ -notmatch 'List of devices attached' })
+  if ($peekBody.Count -eq 0) {
+    Write-Output "  （空）—— 一台设备都没连上。三件事挨个查："
+    Write-Output "    1) 用的是**数据线**不是只充电的线；"
+    Write-Output "    2) 手机上『设置 → 关于手机 → 连点版本号 → 开发者选项 → USB 调试』打开；"
+    Write-Output "    3) 屏幕上弹出『允许 USB 调试』时点『允许』（不点就一直是 unauthorized）。"
+  } else {
+    $peekBody | ForEach-Object { Write-Output "  $_" }
+    Write-Output "  ⚠ 第一列若是 emulator-* 开头，那是模拟器：**没有电池模型，测不出耗电**（脚本会 exit 4）。"
+  }
+  Write-Output "==========================================="
+  Write-Output ""
+  exit 6
+}
+
+# 干跑写进 dryrun_<tag>/，**不碰** out_battery/<tag>/（避免半份产物混进对比表）
+$OutDir = if ($DryRun) { Join-Path $OutRoot "dryrun_$Tag" } else { Join-Path $OutRoot $Tag }
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$Stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
+$T0 = Get-Date
 
 # =============================================================================
 # 0. 前置硬检查：设备 / App / 电池模型 —— 任何一条不过就明确报错退出
@@ -126,8 +202,18 @@ $devRow = ($devList -split "`r?`n" | Where-Object { $_.Trim() -match ("^" + [reg
 if (-not $devRow) {
   Die 2 "设备 '$Serial' 不在 adb devices 列表里" "没插数据线 / 没开 USB 调试 / 屏幕没解锁没授权 / 串号写错。执行 adb devices 看真实串号再重跑。本脚本不会去 kill-server、也不会动列表里的其它设备。"
 }
-if ($devRow -notmatch "\sdevice\s*$") {
-  Die 2 "设备 '$Serial' 当前状态是 '$($devRow.Trim())'，不是 device" "offline = 数据线接触不良或手机休眠；unauthorized = 屏幕上那个授权框还没点；no permissions = 驱动问题。本脚本不会替你重启 adb 服务。"
+# 状态 = 整行的**第二个空白分隔 token**。
+# ⚠ 第二个坑（本轮 T2 用自检夹具**真跑出来的**，不是推演）：原先写的是
+#   `if ($devRow -notmatch "\sdevice\s*$")` —— 那是**行尾锚定**，只在
+#   `adb devices`（短格式：serial + 状态，只有两列）下碰巧成立。
+#   一旦这一行是 `adb devices -l` 的长格式（后面还跟 product: / model: /
+#   device: / transport_id: 等列），`device` 不在行尾 ⇒ **在线的真机会被误判成
+#   "不是 device"** ⇒ 后面的装包/电池模型检查一条都进不去。
+#   取第二个 token 对短格式/长格式都成立，也不受行尾空白或 \r 影响。
+$devTokens = @($devRow.Trim() -split '\s+')
+$devState = if ($devTokens.Count -ge 2) { $devTokens[1] } else { '<该行只有一个字段，状态无法解析>' }
+if ($devState -ne 'device') {
+  Die 2 "设备 '$Serial' 当前状态是 '$devState'，不是 device" "offline = 数据线接触不良或手机休眠；unauthorized = 屏幕上那个授权框还没点；no permissions = 驱动问题。本脚本不会替你重启 adb 服务。"
 }
 Say "  设备在线：$Serial（adb devices: $($devRow.Trim())）"
 
@@ -165,6 +251,65 @@ $railRaw = (A shell 'for d in /sys/class/power_supply/*; do for f in current_now
 Dump 'pre_power_supply.txt' $railRaw
 $railOk = $railRaw -match 'current_now=(-?\d+)'
 if (-not $railOk) { Say "  ⚠ sysfs rail 电流不可读（很多机型需 root）。将退回 batterystats 的 Discharge/level 差值，精度下降但仍可比。" }
+
+# =============================================================================
+# 0.5 干跑 -DryRun：只体检，**不测耗电**
+#
+#   不做的事：不起 App、不 force-stop、不 `batterystats --reset`、不采样 rail、
+#             不开测量窗口、不写 reading.json。
+#   只做的事：§"0 前置检查"里那几道**只读**闸 + 可比性前置的只读探测。
+#   退出码：走到这里说明 serial/授权/安装/Activity/插电/电池模型**全部已过**（否则上面
+#           就已经 exit 2/3/4 了）⇒ 干跑恒为 0。也就是说：**干跑报 0，真跑就不会被
+#           设备相关的闸拦下**，这是复用同一段代码换来的，不是两套逻辑各写一遍。
+# =============================================================================
+if ($DryRun) {
+  Say "=== [1/1] 干跑体检结论 ==="
+  $dBright = (A shell settings get system screen_brightness 2>$null) -join ''
+  $dMode   = (A shell settings get system screen_brightness_mode 2>$null) -join ''
+  $dWake   = ((A shell dumpsys power 2>$null) -join "`n" | Select-String -Pattern 'mWakefulness=(\w+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+  $dKeep   = ((A shell dumpsys window windows 2>$null) -join "`n" | Select-String -Pattern 'KEEP_SCREEN_ON' -Quiet)
+  $dTempC  = if ($temp -match '^-?\d+$') { [math]::Round(([int]$temp) / 10.0, 1) } else { '?' }
+  $warn = @()
+  if ($dBright -eq '-1' -or $dMode -eq '1') { $warn += "屏幕亮度是**自动**（brightness=$dBright, mode=$dMode）⇒ 两轮之间可能自动变亮 ⇒ 不可比。先在手机设置里固定为手动，或加 -SetBrightness 120（结束会自动复原）。" }
+  if ($dKeep) { $warn += "窗口里有 FLAG_KEEP_SCREEN_ON（常亮）。两轮必须**同样**开着或同样关着，否则不可比。" }
+  if (-not $railOk) { $warn += "sysfs rail 电流读不到 ⇒ 只能退回 batterystats 的 Discharge；仍可比，但精度低一档。" }
+
+  $md = @()
+  $md += "# 干跑体检（-DryRun）— $Tag"
+  $md += ""
+  $md += "> **本次没有测耗电，也没有产出任何 mAh。** 这一步只回答一句话：*这台机器能不能测*。"
+  $md += "> 产物目录：research/perf/out_battery/dryrun_$Tag/ （不与正式测量目录混用）"
+  $md += ""
+  $md += "| 体检项 | 结果 | 说明 |"
+  $md += "|---|:--:|---|"
+  $md += "| adb 可用 | ✅ | $Adb |"
+  $md += "| 设备在线 | ✅ | $Serial（adb devices: $($devRow.Trim())） |"
+  $md += "| App 已安装 | ✅ | $Package |"
+  $md += "| Activity 可解析 | ✅ | $resolvedAct |"
+  $md += "| 未插电 | ✅ | dumpsys battery plugged=0 |"
+  $md += "| 有电池模型 | ✅ | currently on battery = $onBattery（模拟器会在此 exit 4） |"
+  $md += "| 电量 / 电池温度 | — | level=$level0% / ${dTempC}°C |"
+  $md += "| rail 电流可读 | $(if($railOk){'✅'}else{'⚠'}) | $(if($railOk){'能积分出主指标 mAh'}else{'退回 batterystats Discharge'}) |"
+  $md += "| 屏幕亮度 | — | brightness=$dBright（0-255，-1=自动）/ mode=$dMode（0=手动，1=自动） |"
+  $md += "| 是否常亮 | — | keepScreenOn=$(if($dKeep){'yes'}else{'no'}) |"
+  $md += "| 唤醒状态 | — | $dWake |"
+  $md += ""
+  if ($warn.Count -gt 0) {
+    $md += "## ⚠ 不拦下、但会影响可比性的提醒"
+    $md += ""
+    $warn | ForEach-Object { $md += "- $_" }
+    $md += ""
+  } else { $md += "## 可比性前置：没有发现问题。"; $md += "" }
+  $md += "> 真正开始测量（会 force-stop App、清 batterystats 统计、跑 $Minutes 分钟）时，把 -DryRun 去掉即可。"
+  $mdOut = $md -join "`n"
+  $mdOut | Out-File -Encoding utf8 (Join-Path $OutDir 'DRYRUN.md')
+  Write-Output ""
+  Write-Output "=========== 干跑通过：这台机器能测（exit 0）==========="
+  Write-Output $mdOut
+  Write-Output ""
+  Say "DRY-RUN DONE tag=$Tag  体检报告：research/perf/out_battery/dryrun_$Tag/DRYRUN.md"
+  exit 0
+}
 
 Say "=== [1/6] 记录环境指纹（可比性的前提）==="
 $fp = @()

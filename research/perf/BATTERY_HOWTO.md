@@ -12,6 +12,107 @@
 
 ---
 
+## 0. 最短路径：插上手机，跑这一行
+
+> 本节是 T2 补的**操作入口**。下面 §1–§8 的推导、判定阈值 X、省电盘点**一字未改**。
+> 自检原始输出见 `research/perf/BATTERY_READY_T2.md`。
+
+### 0.1 先拿串号
+
+```powershell
+adb devices -l        # 第一列就是串号；emulator-* 开头的机器测不了耗电（没有电池模型）
+```
+
+### 0.2 复制即用（一条命令）
+
+```powershell
+# web 壳（-Tag web）
+pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <把上面第一列的串号填这里> -Package com.xiufeigo.opencodeshell.web.debug -Tag web -Minutes 10
+
+# 原生壳（-Tag native）—— 同机、同亮度、同网络、同时长、同交互
+pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <同一个串号> -Package com.xiufeigo.opencodeshell -Tag native -Minutes 10
+```
+
+**两轮都跑完，脚本自动出对比表：`research/perf/out_battery/COMPARE.md`。**
+
+> 💡 建议先加 `-DryRun` 跑一次体检（**不测耗电、不改设备、几秒钟**），确认这台机能测再开始：
+> `pwsh -NoProfile -File research\perf\battery_real_device.ps1 -DryRun -Serial <串号> -Package com.xiufeigo.opencodeshell.web.debug`
+> 干跑报 **exit 0 = 能测**；报 2/3/4 = 照它给的提示先修前置（见 §0.5）。
+
+### 0.3 前置条件清单（**两轮必须完全一致**，否则结果不可比）
+
+| # | 条件 | 怎么做 | 为什么 |
+|:--:|---|---|---|
+| 1 | **USB 调试已开且已授权** | 设置 → 关于手机 → 连点版本号 → 开发者选项 → **USB 调试**；弹窗点「允许」 | 没授权时状态是 `unauthorized`，脚本 exit 2 |
+| 2 | **数据线，不是只充电线** | 用能传文件的线。很多充电线只有电源针脚 | 只充电线 ⇒ adb 看不到设备，exit 2 |
+| 3 | **不能插着充电器** | **拔掉充电线，只留数据线**，等 1 分钟再跑 | 插电时测到的是充电电流不是耗电，脚本 exit 4 |
+| 4 | **屏幕亮度固定为手动** | 设置里关掉自动亮度，固定同一个值（`-SetBrightness 120` 可让脚本代设，结束自动复原） | 亮度差 20 档就足以淹没我们要测的差异（§5.2） |
+| 5 | **音量固定、静音** | 同一档，两轮一致 | 声音会驱动功放 |
+| 6 | **网络固定** | 同一 WiFi 或同一基站/信号格；**两轮之间不要跑别的 App** | 射频活跃时间是 web 壳的决定性指标（§5.1） |
+| 7 | **电量充到同一档** | 两轮起始电量尽量相同，建议都从 **80% 上下**起 | 起始电量不同 ⇒ 内阻/电量百分比基数不同 |
+| 8 | **不插 SIM 卡也行，但要一致** | 两轮同样处理 | — |
+| 9 | **App 提前装好并登录 Backend** | App 内配好**同一个** backend 地址 | 脚本只记录地址，不代你登录（§1 参数表） |
+
+**测多久**：
+
+- **单轮 10 分钟**（`-Minutes 10`）。依据：§5.3 的最低要求是 2 组、先看方向约 20 分钟；
+  §6 量程约束指出 rail 电流量化步长折算到整窗 mAh 约 1–3%，**窗口越短这项误差占比越大**；
+  §5.1 又指出电量下降 % 在 5 分钟窗口里常常只有 0–1%，**分辨率不够**。10 分钟是"误差够小 + 不至于太久"的折中。
+- **两轮之间让手机静置 2–3 分钟**，回到同一温度（§5.3、§5.2 第 6 条：电池温度差 >3 °C 就要重跑）。
+- 全程成本：两条命令 ≈ 25 分钟（含预热与静置）。
+- 只想要个方向 → 各跑 1 轮；要报百分比 → 每组重复 2 次取中位数（§5.3 第 3–5 行）。
+
+### 0.4 会产出什么
+
+产物目录：**`research/perf/out_battery/<tag>/`**（`native/` 与 `web/` 各一份），另有 `COMPARE.md`。
+
+| 产出 | 说明 |
+|---|---|
+| `out_battery/<tag>/reading.md` | **单轮 Markdown 表，直接贴给我** |
+| `out_battery/<tag>/reading.json` | 机器可读，`COMPARE.md` 由它生成 |
+| `out_battery/COMPARE.md` | 两轮对比 + **可比性判定表**（7 项，红项即作废） |
+| `out_battery/<tag>/rail_samples.csv` | rail 电流逐点采样（**主指标 mAh 由此积分**） |
+| `out_battery/<tag>/batterystats_start/end.txt` | 起止 batterystats（Discharge / UID CPU / WakeLock / 射频 / Wakeup） |
+| 其余（cpuinfo / power / netstats / fingerprint / battery_*/ restore_check） | 辅助，含义见 §3 |
+
+**关键字段怎么读**（详见 §5.1）：
+
+| 字段 | 意义 |
+|---|---|
+| `rails.integrated_mah` | **主指标**：`current_now` 积分出的 mAh，最接近"真耗电" |
+| `battery.discharge_mah` | 主指标：系统自算的 Discharge（since last unplug 段） |
+| `uid.cpu_ms` | 次指标：UID CPU 时间，**稳定可复现**，但**是代理量不是耗电** |
+| `wakelock.count` / `held_ms` | 次指标：**出现非零长持锁 = 漏电信号** |
+| `u.mobile_radio_active_ms` / `wifi_running_ms` | 次指标：对 WebView 应用是**决定性**的一项 |
+| `battery.battery_level_start→end` | 辅：整数台阶，**分辨率不够**，只作交叉验证 |
+| `valid` / `invalid_reason` | **false ⇒ 本轮作废**，不会拿 0 顶替 |
+
+**什么算通过 / 不通过**：
+
+- ✅ **通过**：`COMPARE.md` 的可比性判定表**全绿** + 两轮 `valid` 都为 true。
+- ✅ **可报"明显更费电"**：差异 **≥ X = 20%**（§6 推导，X 标注为估计，未放宽）。
+- ⚠️ **"在测量噪声内，不构成证据"**：差异 **< X**。**这不等于"两者一样"**（§6 判定规则第 1 行）。
+- ❌ **不通过 / 作废**：判定表有红项（亮度不同、网络不同、窗口时长差 >30 s、交互脚本不一致、温差 >3 °C）。
+- ❌ **不报百分比**：只有 n=1 时不许报百分比，只报绝对值。
+- 🔴 **一律作废**：`valid=false`、或 `mAh` 读不出来。**`0 mAh` 不是"很省电"，是"没测到"**（§4 五道闸）。
+
+### 0.5 跑失败了怎么报给我
+
+**把 `research/perf/out_battery/` 整个目录打包贴回来即可**（`reading.md` / `COMPARE.md` 在最外层）。
+如果脚本中途 exit 了、没跑完，把**它打印的那段报错原文**也贴上，并告诉我：
+
+- **哪个文件**（比如 `out_battery/native/reading.json`），或直接说"两轮都 exit 2，一个文件都没有"；
+- `exit` 码是多少（**0 成功 / 2 设备没连上或状态不对 / 3 App 没装或 Activity 解析不出 / 4 无电池模型（模拟器、插电）/ 5 其它测量问题 / 6 参数没给全**）；
+- 设备型号 + Android 版本；
+- 出问题那一步手机屏幕上的状态（有没有弹授权框、有没有插着充电器、亮度是不是自动）。
+
+**最省事的一句话模板**：
+
+> 串号 `XXXX`，`adb devices` 里状态是 `device`。web 轮 exit 0（`out_battery/web/reading.md` 已附），
+> native 轮 exit 4，报错原文：「设备插着电（dumpsys battery plugged=2）」。我拔了充电线再跑就好。
+
+---
+
 ## 1. 怎么跑（在真机上）
 
 脚本：`research/perf/battery_real_device.ps1`。**纯只读测量，不改设备设置。**
