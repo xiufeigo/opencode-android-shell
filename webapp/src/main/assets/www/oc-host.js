@@ -642,16 +642,35 @@
    *
    * ## 上游那个「+」原本干什么（不能弄丢）
    *
-   * 部署版实测（2026-10-05 09:23，绕过拦截直点）：终端条「+」aria-label="New
-   * terminal"，点击**新建终端标签**（Terminal 4 出现）；审查条「+」aria-label=
-   * "Open file"，点击打开应用内文件树。v2 源码同一结构位是「Add tab」菜单
-   * （session-side-panel.tsx:458-533：打开文件 :503-516 + 浏览器 :517-530）。
-   * ⇒ 取舍（**原功能并进面板当选项**，两条原路都保留）：
-   *   - 「打开终端」= 把合成 click 还给上游终端「+」自己（findTerminalTrigger
-   *     按 terminal/终端 语义找，passThrough 放行）——新建终端功能逐字保留；
-   *   - 「打开文件」= 宿主原生文件选择器（WebHostBridge.pickFile，UX1 定义）。
-   *     上游应用内文件树依赖工作区 fs，WebView 宿主里由原生选择器承接同一意图，
-   *     且是可验证的真动作。
+   * 部署版实测（2026-10-05 11:30，注入绕过拦截直点 + 截图 ux5_t17）：
+   * 审查条「+」aria-label="Open file"，点击 ⇒ 审查条出现「Open file」标签页 +
+   * **工作区应用内文件浏览器**（Filter files + 目录树）。v2 源码同一结构位
+   * （session-side-panel.tsx:458-536）：无浏览器能力时 = 一键 "Open file"
+   * （:475-482 → openFileBrowser() :205-208 = previewTab(SESSION_OPEN_FILE_TAB)）；
+   * 有浏览器能力时 = "Add tab" 菜单（打开文件 :503-516 + 浏览器 :517-530）。
+   *
+   * ## 两个动作全部透传给上游（UX5 修正；UX3 把「打开文件」错接成宿主 SAF）
+   *
+   * - 「打开文件」= **把合成 click 还给被拦截的那个上游「+」自己**
+   *   （findPlusButton 命中、passThrough 放行）——上游原行为逐字发生，
+   *   构造上即与"直接点 +"等价，不再弹 Android 系统文件选择器。
+   *   （产品负责人 2026-10-05 打回：上一版宿主原生 pickFile 弹的是"选平板上的
+   *   文件"，他要的是"原本点 + 触发的功能"。）
+   * - 「打开终端」= 复刻上游自己的 openTerminal 序列
+   *   （use-session-commands.tsx:195-199，绑定在 terminal.new 命令）：
+   *   ① 终端面板**已开**（终端条「New terminal」按钮真实可见）⇒ passThrough
+   *      点它（panel.tsx:333 → terminal.new()，新建并激活标签）；
+   *   ② 终端面板**未开**（终端条不在 DOM / 零尺寸）⇒ 派发上游自己的
+   *      terminal.new 键位（默认 ctrl+alt+t；command.tsx:401-428 的键位派发器
+   *      只看 event.key/修饰键、无 isTrusted 检查，合成事件可触发）——
+   *      上游 handler 打开面板 + 建/聚焦终端，0 终端时 panel.tsx:105-115
+   *      的自动创建效果补 Terminal 1。
+   *   设备实证（ux5_t18）：合成 ctrl+` 触发上游 terminal.toggle 后终端面板出现、
+   *   Terminal 1 自动创建、活的 PowerShell 提示符可见。
+   *   ⚠️ UX3 版只 passThrough 点终端条「+」，终端面板收起时终端条根本不在 DOM
+   *   （实测 tablists=0）⇒ 什么都不发生——即产品负责人实测打回的"按了没反应"。
+   *   面板收起但缓存挂载（零高）时 offsetParent 仍非 null，故可见性判据用
+   *   getBoundingClientRect 的真实宽高，不只 offsetParent。
    *
    * 不复用上游 DialogCommandPalette（shell/commands/dialog.tsx:30）的理由（沿用 UX1 §3.2）：
    * 入口是 Solid 的 dialog.show(...)，依赖一整套响应式宿主，WebView 无可达入口。
@@ -836,14 +855,79 @@
       return p;
     }
 
-    /* 打开终端：把一次合成 click **还给上游终端「+」自己**（passThrough 放行）——
-     * 部署版它=新建终端标签（设备实测 Terminal 4 出现），v2 源码它是 Add-tab 菜单；
-     * 不重写、不另造路，上游原功能一个字节不丢。找不到就如实标记 found:false。 */
+    /* 打开终端 = 复刻上游自己的 openTerminal 序列（use-session-commands.tsx:195-199）：
+     * ① 终端面板已开（终端条「New terminal」按钮**真实可见**）⇒ 把合成 click 还给
+     *    它自己（passThrough 放行；panel.tsx:333 → terminal.new()，新建并激活标签）；
+     * ② 终端面板未开（终端条不在 DOM / 被零高缓存）⇒ 派发上游自己的 terminal.new
+     *    键位（默认 ctrl+alt+t）——上游键位派发器（command.tsx:401-428）只看
+     *    event.key/修饰键、无 isTrusted 检查，合成事件即可触发；上游 handler 会
+     *    打开面板 + 建/聚焦终端（0 终端时 panel.tsx:105-115 自动创建 Terminal 1）。
+     * 面板收起但缓存挂载时 offsetParent 仍非 null ⇒ 可见性用 rect 真实宽高判定。
+     * 两条路都找不到就如实标记 found:false（不装成功）。 */
+    function dispatchUpstreamKey(key, ctrl, alt) {
+      try {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: key,
+            ctrlKey: !!ctrl,
+            altKey: !!alt,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          })
+        );
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function terminalTriggerUsable(btn) {
+      if (!btn || btn.offsetParent === null) return false;
+      var r = btn.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }
+
     function runTerminal() {
       var btn = findTerminalTrigger();
+      if (terminalTriggerUsable(btn)) {
+        passThrough = true;
+        try {
+          btn.click();
+        } finally {
+          passThrough = false;
+        }
+        log("upstream New terminal re-clicked via passThrough (panel already open)");
+        return true;
+      }
+      // 终端面板未开：走上游自己的 terminal.new 键位（默认 ctrl+alt+t）。
+      if (dispatchUpstreamKey("t", true, true)) {
+        log("upstream terminal.new keybind dispatched (ctrl+alt+t); panel closed case");
+        /* 自检：给上游一点时间，终端面板真的出现（「New terminal」触发器可见）
+         * 才算数；键位被用户改绑等极端情况下诚实标记 found:false。 */
+        setTimeout(function () {
+          var opened = terminalTriggerUsable(findTerminalTrigger());
+          window.dispatchEvent(
+            new CustomEvent("oc:open-terminal", { detail: { source: "plus-chooser", found: opened } })
+          );
+          if (!opened) log("terminal panel still not visible after terminal.new keybind");
+        }, 900);
+        return true;
+      }
+      window.dispatchEvent(new CustomEvent("oc:open-terminal", { detail: { source: "plus-chooser", found: false } }));
+      return false;
+    }
+
+    /* 打开文件 = 把合成 click 还给**被拦截的那个上游「+」自己**（passThrough 放行）。
+     * 上游原行为（审查条出现「Open file」标签页 + 应用内文件浏览器）逐字发生，
+     * 构造上即与"直接点 +"等价 —— 这就是"原本点 + 号触发的功能"。
+     * （UX5 修正：UX3 版调宿主原生 pickFile 弹 Android SAF，被产品负责人打回；
+     * 宿主 pickFile 桥仍存在于 facade 供别处使用，但本面板不再走它。） */
+    function runFile() {
+      var btn = findPlusButton();
       if (!btn) {
-        window.dispatchEvent(new CustomEvent("oc:open-terminal", { detail: { source: "plus-chooser", found: false } }));
-        log("no upstream terminal trigger found; dispatched oc:open-terminal");
+        window.dispatchEvent(new CustomEvent("oc:open-file", { detail: { source: "plus-chooser", found: false } }));
+        log("no upstream plus button found for open-file");
         return false;
       }
       passThrough = true;
@@ -852,24 +936,8 @@
       } finally {
         passThrough = false;
       }
-      log("upstream terminal trigger re-clicked via passThrough");
+      log("upstream plus re-clicked via passThrough (open file)");
       return true;
-    }
-
-    /* 打开文件：走宿主**原生**文件选择器（WebHostBridge.pickFile），可验证的真动作。 */
-    function runFile() {
-      try {
-        var b = window.__ocAndroid;
-        if (b && b.pickFile) {
-          b.pickFile("*/*", false);
-          log("file picker requested via native bridge");
-          return true;
-        }
-      } catch (e) {
-        log("pickFile failed: " + (e && e.message));
-      }
-      window.dispatchEvent(new CustomEvent("oc:open-file", { detail: { source: "plus-chooser", found: false } }));
-      return false;
     }
 
     function run(act) {

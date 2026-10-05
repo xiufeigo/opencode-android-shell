@@ -23,14 +23,14 @@
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
-### 0.1 当前可交付（**F7 已用 `Get-FileHash` 逐份复核；F8 又复核一遍，仍一致；UX4 批为当前唯一有效值，以磁盘为准**）
+### 0.1 当前可交付（**F7 已用 `Get-FileHash` 逐份复核；F8 又复核一遍，仍一致；UX5 批为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,993,156 B**（≈3.81 MB） | `9fb248860e312b33e7bb3b31322be65d` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 UX4 主题修复 + F6 + 此前全部修复。**UX4 重建值**（2026-10-05，面板跟随主题 + 「跟随系统」宿主侧闭环）；旧值 `f47e281c…`(UX3) / `d6015bf2…`(UX2) 已作废，见 §0.1 末 UX4/UX3 块 |
-| `opencode-shell-web.apk`（debug） | **5,438,212 B**（≈5.19 MB） | `a7377e069f04d543d46c59386770ffc9` | 日常调试（debug 签名）；同上。**UX4 重建值**；旧值 `5d3bcc15…`(UX3) / `69bbe05f…`(UX2) 已作废 |
+| **`opencode-shell-web-release-nor8.apk`** | **3,994,336 B**（≈3.81 MB） | `a3a88537abdfab20b481e99ff2a92c19` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 UX5 选择面板动作修正（打开文件透传上游「+」/ 打开终端走上游 openTerminal 序列）+ UX4 主题修复 + F6 + 此前全部修复。**UX5 重建值**（2026-10-05，报告 `research/web/UX5_CHOOSER_ACTIONS.md`）；旧值 `9fb24886…`(UX4) / `f47e281c…`(UX3) / `d6015bf2…`(UX2) 已作废，见 §0.1 末 UX5/UX4 块 |
+| `opencode-shell-web.apk`（debug） | **5,438,212 B**（≈5.19 MB） | `feae3854244badff58820607fe1d6913` | 日常调试（debug 签名）；同上。**UX5 重建值**；旧值 `a7377e06…`(UX4) / `5d3bcc15…`(UX3) / `69bbe05f…`(UX2) 已作废 |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,448,564 B**（≈1.38 MB，比非 R8 **−63.73%**） | `f3bee4f9dce86759f6a32d1e64ce3acd` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储** · **JS 桥** · **错误态三态** · **`shrinkResources`** · **全程无崩溃** · **常亮三段**（真点官方 UI Send 驱动）。⚠️ 那些🟡级读数**验于旧字节体**，引用时必须带当时的 md5（见 §0.1 末 UX4 块口径）。**UX4 重建值（含主题修复）**；旧值 `4917af72…`(UX3) / `28ee9ffc…`(UX2) 已作废 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,449,744 B**（≈1.38 MB，比非 R8 **−63.73%**） | `94baad39812fa5e08a8e5fe386bd6632` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储** · **JS 桥** · **错误态三态** · **`shrinkResources`** · **全程无崩溃** · **常亮三段**（真点官方 UI Send 驱动）。⚠️ 那些🟡级读数**验于旧字节体**，引用时必须带当时的 md5（见 §0.1 末 UX5 块口径）。**UX5 重建值（含主题修复 + 面板动作修正）**；旧值 `f3bee4f9…`(UX4) / `4917af72…`(UX3) / `28ee9ffc…`(UX2) 已作废 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
 
@@ -79,7 +79,35 @@
 ⇒ **结论：三份交付物与 §0.1 顶表登记的体积 + md5 完全对得上，文档与磁盘无脱节，无需订正。**
 出处：`research/web/FIX_F18_PHONE.md` §5（这三份就是 F18 重建的产物，md5 与该报告表格逐位相同）；F19 复核记录 `research/web/HANDOFF_F19.md`。
 
-#### ✅ UX4 复核（2026-10-05，`Get-FileHash` 重跑，**以本表为当前唯一有效交付物**）—— **本轮（UX4）又重建了三份 web 产物**
+#### ✅ UX5 复核（2026-10-05，`Get-FileHash` 重跑，**以本表为当前唯一有效交付物**）—— **本轮（UX5）又重建了三份 web 产物**
+
+> **为什么重建**：产品负责人实测打回 UX3/UX4 版选择面板的两个动作（报告 `research/web/UX5_CHOOSER_ACTIONS.md`）：
+> ① 「打开终端」按了没反应（终端面板收起时终端条不在 DOM，旧实现只 passThrough 点终端条「+」⇒ 找不到按钮什么都不做）；
+> ② 「打开文件」错接成宿主原生 SAF（弹"选平板上的文件"），负责人要的是"原本点那个 + 触发的上游功能"。
+> **修法（全在 `webapp/src/main/assets/www/oc-host.js`，宿主 Kotlin 零改动）**：
+> - 「打开文件」= passThrough 把合成 click 还给**被拦截的那个上游「+」自己**（findPlusButton 命中）——上游原行为（审查条出现「Open file」标签页 + 应用内文件浏览器）逐字发生，构造上即与"直接点 +"等价，**不再弹 Android 系统文件选择器**；
+> - 「打开终端」= 复刻上游自己的 openTerminal 序列（use-session-commands.tsx:195-199）：终端面板已开 ⇒ passThrough 点上游「New terminal」；面板未开 ⇒ 派发上游自己的 terminal.new 键位（ctrl+alt+t；合成 keydown 可触发上游键位派发器 command.tsx:401-428）+ 900ms 自检（oc:open-terminal 回读 found 标志）。
+> 新增绊线 `Ux5ChooserActionsTripwireTest.kt`（5 用例；**反向验证实测**：撤回修法喂 HEAD 旧 oc-host.js ⇒ 2 条断言真红——检出旧 SAF 实现 + 检出"只点按钮"旧终端实现）。
+> 设备证据（平板 emulator-6590 / 手机 emulator-6592，全部真实点击）：打开终端 ⇒ 终端面板出现 + Terminal 1 自动创建 + `pwd` 命令有回显；打开文件 ⇒ 应用内 Open file 标签页、topActivity 仍是自家 WebHostActivity（无 SAF）；两档截图 + logcat 原文在报告 §3。
+
+**UX5 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`）：
+
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **3,994,336 B** | **`a3a88537abdfab20b481e99ff2a92c19`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,449,744 B** | **`94baad39812fa5e08a8e5fe386bd6632`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **5,438,212 B** | **`feae3854244badff58820607fe1d6913`** | 同上 |
+
+**包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`ea950f4a8f061c67a07270787cf4a239`**，与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
+
+> 🔴 **UX5 批以下旧值全部作废，不得再被当作"当前交付包"引用**：
+> **UX4 批** `9fb24886…`（nor8）/ `f3bee4f9…`（r8）/ `a7377e06…`（debug）；
+> **UX3 批** `f47e281c…` / `4917af72…` / `5d3bcc15…`；
+> **UX2 批** `d6015bf2…` / `28ee9ffc…` / `69bbe05f…`；
+> **F19/F18 批** `03d7888f…` / `5227c2ac…` / `9f511c5a…` 及 F16 批更早全部历代值。
+> 引用 🟡 级设备结论时仍按 §4.5 口径**带它当时测的那个 md5**，别把历史字节体当今天的磁盘文件。
+
+#### ✅ UX4 复核（2026-10-05，`Get-FileHash` 重跑）—— **已被 UX5 批取代，仅存档**
 
 > **为什么重建**：UX4 修两个主题缺陷（报告 `research/web/UX4_THEME_FIX.md`）：
 > ① 「+」选择面板**硬编码深色**（`oc-host.js` 的 `buildPanel()`）⇒ 改为读**上游主题 token**

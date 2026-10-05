@@ -1,0 +1,1 @@
+(function(){var b=document.querySelector("button[aria-label=\"Open file\"]");if(!b)return "no upstream Open file button";b.setAttribute("data-oc-plus-chooser","1");b.click();return "upstream Open file clicked (interceptor bypassed)"})()
