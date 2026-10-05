@@ -1,0 +1,44 @@
+﻿[
+    {
+        "cell":  "fine360dp",
+        "dp":  360,
+        "run":  1,
+        "shellMs":  1403,
+        "leftLoadingMs":  2388
+    },
+    {
+        "cell":  "fine360dp",
+        "dp":  360,
+        "run":  2,
+        "shellMs":  1292,
+        "leftLoadingMs":  2529
+    },
+    {
+        "cell":  "fine360dp",
+        "dp":  360,
+        "run":  3,
+        "shellMs":  1340,
+        "leftLoadingMs":  2581
+    },
+    {
+        "cell":  "fine412dp",
+        "dp":  412,
+        "run":  1,
+        "shellMs":  1331,
+        "leftLoadingMs":  2343
+    },
+    {
+        "cell":  "fine412dp",
+        "dp":  412,
+        "run":  2,
+        "shellMs":  1359,
+        "leftLoadingMs":  2405
+    },
+    {
+        "cell":  "fine412dp",
+        "dp":  412,
+        "run":  3,
+        "shellMs":  1322,
+        "leftLoadingMs":  2464
+    }
+]
