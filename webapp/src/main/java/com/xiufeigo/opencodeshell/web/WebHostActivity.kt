@@ -31,6 +31,7 @@ import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
+import com.xiufeigo.opencodeshell.web.host.LaunchGuard
 import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
@@ -209,6 +210,21 @@ class WebHostActivity : AppCompatActivity() {
         launch(SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL)
     }
 
+    /**
+     * F21 · 被挡页的「去设置密码」按钮落点：重新打开配置对话框。
+     *
+     * 与 [retryFromDiagnosticPage] 的区别是**本函数绝不调 `launch()`** ——
+     * 闸门在 `launch()` 里，若走同一条路就会被自己挡住（死循环）。
+     * 这里的出口只有一个：**回到唯一能解决问题的界面**（配置对话框）。
+     * 用户在那里保存口令后走的是 `probeThenLaunch`，口令非空 ⇒ 闸门放行。
+     */
+    fun openSetupFromBlockedPage() {
+        Log.i(TAG, "F21 opening setup dialog from blocked page")
+        val backend = SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL)
+            ?: SecretStore.DEFAULT_BACKEND_URL
+        showSetupDialog(backend)
+    }
+
     /** 读一次 WebView 版本。取不到就留 `null` —— **不得**因此判过旧（见 [WebViewPreflight]）。 */
     private fun readWebViewVersion() {
         val pkg = runCatching { WebViewCompat.getCurrentWebViewPackage(this) }.getOrNull()
@@ -219,6 +235,33 @@ class WebHostActivity : AppCompatActivity() {
             TAG,
             "G1 webview version=$name major=${webViewMajor} " +
                 "min=${WebViewPreflight.MIN_MAJOR} tooOld=${WebViewPreflight.isTooOld(webViewMajor)}",
+        )
+    }
+
+    /**
+     * F21 · 「空口令 ⇒ 被挡」这一态的页面。
+     *
+     * 刻意**不起回环代理**、**不加载官方 UI**：被挡的理由就是"没有身份验证"，
+     * 此时若还把一个能用的后端页面摆出来，正好是本轮要消灭的那个假象。
+     *
+     * 页面用 `loadDataWithBaseURL` 挂在宿主自己的 origin 上（与官方 UI 同一个
+     * `https://appassets.androidplatform.net` 语义），这样：
+     *  - 已注册的 `__ocAndroid` 桥**照样可用** ⇒ 页面上那个"去设置密码"按钮能回配置对话框；
+     *  - 看门狗按 [showDiagnostic] 的先例先关掉 —— 这一页不需要被诊断。
+     *
+     * 绝不回显口令、绝不写 host:port（沿用 [ConnectErrorPage] 规矩 1、3）。
+     */
+    private fun showNoPasswordBlockedPage() {
+        watchdogArmed = false
+        firstContentSeen = true
+        val html = LaunchGuard.blockedHtml()
+        PerfMarks.mark("M.f21.noPasswordPage")
+        webView.loadDataWithBaseURL(
+            "https://$ASSET_DOMAIN/",
+            html,
+            "text/html",
+            "UTF-8",
+            null,
         )
     }
 
@@ -471,6 +514,22 @@ class WebHostActivity : AppCompatActivity() {
 
     /** 起代理并把首页指到代理 origin。 */
     private fun launch(backend: String) {
+        // F21 · 安全闸门：**口令为空就不许进入已鉴权路径**。
+        //
+        // 为什么必须下在这里而不是各调用点：`launch()` 是"起回环代理 + 加载官方 UI"
+        // 的**唯一**入口，四个调用方（配置对话框的「先不配置」、「保存并连接」、
+        // F5 探测的 Unreachable/Unknown 分支、诊断页重试）全都汇进这里。
+        // 逐个调用点加判空，漏一个就等于重新打开这个洞。
+        //
+        // 为什么必须在**起代理之前**拦：后端自己没设密码时，代理照常转发就会
+        // **完整加载出能用的官方 UI 且毫无报错** —— 失败形态是"用得很好但没有认证"，
+        // 而不是"用不了"。先起代理再靠 401 兜，仍然是先放行了。
+        if (!LaunchGuard.mayLaunch(SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD))) {
+            Log.w(TAG, "F21 launch BLOCKED: no password in SecretStore -> refusing unauthenticated use")
+            PerfMarks.mark("H.f21.blockedNoPassword")
+            showNoPasswordBlockedPage()
+            return
+        }
         PerfMarks.mark("H.launch.enter", "backend=$backend mode=$perfMode")
         // P3：预热线程若还在跑就等它 —— 与 WebView 创建的并行已经赚到了重叠部分。
         runCatching { proxyPrewarm?.join(3000) }
@@ -547,6 +606,15 @@ class WebHostActivity : AppCompatActivity() {
      * 失败语义逐字不变：起不来仍然走 `LEGACY_PLACEHOLDER_URL` 兜底页。
      */
     private fun prewarmProxyAsync() {
+        // F21：与 `launch()` 里那道闸门**同一把锁**。预热会真的 `start()` 一个
+        // 已经在监听端口的代理 —— 若在空口令状态下放它过去，那么即使 `launch()`
+        // 随后被闸门挡住，**设备上已经有一个无认证的回环代理在监听**，
+        // 任何能访问回环的 app 都能打它。这与"先加载 UI"是同一类漏洞，只是更早。
+        // 顺带也省掉一次白做的预热（空口令时反正不会用它）。
+        if (!LaunchGuard.mayLaunch(SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD))) {
+            Log.w(TAG, "F21 prewarm SKIPPED: no password in SecretStore")
+            return
+        }
         val backend = SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL)
             ?: SecretStore.DEFAULT_BACKEND_URL
         proxyPrewarm = Thread({
@@ -632,7 +700,12 @@ class WebHostActivity : AppCompatActivity() {
             .setView(box)
             .setCancelable(false)
             .setNegativeButton("先不配置") { _, _ ->
-                Log.w(TAG, "setup skipped -> API will 401")
+                // F21：这里的注释原来写的是 `setup skipped -> API will 401`，
+                // **那句是错的，而且错得正是本缺陷**：后端自己没设密码时不会 401，
+                // 而是照常放行 ⇒ 用户会看到一个"用得好好的、却毫无认证"的官方 UI。
+                // 现在 `launch()` 顶上的 [LaunchGuard] 闸门会把这条出口也一并挡住，
+                // 所以这个按钮**不再**等于"跳过配置继续用"，它只是"我暂时不填"。
+                Log.w(TAG, "setup skipped -> launch() will be blocked by the F21 gate (no password)")
                 launch(defaultBackend)
             }
             .setPositiveButton("保存并连接") { _, _ ->

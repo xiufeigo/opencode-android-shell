@@ -71,13 +71,24 @@
 
 `Get-FileHash -Algorithm MD5`，`research/deliver/`：
 
-| 产物 | 体积（磁盘实测） | **磁盘 md5（实测）** | 与文档 |
-|---|---|---|---|
-| `opencode-shell-web-release-nor8.apk` | **3,979,113 B** | **`03d7888fbc22779dfe7b10737f1ca151`** | ✅ 逐位一致 |
-| `opencode-shell-web-release-r8.apk` | **1,437,969 B** | **`5227c2ac67f5a613c32adacdbb7783e0`** | ✅ 逐位一致 |
-| `opencode-shell-web.apk`（debug） | **5,243,859 B** | **`9f511c5a2d865cca173d62a57ba956a0`** | ✅ 逐位一致 |
+> 🆕 **F21 重建（2026-10-05，本表三行已整体替换）** —— 本次重建是因为 **F21 堵掉了一条安全路径**
+> （空口令 ⇒ 不再允许进入已鉴权路径，见 §3.2）。**F18 那一批的三个 md5 全部作废**：
+> `03d7888fbc22779dfe7b10737f1ca151`（nor8）、
+> `5227c2ac67f5a613c32adacdbb7783e0`（r8）、
+> `9f511c5a2d865cca173d62a57ba956a0`（debug）
+> —— ⚠️ 这三个值**在任何文档里都不得再被当作"当前交付包"引用**。
 
-⇒ **与 §0.1 顶表登记值完全对得上，文档与磁盘无脱节，无需订正。** 这三份正是 **F18 重建**的产物（与 `FIX_F18_PHONE.md` §5 表格同值）。
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **3,980,197 B** | **`7bcdef48ae8d3ce84bee0b244cb44a94`** | `CN=Android Debug` |
+| `opencode-shell-web-release-r8.apk` | **1,438,845 B** | **`4a37e9d600cc0f00618ba89a3654a154`** | `CN=Android Debug` |
+| `opencode-shell-web.apk`（debug） | **5,245,386 B** | **`922117547212296b85dfa80cc116c06d`** | `CN=Android Debug` |
+
+三份签名证书 SHA-256 同为 `e86b70066546bd0bdc2e6cb4d970704bc48b1a244af59c664564f030cca0510a`
+（沿用 F11 起的做法：release 变体用 `sharedDebug` 证书）。
+**包内含源自查**：三份 dex 均含 `LaunchGuard` 类，且三条运行期字符串
+（`F21 launch BLOCKED` / `H.f21.blockedNoPassword` / `F21 prewarm SKIPPED`）与被挡页文案
+（`等于没有身份验证`）**逐份都在** ⇒ **R8 变体没有把闸门优化掉**。
 
 ### 3.1 ⚠️ 发现的不一致：**不是这三行，是本文件内部新旧值并存**（已点出，未擅自大改）
 
@@ -93,6 +104,17 @@
 > **凡引用体积/md5，一律以 §0.1 顶表与 F19 复核表为准；凡引用 🟡 级设备结论（V12/F10/R8 各批），一律带它当时测的那个 md5 —— 别把"当时那台包"和"今天这台包"混为一台。**
 
 新一批（V13/F18/V14）的读数**已单独标注，不与旧批混轴**。
+
+---
+
+### 3.2 F21 的安全修复（这就是本轮重建交付物的理由）
+
+**一句话**：空口令时**不再允许进入已鉴权路径** —— `launch()` 与 `prewarmProxyAsync()` 两处
+起代理点都加了 `LaunchGuard` 闸门，**口令为空 ⇒ 不起代理、不加载官方 UI**，改显一屏
+「还没设置服务器密码 / 没有身份验证」并给出回配置对话框的出口（复用 F5 的 `ConnectErrorPage` 体系）。
+**这堵的是 F20 记的 `WebHostActivity.kt:634-637`**（「先不配置」按钮原本仍会 `launch`），
+**设备双路径实测**：空口令 ⇒ 被挡（**起代理日志消失**）；播种口令 ⇒ **官方 UI 照常加载（未被挡住正常使用）**。
+详见 `research/web/FIX_F21_EMPTYPW.md`。
 
 ---
 

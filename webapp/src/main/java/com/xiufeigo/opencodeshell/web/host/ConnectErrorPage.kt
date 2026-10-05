@@ -90,24 +90,35 @@ object ConnectErrorPage {
         }
     }
 
-    /** 失败原因 ⇒ 用户可读的分类。**只有分类进界面，原文不前进界面。** */
+    /**
+     * 失败原因 ⇒ 用户可读的分类。**只有分类进界面，原文不前进界面。**
+     *
+     * [NO_PASSWORD] 是 F21 加的第四类，**与前三类的性质不同**：前三类是
+     * "**已经连上了、但这次没成**"，可以给"继续加载"；它是"**根本没有身份验证**"，
+     * 属于**必须先解决、否则不许继续**的那一类。
+     */
     enum class Kind(val heading: String, val hint: String) {
         UNREACHABLE("连不上服务器", HINT_NETWORK),
         AUTH_FAILED("登录没通过", HINT_AUTH),
         UNKNOWN("连接出了点问题", HINT_NETWORK),
+        NO_PASSWORD(LaunchGuard.HEADING_NO_PASSWORD, LaunchGuard.HINT_NO_PASSWORD),
     }
 
     /**
      * 生成一页自洽的错误页。
      *
      * @param kind 用户可读的失败分类
-     * @param retryJs 重试动作的 JS。默认 `location.reload()`；
+     * @param detailForLog 重试动作的 JS。默认 `location.reload()`；
      *                调用方也可传"回到配对页"之类的动作（见宿主）。
+     * @param buttonLabel 按钮文案。**必须与实际动作一致**（F21）：
+     *                按钮点了去配置对话框却写成"重试"，是在让用户按一个
+     *                与它名字不符的按钮 —— 错误页上的每个字都应当为真的。
      */
     fun html(
         kind: Kind,
         detailForLog: String? = null,
         retryJs: String = DEFAULT_RETRY_JS,
+        buttonLabel: String = DEFAULT_BUTTON_LABEL,
     ): String {
         val heading = escapeHtml(kind.heading)
         val hint = escapeHtml(kind.hint)
@@ -131,12 +142,16 @@ object ConnectErrorPage {
             append("<div class=\"wrap\">")
             append("<h1>").append(heading).append("</h1>")
             append("<p>").append(hint).append("</p>")
-            append("<button type=\"button\" onclick=\"").append(escapeHtml(retryJs)).append("\">重试</button>")
+            append("<button type=\"button\" onclick=\"").append(escapeHtml(retryJs)).append("\">")
+            append(escapeHtml(buttonLabel)).append("</button>")
             append("</div></body></html>")
         }
     }
 
     const val DEFAULT_RETRY_JS = "location.reload()"
+
+    /** 按钮默认文案。F21 之前所有错误页的动作都确实是"再试一次"，所以默认值不变。 */
+    const val DEFAULT_BUTTON_LABEL = "重试"
 
     /**
      * 不可达（连接失败 / 超时 / 502）⇒ 友好页。

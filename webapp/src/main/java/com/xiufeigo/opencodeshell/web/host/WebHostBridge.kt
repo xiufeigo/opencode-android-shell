@@ -232,6 +232,22 @@ class WebHostBridge(
         ctx.runOnUiThread { ctx.retryFromDiagnosticPage() }
     }
 
+    /**
+     * F21 · 「空口令被挡」页上的「去设置密码」按钮调它：**回到配置对话框**。
+     *
+     * 为什么**不能**复用上面的 `retry()`：`retry()` 会走
+     * `retryFromDiagnosticPage()` → `launch()`，而 F21 的闸门就在 `launch()` 里
+     * ⇒ 用户点一下、被挡一次、再点一下、再被挡一次，成了"点一次刷一次"的死循环，
+     * 而且**永远到不了**唯一能解决问题的那个界面。F5 修掉的"不可自救"会原地复发。
+     *
+     * 线程：`@JavascriptInterface` 方法不在主线程 ⇒ 必须 `runOnUiThread`。
+     */
+    @JavascriptInterface
+    fun openSetup() {
+        Log.i(TAG, "F21 openSetup requested from blocked page")
+        ctx.runOnUiThread { ctx.openSetupFromBlockedPage() }
+    }
+
     // ---- 通知点击回会话 ---------------------------------------------------
     /**
      * 把通知带回来的 sessionId 交给页面 —— 并且**真的让页面切到那个会话**。
