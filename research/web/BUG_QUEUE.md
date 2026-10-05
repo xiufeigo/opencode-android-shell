@@ -68,6 +68,9 @@
   > 「我发现个 UI 的问题，当我点击新 session 弹出软键盘时，我发现输入框的底部会掉下去」
   > 「**这个输入框错位问题，我发现 session 界面也有，不止新建 session 界面**」
 - **⚠️ 范围（重要）**：**不只"新建 session"界面** —— **会话界面（带 会话/更改/文件/终端 那套标签的那一屏）同样出现**：软键盘弹起后 **composer 底部被裁切**（截图中输入框下半截看不见；同时上方内容也被挤）。⇒ **这是"手机档 + 软键盘"的通用布局问题**，不是某个页面特有的。
+- **✅ 关键线索（产品负责人补充，2026-10-05 22:12）**：「**键盘收起来就自动恢复了**」
+  ⇒ **只在"键盘弹起期间"错位，收起后自动恢复** ⇒ **不是持久的状态损坏，而是"IME 打开时页面没有跟上可视高度变化"**。
+  ⇒ 这把根因指向：**边到边（`setDecorFitsSystemWindows(false)`）下 IME 不再改变 layout**，而**页面侧没有按 `visualViewport` 或 IME inset 去调整 composer 位置/高度**（或我们宿主没有再投递 IME 高度）。**要求按这条线索先验证再修**（给 `origin/v2` 行号 + 设备 `visualViewport` 实测值）。
 - **要查清（给证据）**：
   1. **当前 IME 相关配置**：`android:windowSoftInputMode` 是什么？宿主有没有 `setDecorFitsSystemWindows(false)`（边到边）+ 顶部/底部 inset 投递？**上一轮删掉若干宿主类，要确认没连带动到 IME/insets 那条链**；
   2. **上游 composer 是怎么跟随键盘的**（`visualViewport`？`env(safe-area-inset-bottom)`？还是依赖容器高度变化）—— **给 `origin/v2` 行号**；
