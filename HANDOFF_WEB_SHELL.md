@@ -27,10 +27,10 @@
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,979,113 B**（≈3.79 MB） | `03d7888fbc22779dfe7b10737f1ca151` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、SHA-256 `e86b7006…0510a`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
-| `opencode-shell-web.apk`（debug） | **5,243,859 B**（≈5.00 MB） | `9f511c5a2d865cca173d62a57ba956a0` | 日常调试（debug 签名）；同上 |
+| **`opencode-shell-web-release-nor8.apk`** | **3,980,197 B**（≈3.80 MB） | `7bcdef48ae8d3ce84bee0b244cb44a94` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、SHA-256 `e86b7006…0510a`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
+| `opencode-shell-web.apk`（debug） | **5,245,386 B**（≈5.00 MB） | `922117547212296b85dfa80cc116c06d` | 日常调试（debug 签名）；同上 |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,437,969 B**（≈1.37 MB，比非 R8 **−63.86%**） | `5227c2ac67f5a613c32adacdbb7783e0` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储**（杀进程重开免密、`EncryptedSharedPreferences unavailable` 命中 0 ⇒ 未静默降级）· **JS 桥**（代理吐出 31 条官方 UI 资产、`@JavascriptInterface` 方法名未改）· **错误态三态**（正确/错口令/不可达，三态不串态）· **`shrinkResources`**（首启配置框截图证伪）· **全程无崩溃无渲染进程丢失** · **常亮三段**（**真点官方 UI Send 驱动**，含 tap 前基线 + 连续两回合 + +95 s 不回弹）。⚠️ 仍未闭环见 §5。**设备端 `base.apk` md5 = `0598817026…`，`DEVICE_MD5_MATCH=True`**。原文：`R8_ATTEMPT_F11.md` · `R8_KEEPAWAKE_F12.md` · `R8_UITAP_F13.md` · `R8_UITAP_F15.md` |
+| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,438,845 B**（≈1.37 MB，比非 R8 **−63.85%**） | `4a37e9d600cc0f00618ba89a3654a154` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储**（杀进程重开免密、`EncryptedSharedPreferences unavailable` 命中 0 ⇒ 未静默降级）· **JS 桥**（代理吐出 31 条官方 UI 资产、`@JavascriptInterface` 方法名未改）· **错误态三态**（正确/错口令/不可达，三态不串态）· **`shrinkResources`**（首启配置框截图证伪）· **全程无崩溃无渲染进程丢失** · **常亮三段**（**真点官方 UI Send 驱动**，含 tap 前基线 + 连续两回合 + +95 s 不回弹）。⚠️ 仍未闭环见 §5。**设备端 `base.apk` md5 = `0598817026…`，`DEVICE_MD5_MATCH=True`**。原文：`R8_ATTEMPT_F11.md` · `R8_KEEPAWAKE_F12.md` · `R8_UITAP_F13.md` · `R8_UITAP_F15.md` |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
 
