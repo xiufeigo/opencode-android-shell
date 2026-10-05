@@ -25,10 +25,12 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * ## 修法：让宿主自己知道回合在不在跑
  *
- * 回合的生命周期**本来就在宿主手里** —— 回环代理是所有页面流量必经的中枢，
- * 它看得见"页面 POST 了一条消息"（回合开始）和"流式通道静默/关闭"
- * （回合结束）。所以本类把回合活跃判定做成**纯 Kotlin 状态机**，
- * 由 [LoopbackProxy] 用真实流量喂它，宿主据此置位/清除 flag。
+ * 回合的生命周期信号本来由回环代理用真实流量喂给本类（代理看得见"页面 POST
+ * 了一条消息"和"流式通道静默/关闭"）。**UX6 已把代理整个删除**，直连架构下
+ * 宿主看不见流量 ⇒ 唯一的生产驱动方是页面桥（`WebHostBridge.setKeepScreenOn`）。
+ * 上游官方 UI 目前不调它，所以这条功能处于"页面可用、待上游接线"状态 ——
+ * 本类连同 SSE 流分类器一并保留（分类器是协议解码逻辑，历史依据见下），
+ * 接线点（桥 → 跟踪器 → `applyKeepScreenOn`）由 `KeepScreenOnWiringTest` 钉死。
  *
  * 页面那条路**不删**：`WebHostBridge.setKeepScreenOn` 改为喂同一个跟踪器，
  * 于是上游 UI 将来若真的调它，行为与现在完全一致（仍受 [PowerPolicy] 的
@@ -156,8 +158,8 @@ class RoundActivityTracker {
      * ## 为什么需要它（= "回合结束不释放"的根因）
      *
      * 修之前，[onRoundActivity] 拿到**任何**流上字节都续命，包括官方 UI 常驻那条
-     * `GET /event` 的 ~10 s 心跳。于是 [idleMs] 永远 < 10 s，`LoopbackProxy` 那条
-     * `idleMs >= SSE_IDLE_READ_TIMEOUT_MS` 的释放条件**在任何流退出那一刻都不成立**，
+     * `GET /event` 的 ~10 s 心跳。于是 [idleMs] 永远 < 10 s，旧代理那条
+     * "35 s 静默判半开"的释放条件**在任何流退出那一刻都不成立**，
      * 90 s 兜底 [roundHoldTimeoutMs] 同样永远不到期 ⇒ 回合正常结束后 flag 仍挂着，
      * 并被兜底每 90 s 重新挂一次（V5 设备原文：`+90/+180/+270 s` 三行 `flagSet=true`）。
      *

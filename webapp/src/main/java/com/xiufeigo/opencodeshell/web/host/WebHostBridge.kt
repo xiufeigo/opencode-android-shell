@@ -21,11 +21,6 @@ import org.json.JSONObject
  */
 class WebHostBridge(
     private val activity: WebHostActivity,
-    /**
-     * R1 回环代理的 origin 提供者。**延迟查询**，所以宿主可以先建桥、后起代理
-     * （首次启动要先问密码，代理在那之后才起）。起好就返回 `http://127.0.0.1:<port>`。
-     */
-    private val proxyOriginProvider: () -> String? = { null },
 ) {
 
     companion object {
@@ -40,7 +35,9 @@ class WebHostBridge(
     fun hostInfo(): String = JSONObject().apply {
         put("appId", ctx.packageName)
         put("assetHost", WebHostActivity.ASSET_DOMAIN)
-        put("homeUrl", WebHostActivity.HOME_URL)
+        put("homeUrl", runCatching {
+            SecretStore.getSecret(ctx, SecretStore.KEY_BACKEND_URL)
+        }.getOrNull() ?: SecretStore.DEFAULT_BACKEND_URL)
         put("scheme", "WebHostSkeleton/1")
         put("proxyOrigin", PROXY_ORIGIN)
         put("proxyPrefix", PROXY_PREFIX)
@@ -49,11 +46,11 @@ class WebHostBridge(
 
     // 上游 android-proxy.ts 约定：把真实后端 URL 改写到应用内回环代理上。
     //
-    // R1：**已实现**。页面本身就从 `PROXY_ORIGIN` 提供（见 WebHostActivity 的 homeUrl），
-    // 所以 `origin` 就是页面自己的 origin —— 页面与 API 同源，后端 CORS 完全不参与。
-    // `prefix` 保持空串：本代理不做路径改写，/api、/_assets、/event 逐字透传。
-    private val PROXY_ORIGIN: String
-        get() = runCatching { proxyOriginProvider().orEmpty() }.getOrDefault("")
+    // UX6：回环代理已删，这里恒返回空串 —— 打了补丁的上游前端
+    // （frontend/patches/android-webview-z-native-proxy.patch 的 readAndroidProxyConfig）
+    // 要求 origin 与 prefix **都非空**才改写；两者皆空 ⇒ 前端用真实 URL 直连，
+    // 正好是本架构（页面 origin == 后端 origin）的行为。
+    private val PROXY_ORIGIN: String get() = ""
     private val PROXY_PREFIX = ""
 
     @JavascriptInterface
@@ -129,26 +126,17 @@ class WebHostBridge(
             .getOrDefault(false)
     }
 
-    // ---- 5. 凭据 ---------------------------------------------------------
-    // ⚠ 宿主专用键（serverPassword）**拒绝**经桥访问：回环代理自己在 Kotlin 侧补
-    // Authorization，页面不需要、也不该知道口令。挡住它不影响代理工作。
+    // ---- 5. 宿主偏好 -------------------------------------------------------
+    // ⚠ UX6：这里**没有**任何口令读写。回环代理已删，宿主不持有凭据；
+    // 服务器/口令配置全在官方 UI「设置 → 服务器」里，存页面的 localStorage。
+    // getSecret/setSecret 只服务于**非秘密**的宿主偏好（如后端地址），
+    // 且仍走 EncryptedSharedPreferences（Historische 一致性 + 未来宿主秘密的存放点）。
     @JavascriptInterface
-    fun getSecret(key: String?): String? {
-        val k = key.orEmpty()
-        if (SecretStore.isHostOnly(k)) {
-            Log.w(TAG, "getSecret denied for host-only key")
-            return null
-        }
-        return SecretStore.getSecret(ctx, k)
-    }
+    fun getSecret(key: String?): String? = SecretStore.getSecret(ctx, key.orEmpty())
 
     @JavascriptInterface
     fun setSecret(key: String?, value: String?): Boolean {
         if (key.isNullOrBlank()) return false
-        if (SecretStore.isHostOnly(key)) {
-            Log.w(TAG, "setSecret denied for host-only key")
-            return false
-        }
         SecretStore.setSecret(ctx, key, value)
         return true
     }
@@ -165,9 +153,11 @@ class WebHostBridge(
      * D1：这一段曾经是**死代码**（`research/web/FIX_D1.md` §1）—— 它是 flag 的
      * 唯一写入口，却只有页面能调，而上游官方 UI 从不调 `setKeepScreenOn` ⇒
      * `addFlags` 那行永远执行不到，"回合进行中保持屏幕常亮"从未生效。
-     * 现在**真正的驱动方**是 [LoopbackProxy.roundActivity]（代理看得见真实回合
-     * 流量），本方法改为把页面的显式请求**喂给同一个跟踪器**，
-     * 再由 [WebHostActivity.applyKeepScreenOn] 统一落 flag。页面这条 API 语义不变。
+     *
+     * UX6：代理已删，本方法是 [RoundActivityTracker] **唯一**的生产驱动方
+     * （上游官方 UI 目前仍不调它 —— 这条功能处于"页面可用、待上游接线"状态，
+     * 见 WebHostActivity 的类注释）。请求喂给跟踪器后由
+     * [WebHostActivity.applyKeepScreenOn] 统一落 flag。页面这条 API 语义不变。
      */
     @JavascriptInterface
     fun setKeepScreenOn(on: Boolean) {
@@ -178,11 +168,11 @@ class WebHostBridge(
         }
         val tracker = ctx.roundActivityTracker()
         if (on) {
-            tracker?.onRoundStart(System.currentTimeMillis())
+            tracker.onRoundStart(System.currentTimeMillis())
         } else {
-            tracker?.onRoundEnd()
+            tracker.onRoundEnd()
         }
-        // 落 flag 的动作统一走宿主，页面与代理两条路只有一个写入口。
+        // 落 flag 的动作统一走宿主，页面与宿主两条路只有一个写入口。
         ctx.applyKeepScreenOnState()
     }
 
@@ -230,22 +220,6 @@ class WebHostBridge(
     fun retry() {
         Log.i(TAG, "G1 retry requested from diagnostic page")
         ctx.runOnUiThread { ctx.retryFromDiagnosticPage() }
-    }
-
-    /**
-     * F21 · 「空口令被挡」页上的「去设置密码」按钮调它：**回到配置对话框**。
-     *
-     * 为什么**不能**复用上面的 `retry()`：`retry()` 会走
-     * `retryFromDiagnosticPage()` → `launch()`，而 F21 的闸门就在 `launch()` 里
-     * ⇒ 用户点一下、被挡一次、再点一下、再被挡一次，成了"点一次刷一次"的死循环，
-     * 而且**永远到不了**唯一能解决问题的那个界面。F5 修掉的"不可自救"会原地复发。
-     *
-     * 线程：`@JavascriptInterface` 方法不在主线程 ⇒ 必须 `runOnUiThread`。
-     */
-    @JavascriptInterface
-    fun openSetup() {
-        Log.i(TAG, "F21 openSetup requested from blocked page")
-        ctx.runOnUiThread { ctx.openSetupFromBlockedPage() }
     }
 
     // ---- 通知点击回会话 ---------------------------------------------------

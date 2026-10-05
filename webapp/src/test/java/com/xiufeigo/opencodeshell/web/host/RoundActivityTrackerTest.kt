@@ -20,8 +20,11 @@ class RoundActivityTrackerTest {
     private val timeout = RoundActivityTracker.DEFAULT_ROUND_HOLD_TIMEOUT_MS
     private val startAt = 1_000_000L
 
-    /** 代理的 SSE 读超时（`LoopbackProxy.SSE_IDLE_READ_TIMEOUT_MS`，internal ⇒ 同模块可见）。 */
-    private val SSE_IDLE_READ_TIMEOUT_MS = LoopbackProxy.SSE_IDLE_READ_TIMEOUT_MS
+    /**
+     * 旧代理的 SSE 读超时（35 s）。代理已删（UX6），阈值本身作为
+     * "流静默判回合自然结束"的历史口径保留在测试里（不再从生产代码引用）。
+     */
+    private val SSE_IDLE_READ_TIMEOUT_MS = 35_000L
 
     /** 当前 flag 该不该置起（= 宿主实际落 flag 的判据）。 */
     private fun shouldBeSet(t: RoundActivityTracker, now: Long, foreground: Boolean = true): Boolean =
@@ -97,8 +100,7 @@ class RoundActivityTrackerTest {
     @Test
     fun streamEndAfterLongSilenceClearsKeepScreenOn() {
         // 回合"自然结束"：流式通道静默超过一个 SSE 读超时后关闭。
-        // 这里**照抄代理 copyStreaming 末尾的判定**（见 LoopbackProxy）：
-        //   静默 >= SSE_IDLE_READ_TIMEOUT_MS ⇒ 调 onRoundEnd()。
+        // 历史判定口径（代理已删）：静默 >= 35 s ⇒ 调 onRoundEnd()。
         // 跟踪器本身不会"自己"在 35s 释放 —— 释放来自这个显式结束信号，
         // 漏了这个信号由 [holdTimeoutReleasesStaleRound] 的 90s 兜底接管。
         val t = RoundActivityTracker()

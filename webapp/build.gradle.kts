@@ -103,10 +103,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     // WebViewAssetLoader + WebViewCompat.addDocumentStartJavaScript
     implementation("androidx.webkit:webkit:1.12.1")
-    // EncryptedSharedPreferences（getSecret/setSecret 不许明文落盘）
+    // EncryptedSharedPreferences（宿主偏好不许明文落盘）
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    // R1 回环代理的实际上游客户端。与 :app 同版本 4.12.0 → 已在本地 Gradle 缓存里。
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // UX6：回环代理已删，OkHttp 不再是依赖（WebView 自己直连后端）。
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     testImplementation("junit:junit:4.13.2")
 }

@@ -127,12 +127,12 @@ class CameraPermissionHostTest {
             activity.contains("isTrustedWebOrigin(origin)"),
         )
         assertTrue(
-            "可信来源必须包含回环代理的 public origin（WebHostActivity 自己 loadUrl 的那个）",
-            activity.contains("proxy?.publicOrigin()"),
+            "可信来源必须包含配置的后端 origin（页面直连后端，origin 就是它）",
+            activity.contains("SecretStore.KEY_BACKEND_URL"),
         )
         assertTrue(
-            "可信来源必须包含配置的后端 origin（页面不经代理直连后端时）",
-            activity.contains("SecretStore.KEY_BACKEND_URL"),
+            "可信来源必须包含默认后端 origin（未配置时的启动地址）",
+            activity.contains("SecretStore.DEFAULT_BACKEND_URL"),
         )
     }
 

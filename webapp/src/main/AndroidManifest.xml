@@ -5,9 +5,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
-      R1：回环代理要用 ServerSocket 监听 127.0.0.1:0、要用 OkHttp 转发到后端。
-      没有 INTERNET 权限时这两个 syscall 直接被内核拒（EACCES），回环也不例外。
-      注意这**只**开网络能力，明文范围仍由 network_security_config 逐条限定。
+      WebView 加载后端 http 地址、收 SSE/EventSource、跑 WebSocket（终端）
+      都需要 INTERNET。注意这**只**开网络能力，明文范围仍由
+      network_security_config 逐条限定（只回环/自建地址）。
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 

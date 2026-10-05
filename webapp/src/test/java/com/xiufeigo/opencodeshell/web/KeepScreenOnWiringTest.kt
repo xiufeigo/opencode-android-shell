@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -37,9 +38,6 @@ class KeepScreenOnWiringTest {
 
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-
-    private val proxySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/LoopbackProxy.kt")
 
     private val bridgeSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
@@ -83,40 +81,37 @@ class KeepScreenOnWiringTest {
         )
     }
 
-    // ---- 接线点 2：代理必须真的把回合信号喂出去 ------------------------
+    // ---- 接线点 2（UX6 起）：宿主必须自己持有回合跟踪器 -------------------
+    //
+    // 代理删除后，桥 → 跟踪器 → applyKeepScreenOn 的链必须仍然完整；
+    // 跟踪器不再可空（bridge 里不许再出现 `tracker?.` 的 Optional 形态）。
 
     @Test
-    fun proxyDetectsRoundStartFromRealTraffic() {
+    fun activityOwnsTheRoundTracker() {
         assertTrue(
-            "代理必须在 onForward 里识别回合开始请求",
-            proxySrc.contains("isRoundStartRequest"),
+            "WebHostActivity 必须自己持有 RoundActivityTracker 实例（代理已删，" +
+                "它是桥的唯一驱动目标）",
+            activitySrc.contains("RoundActivityTracker()"),
         )
     }
 
     @Test
-    fun proxyPublishesRoundStateToHost() {
-        val src = proxySrc
-        assertTrue("代理必须暴露回合状态回调", src.contains("onRoundActiveChanged"))
-        assertTrue("代理必须真正调用回调（否则宿主收不到回合状态）", src.contains("cb(active)"))
-    }
-
-    @Test
-    fun proxyHasRoundEndSignal() {
-        val src = proxySrc
+    fun bridgeFeedsTrackerWithoutNullableCall() {
+        val src = bridgeSrc
+        val idx = src.indexOf("fun setKeepScreenOn(")
+        assertTrue("找不到 setKeepScreenOn", idx >= 0)
+        val snippet = src.substring(idx, minOf(idx + 1400, src.length))
         assertTrue(
-            "必须有回合结束信号（否则只有置起、没有释放，忘了关就常亮）",
-            src.contains("onRoundEnd()"),
+            "桥必须把页面请求喂进回合跟踪器（否则页面这条路仍与 flag 无关）",
+            snippet.contains("onRoundStart") || snippet.contains("onRoundEnd"),
         )
-    }
-
-    // ---- 接线点 3：宿主必须真的把回调装上 ------------------------------
-
-    @Test
-    fun activityInstallsRoundCallbackOnProxy() {
-        val src = activitySrc
+        assertFalse(
+            "跟踪器不再可空：`tracker?.` 意味着有人把它接回了可空的代理查询 ⇒ 代理残留",
+            snippet.contains("tracker?."),
+        )
         assertTrue(
-            "起代理后必须装上 onRoundActiveChanged（缺它 ⇒ 回合信号发不出去 ⇒ 仍是死代码）",
-            src.contains("onRoundActiveChanged ="),
+            "桥必须调宿主的统一落 flag 入口，不自己 addFlags",
+            snippet.contains("applyKeepScreenOnState"),
         )
     }
 

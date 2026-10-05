@@ -11,16 +11,17 @@ import java.io.File
  *
  * [com.xiufeigo.opencodeshell.web.host.PowerPolicyTest] 证明的是**决策**成立。
  * 但决策对象可能被"接上了却不调用"——那样测试全绿、实际一点没省。
- * 本类直接读源码文本，把三个接线点钉死：
+ * 本类直接读源码文本，把剩下的接线点钉死：
  *  1. `WebHostActivity.onPause()` 里调了 [PowerPolicy] 的兜底清 flag 路径；
- *  2. `WebHostActivity.onPause()` 里调了 `proxy?.suspendStreaming()`；
- *  3. `WebHostActivity.onResume()` 里调了 `proxy?.resumeStreaming()`。
+ *  2. `WebHostActivity.onDestroy()` 同样清 flag；
+ *  3. 桥的 `setKeepScreenOn(true)` 必须过 [PowerPolicy] 的前台校验。
  *
- * ## 反向验证怎么做的
- *
- * 撤回 P6 改动（即把 `WebHostActivity.kt` 还原成 T1 盘点时的样子）后，
- * `onPauseDoesNotCallSuspendStreaming` 与 `onResumeCallsResumeStreaming` 必然**变红**。
- * 实测输出见 `research/perf/POWER_ACTIONS_P6.md` §4。
+ * ## UX6 删除的部分（逐条理由）
+ *  - `proxy?.suspendStreaming()` / `proxy?.resumeStreaming()` 两个接线点：
+ *    **回环代理已按产品决策整体删除**（直连架构），"后台掐 SSE"这条省电刀法
+ *    随代理消失 —— 后台时 WebView `onPause` 暂停页面 JS，`/event` 由浏览器
+ *    自行挂起/重连，与手机浏览器语义一致。这是**如实记录的能力回退**，不是遗漏。
+ *  - 代理侧 REFUSE_WHILE_BACKGROUND 断言：被测对象（代理）已不存在。
  *
  * 沿用本仓既有做法（`DebugEvalChannelTest` 直接读 `build.gradle.kts` 与
  * `WebHostActivity.kt` 文本断言），因此不依赖任何 android 运行时。
@@ -42,18 +43,13 @@ class PowerWiringTest {
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
-    private val proxySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/LoopbackProxy.kt")
-
     private val bridgeSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     /**
      * 取 `override fun xxx() {` 到下一个 `override fun` 之间的正文，**并剥掉行注释**。
      *
-     * 剥注释是必需的，不是洁癖：P6 在 `onPause` 里写了一句解释性注释
-     * 「不是 `proxy?.close()`」，而 [onPauseDoesNotCloseTheProxy] 要断言的正是
-     * **没有这个调用**。不剥注释的话，注释里的字面量会被当成调用 ⇒ 假红。
+     * 剥注释是必需的，不是洁癖：注释里的字面量会被当成调用 ⇒ 假红。
      * 断言的意图是"代码里没有这个调用"，不是"这段文字里没出现过这几个字母"。
      */
     private fun bodyOf(source: String, signature: String): String {
@@ -70,29 +66,7 @@ class PowerWiringTest {
             .map { line -> val i = line.indexOf("//"); if (i >= 0) line.substring(0, i) else line }
             .joinToString("\n")
 
-    // ---- 接线点 1：onPause 必须断开流式连接 -------------------------------
-
-    @Test
-    fun onPauseCallsSuspendStreaming() {
-        val body = bodyOf(activitySrc, "override fun onPause()")
-        assertTrue(
-            "onPause 必须调用 proxy?.suspendStreaming()（P6 刀 2：后台掐断 SSE）",
-            body.contains("suspendStreaming()"),
-        )
-    }
-
-    // ---- 接线点 2：onResume 必须解除拒绝 -----------------------------------
-
-    @Test
-    fun onResumeCallsResumeStreaming() {
-        val body = bodyOf(activitySrc, "override fun onResume()")
-        assertTrue(
-            "onResume 必须调用 proxy?.resumeStreaming()（否则回前台永久 503）",
-            body.contains("resumeStreaming()"),
-        )
-    }
-
-    // ---- 接线点 3：onPause 必须无条件清常亮（忘关路径兜底） ---------------
+    // ---- 接线点 1：onPause 必须无条件清常亮（忘关路径兜底） ---------------
 
     @Test
     fun onPauseClearsKeepScreenOnUnconditionally() {
@@ -125,58 +99,6 @@ class PowerWiringTest {
         )
     }
 
-    // ---- 不得用 close() 代替 suspendStreaming()（T1 §7.2 的明确警告） ------
-
-    @Test
-    fun onPauseDoesNotCloseTheProxy() {
-        val body = bodyOf(activitySrc, "override fun onPause()")
-        assertTrue(
-            "onPause 绝不能调 proxy?.close()：那会把 port 置空，onResume 恢复失败（T1 §7.2）",
-            !body.contains("proxy?.close()"),
-        )
-    }
-
-    // ---- 代理侧：必须是"关 + 拒绝"，不能只关 -----------------------------
-
-    @Test
-    fun proxyRefusesStreamingWhileSuspended() {
-        val proxy = proxySrc
-        assertTrue(
-            "代理必须在 suspended 状态下拒绝流式请求（否则 EventSource 重连拉锯，射频照旧唤醒）",
-            proxy.contains("PowerPolicy.StreamingAction.REFUSE_WHILE_BACKGROUND"),
-        )
-    }
-
-    @Test
-    fun proxyRefusalHappensBeforeUpstreamCall() {
-        val proxy = proxySrc
-        val refuse = proxy.indexOf("REFUSE_WHILE_BACKGROUND")
-        assertTrue("找不到拒绝分支", refuse >= 0)
-        val upstream = proxy.indexOf("client.newCall(request).execute()")
-        assertTrue("找不到上游调用点", upstream >= 0)
-        assertTrue(
-            "拒绝必须发生在建上游请求之前（拒绝得晚 = 上游 socket 已经建了，省电为 0）",
-            refuse < upstream,
-        )
-    }
-
-    @Test
-    fun suspendStreamingKeepsServerSocketAndPortAlive() {
-        val proxy = proxySrc
-        val start = proxy.indexOf("fun suspendStreaming()")
-        assertTrue("找不到 suspendStreaming()", start >= 0)
-        val end = proxy.indexOf("fun resumeStreaming()", start)
-        val body = proxy.substring(start, if (end < 0) proxy.length else end)
-        assertTrue(
-            "suspendStreaming 绝不能关 ServerSocket（会丢 port）",
-            !body.contains("serverSocket?.close()"),
-        )
-        assertTrue(
-            "suspendStreaming 绝不能 shutdownNow 线程池",
-            !body.contains("shutdownNow()"),
-        )
-    }
-
     // ---- 桥侧：置位常亮要过前台校验 ---------------------------------------
 
     @Test
@@ -188,6 +110,21 @@ class PowerWiringTest {
         assertTrue(
             "setKeepScreenOn(true) 必须过 [PowerPolicy] 的前台校验（P6 刀 1）",
             snippet.contains("PowerPolicy.mustClearKeepScreenOn"),
+        )
+    }
+
+    // ---- UX6：后台断流接线已随代理删除（反向断言，防残留） -----------------
+
+    @Test
+    fun noSuspendOrResumeStreamingCallsRemain() {
+        // 代理删除后，这两个调用不应再出现；出现 = 有人把代理相关代码接了回来。
+        assertTrue(
+            "onPause 里不应再有 proxy?.suspendStreaming()（代理已删）",
+            !bodyOf(activitySrc, "override fun onPause()").contains("suspendStreaming()"),
+        )
+        assertTrue(
+            "onResume 里不应再有 proxy?.resumeStreaming()（代理已删）",
+            !bodyOf(activitySrc, "override fun onResume()").contains("resumeStreaming()"),
         )
     }
 }

@@ -16,6 +16,7 @@ import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -31,17 +32,11 @@ import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
-import com.xiufeigo.opencodeshell.web.host.LaunchGuard
-import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
-import com.xiufeigo.opencodeshell.web.host.NotConfiguredShell
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
-import com.xiufeigo.opencodeshell.web.host.BackendProbe
-import com.xiufeigo.opencodeshell.web.host.ConnectErrorPage
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
-import com.xiufeigo.opencodeshell.web.host.SetupDialogMetrics
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
@@ -56,6 +51,17 @@ import org.json.JSONObject
  * - 边到边 + insets 交给 [InsetsHost] → CSS 变量 / JS 事件。
  * - 返回：`canGoBack()` 优先，否则问页面 `window.__ocAndroid.onBack()`，
  *   **两条都不成立时什么都不做**（不 finish）。
+ *
+ * UX6（当前架构）：**直连真实服务器，无回环代理**。
+ * 启动链 = `bootUrl()`（SecretStore 里的后端地址，默认 `http://127.0.0.1:4095`，
+ * 靠 `adb reverse tcp:4095 tcp:4095` 打通）→ G1 前置检查 → `loadUrl(后端地址)`。
+ * 官方前端由后端自托管（`packages/cli/src/services/web-ui.ts` 的 SPA 回落），
+ * 页面 origin == API origin，CORS 不参与；**未配置服务器时官方 UI 自己呈现
+ * ConnectServerScreen**（`packages/app/src/shell/routes/routes.tsx:79`），
+ * 服务器/凭据配置全部在官方「设置 → 服务器」里完成（`servers/connect/dialog.tsx`
+ * 支持密码字段，Basic `opencode:<password>`，见 `runtime/server/api.ts:5-7`）。
+ * 宿主不再持有、注入、转发任何口令 —— F21 在新形态下由「宿主侧无凭据」这一
+ * 结构事实保障（见 `research/web/UX6_OFFICIAL_ENTRY.md` §1.2）。
  */
 class WebHostActivity : AppCompatActivity() {
 
@@ -64,20 +70,12 @@ class WebHostActivity : AppCompatActivity() {
         const val ASSET_DOMAIN = "appassets.androidplatform.net"
         const val ASSET_PREFIX = "/assets/"
 
-    /**
-     * UX1 任务2 · 宿主内部私有 scheme：`ocshell://`。
-     *
-     * **只**用于自建页面（灰态外壳 / F21 被挡页）回宿主开配置对话框，
-     * 由 [HostWebViewClient.shouldOverrideUrlLoading] 拦下。绝不会放行到网络。
-     */
-    const val INTERNAL_SCHEME = "ocshell"
         /**
-         * W1 的占位页（资产托管）。R1 起**不再**用它当首页，只在代理起不来时兜底，
-         * 好让"页面全白"和"代理没起来"两种故障在屏幕上可区分。
+         * 诊断页 URL 基座（资产托管）。R1 起**不再**用它当首页，
+         * 只在 G1 前置检查失败/主文档加载失败时呈现，用来区分
+         * "页面全白"与"WebView 过旧"两类故障。
          */
         const val LEGACY_PLACEHOLDER_URL = "https://$ASSET_DOMAIN$ASSET_PREFIX/www/index.html"
-        val HOME_URL: String get() = LEGACY_PLACEHOLDER_URL
-        const val FACADE_ASSET = "$ASSET_PREFIX/www/oc-host.js"
         private const val STATE_URL = "oc_web_url"
         private const val STATE_SCROLL_Y = "oc_web_scroll_y"
 
@@ -93,19 +91,6 @@ class WebHostActivity : AppCompatActivity() {
         private const val EVAL_TAG = "OcWebHost/Eval"
         /** 页面还没加载完时注入要等一下，否则 evaluateJavascript 落在 about:blank 上。 */
         private const val EVAL_SETTLE_MS = 1200L
-
-        /**
-         * P2 性能归因：同一个 APK 跑两种行为，**改前/改后二进制完全一致**，
-         * 避免"重编译带来的差异"污染对比。
-         *
-         *  - `baseline`（默认）：不改任何行为，作为改前基准。
-         *  - `fixed`：打开 gzip 透传 + 连接复用（见 [LoopbackProxy] 的 `fixedMode`）。
-         *
-         * 用 `--es oc_perf_mode fixed` 传。
-         */
-        const val EXTRA_PERF_MODE = "oc_perf_mode"
-        /** P3：代理预热（并行化）开关。P3 实测在模拟器上更慢，默认 false。 */
-        const val EXTRA_PREWARM = "oc_perf_prewarm"
 
         /**
          * G1：诊断页 URL（就是 C1 留下的那套兜底页资产，只是多带 query 参数换文案）。
@@ -128,29 +113,21 @@ class WebHostActivity : AppCompatActivity() {
         )
     }
 
-    /** P2/P3：本次运行的 `oc_perf_mode`。见 [EXTRA_PERF_MODE]。 */
-    private var perfMode: String = "gzip"
-    private val fixedMode: Boolean get() = perfMode == "fixed"
-    /** P3：gzip 透传**已合入**，除 `baseline`（改前基准）外都开。 */
-    private val gzipMode: Boolean get() = perfMode != "baseline"
-    /** P3 帧时归因：文档渲染档位 full / noanim / min / flat。 */
-    private val renderMode: String
-        get() = when (perfMode) {
-            "min" -> "min"
-            "noanim" -> "noanim"
-            "flat" -> "flat"
-            else -> "full"
-        }
-
     private lateinit var webView: WebView
     private lateinit var bridge: WebHostBridge
     private lateinit var fileChooser: FileChooserHost
     private lateinit var insets: InsetsHost
-    private var proxy: LoopbackProxy? = null
 
     private var pickedUri: Uri? = null
     private var pendingPageScrollY: Int = 0
     private var pageReportedDark: Boolean? = null
+
+    /**
+     * D1：回合活跃跟踪器。UX6 起**唯一的驱动方是页面桥**（`setKeepScreenOn`）——
+     * 回环代理已删，宿主看不见流量，无法再按真实回合流驱动（这是本轮如实记录的
+     * 能力回退，见报告 §1.2）。
+     */
+    private val roundTracker = RoundActivityTracker()
 
     /**
      * P6：宿主是否在前台。
@@ -163,23 +140,18 @@ class WebHostActivity : AppCompatActivity() {
     @Volatile
     private var foreground: Boolean = false
 
+    /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上访问的跟踪器。 */
+    fun roundActivityTracker(): RoundActivityTracker = roundTracker
+
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上问"现在在前台吗"。 */
     fun isForeground(): Boolean = foreground
-
-    /**
-     * D1：回合活跃跟踪器（代理可能还没起来 ⇒ 可空）。
-     * 供 [WebHostBridge.setKeepScreenOn] 把页面的显式请求喂进同一个状态机。
-     */
-    fun roundActivityTracker(): RoundActivityTracker? = runCatching { proxy?.roundActivity }.getOrNull()
 
     /**
      * D1：按当前"回合是否在进行"重新结算一次常亮 flag。
      * 桥线程与主线程都会调它，自身保证切到主线程。
      */
     fun applyKeepScreenOnState() {
-        val active = runCatching {
-            proxy?.roundActivity?.isRoundActive(System.currentTimeMillis())
-        }.getOrNull() ?: false
+        val active = roundTracker.isRoundActive(System.currentTimeMillis())
         runOnUiThread { applyKeepScreenOn(active) }
     }
 
@@ -214,24 +186,7 @@ class WebHostActivity : AppCompatActivity() {
         Log.i(TAG, "G1 retry: re-running preflight + launch")
         readWebViewVersion()
         restoredUrlOrNull = null
-        // `launch` 里会先做 preflight：通过 ⇒ 重新挂看门狗并加载官方 UI；
-        // 仍过旧 ⇒ 又回到诊断页（且带上新的真实读数）。
-        launch(SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL)
-    }
-
-    /**
-     * F21 · 被挡页的「去设置密码」按钮落点：重新打开配置对话框。
-     *
-     * 与 [retryFromDiagnosticPage] 的区别是**本函数绝不调 `launch()`** ——
-     * 闸门在 `launch()` 里，若走同一条路就会被自己挡住（死循环）。
-     * 这里的出口只有一个：**回到唯一能解决问题的界面**（配置对话框）。
-     * 用户在那里保存口令后走的是 `probeThenLaunch`，口令非空 ⇒ 闸门放行。
-     */
-    fun openSetupFromBlockedPage() {
-        Log.i(TAG, "F21 opening setup dialog from blocked page")
-        val backend = SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL)
-            ?: SecretStore.DEFAULT_BACKEND_URL
-        showSetupDialog(backend)
+        launch(bootUrl())
     }
 
     /** 读一次 WebView 版本。取不到就留 `null` —— **不得**因此判过旧（见 [WebViewPreflight]）。 */
@@ -244,58 +199,6 @@ class WebHostActivity : AppCompatActivity() {
             TAG,
             "G1 webview version=$name major=${webViewMajor} " +
                 "min=${WebViewPreflight.MIN_MAJOR} tooOld=${WebViewPreflight.isTooOld(webViewMajor)}",
-        )
-    }
-
-    /**
-     * F21 · 「空口令 ⇒ 被挡」这一态的页面。
-     *
-     * 刻意**不起回环代理**、**不加载官方 UI**：被挡的理由就是"没有身份验证"，
-     * 此时若还把一个能用的后端页面摆出来，正好是本轮要消灭的那个假象。
-     *
-     * 页面用 `loadDataWithBaseURL` 挂在宿主自己的 origin 上（与官方 UI 同一个
-     * `https://appassets.androidplatform.net` 语义），这样：
-     *  - 已注册的 `__ocAndroid` 桥**照样可用** ⇒ 页面上那个"去设置密码"按钮能回配置对话框；
-     *  - 看门狗按 [showDiagnostic] 的先例先关掉 —— 这一页不需要被诊断。
-     *
-     * 绝不回显口令、绝不写 host:port（沿用 [ConnectErrorPage] 规矩 1、3）。
-     */
-    private fun showNoPasswordBlockedPage() {
-        watchdogArmed = false
-        firstContentSeen = true
-        val html = LaunchGuard.blockedHtml()
-        PerfMarks.mark("M.f21.noPasswordPage")
-        webView.loadDataWithBaseURL(
-            "https://$ASSET_DOMAIN/",
-            html,
-            "text/html",
-            "UTF-8",
-            null,
-        )
-    }
-
-    /**
-     * UX1 · 任务2 · **未配置服务器**这一态：直接进应用外壳，功能全灰。
-     *
-     * 刻意复用 [showNoPasswordBlockedPage] 的三条做法（**它们是同一族状态**）：
-     *  - 关掉看门狗（这一页不需要被诊断）、置位 `firstContentSeen`；
-     *  - 用 `loadDataWithBaseURL` 挂在宿主自己的 origin 上 ⇒ 已注册的 `__ocAndroid`
-     *    桥**照样可用** ⇒ 页面上那个「去设置服务器」能真的回配置对话框；
-     *  - **不起回环代理、不加载官方 UI**（本方法里没有 `LoopbackProxy`、没有 `loadUrl`）。
-     *
-     * 与 [showNoPasswordBlockedPage] 的区别只有**形态**：那是 F21 闸门在 `launch()`
-     * 兜住的一屏报错；这是**连闸门都没走到**（压根没调 `launch`）的应用外壳。
-     */
-    private fun showNotConfiguredShell() {
-        watchdogArmed = false
-        firstContentSeen = true
-        PerfMarks.mark("M.ux1.notConfiguredShell")
-        webView.loadDataWithBaseURL(
-            "https://$ASSET_DOMAIN/",
-            NotConfiguredShell.html(),
-            "text/html",
-            "UTF-8",
-            null,
         )
     }
 
@@ -330,7 +233,7 @@ class WebHostActivity : AppCompatActivity() {
 
     // ---- 通知权限（必须在 Activity STARTED 之前注册 launcher） --------------
     private val notificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestPermission(),
     ) { granted ->
         Log.i(TAG, "POST_NOTIFICATIONS granted=$granted")
         // 结果回给页面：onRequestResult 约定 {"notificationPermission":true|false}
@@ -343,23 +246,15 @@ class WebHostActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        perfMode = intent?.getStringExtra(EXTRA_PERF_MODE) ?: "gzip"
-        PerfMarks.mark("A.onCreate.enter", "mode=$perfMode")
+        PerfMarks.mark("A.onCreate.enter")
         super.onCreate(savedInstanceState)
 
-        PerfMarks.mark("A.onCreate.superDone", "mode=$perfMode")
+        PerfMarks.mark("A.onCreate.superDone")
 
-        bridge = WebHostBridge(this) { proxy?.publicOrigin() }
+        bridge = WebHostBridge(this)
         fileChooser = FileChooserHost(this)
         NotifierHost.ensureChannels(this)
         PerfMarks.mark("B.helpersReady")
-        // P3 实测结论：把代理预热挪到后台与 WebView 创建并行，**在模拟器上更慢**
-        // （loadUrl 1102ms → 1171ms，TotalTime 无改善）。代理 bind 本身 ~225-246ms 且是
-        // CPU 密集，与主线程的 WebView 类加载抢核 ⇒ 默认**不开**，仅留 opt-in 供复现。
-        if (intent?.getBooleanExtra(EXTRA_PREWARM, false) == true) {
-            prewarmProxyAsync()
-            PerfMarks.mark("B2.prewarmKicked")
-        }
 
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -389,7 +284,7 @@ class WebHostActivity : AppCompatActivity() {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         }
 
-        // P2：WebView 第一次真正把内容画进窗口的时刻（"首帧白屏"的终点）。
+        // WebView 第一次真正把内容画进窗口的时刻（"首帧白屏"的终点）。
         webView.viewTreeObserver.addOnDrawListener(
             object : android.view.ViewTreeObserver.OnDrawListener {
                 private var first = true
@@ -399,7 +294,7 @@ class WebHostActivity : AppCompatActivity() {
                         PerfMarks.mark("Z.firstDraw")
                     }
                 }
-            }
+            },
         )
 
         insets = InsetsHost(window, webView) { payload -> pushInsets(payload) }
@@ -407,204 +302,41 @@ class WebHostActivity : AppCompatActivity() {
         PerfMarks.mark("F.insetsReady")
 
         pendingPageScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0) ?: 0
-        // R1：先确认凭据 → 起回环代理 → 从**代理 origin** 加载官方 UI。
-        // 恢复态的旧 URL 端口多半已失效（ServerSocket(0) 每次都换端口），重算。
+        // UX6：冷启动 = 直接加载真实服务器地址（官方前端由后端自托管）。
+        // 恢复态的旧 URL 直接沿用（origin 现在是稳定的后端地址，不像代理端口每次必变）。
         val restored = savedInstanceState?.getString(STATE_URL)
-        startProxyAndLoad(restored)
+        restoredUrlOrNull = restored
+        launch(bootUrl())
         consumeNotificationIntent(intent)
         consumeDebugEval(intent)
         PerfMarks.mark("G.onCreate.exit")
     }
 
     /**
-     * R1 启动链。
+     * UX6 · 本次启动要加载的后端地址。
      *
-     * ```
-     *  EncryptedSharedPreferences 里有密码？ ── 是 ──▶ 起代理 ──▶ loadUrl(代理 origin)
-     *                                    └─ 否 ──▶ 灰态应用外壳 +「去设置服务器」─┘
-     *                                          （UX1 任务2：**不再弹对话框**）
-     * ```
-     *
-     * 为什么必须原生问：官方 UI 的 `/api/…` 要 Basic 认证，而**不能**把密码交给页面
-     * （`window.__ocAndroid.getSecret` 页面能读，等于把口令散给第三方脚本）。
-     * 代理在转发时自己补 `Authorization`，页面全程不知道密码存在。
+     * 唯一来源 = [SecretStore.KEY_BACKEND_URL]（**不是秘密**，只是"应用壳从哪个
+     * 后端取官方 UI"的入口；默认 `http://127.0.0.1:4095`，靠 adb reverse 打通）。
+     * 服务器与口令的**配置**不在宿主做 —— 那是官方 UI 「设置 → 服务器」的职责。
      */
-    private fun startProxyAndLoad(restoredUrl: String?) {
-        restoredUrlOrNull = restoredUrl
-        val backend = SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL)
-            ?: SecretStore.DEFAULT_BACKEND_URL
-        val password = SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD)
-        if (password.isNullOrEmpty()) {
-            // UX1 · 任务2：**首次启动不再弹对话框**。
-            //
-            // 产品负责人原话：「开场的时候就直接把那个界面去了，直接进 app，
-            // 然后服务器没设置的话，就所有功能不可用就行，就显示灰色那样子」。
-            //
-            // 为什么这**没有**削弱 F21 的安全性质：
-            //  1. 这里在**起代理之前**就 return 了 ⇒ 代理压根不起，闸门之后那一层原样保留；
-            //  2. [LaunchGuard] 仍在 `launch()` 顶上（`:527-532`），本轮**没有动它**，
-            //     四个出口仍汇进同一道闸门 ⇒ 口径不变（`research/web/FIX_F21_EMPTYPW.md` §2.3）；
-            //  3. 未配置态是 [NotConfiguredShell] 那一页**静态 HTML**，不发起任何后端请求。
-            Log.i(TAG, "${NotConfiguredShell.MARKER}: no password in SecretStore -> no dialog, shell only")
-            showNotConfiguredShell()
-            return
-        }
-        // F5 缺陷2：**先探一次再加载**。原来直接 `launch`，于是口令错时页面永远停在
-        // "Loading" 骨架屏（V7 实测 `research/env/v7/v7_n5_wrongpw.png`），用户无从自救。
-        // 探测在后台线程跑（不阻塞主线程），结论回来再决定加载还是报错。
-        probeThenLaunch(backend, password)
-    }
+    private fun bootUrl(): String =
+        SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL
 
     /**
-     * F5 缺陷2 · 接入探测 → 再加载。
+     * UX6 启动链（代理已删，只剩一步直达）：
      *
-     * 判定与超时依据见 [BackendProbe]（探 `/api/info`，超时 [BackendProbe.PROBE_TIMEOUT_MS]
-     * = 8 s，依据三条写在那个类的注释里）。
+     * ```
+     *   bootUrl() ──▶ G1 前置检查 ──▶ armWatchdog ──▶ loadUrl(后端地址)
+     * ```
      *
-     * 关键设计：**探不通不阻塞"仍然可以试"**。
-     * - [BackendProbe.Result.OK] ⇒ 正常加载官方 UI。
-     * - [BackendProbe.Result.AuthFailed] ⇒ 明确告知"用户名或口令不对"，
-     *   并给**两条出路**：重试（回到输入口令的对话框）/ 继续看看（仍然加载，
-     *   也许后端刚重启好了）。**这一条是本缺陷的核心**：V7 的形态是用户既看不到
-     *   失败、也没有任何入口。
-     * - [BackendProbe.Result.Unreachable] / [Result.Unknown] ⇒ 也给可重试的原生提示，
-     *   但**默认不拦**（连不上时交给代理的友好错误页更合适，见 [ConnectErrorPage]），
-     *   用户点"重试"即可重新探测。
+     * 没有任何凭据检查：宿主不持有口令，"空口令 ⇒ 不许用"这条旧规则（F21）在新
+     * 形态下由**结构**保障 —— 宿主侧根本不存在"以无认证方式使用后端"的代码路径；
+     * 认证协商完全发生在官方 UI 与后端之间（官方连接页会自己提示口令错误）。
      */
-    private fun probeThenLaunch(backend: String, password: String?) {
-        Log.i(TAG, "F5 probe before load path=${BackendProbe.PROBE_PATH}")
-        probeRef?.cancel()
-        val probe = BackendProbe()
-        probeRef = probe
-        probe.probeAsync(backend, password) { result ->
-            when (result) {
-                is BackendProbe.Result.OK -> {
-                    Log.i(TAG, "F5 probe OK code=${result.code}, loading official UI")
-                    launch(backend)
-                }
-                is BackendProbe.Result.AuthFailed -> {
-                    // 明确判定：用户名或口令不对。**不回显口令**。
-                    Log.w(TAG, "F5 probe AUTH FAILED code=${result.code}; showing retryable dialog")
-                    showConnectErrorDialog(ConnectErrorPage.Kind.AUTH_FAILED, backend)
-                }
-                is BackendProbe.Result.Unreachable -> {
-                    Log.w(TAG, "F5 probe unreachable reason=${result.reason}, loading anyway")
-                    launch(backend)
-                }
-                is BackendProbe.Result.Unknown -> {
-                    Log.w(TAG, "F5 probe unknown reason=${result.reason}, loading anyway")
-                    launch(backend)
-                }
-            }
-        }
-    }
-
-    /**
-     * F5 · 接入失败的**原生可重试**对话框。
-     *
-     * 与 [showSetupDialog] 的关系：这是**报错**界面，不是首次配置界面。
-     * 它必须让用户能（a）改口令重试、（b）返回、（c）继续加载。
-     * 三个按钮文案与 [ConnectErrorPage.Kind] 的文案同源，避免"原生说一套、网页说另一套"。
-     */
-    private fun showConnectErrorDialog(kind: ConnectErrorPage.Kind, backend: String) {
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val minTargetPx = SetupDialogMetrics.minTouchTargetPx(resources.displayMetrics.densityDpi)
-        val box = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            setPadding(pad, pad / 2, pad, 0)
-        }
-        box.addView(android.widget.TextView(this).apply {
-            text = kind.hint
-            setTextColor(0xFFB9B9C0.toInt())
-            textSize = 14f
-        })
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(kind.heading)
-            .setView(box)
-            .setCancelable(false)
-            .setNeutralButton("返回") { _, _ ->
-                // 回到输入口令的对话框：用户在这里能改口令，也能改地址。
-                showSetupDialog(backend)
-            }
-            .setNegativeButton("继续加载") { _, _ -> launch(backend) }
-            .setPositiveButton("重试") { _, _ ->
-                // 重试 = 重新探一次。口令仍从 SecretStore 读，用户没改过就再探一遍；
-                // 若他刚刚在"返回"里改了口令，那次保存已经写回 SecretStore。
-                probeThenLaunch(
-                    backend,
-                    SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD),
-                )
-            }
-            .show()
-            .also { dialog ->
-                dialog.window?.setSoftInputMode(
-                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
-                )
-                // 触摸靶下限沿用 F2 的既有口径，保证按钮可达 48dp。
-                runCatching {
-                    dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
-                        .minHeight = minTargetPx
-                    dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE)
-                        .minHeight = minTargetPx
-                    dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
-                        .minHeight = minTargetPx
-                }
-            }
-    }
-
-    /** 起代理并把首页指到代理 origin。 */
     private fun launch(backend: String) {
-        // F21 · 安全闸门：**口令为空就不许进入已鉴权路径**。
-        //
-        // 为什么必须下在这里而不是各调用点：`launch()` 是"起回环代理 + 加载官方 UI"
-        // 的**唯一**入口，四个调用方（配置对话框的「先不配置」、「保存并连接」、
-        // F5 探测的 Unreachable/Unknown 分支、诊断页重试）全都汇进这里。
-        // 逐个调用点加判空，漏一个就等于重新打开这个洞。
-        //
-        // 为什么必须在**起代理之前**拦：后端自己没设密码时，代理照常转发就会
-        // **完整加载出能用的官方 UI 且毫无报错** —— 失败形态是"用得很好但没有认证"，
-        // 而不是"用不了"。先起代理再靠 401 兜，仍然是先放行了。
-        if (!LaunchGuard.mayLaunch(SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD))) {
-            Log.w(TAG, "F21 launch BLOCKED: no password in SecretStore -> refusing unauthenticated use")
-            PerfMarks.mark("H.f21.blockedNoPassword")
-            showNoPasswordBlockedPage()
-            return
-        }
-        PerfMarks.mark("H.launch.enter", "backend=$backend mode=$perfMode")
-        // P3：预热线程若还在跑就等它 —— 与 WebView 创建的并行已经赚到了重叠部分。
-        runCatching { proxyPrewarm?.join(3000) }
-        val p = runCatching { synchronized(proxyLock) { pendingProxy } }.getOrElse { null } ?: runCatching {
-            LoopbackProxy(
-                upstreamBase = backend,
-                // 每次转发现读 ⇒ 代理内存里不驻留明文，改密码立即生效。
-                passwordProvider = { SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD) },
-                fixedMode = fixedMode,
-                gzipMode = gzipMode,
-                renderMode = renderMode,
-            ).also { it.start() }
-        }.getOrElse {
-            Log.e(TAG, "cannot start loopback proxy, falling back to placeholder", it)
-            webView.loadUrl(LEGACY_PLACEHOLDER_URL)
-            return
-        }
-        pendingProxy = null
-        proxy = p
-        // D1：接上"回合状态"回调 —— 代理一看到页面 POST 消息/回合流结束就通知，
-        // 宿主据此置位/清除常亮 flag。这是让该功能**真正生效**的接线点
-        // （此前 flag 只有页面主动调桥才会被置起，而上游 UI 从不调 ⇒ 死代码）。
-        p.onRoundActiveChanged = { active -> runOnUiThread { applyKeepScreenOn(active) } }
-        val origin = p.publicOrigin()
+        PerfMarks.mark("H.launch.enter", "backend=$backend")
         val restored = restoredUrlOrNull
-        val url = if (restored != null && restored.startsWith(origin)) restored else "$origin/"
-        // 只报"有没有"，绝不回显口令本身。
-        val hasPassword = !SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD).isNullOrEmpty()
-        Log.i(TAG, "home=$url backend=$backend passwordPresent=$hasPassword")
-        PerfMarks.mark("I.proxyListening", "port=${p.port} mode=$perfMode")
+        val url = if (restored != null && restored.startsWith(backend)) restored else "$backend/"
 
         // ---- G1 前置能力检查 ------------------------------------------------
         // 过旧就**不加载**官方 UI：实测 WebView 83 加载它只会得到一片纯白
@@ -622,160 +354,21 @@ class WebHostActivity : AppCompatActivity() {
             }
         }
 
+        Log.i(TAG, "home=$url backend=$backend")
         armWatchdog()
         webView.loadUrl(url)
         PerfMarks.mark("J.loadUrlIssued", "url=$url")
     }
 
-    private val proxyLock = Object()
-
-    /** P3：预热线程已经建好的代理（见 [prewarmProxyAsync]）。 */
-    private var pendingProxy: LoopbackProxy? = null
-
-    private var proxyPrewarm: Thread? = null
-
-    /**
-     * F5 缺陷2：当前这轮接入探测。点"重试"会再探一次，所以必须能**取消上一轮**，
-     * 否则两次探测的结果可能乱序到达、把界面带去错误的分支。
-     */
-    private var probeRef: BackendProbe? = null
-
-    /**
-     * P3：把「起回环代理」从导航前的串行段里挪出去。
-     *
-     * 原来它排在 `onCreate` **末尾**，`WebView` 创建（实测 ~370 ms）必须先跑完，
-     * 代理监听（实测 ~186 ms）才开始 —— 两者无依赖，纯串行浪费。
-     * 现在在 `onCreate` 一进来就把代理起在**后台线程**上，与主线程的
-     * WebView 创建 / settings 配置**并行**；到 `launch()` 时若还没起好就 join。
-     *
-     * 失败语义逐字不变：起不来仍然走 `LEGACY_PLACEHOLDER_URL` 兜底页。
-     */
-    private fun prewarmProxyAsync() {
-        // F21：与 `launch()` 里那道闸门**同一把锁**。预热会真的 `start()` 一个
-        // 已经在监听端口的代理 —— 若在空口令状态下放它过去，那么即使 `launch()`
-        // 随后被闸门挡住，**设备上已经有一个无认证的回环代理在监听**，
-        // 任何能访问回环的 app 都能打它。这与"先加载 UI"是同一类漏洞，只是更早。
-        // 顺带也省掉一次白做的预热（空口令时反正不会用它）。
-        if (!LaunchGuard.mayLaunch(SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD))) {
-            Log.w(TAG, "F21 prewarm SKIPPED: no password in SecretStore")
-            return
-        }
-        val backend = SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL)
-            ?: SecretStore.DEFAULT_BACKEND_URL
-        proxyPrewarm = Thread({
-            val t0 = System.nanoTime()
-            runCatching {
-                LoopbackProxy(
-                    upstreamBase = backend,
-                    passwordProvider = { SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD) },
-                    fixedMode = fixedMode,
-                    gzipMode = gzipMode,
-                    renderMode = renderMode,
-                ).also { it.start() }
-            }.onSuccess { p ->
-                synchronized(proxyLock) { pendingProxy = p }
-                PerfMarks.mark("I2.proxyPrewarmed", "port=${p.port} ms=${(System.nanoTime() - t0) / 1_000_000}")
-            }.onFailure {
-                Log.w(TAG, "proxy prewarm failed: ${it.message}")
-            }
-        }, "oc-proxy-prewarm").apply { isDaemon = true; start() }
-    }
-
     private var restoredUrlOrNull: String? = null
 
     /**
-     * 首次启动的配置对话框。用**原生**对话框而不是让页面自己弹：密码必须在进 JS
-     * 之前落到 EncryptedSharedPreferences。
+     * 首次启动的配置对话框、接入探测、错误页、未配置灰态 —— **全部删除**（UX6）。
      *
-     * F2：两个输入框原先是 `WRAP_CONTENT` 且无 `minHeight`，实测只有 **45dp** 触摸靶
-     * （`118px ÷ 2.625`，`research/env/PHONE_AVD_VERIFY.md` §6.2）⇒ 差 3dp 不达 48dp 硬要求。
-     * 现在两者都显式 `minHeight = SetupDialogMetrics.minTouchTargetPx(density)`。
-     * 取 `minHeight` 而不是 `TouchDelegate` 撑触摸区，理由见 [SetupDialogMetrics] 与
-     * `research/web/TOUCH_TARGET_FIX.md` §4（`TouchDelegate` 不改无障碍节点 bounds，
-     * 产出这份缺陷证据的 `uiautomator` 将**看不见**修复，判据与守护对象就对不上了）。
+     * 理由（产品决策，已确认）：启动直接进官方 UI；服务器/口令只在官方
+     * 「设置 → 服务器」里配置；官方自己未配置时呈现 ConnectServerScreen，
+     * 官方自己探测健康、自己报告口令错误。宿主再造一套 = 双份真相。
      */
-    private fun showSetupDialog(defaultBackend: String) {
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val densityDpi = resources.displayMetrics.densityDpi
-        val minTargetPx = SetupDialogMetrics.minTouchTargetPx(densityDpi)
-        val box = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            // 必须给 MATCH_PARENT：不设宽度的话 AlertDialog 按内容收缩成一个极窄的框，
-            // 输入框和按钮会被挤到可视区之外（真机上表现为只剩标题+一段话）。
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            setPadding(pad, pad / 2, pad, 0)
-        }
-        val urlInput = android.widget.EditText(this).apply {
-            setText(defaultBackend)
-            setHint("后端地址")
-            isSingleLine = true
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            setInputType(android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI)
-            // F2：45dp → 48dp 触摸靶（WRAP_CONTENT 下的固有文本高度只有 45dp）。
-            minHeight = minTargetPx
-        }
-        val passInput = android.widget.EditText(this).apply {
-            hint = "服务器密码（用户名固定 ${LoopbackProxy.BASIC_USER}）"
-            isSingleLine = true
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            // TYPE_CLASS_TEXT | TYPE_TEXT_VARIATION_PASSWORD：输入时打码。
-            setInputType(
-                android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
-            )
-            // F2：同上，密码框也抬到 48dp 触摸靶。两个框必须**都**写，漏一个测试就红。
-            minHeight = minTargetPx
-        }
-        // 顺序很重要：**密码框放第一个**。AlertDialog 默认把焦点给第一个可编辑控件，
-        // 放第一个就等于"打开即可直接输密码"，不用先点一下 URL 框。
-        box.addView(passInput)
-        box.addView(urlInput)
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("配置 opencode 后端")
-            .setView(box)
-            .setCancelable(false)
-            .setNegativeButton("先不配置") { _, _ ->
-                // F21：这里的注释原来写的是 `setup skipped -> API will 401`，
-                // **那句是错的，而且错得正是本缺陷**：后端自己没设密码时不会 401，
-                // 而是照常放行 ⇒ 用户会看到一个"用得好好的、却毫无认证"的官方 UI。
-                // 现在 `launch()` 顶上的 [LaunchGuard] 闸门会把这条出口也一并挡住，
-                // 所以这个按钮**不再**等于"跳过配置继续用"，它只是"我暂时不填"。
-                Log.w(TAG, "setup skipped -> launch() will be blocked by the F21 gate (no password)")
-                launch(defaultBackend)
-            }
-            .setPositiveButton("保存并连接") { _, _ ->
-                val url = urlInput.text?.toString()?.trim().orEmpty()
-                    .ifEmpty { defaultBackend }
-                val pass = passInput.text?.toString().orEmpty()
-                SecretStore.setSecret(this, SecretStore.KEY_BACKEND_URL, url)
-                SecretStore.setSecret(this, SecretStore.KEY_SERVER_PASSWORD, pass)
-                Log.i(TAG, "credentials stored backend=$url passwordPresent=${pass.isNotEmpty()}")
-                // F5 缺陷2：**必须走探测**，不能直接 `launch`。
-                // V7 的缺陷形态正是"在这里播了错口令"——首测时这条分支直接 launch，
-                // 于是错口令 100% 落到"Loading 骨架屏永停"。探测后 401 会被判成
-                // AUTH_FAILED 并弹出可重试对话框（可改口令、可返回、可继续加载）。
-                probeThenLaunch(url, pass)
-            }
-            .show()
-            .also { dialog ->
-                dialog.window?.setSoftInputMode(
-                    // ADJUST_RESIZE：键盘弹出时对话框整体上移，输入框与按钮留在可视区。
-                    // 注意**不要**再 SOFT_INPUT_STATE_ALWAYS_VISIBLE —— 强行弹键盘会把
-                    // 横屏下本就所剩无几的对话框高度压扁，输入框直接被裁掉。
-                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
-                )
-            }
-    }
 
     // ---- WebView 设置 ------------------------------------------------------
     private fun configureSettings(s: WebSettings) = with(s) {
@@ -789,16 +382,8 @@ class WebHostActivity : AppCompatActivity() {
         builtInZoomControls = false
         displayZoomControls = false
         mediaPlaybackRequiresUserGesture = false
-        // 混合内容：仅兼容模式。
-        //
-        // 理由：宿主 origin 是 https://appassets.androidplatform.net，而 opencode 后端
-        // 常跑在 PC 的 http://192.168.x.x:4096 —— 那必然是明文混合内容。
-        // `COMPATIBILITY_MODE` 让 WebView 继续发请求（尽量走 CSP 判定），而
-        // `ALWAYS_ALLOW` 会**完全关掉**浏览器的主动拦截（含 XHR/fetch），
-        // `NEVER_ALLOW` 则整个开发流程不可用。明文范围另外由
-        // `res/xml/network_security_config.xml` 逐条限定（只回环/自建地址）。
-        // ⚠ 因此：任何"页面内的第三方 http 资源"都可能走到网络层，
-        // 唯一的闸门是那份 network-security-config。
+        // 混合内容：仅兼容模式（页面与 API 现在同源于后端 http 地址，正常用不到；
+        // 保留是为了 https 后端 + http 子资源的边界场景仍尽量可用）。
         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         // 不给 file:// / content:// 通用读权限：资产只走 assetLoader。
         allowFileAccess = false
@@ -813,7 +398,7 @@ class WebHostActivity : AppCompatActivity() {
      * 用 `WebViewCompat.addDocumentStartJavaScript` 而不是 `onPageFinished` 里
      * `evaluateJavascript`：后者太晚，页面首屏脚本已经跑完、没拿到
      * `window.__ocAndroid`。老 WebView 不支持该特性时退回 `onPageStarted` 注入
-     * （对本轮占位页足够，但对真正的上游 SPA 可能错过首屏）。
+     * （对真正的上游 SPA 可能错过首屏，但 G1 前置检查已把过旧的 WebView 拦住）。
      */
     private fun installFacade(wv: WebView) {
         val script = runCatching { assets.open("www/oc-host.js").bufferedReader().use { it.readText() } }
@@ -1039,7 +624,7 @@ class WebHostActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         if (::webView.isInitialized) {
-            outState.putString(STATE_URL, webView.url ?: HOME_URL)
+            outState.putString(STATE_URL, webView.url ?: bootUrl())
             outState.putInt(STATE_SCROLL_Y, webView.scrollY)
         }
     }
@@ -1090,29 +675,15 @@ class WebHostActivity : AppCompatActivity() {
         // 所以这里把"宿主离开前台"当作**硬边界**：只要不在前台，就不许常亮。
         // 决策在 [PowerPolicy.shouldKeepScreenOn]（纯 Kotlin、可单测）。
         clearKeepScreenOnOnBackground()
-        // P6 · 省电 · 刀 2（本轮最该砍的一条）：切后台掐断 SSE 长连接。
-        //
-        // 依据 T1 §7.2：`LoopbackProxy` 自 `start()` 起常驻（`:137-155`），
-        // 而 `close()` **只有 `onDestroy` 调**（旧 `:776`）⇒ 退到后台后上游 `/event`
-        // 每 10 s 的心跳继续唤醒射频，**且与屏幕亮度无关**。
-        //
-        // 只掐**流式**连接，不碰 `ServerSocket`/`port`（不是 `proxy?.close()`，
-        // 那会把 port 置空导致 `onResume` 恢复失败 —— T1 §7.2 明确警告过）。
-        val pruned = runCatching { proxy?.suspendStreaming() ?: 0 }.getOrDefault(0)
-        PerfMarks.markIfEnabled("P6.onPause", "prunedStreaming=$pruned")
         if (::webView.isInitialized) webView.onPause()
     }
 
     override fun onResume() {
         super.onResume()
         foreground = true
-        // P6：解除后台拒绝，页面下一次 EventSource 重试即恢复（与代理 35 s 半开
-        // 主动断开是同一条恢复路径，不引入新行为类别）。
-        runCatching { proxy?.resumeStreaming() }
         // D1：回合若仍在进行，回前台要**把常亮补回来**（否则回合中途切走再回来，
         // 回合还在跑屏幕却不再常亮）。回合已结束则这里等价于一次幂等 clearFlags。
-        val active = runCatching { proxy?.roundActivity?.isRoundActive(System.currentTimeMillis()) }
-            .getOrNull() ?: false
+        val active = roundTracker.isRoundActive(System.currentTimeMillis())
         applyKeepScreenOn(active)
         if (::webView.isInitialized) {
             webView.onResume()
@@ -1133,11 +704,9 @@ class WebHostActivity : AppCompatActivity() {
     /**
      * D1 · **按 [PowerPolicy] 的结论真正置位/清除常亮 flag**。
      *
-     * 这是"回合进行中保持屏幕常亮"**唯一**的 flag 写入口。之前
-     * [WebHostBridge.setKeepScreenOn] 只在页面主动调时才会走到 `addFlags`，
-     * 而上游官方 UI 从不调它 ⇒ flag 永远置不起来（死代码，详见
-     * `research/web/FIX_D1.md` §1）。现在由 [LoopbackProxy.roundActivity]
-     * 用真实流量驱动，页面那条路则改为喂同一个跟踪器。
+     * 这是"回合进行中保持屏幕常亮"**唯一**的 flag 写入口。UX6 起驱动方只剩
+     * 页面桥（`setKeepScreenOn` 把请求喂给 [roundTracker]）——代理没了，
+     * 上游官方 UI 目前不会主动调它，所以这条功能实际是"页面可用、待上游接线"。
      *
      * @param roundActive 当前是否有回合在进行
      */
@@ -1168,9 +737,7 @@ class WebHostActivity : AppCompatActivity() {
 
     /** D1：兜底复查用的 runnable（同一时刻只挂一个，重复挂会互相覆盖成"最后一次"）。 */
     private val keepScreenOnBackstop = Runnable {
-        val stillActive = runCatching {
-            proxy?.roundActivity?.isRoundActive(System.currentTimeMillis())
-        }.getOrNull() ?: false
+        val stillActive = roundTracker.isRoundActive(System.currentTimeMillis())
         if (stillActive) {
             // 回合还活着（心跳还在续命）⇒ 重新挂一次，别让它漏掉下一次兜底。
             applyKeepScreenOn(true)
@@ -1183,14 +750,14 @@ class WebHostActivity : AppCompatActivity() {
         if (!::webView.isInitialized) return
         webView.removeCallbacks(keepScreenOnBackstop)
         val now = System.currentTimeMillis()
-        val tracker = proxy?.roundActivity
+        val tracker = roundTracker
         // 两种兜底谁先到就按谁：
         //  ① 空闲超时（回合没动静了）—— 常规路径；
-        //  ② 硬上限剩余量 —— 兜底中的兜底。常驻 `GET /event` 心跳会无限续命
-        //     （设备实测：t=+131s 仍 hits=1），只靠 ① 永远不会触发。
-        val holdMs = tracker?.roundHoldTimeoutMs ?: 90_000L
-        val remainMs = tracker?.let { (it.maxRoundKeepMs - it.roundAgeMs(now)).coerceAtLeast(1L) }
-        webView.postDelayed(keepScreenOnBackstop, minOf(holdMs, remainMs ?: holdMs))
+        //  ② 硬上限剩余量 —— 兜底中的兜底。常驻心跳会无限续命，
+        //     只靠 ① 永远不会触发。
+        val holdMs = tracker.roundHoldTimeoutMs
+        val remainMs = (tracker.maxRoundKeepMs - tracker.roundAgeMs(now)).coerceAtLeast(1L)
+        webView.postDelayed(keepScreenOnBackstop, minOf(holdMs, remainMs))
     }
 
     override fun onDestroy() {
@@ -1202,9 +769,6 @@ class WebHostActivity : AppCompatActivity() {
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.destroy()
         }
-        // 释放回环端口：ServerSocket + 线程池都是进程内资源，不关会挂着 accept 阻塞。
-        runCatching { proxy?.close() }
-        proxy = null
         super.onDestroy()
     }
 
@@ -1225,35 +789,6 @@ class WebHostActivity : AppCompatActivity() {
             request: WebResourceRequest,
         ): WebResourceResponse? = loader(view.context).shouldInterceptRequest(request.url)
 
-        /**
-         * UX1 任务2 · **自建页面回宿主的唯一通道**：`ocshell://` 私有 scheme。
-         *
-         * ## 为什么必须加这个（这是设备实测抓出来的真缺陷）
-         *
-         * 灰态外壳与 F21 被挡页都用 `loadDataWithBaseURL` 挂宿主 origin。
-         * **实测**（`research/web/ux1/shots/ux1_setup_dialog.png`）：在这类页面上
-         * `window.__ocAndroid` **拿不到** —— 文档开始脚本（`addDocumentStartJavaScript`）
-         * 对 `loadDataWithBaseURL` 的文档**不注入**。于是「去设置服务器」按钮
-         * 走 JS 桥的分支落空、退化成 `location.reload()`，实测结果是
-         * **整页变成 WebView 自己的 `net::ERR_NAME_NOT_RESOLVED` 错误页**，
-         * 用户既回不到配置对话框、也看不到灰态页 —— 正是 F5 修掉的**"不可自救"**原地复发。
-         *
-         * ## 为什么用 scheme 而不是别的
-         *
-         * 导航（而不是 `addJavascriptInterface`）在 `loadDataWithBaseURL` 页面上**照常回调**，
-         * 不依赖任何注入是否成功。私有 scheme 不可能解析到真实站点，命中即拦。
-         */
-        override fun shouldOverrideUrlLoading(
-            view: WebView?,
-            request: WebResourceRequest?,
-        ): Boolean {
-            val scheme = request?.url?.scheme ?: return false
-            if (scheme != INTERNAL_SCHEME) return false
-            Log.i(TAG, "UX1 internal scheme hit: ${request.url.host}")
-            openSetupFromBlockedPage()
-            return true
-        }
-
         // 参数用 `WebView?`：installFacade 的匿名子类里本来就有一个同签名的 override
         // （`view: WebView?`）。这里若声明成非空，那个匿名子类就会"overrides nothing"。
         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -1264,7 +799,7 @@ class WebHostActivity : AppCompatActivity() {
         override fun onReceivedError(
             view: WebView,
             request: WebResourceRequest,
-            error: android.webkit.WebResourceError,
+            error: WebResourceError,
         ) {
             super.onReceivedError(view, request, error)
             PerfMarks.mark(
@@ -1353,8 +888,8 @@ class WebHostActivity : AppCompatActivity() {
             //
             // SECURITY: a PermissionRequest carries the ORIGIN that asked
             // (PermissionRequest.getOrigin()). We never grant to an arbitrary
-            // origin -- only to this host's own loopback proxy origin (the page we
-            // ourselves load in loadUrl) or the configured backend origin.
+            // origin -- only to this host's own configured backend origin (the
+            // page we ourselves load in loadUrl).
             val origin = request.origin?.toString()
             val trusted = origin != null && isTrustedWebOrigin(origin)
             val wanted = request.resources.filter { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }
@@ -1399,7 +934,7 @@ class WebHostActivity : AppCompatActivity() {
     private var pendingCameraPermission: PermissionRequest? = null
 
     private val cameraPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestPermission(),
     ) { granted ->
         val request = pendingCameraPermission
         pendingCameraPermission = null
@@ -1422,18 +957,14 @@ class WebHostActivity : AppCompatActivity() {
     /**
      * F3: 该 origin 是否是本宿主**自己**加载的页面。
      *
-     * 两种可信来源：
-     *  1. 回环代理的 public origin（`http://127.0.0.1:<port>`，LoopbackProxy.kt:169）
-     *     —— 这正是 [launch] 里 `webView.loadUrl` 用的那个 origin（WebHostActivity.kt:412）；
-     *  2. 配置的后端 origin（SecretStore.KEY_BACKEND_URL，默认 `http://127.0.0.1:4095`）——
-     *     页面直接跑后端时（不经代理）也是我们配的。
+     * 可信来源：配置的后端 origin（SecretStore.KEY_BACKEND_URL，默认
+     * `http://127.0.0.1:4095`）—— 页面直连后端，origin 就是它。
      *
      * 刻意**不做**的：不按域名/正则泛化、不允许任意站点。
      * 一个 origin 拿到摄像头 = 用户不知道自己正被谁看着。
      */
     private fun isTrustedWebOrigin(origin: String): Boolean {
         val candidates = buildList {
-            proxy?.publicOrigin()?.let { add(it) }
             runCatching {
                 SecretStore.getSecret(this@WebHostActivity, SecretStore.KEY_BACKEND_URL)
             }.getOrNull()?.let { add(it) }

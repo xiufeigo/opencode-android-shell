@@ -5,24 +5,25 @@ package com.xiufeigo.opencodeshell.web.host
  *
  * ## 为什么要单独抽一层
  *
- * `LoopbackProxy` / `WebHostActivity` / `WebHostBridge` 三处都会调 `android.util.Log`，
+ * `WebHostActivity` / `WebHostBridge` 都会调 `android.util.Log`，
  * 而 `webapp` 模块**没有**开 `unitTests.isReturnDefaultValues`（`app` 模块开了，见
  * `app/build.gradle.kts:64-65`；本轮**无权**改 `webapp/build.gradle.kts`）。
- * 于是任何在 JVM 单测里构造这三个类的用例都会在 `Log.i` 上抛
+ * 于是任何在 JVM 单测里构造这两个类的用例都会在 `Log.i` 上抛
  * `RuntimeException: Method i in android.util.Log not mocked`。
  *
- * 所以：把**决策**全放进这个不依赖 android 的对象，三处宿主只做**接线**。
+ * 所以：把**决策**全放进这个不依赖 android 的对象，宿主只做**接线**。
  * 单测直接测决策（真行为断言），另有 `PowerWiringTest` 做源码接线断言。
  *
  * ## 依据
  *
  * `research/perf/BATTERY_HOWTO.md` §7.2 / §7.3（只读盘点，带行号）：
- *  - §7.2 头号风险：`LoopbackProxy.kt:137-155` 常驻 + `WebHostActivity.kt:776`
- *    **只在 `onDestroy` 关闭** ⇒ 退到后台后 SSE 长连接（上游 `/event` 每 10 s 心跳）
- *    继续唤醒射频，**且与屏幕亮度无关**。
- *  - §7.3：`WebHostBridge.kt:156-167` 的 `setKeepScreenOn` 是**死代码**（无调用者），
- *    但 `onPause`（`WebHostActivity.kt:756-759`）**没有任何防御性 `clearFlags`**
- *    ⇒ 一旦页面接上调用，回合中途出错 / 被杀 / 切走就成"忘关路径"。
+ *  - §7.2 头号风险（**历史形态**）：回环代理常驻 + 只在 `onDestroy` 关闭 ⇒
+ *    退到后台后 SSE 长连接继续唤醒射频。UX6 已把代理整个删除，流量直连后端，
+ *    该风险随代理消失；后台时 WebView `onPause` 暂停页面 JS，`/event` 由浏览器
+ *    自行挂起/重连，与手机浏览器的语义一致。
+ *  - §7.3：`WebHostBridge` 的 `setKeepScreenOn` 曾长期是**死代码**（无调用者），
+ *    但 `onPause` **没有任何防御性 `clearFlags`** ⇒ 一旦页面接上调用，回合中途
+ *    出错 / 被杀 / 切走就成"忘关路径"。`onPause` 无条件清 flag 的接线保留至今。
  *
  * ⚠️ 本文件只做**决策**。"决策成立"不等于"耗电下降" —— 后者只能真机量，见
  * `research/perf/POWER_ACTIONS_P6.md` 的代理量对照表。
@@ -88,10 +89,10 @@ object PowerPolicy {
         /**
          * 后台：**不回上游**，直接给页面一个可重试的失败（`503` + `Connection: close`）。
          *
-         * 为什么是 503 而不是"悄悄挂着"：页面 `EventSource` 的自动重连是既有语义 ——
-         * `LoopbackProxy.kt:129-133` 的"35 s 静默判半开主动断开让页面重连"早就依赖它。
-         * 复用同一条恢复路径 = 不引入新行为类别；回前台时页面自然重连并重新同步。
-         * 且重连只打**回环**（127.0.0.1），不碰上游 ⇒ **射频不唤醒**。
+         * UX6：回环代理已删，本枚举暂无生产消费者（保留为策略声明；若未来
+         * 宿主重新介入流量，这条语义即生效）。历史理由：页面 `EventSource`
+         * 的自动重连是既有语义，复用"可重试失败"= 不引入新行为类别，回前台时
+         * 页面自然重连并重新同步。
          */
         REFUSE_WHILE_BACKGROUND,
     }

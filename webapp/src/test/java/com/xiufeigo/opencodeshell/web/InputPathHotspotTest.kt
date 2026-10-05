@@ -1,6 +1,7 @@
 package com.xiufeigo.opencodeshell.web
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -52,7 +53,21 @@ class InputPathHotspotTest {
      * 且**不**把 `focusin` / `focusout` / `paste` 之类非逐键事件算进去
      * （IME1 的 `focusin` 委托是**焦点生命周期**事件，每次输入只触发一次，
      *  实测代价见 IME_OCCLUTION_FIX.md §4.1，不属于逐键热路径）。
+     *
+     * UX6 豁免：`addEventListener("keydown", onEditableArrowGuard, true)` —
+     * 输入框边界方向键守卫（oc-host.js 的 `onEditableArrowGuard`）。
+     * 豁免条件（三条都要满足，见 [arrowGuardExemptionIsNarrow]）：
+     *  1) handler 名必须**恰好**是 `onEditableArrowGuard`（具名函数，便于审计）；
+     *  2) 全文件只允许**这一个** keydown 注册点（第二个起即报红）；
+     *  3) handler 函数体内不得出现同步存储读（`localStorage`/`sessionStorage`）。
+     * 实测代价：每次 keydown 只做 tag/type 字符串比较 + 两个数值比较
+     * （selectionStart/selectionEnd/length），无分配、无存储、无 DOM 遍历 ——
+     * 与 P4 测出的输入延迟（web p50 35.70ms）相比是零头量级；
+     * 且非方向键在第一个比较就 return（一次字符串不等比较）。
      */
+    private val arrowGuardRegistration =
+        Regex("""addEventListener\(\s*["']keydown["']\s*,\s*onEditableArrowGuard\s*,\s*true\s*\)""")
+
     private fun perKeystrokeHits(js: String): List<String> {
         val hits = mutableListOf<String>()
         for (ev in perKeystrokeEvents) {
@@ -60,6 +75,13 @@ class InputPathHotspotTest {
             if (add.containsMatchIn(js)) hits += "addEventListener('$ev')"
             val on = Regex("""\bon$ev\s*=\s*""")
             if (on.containsMatchIn(js)) hits += "on$ev ="
+        }
+        // UX6 豁免：恰好一个具名 arrow-guard 注册 ⇒ 从命中里摘掉。
+        if (hits.contains("addEventListener('keydown')") &&
+            arrowGuardRegistration.containsMatchIn(js) &&
+            arrowGuardRegistration.findAll(js).count() == 1
+        ) {
+            hits.remove("addEventListener('keydown')")
         }
         return hits
     }
@@ -196,6 +218,32 @@ class InputPathHotspotTest {
             "误报：focusin 是焦点生命周期事件（每次输入只触发一次），不该被判成逐键热路径。",
             emptyList<String>(),
             perKeystrokeHits(legit),
+        )
+    }
+
+    // ------------------------------------------------- 3) UX6 豁免的窄化断言
+
+    private val realJs: String get() = read("src/main/assets/www/oc-host.js")
+
+    @Test
+    fun `arrow guard exemption is registered exactly once with the audited name`() {
+        val hits = arrowGuardRegistration.findAll(realJs).count()
+        assertEquals(
+            "onEditableArrowGuard 的 keydown 注册必须**恰好一处**（$hits 处）：" +
+                "豁免只覆盖这一个具名 handler，第二处起必须回到逐键监听的红线。",
+            1,
+            hits,
+        )
+    }
+
+    @Test
+    fun `arrow guard handler does no sync storage reads`() {
+        val start = realJs.indexOf("function onEditableArrowGuard(")
+        assertTrue("找不到 onEditableArrowGuard 函数定义", start >= 0)
+        val body = realJs.substring(start, minOf(start + 2200, realJs.length))
+        assertFalse(
+            "方向键守卫体内不允许同步存储读（每次按键都跑，P5 红线）：",
+            Regex("""(localStorage|sessionStorage)\s*\.\s*(getItem|setItem)\s*\(""").containsMatchIn(body),
         )
     }
 }

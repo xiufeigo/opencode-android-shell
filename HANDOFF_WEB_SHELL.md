@@ -23,19 +23,19 @@
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
-### 0.1 当前可交付（**F7 已用 `Get-FileHash` 逐份复核；F8 又复核一遍，仍一致；UX5 批为当前唯一有效值，以磁盘为准**）
+### 0.1 当前可交付（**UX6 批为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,994,336 B**（≈3.81 MB） | `a3a88537abdfab20b481e99ff2a92c19` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 UX5 选择面板动作修正（打开文件透传上游「+」/ 打开终端走上游 openTerminal 序列）+ UX4 主题修复 + F6 + 此前全部修复。**UX5 重建值**（2026-10-05，报告 `research/web/UX5_CHOOSER_ACTIONS.md`）；旧值 `9fb24886…`(UX4) / `f47e281c…`(UX3) / `d6015bf2…`(UX2) 已作废，见 §0.1 末 UX5/UX4 块 |
-| `opencode-shell-web.apk`（debug） | **5,438,212 B**（≈5.19 MB） | `feae3854244badff58820607fe1d6913` | 日常调试（debug 签名）；同上。**UX5 重建值**；旧值 `a7377e06…`(UX4) / `5d3bcc15…`(UX3) / `69bbe05f…`(UX2) 已作废 |
-| ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,449,744 B**（≈1.38 MB，比非 R8 **−63.73%**） | `94baad39812fa5e08a8e5fe386bd6632` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储** · **JS 桥** · **错误态三态** · **`shrinkResources`** · **全程无崩溃** · **常亮三段**（真点官方 UI Send 驱动）。⚠️ 那些🟡级读数**验于旧字节体**，引用时必须带当时的 md5（见 §0.1 末 UX5 块口径）。**UX5 重建值（含主题修复 + 面板动作修正）**；旧值 `f3bee4f9…`(UX4) / `4917af72…`(UX3) / `28ee9ffc…`(UX2) 已作废 |
-| `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
-| `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
+| **`opencode-shell-web-release-nor8.apk`** | **3,545,375 B**（≈3.38 MB） | `525b68470b01438a04bc5e0d026c9534` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX6 架构重建值**（2026-10-05，报告 `research/web/UX6_OFFICIAL_ENTRY.md`）：**回环代理/未配置灰页/启动配置对话框/口令注入已全部删除，WebView 直连真实后端地址**；OkHttp 依赖移除（release −449 KB）。旧值 `a3a88537…`(UX5) / `9fb24886…`(UX4) / `f47e281c…`(UX3) / `d6015bf2…`(UX2) 已作废 |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `fba7db16c87e0dab3f4bab53d5433490` | 日常调试（debug 签名）；同上。**UX6 重建值**；旧值 `feae3854…`(UX5) / `a7377e06…`(UX4) 已作废 |
+| ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,265,237 B**（≈1.21 MB，比非 R8 **−64.3%**） | `a854824f3c4a0de3f1ea38ccea00d6dc` | 🟡 同 UX6 架构重建。**UX6 重建值**；旧值 `94baad39…`(UX5) 等已作废。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
+| `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
 包名统一 `com.xiufeigo.opencodeshell.web.debug`（**release 变体也用 debug 包名 + Android Debug 证书**——V5 §1.3 明确"不能据此判可用于对外分发"，是否改名/换证**待 Lead 定调**）。
-**体积对比**：原生壳 release 29.4 MB vs web 壳 release 3.98 MB ⇒ **小 7.4 倍**（两者同为 release，可比；`29,393,986 / 3,975,389 = 7.394`）。
+**体积对比**：原生壳 release 29.4 MB vs web 壳 release 3.55 MB ⇒ **小 8.3 倍**（UX6 去代理后又缩了一档）。
 > **⚠️ 口径更正（A5 推翻旧表述）**：本文件上一版在此处写的是「**一个前端字节都不打包**」——**这句字面为假，已撤回**。交付包里确实带着 **4 个壳自带的 facade 资产**（不是上游 SPA）：
 >
 > | 包内条目 | 未压缩 | 压缩 |
@@ -47,7 +47,25 @@
 > | **合计** | **40,801 B** | **15,975 B** |
 >
 > **准确表述**：「**不打包官方前端（上游 SPA）的任何字节**；壳自带的 4 个 facade 资产共 40,801 B 未压缩 / 15,975 B 压缩仍在包内。」复现：`unzip -l …apk 'assets/www/*'`（Windows：`System.IO.Compression.ZipFile`）。**"小 7.4 倍"这个事实不受影响**（40,801 B 占 release 包 1.0%），但那句"一个字节都不打包"是**一条 `unzip` 就能推翻的头牌级错话，不要再引用**。
-**构建输出一致性**：`webapp/build/outputs/apk/release/webapp-release.apk` 与 `.../debug/webapp-debug.apk` 的 md5 与上表前两行**逐位相同** ⇒ 拿构建目录那份也安全。
+**构建输出一致性**：`webapp/build/outputs/apk/{release,debug,releaseR8}/` 的 md5 与上表**逐位相同** ⇒ 拿构建目录那份也安全。
+
+#### ✅ UX6 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**本表为当前唯一有效交付值**）
+
+**UX6 亲手重跑 `Get-FileHash` 的实测结果**（`research/deliver/`）：
+
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **3,545,375 B** | **`525b68470b01438a04bc5e0d026c9534`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,265,237 B** | **`a854824f3c4a0de3f1ea38ccea00d6dc`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B** | **`fba7db16c87e0dab3f4bab53d5433490`** | 同上 |
+
+**包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`784e5d27ac896251918a0ed3169ecd08`**，与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
+
+> 🔴 **UX6 批以下旧值全部作废，不得再被当作"当前交付包"引用**：`a3a88537…`(UX5 nor8) / `94baad39…`(UX5 R8) / `feae3854…`(UX5 debug) 及 UX4/UX3/UX2/F16 及更早的全部历代值。**本节以下的 UX5/UX4/UX3/F19/F8 复核块均为历史记录**，其中出现的 md5 一律指向旧字节体（旧代理架构）。引用 🟡 级设备结论时仍按 §4.5 口径**带它当时测的那个 md5**。
+
+**UX6 架构变更一句话**：启动 = `loadUrl(SecretStore[backendUrl] ?: http://127.0.0.1:4095)`（G1 前置检查照旧）；**回环代理、未配置灰页、启动配置对话框、F5 探测、F21 闸门、口令存储/注入全部删除**；服务器与口令只在官方 UI「设置 → 服务器」里配置（官方表单支持密码字段，Basic `opencode:<password>`）；adb reverse tcp:4095 仍是 Android 侧访问宿主后端的前提。F21 在新形态下由**结构**保障（宿主无任何凭据路径），绊线 = `DirectConnectAuthBoundaryTest`。详见 `research/web/UX6_OFFICIAL_ENTRY.md`。
+
+> ⚠️ 下列 F19/F8/UX5/UX4/UX3 复核块**已被本块取代**（历史保留）。
 
 **F8 复核（2026-10-05，结论已由 A5 独立复算确认）—— 文档与磁盘一致，未发现脱节**：
 
@@ -418,10 +436,12 @@ webView.evaluateJavascript("… onBack() …")              // ← 页面自己�
 
 ## 2. 架构与实现
 
-- **模块**：`webapp/`（独立 Gradle 子模块，产出第二个 APK，与原生壳并存便于 A/B）；R8 做成 `-Pwebapp.r8=true` 开关（默认关），不新增 buildType
-- **核心文件**：`WebHostActivity.kt`（托管+首启+兜底）、`LoopbackProxy.kt`（**应用内回环 HTTP 代理**）、`ConnectErrorPage.kt`（**F5 新增**，友好错误页）、`BackendProbe.kt`（**F5 新增**，探测+三态判定）、`InsetsHost.kt`、`WebHostBridge.kt`、`SecretStore.kt`
-- **为什么需要回环代理**：官方 UI 直连后端会撞 CORS。现在**页面与 API 同源**（都由应用内代理提供）⇒ **彻底免 CORS**；**代理转发时注入 Basic 头**，**口令只存 `EncryptedSharedPreferences`，页面永远拿不到口令**
-- **首启流程**：口令为空 ⇒ 弹配置框（后端地址+口令）；有口令 ⇒ `probeThenLaunch()` 先探 `/api/info` 再决定放行/报错
+> 🟥 **UX6（2026-10-05）架构已换代，本节前四条描述的是旧代理架构，作废**。现行架构：**WebView 直连真实后端**（页面与 API 天然同源于后端 origin，CORS 不参与）；**`LoopbackProxy.kt`/`ConnectErrorPage.kt`/`BackendProbe.kt`/`NotConfiguredShell.kt`/`LaunchGuard.kt`/`StableOrigin.kt`/`SetupDialogMetrics.kt` 已删除**；无首启配置框、无灰态、无探测；服务器/口令只在官方 UI「设置 → 服务器」配置（官方 Add server 表单带 Password 字段，`Authorization: Basic base64(opencode:<password>)`，见 `_upstream/packages/app/src/servers/connect/dialog.tsx:149-161` + `runtime/server/api.ts:5-7`）。宿主侧 `SecretStore` 只剩非秘密的 `backendUrl`（启动入口）。F21 安全性质改由结构保障（`DirectConnectAuthBoundaryTest` 钉死）。报告：`research/web/UX6_OFFICIAL_ENTRY.md`。以下为历史描述，保留备查：
+
+- **模块**：`webapp/`（独立 Gradle 子模块，产出第二个 APK，与原生壳并存便于 A/B）；R8 做成 `-Pwebapp.r8=true` 开关（默认关），不新增 buildType →（F11 起为独立 `releaseR8` 变体，开关已删）
+- **核心文件**（旧架构）：`WebHostActivity.kt`、`LoopbackProxy.kt`、`ConnectErrorPage.kt`、`BackendProbe.kt`、`InsetsHost.kt`、`WebHostBridge.kt`、`SecretStore.kt`
+- **为什么曾需要回环代理**（旧架构）：官方 UI 直连后端会撞 CORS；代理让页面与 API 同源、转发时注入 Basic 头、口令只存 EncryptedSharedPreferences。**UX6 起直连后端本身提供 SPA（`packages/cli/src/services/web-ui.ts` 的 SPA 回落），页面 origin == API origin，CORS 依然不参与，但不再需要代理**。
+- **首启流程**（旧架构，已删）：口令为空 ⇒ 弹配置框；有口令 ⇒ `probeThenLaunch()` 先探 `/api/info`。
 - ⚠️ **闸门命令**（唯一验收）：`$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'` 后 `.\gradlew.bat --console=plain cleanTestDebugUnitTest testDebugUnitTest assembleDebug :webapp:testDebugUnitTest :webapp:assembleDebug`
 
 ---
@@ -513,7 +533,7 @@ webView.evaluateJavascript("… onBack() …")              // ← 页面自己�
 >
 > | 权限 | 性质 | 用途 |
 > |---|---|---|
-> | `android.permission.INTERNET` | 普通 | 访问后端（经应用内回环代理） |
+> | `android.permission.INTERNET` | 普通 | 访问后端（**UX6 起 WebView 直连**；旧架构经应用内回环代理，代理已删） |
 > | `android.permission.CAMERA` | **敏感** | 取流 / 扫码（见本节） |
 > | `android.permission.POST_NOTIFICATIONS` | **运行时权限（Android 13+ 需用户授权）** | 通知渠道（代理事件推送）；⚠️ **本文件此前全文 0 次提及它**——不敏感，但"我已列全权限"的人会**漏掉一条** |
 > | `…web.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | 无运行时风险 | AGP 自生成的内部自定义权限 |
