@@ -761,23 +761,38 @@ class WebHostActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 返回：canGoBack → 问页面 → 什么都不做 -----------------------------
+    // ---- 返回：**先问页面** → 再退历史 → 什么都不做 -------------------------
+    //
+    // F18（缺陷 B）：改前是 `if (webView.canGoBack()) { goBack(); return }` **优先**，
+    // 页面自己的 `onBack()` 排在 else 分支里。而上游 SPA 用 History API 做站内导航，
+    // 进会话时已经压了一条 history ⇒ 面板打开态按 BACK 时 `canGoBack()==true`
+    // ⇒ 直接 `goBack()` 把 SPA 路由退回首屏，**面板没关、还退了两级**。
+    //
+    // 改成"先问页面"：页面知道有没有浮层开着，能消费就消费（关面板），
+    // 消费不掉才落到历史回退 —— 这与桌面端"Esc 先关浮层、否则才后退"的心智一致。
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                    return
-                }
                 webView.evaluateJavascript(
                     "(function(){try{" +
                         "return !!(window.__ocAndroid && window.__ocAndroid.onBack && window.__ocAndroid.onBack());" +
                         "}catch(e){return false}})()"
                 ) { result ->
-                    // 注意：**没有** else 分支去 finish()。
-                    // 禁用直接 finish 是硬要求：Web 壳里 Activity 退出会丢会话页状态。
-                    val handled = result?.trim() == "true"
-                    Log.i(TAG, "back: canGoBack=false, pageHandled=$handled (no finish)")
+                    val pageHandled = result?.trim() == "true"
+                    if (pageHandled) {
+                        // 页面消费了（例如关掉 popover）⇒ 绝不走历史，绝不 finish。
+                        Log.i(TAG, "back: pageHandled=true (overlay closed), no history pop")
+                        return@evaluateJavascript
+                    }
+                    // 页面没处理，才退 WebView 历史。
+                    if (webView.canGoBack()) {
+                        webView.goBack()
+                        Log.i(TAG, "back: pageHandled=false -> goBack()")
+                    } else {
+                        // 注意：**没有** finish 分支。
+                        // 禁用直接 finish 是硬要求：Web 壳里 Activity 退出会丢会话页状态。
+                        Log.i(TAG, "back: canGoBack=false, pageHandled=false (no finish)")
+                    }
                 }
             }
         })
@@ -1106,6 +1121,14 @@ class WebHostActivity : AppCompatActivity() {
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
             PerfMarks.mark("L.onPageFinished", "url=$url")
+            // F18（缺陷 A）：首屏 insets 补发。
+            // 第一次 publish 发生在 onCreate 的 requestApplyInsets()，那时页面还不存在，
+            // evaluateJs 打在空文档上 ⇒ payload 丢失；顶部 inset 是静态的，之后再不变，
+            // 去重逻辑又不会重发。此刻 documentElement 一定在了，显式补一次（不走去重）。
+            if (::insets.isInitialized) {
+                insets.replay()
+                Log.i(TAG, "insets replayed after page finish: $url")
+            }
             // 首屏 insets / 主题补一次（此刻 documentElement 一定在了）。
             if (contextCompatDark(view)) {
                 Log.d(TAG, "page finished: $url")

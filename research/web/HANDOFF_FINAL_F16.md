@@ -18,13 +18,21 @@
 
 命令：`Get-FileHash research\deliver\*.apk -Algorithm MD5`
 
-| # | 产物 | 体积 | **磁盘实测 md5** | 与派单给的期望值 | 与文档原值 |
-|---|---|---:|---|---|---|
-| 1 | **`opencode-shell-web-release-nor8.apk`**（默认推荐） | **3,975,389 B** | **`76CA064B7DE9246EE446F765A9198B37`** | ✅ 一致 | ✅ 一致 |
-| 2 | **`opencode-shell-web-release-r8.apk`** | **1,435,193 B** | **`0598817026665544A08803055107A9FD`** | ✅ 一致 | ✅ 一致（F11 首次登记的值） |
-| 3 | **`opencode-shell-web.apk`**（debug） | **5,275,479 B** | **`16C6CF8B7330E5D02879F30333800AD9`** | ✅ 一致 | ✅ 一致 |
+| # | 产物 | 体积 | **磁盘实测 md5** | 状态 |
+|---|---|---:|---|---|
+| 1 | **`opencode-shell-web-release-nor8.apk`**（默认推荐） | **3,979,113 B** | **`03D7888FBC22779DFE7B10737F1CA151`** | 🆕 **F18 重建，旧值 `76CA064B7DE9246EE446F765A9198B37`（3,975,389 B）已作废** |
+| 2 | **`opencode-shell-web-release-r8.apk`** | **1,437,969 B** | **`5227C2AC67F5A613C32ADACDBB7783E0`** | 🆕 **F18 重建，旧值 `0598817026665544A08803055107A9FD`（1,435,193 B）已作废** |
+| 3 | **`opencode-shell-web.apk`**（debug） | **5,243,859 B** | **`9F511C5A2D865CCA173D62A57BA956A0`** | 🆕 **F18 重建，旧值 `16C6CF8B7330E5D02879F30333800AD9`（5,275,479 B）已作废** |
 
-**⇒ 三个 md5 全部与派单和文档一致，没有需要点出的不一致。**
+> ⚠️ **F18（2026-10-05）交付物换代**：三份**全部**因 F18 的两条手机形态修复（顶部 inset + BACK）
+> 而重建，md5 与体积**均已变化**。**上面表格里的三个新值才是当前有效值**，
+> 本文其余章节引用的旧 md5 一律以本表为准。三份均为 `sharedDebug` 签名
+> （`CN=Android Debug`），与旧包一致 ⇒ 可互相覆盖安装。
+> 变更内容：注入层 `oc-host.js` 新增顶部安全区消费与 BACK 浮层消费；
+> `WebHostActivity.kt` 的 BACK 改为"先问页面"并在 `onPageFinished` 补发 insets；
+> `InsetsHost.kt` 新增 `replay()`。详见 `research/web/FIX_F18_PHONE.md`。
+> 包内含源自查（对 R8 包解包 `assets/www/oc-host.js`）：`oc-top-inset` / 根容器规则 /
+> `key: "Escape"` / 两处 `installTopInsetStyle()` / 两处 `installDefaultBackHandler()` 全部命中。
 
 **顺带复核的另外两份 + 构建目录双证**（同样逐位一致）：
 

@@ -28,6 +28,142 @@
   var lastInsets = null;
 
   // ======================================================================
+  // 顶部安全区（缺陷 A：标题与状态栏/挖孔重叠）
+  //
+  // 根因（F18 实测）：**不是**宿主没给 inset，而是两条各断一半：
+  //  1) 宿主侧：InsetsHost 的首次 publish 发生在 onCreate 的 requestApplyInsets()，
+  //     那时页面还不存在 ⇒ payload 静默丢失；顶部 inset 是静态的（不像 IME 会抖动），
+  //     去重逻辑于是永不重发 ⇒ 页面侧 --oc-safe-top 恒为空。
+  //     已由宿主侧 InsetsHost.replay() 在 onPageFinished 补发修好。
+  //  2) 页面侧（就是这一段）：即使变量到了，上游 SPA **也不消费 --oc-safe-top**
+  //     （与 IME1 同构：宿主交出了正确读数，页面没接）。
+  //     WebView 边到边 ⇒ env(safe-area-inset-top) 恒为 0，也不能指望。
+  //
+  // 所以这里用宿主实测的 --oc-safe-top 给**应用根容器**垫顶部内边距。
+  // 选根容器而不是 header 自身：根容器是 h-dvh + box-sizing:border-box，
+  // 垫 padding-top 后**总高仍是视口高**（内容区等量收缩、不溢出、不出滚动条）；
+  // 若垫在 header 上则会把它顶下去而下方内容不动，形态更差。
+  // ======================================================================
+  var TOP_STYLE_ID = "oc-top-inset";
+
+  function installTopInsetStyle() {
+    if (document.getElementById(TOP_STYLE_ID)) return;
+    var css = [
+      // 边到边下 env() 恒为 0；取两者较大值，与底部 --oc-safe-bottom-eff 同一口径。
+      ":root{--oc-safe-top-eff:max(var(--oc-safe-top,0px),env(safe-area-inset-top,0px));}",
+      // 应用根容器：#root 是上游挂载点，body>div 是它在 DOM 上的语义形态。
+      // 两者同指一个元素；写成两条是为了上游改 id 时不至于整条修法失效。
+      "#root,body>div:first-of-type{",
+      "padding-top:var(--oc-safe-top-eff,0px);",
+      "box-sizing:border-box;",
+      "}",
+    ].join("\n");
+    var st = document.createElement("style");
+    st.id = TOP_STYLE_ID;
+    st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  // ======================================================================
+  // BACK：面板打开时先关面板（缺陷 B）
+  //
+  // 根因（F18 实测，WebHostActivity.kt:768 改前）：宿主是
+  //     if (webView.canGoBack()) { webView.goBack(); return }
+  //     ... else 问页面 onBack()
+  // 即 **canGoBack 优先**。而上游 SPA 用 History API 做站内导航 ⇒ 打开会话时
+  // 已经压了一条 history ⇒ 面板打开态按 BACK 时 canGoBack()==true，
+  // 于是直接 goBack() 把 SPA 路由退回首屏，**页面自己的 onBack 根本没被问到**
+  // ⇒ popover 没关、还退了两级。已改为"先问页面、再退历史"。
+  //
+  // 页面侧策略：**不自己实现关闭逻辑**，而是派发一个真实的 Escape。
+  // 依据：桌面浏览器里这个 popover 就是靠 Esc 关闭的（V13 §缺陷 D4 的对照），
+  // Radix 的 dismissable layer 原生监听 Escape ⇒ 走的是上游自己的关闭路径，
+  // 行为与桌面端逐字一致，也不会与上游的状态机打架。
+  // ======================================================================
+  // 打开中的浮层选择器。
+  // ⚠️ **故意不含 [role='dialog']**（F18 真机实测踩到的坑）：上游常驻预挂载一个
+  // role="dialog" 的底部 sheet（实测 top=780 / h=205，而视口高 780 ⇒ 恰在视口外）。
+  // 它不属于 BACK 该消费的"临时浮层"，把它算进来会让 count 在面板关闭后仍 ≥0，
+  // 于是**第二次** BACK 也被吃掉 ⇒ 永远退不回会话列表（实测复现）。
+  // 面板本体是 Radix 的 **menu** popper（触发器 aria-haspopup="true"、实测
+  // "More options" 按钮 aria-expanded 随开合 true/false），下面的选择器足以覆盖。
+  var OVERLAY_OPEN_SELECTORS = [
+    "[data-radix-popper-content-wrapper]",
+    "[data-state='open']",
+    "[role='menu']",
+    "[role='listbox']",
+    ":popover-open",
+  ].join(",");
+
+  /**
+   * 触发器自报"我开着"—— Radix 打开 popover 时把触发器的 aria-expanded 置 true、
+   * 关闭时置回 false。这是**上游自己给的权威信号**，比任何选择器猜测都可靠。
+   */
+  function hasExpandedTrigger() {
+    try {
+      return (
+        document.querySelectorAll("[aria-haspopup][aria-expanded='true']").length > 0
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function overlayCount() {
+    try {
+      var vh = window.innerHeight || 0;
+      var nodes = document.querySelectorAll(OVERLAY_OPEN_SELECTORS);
+      var n = 0;
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var r = el.getBoundingClientRect();
+        var w = r.width || el.offsetWidth || 0;
+        var h = r.height || el.offsetHeight || 0;
+        // **只看视口内真正可见的**（零尺寸/离屏的挂载节点不算"打开"）。
+        if (w > 0 && h > 0 && r.top < vh && r.bottom > 0) n++;
+      }
+      return n;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /** 面板/popover 打开态按 BACK：派发 Escape 让上游自己关。返回是否消费了这次 BACK。 */
+  function closeTopOverlayOnBack() {
+    // 判"面板开着"用**触发器自报**（aria-haspopup + aria-expanded=true）为准，
+    // 可见浮层数为辅。触发器信号是上游自己的契约，面板一关就立刻回到 false，
+    // 不会像"选择器命中数"那样被常驻挂载节点长期钉住。
+    if (!hasExpandedTrigger() && overlayCount() === 0) return false;
+    try {
+      var target = document.activeElement || document.body;
+      ["keydown", "keyup"].forEach(function (type) {
+        target.dispatchEvent(
+          new KeyboardEvent(type, {
+            key: "Escape",
+            code: "Escape",
+            keyCode: 27,
+            which: 27,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          })
+        );
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** 注册默认 BACK 处理器；页面自己注册过 setBackHandler 时以页面的为准。 */
+  function installDefaultBackHandler() {
+    oc.setBackHandler(function () {
+      return closeTopOverlayOnBack();
+    });
+  }
+
+
+  // ======================================================================
   // IME 抬升（composer 被键盘完全遮挡的修法）
   //
   // 前提事实（不要改坏）：
@@ -443,6 +579,8 @@
       "DOMContentLoaded",
       function () {
         installImeLiftStyle();
+        installTopInsetStyle();
+        installDefaultBackHandler();
         if (lastInsets) doApply(lastInsets);
         window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
       },
@@ -450,6 +588,8 @@
     );
   } else {
     installImeLiftStyle();
+    installTopInsetStyle();
+    installDefaultBackHandler();
     window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
   }
   // focusin 委托：composer 是 SPA 动态挂载的，不能只绑一次。

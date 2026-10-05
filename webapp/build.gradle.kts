@@ -129,6 +129,10 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         "src/main/assets/www/index.html",
         "build.gradle.kts",
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
+        // F18 绊线：`PhoneFormDefectTest` 的「资产契约层」要读 InsetsHost.kt
+        // （断言 replay() 存在）与新纯函数件本身。撤回任一处修法都必须能反向变红。
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/PhoneFormDefect.kt",
     ).forEach { rel ->
         inputs.file(layout.projectDirectory.file(rel))
             .withPropertyName("contractAsset_$rel")

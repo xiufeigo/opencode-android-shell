@@ -80,6 +80,29 @@ class InsetsHost(
         publish(insets)
     }
 
+    /**
+     * F18：**把最近一次 payload 重新推一遍**，不做去重。
+     *
+     * ### 为什么必须有这个方法（缺陷 A 的根因就在这一段）
+     * [publish] 只在 `payload != last` 时才通知消费者（去重）。而 insets 的
+     * **第一次**投递发生在 [init] 的 `requestApplyInsets()`（Activity onCreate 阶段），
+     * 那时**页面还没加载**，`pushInsets` 里的 `evaluateJs` 打在一个没有
+     * `window.__ocAndroid` 的文档上 ⇒ payload 静默丢失；随后 insets 再也不变
+     * （顶部状态栏/挖孔是**静态**的，不像 IME 那样会 0↔非0 抖动触发重发）
+     * ⇒ 去重把这条静态读数**永久挡在门外**。
+     *
+     * 实测（改前，`research/web/FIX_F18_PHONE.md` §2）：
+     * `window.__ocAndroid.getInsets() === null` 且 `--oc-safe-top` 为空串，
+     * 手动调 `setImeMode()` 触发 [refresh] 也**仍然**收不到（payload 相同、被去重）。
+     *
+     * 修法：页面就绪（`onPageFinished`）时由宿主显式补发一次，不依赖"值变了"。
+     */
+    fun replay() {
+        val payload = last ?: run { refresh(); return }
+        runCatching { onInsets(payload) }
+            .onFailure { Log.w(TAG, "onInsets consumer threw", it) }
+    }
+
     fun setImeMode(mode: ImeMode) {
         imeMode = mode
         Log.i(TAG, "imeMode = $mode")
