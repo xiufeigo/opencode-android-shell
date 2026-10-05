@@ -13,7 +13,12 @@ $LOG="$OUT\$Tag.log"
 if (Test-Path $LOG) { Remove-Item $LOG -Force }
 function A($argv){ $o = & $adb -s $S @argv 2>&1; return (($o | Out-String) -replace "`r`n"," | ") -replace '\s{2,}',' ' }
 function Sh($cmd){ $o = & $adb -s $S shell $cmd 2>&1; return (($o | Out-String) -replace "`r`n"," | ") -replace '\s{2,}',' ' }
-function L($m){ $s="[{0}] {1}" -f (Get-Date -Format "HH:mm:ss.fff"),$m; Add-Content -Path $LOG -Value $s -Encoding utf8; Write-Output $s }
+# F15 FIX: Write-Output -> Write-Host. Write-Output sent every log line into the
+# PowerShell PIPELINE, so KeepState() returned System.Object[] (log lines + 'false')
+# instead of the scalar 'true'/'false'. `$seg2 -eq 'false'` therefore compared an
+# ARRAY to a string -> always False -> VERDICT always printed release=false.
+# Write-Host goes to the host only and never pollutes the pipeline.
+function L($m){ $s="[{0}] {1}" -f (Get-Date -Format "HH:mm:ss.fff"),$m; Add-Content -Path $LOG -Value $s -Encoding utf8; Write-Host $s }
 
 # ---- button discovery: real send button, NOT fixed coordinates ----
 function DumpXml([string]$name){
