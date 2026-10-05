@@ -686,6 +686,19 @@ class WebHostActivity : AppCompatActivity() {
         // 所以这里把"宿主离开前台"当作**硬边界**：只要不在前台，就不许常亮。
         // 决策在 [PowerPolicy.shouldKeepScreenOn]（纯 Kotlin、可单测）。
         clearKeepScreenOnOnBackground()
+        // P6 · 刀 2（UX8 恢复）：切后台**主动断开 SSE**。
+        //
+        // 复用上游既有机制：client connection 的 pageLifecycle（_upstream
+        // packages/client/src/solid/connection.ts:219-240）是
+        //   pagehide → stop()（:202-209，`stream?.abort()` 真正掐断 /api/event）
+        //   pageshow → start()（重连）
+        // 上游 App 也开着它（packages/app/src/runtime/server/client.tsx:90-93
+        // `pageLifecycle: true`）。但 WebView 切后台**不发 pagehide**
+        // （connection.ts:222-223 注释自己承认），机制在位、扳机缺失 ——
+        // 宿主合成派发补上。波及面全 _upstream 检索过：pagehide 的其它监听者
+        // 只有 layout.tsx:363 / persist.ts:20 两个 flush（落盘，无害且有益）；
+        // stop()/start() 均幂等（:185-206），即便 WebView 将来原生补发也不会双连。
+        dispatchPageLifecycleEvent("pagehide")
         if (::webView.isInitialized) webView.onPause()
     }
 
@@ -699,7 +712,28 @@ class WebHostActivity : AppCompatActivity() {
         if (::webView.isInitialized) {
             webView.onResume()
             insets.refresh()
+            // P6 · 刀 2（UX8 恢复）：回前台重建 SSE —— 合成 pageshow 触发上游
+            // connection.ts:221 的 start()。幂等（:185-188 已 started 则直接返回）。
+            dispatchPageLifecycleEvent("pageshow")
         }
+    }
+
+    /**
+     * P6 · 刀 2：把页面生命周期事件**合成派发**给页面。
+     *
+     * 上游 client 的 pageLifecycle 只认 window 的 pagehide/pageshow
+     * （connection.ts:230-231），而 Android WebView 切后台/回前台不发这两个事件
+     * （只 pause/resume JS 时钟），所以机制虽有、WebView 里永远不会被触发。
+     * 宿主生命周期是唯一可靠的信号源 ⇒ 在这里把事件派给页面。
+     *
+     * 合成事件 `isTrusted=false`；上游 handler 是不校验信任位的普通闭包
+     * （connection.ts:220-221），合成事件触发它 = 执行上游自己的 stop()/start()，
+     * 不是绕过上游另起一套。不携带、不触碰任何凭据（纯事件名字符串）。
+     */
+    private fun dispatchPageLifecycleEvent(name: String) {
+        if (!::webView.isInitialized) return
+        Log.i(TAG, "P6 dispatch synthetic $name (upstream pageLifecycle)")
+        evaluateJs("window.dispatchEvent(new Event(\"$name\"))")
     }
 
     /**
@@ -716,8 +750,9 @@ class WebHostActivity : AppCompatActivity() {
      * D1 · **按 [PowerPolicy] 的结论真正置位/清除常亮 flag**。
      *
      * 这是"回合进行中保持屏幕常亮"**唯一**的 flag 写入口。UX6 起驱动方只剩
-     * 页面桥（`setKeepScreenOn` 把请求喂给 [roundTracker]）——代理没了，
-     * 上游官方 UI 目前不会主动调它，所以这条功能实际是"页面可用、待上游接线"。
+     * 页面桥；UX8 起注入层回合传感器（`oc-host.js installRoundPowerSensor`，
+     * 观测发消息 POST 与 /api/event 的 session.execution.* 帧）经
+     * `WebHostBridge.setKeepScreenOn` 喂给 [roundTracker] ⇒ 功能恢复生效。
      *
      * @param roundActive 当前是否有回合在进行
      */

@@ -16,7 +16,9 @@
 > **F19 改了四类东西**（逐条对照见 `HANDOFF_F19.md`）：① **新增 §0.5「手机形态：走一遍旅程才发现的两条缺陷，已经闭环」**（V13 发现 → F18 修 → V14 复验 10/10 的完整闭环，含两条缺陷的根因与设备读数）；② **md5 三行逐份 `Get-FileHash` 复核，3/3 与磁盘逐位一致**，并在 §0.1 补一条**过期口径警示**（本文件里仍有若干处拿 F18 之前的旧值当"交付包"）；③ **§6.1 追加 1 条教训**（"只有走完整条旅程才会发现这类缺陷"）；④ **§5 补 2 条手机形态遗留项**（D3 / D5），两条硬骨头原样保留。
 > ⚠️ **F19 没有做的事**：**没有重跑任何设备验证、没有改任何设备结论**。V13/F18/V14 的一切结论都**只做并入，不做升级**；凡本轮只是"转述"的地方都标了出处报告路径。**F19 也一个字没改 `app/**`、`webapp/**`、`_upstream/**`、`.github/**`、`research/deliver/**`。**
 
-> **UX7（2026-10-05，当前状态）= 手机档四连修（B-1 终端条「+」误拦 / B-4 左滑与右上角按钮 / B-3 终端空白复查 / B-5 键盘裁切复查）并重建三份产物**。本轮**改了生产代码**（`webapp/src/main/assets/www/oc-host.js` 拦截收窄 + `WebHostActivity.kt` debug 注入通道扩展）+ 新增绊线 `Ux7PhoneSweepTripwireTest`（5 用例）；报告 `research/web/UX7_PHONE_SWEEP.md`。三份产物 md5 已变（见 §0.1 顶表与 UX7 复核块），**UX6 批三个 md5 全部作废**。
+> **UX7（2026-10-05）= 手机档四连修（B-1 终端条「+」误拦 / B-4 左滑与右上角按钮 / B-3 终端空白复查 / B-5 键盘裁切复查）并重建三份产物**。本轮**改了生产代码**（`webapp/src/main/assets/www/oc-host.js` 拦截收窄 + `WebHostActivity.kt` debug 注入通道扩展）+ 新增绊线 `Ux7PhoneSweepTripwireTest`（5 用例）；报告 `research/web/UX7_PHONE_SWEEP.md`。三份产物 md5 已变（见 §0.1 顶表与 UX7 复核块），**UX6 批三个 md5 全部作废**。
+>
+> **UX8（2026-10-05，当前状态）= 宿主侧重接「回合常亮（D1）+ 后台断 SSE（P6 刀 2）」，两条随 UX6 删代理失效的行为已补回**，并重建三份产物。实现：① 注入层新增**回合电源传感器**（`oc-host.js installRoundPowerSensor`：包装 `window.fetch`，发消息 POST 乐观置位 + tee `/api/event` 流按 `session.execution.*` 帧驱动 `oc.setKeepScreenOn`；**线上实测标记**，因真后端不发 `session.status` 帧）；② 宿主 `onPause/onResume` 合成派发 `pagehide/pageshow`，驱动上游 client 自有的 pageLifecycle 机制（`_upstream/packages/client/src/solid/connection.ts:219-240`）断/连 SSE，**未重建代理、未碰凭据**。设备证据（手机档主 + 平板档回归）：flag 置起有 logcat `flagSet=true` + 越 15s 超时物理常亮实证；回合结束释放 **Δ=4–17 ms**（旧事故是挂 4 分钟）；后台断开 **20–106 ms**、回前台重建 **92–245 ms**、会话循环后仍可用。新增绊线 `Ux8KeepAwakeSseTripwireTest`（13 用例，含三处撤回真红实跑）。报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`。三份产物 md5 已变（见 §0.1 顶表与 UX8 复核块），**UX7 批三个 md5 全部作废**。
 
 ---
 
@@ -25,14 +27,14 @@
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
-### 0.1 当前可交付（**UX7 批为当前唯一有效值，以磁盘为准**）
+### 0.1 当前可交付（**UX8 批为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,545,875 B**（≈3.38 MB） | `3a9a1ced56673589f34a075ceb06718b` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX7 手机档修复值**（2026-10-05，报告 `research/web/UX7_PHONE_SWEEP.md`）：终端标签条「+」误拦截收窄（只锚审查条 `#review-panel`，手机档零拦截）。**UX6 值 `525b6847…` 及更早全部作废** |
-| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `fa6133480c4816c98aafb7d6ac6f9173` | 日常调试（debug 签名）；同上。**UX7 修复值**；**UX6 值 `fba7db16…` 及更早全部作废** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `45ed3e896a9779debdc374ca5672fc94` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `e54752db94e2528d54f0774b8f7b9646` | 日常调试（debug 签名）；同上。**UX8 修复值**；**UX7 值 `fa613348…` 及更早全部作废** |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,265,633 B**（≈1.21 MB，比非 R8 **−64.3%**） | `8d5910bab108dd5e50825467a9788ebd` | 🟡 同 UX7 修复。**UX7 修复值**；**UX6 值 `a854824f…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `e146e547ce359259b456c1a336802519` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
@@ -76,7 +78,20 @@
 > - **B-5（当前构建不复现）**：软键盘弹起 composer 裁切在两屏（新建 session + 会话界面）**均不复现**；`--oc-ime-bottom` 抬升机制量化验证（IME 起：form padding-bottom=336.38px；收：归 0 自动恢复）。
 > 新增绊线 `Ux7PhoneSweepTripwireTest`（5 用例）；**反向验证实测**：撤回收窄喂旧 oc-host.js ⇒ 2 条真红；撤回 `--oc-ime-bottom` 消费 ⇒ `ImeOcclusionTest.facadeConsumesImeBottomForComposer` 真红。另：`WebHostActivity.consumeDebugEval` 扩展 `b64:` 前缀（debug-only，绕开页面 CSP 的 unsafe-eval 限制），`DebugEvalChannelTest` 契约不变。
 
-**UX7 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`）：
+**UX8 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`，当前唯一有效值）：
+
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **3,549,507 B** | **`45ed3e896a9779debdc374ca5672fc94`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,268,829 B** | **`e146e547ce359259b456c1a336802519`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B** | **`e54752db94e2528d54f0774b8f7b9646`** | 同上 |
+
+**包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`b5057679b1a419af15d81ef72ff0fd9e`**（55,953 B），与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
+
+> 🔴 **UX8 批以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX7 批** `3a9a1ced…`(nor8) / `8d5910ba…`(R8) / `fa613348…`(debug) / 资产 `6e1e7354…`；**UX6 批** `525b6847…`(nor8) / `a854824f…`(R8) / `fba7db16…`(debug) / 资产 `784e5d27…`；UX5 及更早全部历代值。**本节以下的 UX7/UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
+> **UX8 改了什么**：`oc-host.js` 新增 `installRoundPowerSensor`（回合电源传感器，见 §0 顶部 UX8 条与 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）；`WebHostActivity.kt` 新增 `dispatchPageLifecycleEvent`（onPause 派 pagehide / onResume 派 pageshow）+ 注释更新；`WebHostBridge.kt`/`RoundActivityTracker.kt`/`PowerPolicy.kt` 仅注释更新（行为未变）；新增绊线 `Ux8KeepAwakeSseTripwireTest`（13 用例）。
+
+**UX7 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（历史记录，已被 UX8 块取代）：
 
 | 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
 |---|---|---|---|
@@ -89,7 +104,7 @@
 > 🔴 **UX7 批以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX6 批** `525b6847…`(nor8) / `a854824f…`(R8) / `fba7db16…`(debug) / 资产 `784e5d27…`；UX5/UX4/UX3/UX2/F19/F18/F16 及更早全部历代值。**本节以下的 UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
 > 顺带（产品负责人问，行号级答案见报告）：新 session 底部 **`Temp`（T 图标+下拉）= 运行位置选择器**（`new-session/workspace/selector.tsx:107-132` 的 Menu.Trigger；label 规则 `:68-73`，"Temp" 是所选 worktree 目录名）⇒ 决定**新会话在哪个目录/分支运行**（主检出 / 新建 git worktree / 已有 worktree）；**`无 Git`（显示器图标）= `PromptGitStatus` 徽章**（`selector.tsx:374-410`，i18n `session.new.git.none`）⇒ 纯展示**所选工作目录不是 git 仓库**（是 git 时显示分支名），**不可点击**（渲染为 div，不是按钮）。
 
-> ⚠️ 下列 UX6/F19/F8/UX5/UX4/UX3 复核块**已被 UX7 块取代**（历史保留）。
+> ⚠️ 下列 UX7/UX6/F19/F8/UX5/UX4/UX3 复核块**已被 UX8 块取代**（历史保留）。
 
 **F8 复核（2026-10-05，结论已由 A5 独立复算确认）—— 文档与磁盘一致，未发现脱节**：
 
@@ -896,6 +911,7 @@ pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <串号> -Pa
 
 | # | 项 | 状态 | 出处 |
 |---|---|---|---|
+| ★ | ~~D1 回合常亮 / P6 后台断 SSE 随 UX6 删代理失效~~ **已补回（UX8）** | UX6 删除回环代理后这两条**曾如实记录为失效**；**UX8 已在宿主侧重接并设备双档验证**：常亮 flag 真置起（logcat `flagSet=true` + 越 15s 超时物理常亮）+ 回合结束 **4–17 ms** 释放 + 后台断 SSE **20–106 ms** + 回前台 **92–245 ms** 重建 + 会话循环后可用。**不再需要"待上游接线"** | §0 顶部 UX8 条 · `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md` |
 | 3 | **相机扫码 live 流** | release 包不可复现；「左边缘抽屉→Settings→Add server」**未测到而非已排除**。⚠️ **定性要说清**：**"用户可达路径打不通"属上游 connect 页的 `fallback` 语义、我们与官方一致，不是我们的缺陷**（§3.3）——真正缺的是**验收手段**（需要一个 DEBUG 构建或受控注入钩子），不是缺一个修复 | §3.4 · §3.3；`V7_CLOSEOUT.md` §6；`PAIRING_ROUTE_VERDICT.md` |
 | 4 | **N-4 文件选/存/上传三条分支** | 选文件成功路径未跑；`saveContent` 与 `onShowFileChooser` **从未设备验证** —— **这是最大的未测面** | `PARITY_LEDGER_A4.md` §7 N-4 |
 | 5 | **N-3 终端 PTY / WebSocket 通道** | 面板 UI 由官方 UI 提供，但**通道从未设备验证**；`pty.exited` 链未核对；SSE 无 soak | A4 §7 N-3；`ROUTE_A_WIRING.md:203-205` |

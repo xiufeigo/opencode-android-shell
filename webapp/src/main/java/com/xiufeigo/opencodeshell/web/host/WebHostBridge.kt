@@ -154,9 +154,9 @@ class WebHostBridge(
      * 唯一写入口，却只有页面能调，而上游官方 UI 从不调 `setKeepScreenOn` ⇒
      * `addFlags` 那行永远执行不到，"回合进行中保持屏幕常亮"从未生效。
      *
-     * UX6：代理已删，本方法是 [RoundActivityTracker] **唯一**的生产驱动方
-     * （上游官方 UI 目前仍不调它 —— 这条功能处于"页面可用、待上游接线"状态，
-     * 见 WebHostActivity 的类注释）。请求喂给跟踪器后由
+     * UX6：代理已删。UX8 起本方法的生产驱动方 = 宿主注入层的**回合电源传感器**
+     * （`oc-host.js installRoundPowerSensor`：fetch 拦截到发消息 POST 与
+     * /api/event 上的 session.execution.* 帧 ⇒ 调本方法）。请求喂给跟踪器后由
      * [WebHostActivity.applyKeepScreenOn] 统一落 flag。页面这条 API 语义不变。
      */
     @JavascriptInterface

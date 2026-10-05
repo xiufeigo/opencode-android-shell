@@ -18,9 +18,10 @@ package com.xiufeigo.opencodeshell.web.host
  *
  * `research/perf/BATTERY_HOWTO.md` §7.2 / §7.3（只读盘点，带行号）：
  *  - §7.2 头号风险（**历史形态**）：回环代理常驻 + 只在 `onDestroy` 关闭 ⇒
- *    退到后台后 SSE 长连接继续唤醒射频。UX6 已把代理整个删除，流量直连后端，
- *    该风险随代理消失；后台时 WebView `onPause` 暂停页面 JS，`/event` 由浏览器
- *    自行挂起/重连，与手机浏览器的语义一致。
+ *    退到后台后 SSE 长连接继续唤醒射频。UX6 已把代理整个删除；**UX8 起宿主在
+ *    onPause 合成派发 pagehide、onResume 派发 pageshow**，驱动上游 client 的
+ *    pageLifecycle 机制（_upstream packages/client/src/solid/connection.ts:219-240）
+ *    主动 abort 事件流并在回前台重连 —— 后台不再常挂长连接。
  *  - §7.3：`WebHostBridge` 的 `setKeepScreenOn` 曾长期是**死代码**（无调用者），
  *    但 `onPause` **没有任何防御性 `clearFlags`** ⇒ 一旦页面接上调用，回合中途
  *    出错 / 被杀 / 切走就成"忘关路径"。`onPause` 无条件清 flag 的接线保留至今。

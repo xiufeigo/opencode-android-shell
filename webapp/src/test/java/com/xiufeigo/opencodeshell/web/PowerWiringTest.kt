@@ -18,10 +18,15 @@ import java.io.File
  *
  * ## UX6 删除的部分（逐条理由）
  *  - `proxy?.suspendStreaming()` / `proxy?.resumeStreaming()` 两个接线点：
- *    **回环代理已按产品决策整体删除**（直连架构），"后台掐 SSE"这条省电刀法
- *    随代理消失 —— 后台时 WebView `onPause` 暂停页面 JS，`/event` 由浏览器
- *    自行挂起/重连，与手机浏览器语义一致。这是**如实记录的能力回退**，不是遗漏。
+ *    **回环代理已按产品决策整体删除**（直连架构），宿主不再介入流量转发。
  *  - 代理侧 REFUSE_WHILE_BACKGROUND 断言：被测对象（代理）已不存在。
+ *
+ * ## UX8 更新
+ *  "后台掐 SSE"能力已**恢复**，但实现换了条路：不重建代理，而是宿主在
+ *  onPause/onResume 合成派发 pagehide/pageshow，驱动上游 client 自有的
+ *  pageLifecycle 机制（connection.ts:219-240）。因此 `suspendStreaming()` /
+ *  `resumeStreaming()` 这两个**代理时代的方法名**仍然不得出现（出现 = 有人
+ *  把代理接了回来），下方反向断言继续有效。
  *
  * 沿用本仓既有做法（`DebugEvalChannelTest` 直接读 `build.gradle.kts` 与
  * `WebHostActivity.kt` 文本断言），因此不依赖任何 android 运行时。

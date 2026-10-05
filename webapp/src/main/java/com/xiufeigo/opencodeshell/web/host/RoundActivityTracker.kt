@@ -27,10 +27,12 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * 回合的生命周期信号本来由回环代理用真实流量喂给本类（代理看得见"页面 POST
  * 了一条消息"和"流式通道静默/关闭"）。**UX6 已把代理整个删除**，直连架构下
- * 宿主看不见流量 ⇒ 唯一的生产驱动方是页面桥（`WebHostBridge.setKeepScreenOn`）。
- * 上游官方 UI 目前不调它，所以这条功能处于"页面可用、待上游接线"状态 ——
- * 本类连同 SSE 流分类器一并保留（分类器是协议解码逻辑，历史依据见下），
- * 接线点（桥 → 跟踪器 → `applyKeepScreenOn`）由 `KeepScreenOnWiringTest` 钉死。
+ * 宿主看不见流量。**UX8**：宿主注入层（`oc-host.js` 的
+ * `installRoundPowerSensor`）把"发消息 POST + /api/event 上的
+ * `session.execution.*` 帧"重新接回本类（线上实测标记：started ⇒ 回合开始；
+ * succeeded/failed/interrupted ⇒ 回合结束；真后端不发 `session.status` 帧，
+ * 旧标记仅作兜底）——D1 常亮恢复生效。页面桥那条路也保留：上游 UI 将来若
+ * 真的调它，行为与现在完全一致（仍受 [PowerPolicy] 的前台校验约束）。
  *
  * 页面那条路**不删**：`WebHostBridge.setKeepScreenOn` 改为喂同一个跟踪器，
  * 于是上游 UI 将来若真的调它，行为与现在完全一致（仍受 [PowerPolicy] 的
