@@ -34,6 +34,7 @@ import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LaunchGuard
 import com.xiufeigo.opencodeshell.web.host.LoopbackProxy
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
+import com.xiufeigo.opencodeshell.web.host.NotConfiguredShell
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.BackendProbe
 import com.xiufeigo.opencodeshell.web.host.ConnectErrorPage
@@ -62,6 +63,14 @@ class WebHostActivity : AppCompatActivity() {
         private const val TAG = "OcWebHost"
         const val ASSET_DOMAIN = "appassets.androidplatform.net"
         const val ASSET_PREFIX = "/assets/"
+
+    /**
+     * UX1 任务2 · 宿主内部私有 scheme：`ocshell://`。
+     *
+     * **只**用于自建页面（灰态外壳 / F21 被挡页）回宿主开配置对话框，
+     * 由 [HostWebViewClient.shouldOverrideUrlLoading] 拦下。绝不会放行到网络。
+     */
+    const val INTERNAL_SCHEME = "ocshell"
         /**
          * W1 的占位页（资产托管）。R1 起**不再**用它当首页，只在代理起不来时兜底，
          * 好让"页面全白"和"代理没起来"两种故障在屏幕上可区分。
@@ -265,6 +274,31 @@ class WebHostActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * UX1 · 任务2 · **未配置服务器**这一态：直接进应用外壳，功能全灰。
+     *
+     * 刻意复用 [showNoPasswordBlockedPage] 的三条做法（**它们是同一族状态**）：
+     *  - 关掉看门狗（这一页不需要被诊断）、置位 `firstContentSeen`；
+     *  - 用 `loadDataWithBaseURL` 挂在宿主自己的 origin 上 ⇒ 已注册的 `__ocAndroid`
+     *    桥**照样可用** ⇒ 页面上那个「去设置服务器」能真的回配置对话框；
+     *  - **不起回环代理、不加载官方 UI**（本方法里没有 `LoopbackProxy`、没有 `loadUrl`）。
+     *
+     * 与 [showNoPasswordBlockedPage] 的区别只有**形态**：那是 F21 闸门在 `launch()`
+     * 兜住的一屏报错；这是**连闸门都没走到**（压根没调 `launch`）的应用外壳。
+     */
+    private fun showNotConfiguredShell() {
+        watchdogArmed = false
+        firstContentSeen = true
+        PerfMarks.mark("M.ux1.notConfiguredShell")
+        webView.loadDataWithBaseURL(
+            "https://$ASSET_DOMAIN/",
+            NotConfiguredShell.html(),
+            "text/html",
+            "UTF-8",
+            null,
+        )
+    }
+
     /** 切到诊断页：先关掉看门狗（诊断页不需要被诊断），再加载带参数的自建页面。 */
     private fun showDiagnostic(reason: WebViewPreflight.Reason, detail: String?) {
         watchdogArmed = false
@@ -387,7 +421,8 @@ class WebHostActivity : AppCompatActivity() {
      *
      * ```
      *  EncryptedSharedPreferences 里有密码？ ── 是 ──▶ 起代理 ──▶ loadUrl(代理 origin)
-     *                                    └─ 否 ──▶ 原生对话框问一次 ──┘
+     *                                    └─ 否 ──▶ 灰态应用外壳 +「去设置服务器」─┘
+     *                                          （UX1 任务2：**不再弹对话框**）
      * ```
      *
      * 为什么必须原生问：官方 UI 的 `/api/…` 要 Basic 认证，而**不能**把密码交给页面
@@ -400,8 +435,18 @@ class WebHostActivity : AppCompatActivity() {
             ?: SecretStore.DEFAULT_BACKEND_URL
         val password = SecretStore.getSecret(this, SecretStore.KEY_SERVER_PASSWORD)
         if (password.isNullOrEmpty()) {
-            Log.i(TAG, "no password in SecretStore, asking")
-            showSetupDialog(backend)
+            // UX1 · 任务2：**首次启动不再弹对话框**。
+            //
+            // 产品负责人原话：「开场的时候就直接把那个界面去了，直接进 app，
+            // 然后服务器没设置的话，就所有功能不可用就行，就显示灰色那样子」。
+            //
+            // 为什么这**没有**削弱 F21 的安全性质：
+            //  1. 这里在**起代理之前**就 return 了 ⇒ 代理压根不起，闸门之后那一层原样保留；
+            //  2. [LaunchGuard] 仍在 `launch()` 顶上（`:527-532`），本轮**没有动它**，
+            //     四个出口仍汇进同一道闸门 ⇒ 口径不变（`research/web/FIX_F21_EMPTYPW.md` §2.3）；
+            //  3. 未配置态是 [NotConfiguredShell] 那一页**静态 HTML**，不发起任何后端请求。
+            Log.i(TAG, "${NotConfiguredShell.MARKER}: no password in SecretStore -> no dialog, shell only")
+            showNotConfiguredShell()
             return
         }
         // F5 缺陷2：**先探一次再加载**。原来直接 `launch`，于是口令错时页面永远停在
@@ -1148,6 +1193,35 @@ class WebHostActivity : AppCompatActivity() {
             view: WebView,
             request: WebResourceRequest,
         ): WebResourceResponse? = loader(view.context).shouldInterceptRequest(request.url)
+
+        /**
+         * UX1 任务2 · **自建页面回宿主的唯一通道**：`ocshell://` 私有 scheme。
+         *
+         * ## 为什么必须加这个（这是设备实测抓出来的真缺陷）
+         *
+         * 灰态外壳与 F21 被挡页都用 `loadDataWithBaseURL` 挂宿主 origin。
+         * **实测**（`research/web/ux1/shots/ux1_setup_dialog.png`）：在这类页面上
+         * `window.__ocAndroid` **拿不到** —— 文档开始脚本（`addDocumentStartJavaScript`）
+         * 对 `loadDataWithBaseURL` 的文档**不注入**。于是「去设置服务器」按钮
+         * 走 JS 桥的分支落空、退化成 `location.reload()`，实测结果是
+         * **整页变成 WebView 自己的 `net::ERR_NAME_NOT_RESOLVED` 错误页**，
+         * 用户既回不到配置对话框、也看不到灰态页 —— 正是 F5 修掉的**"不可自救"**原地复发。
+         *
+         * ## 为什么用 scheme 而不是别的
+         *
+         * 导航（而不是 `addJavascriptInterface`）在 `loadDataWithBaseURL` 页面上**照常回调**，
+         * 不依赖任何注入是否成功。私有 scheme 不可能解析到真实站点，命中即拦。
+         */
+        override fun shouldOverrideUrlLoading(
+            view: WebView?,
+            request: WebResourceRequest?,
+        ): Boolean {
+            val scheme = request?.url?.scheme ?: return false
+            if (scheme != INTERNAL_SCHEME) return false
+            Log.i(TAG, "UX1 internal scheme hit: ${request.url.host}")
+            openSetupFromBlockedPage()
+            return true
+        }
 
         // 参数用 `WebView?`：installFacade 的匿名子类里本来就有一个同签名的 override
         // （`view: WebView?`）。这里若声明成非空，那个匿名子类就会"overrides nothing"。

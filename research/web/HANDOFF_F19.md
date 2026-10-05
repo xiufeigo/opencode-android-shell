@@ -80,15 +80,26 @@
 
 | 产物 | 体积（磁盘实测） | **磁盘 md5（实测）** | 签名 |
 |---|---|---|---|
-| `opencode-shell-web-release-nor8.apk` | **3,980,197 B** | **`7bcdef48ae8d3ce84bee0b244cb44a94`** | `CN=Android Debug` |
-| `opencode-shell-web-release-r8.apk` | **1,438,845 B** | **`4a37e9d600cc0f00618ba89a3654a154`** | `CN=Android Debug` |
-| `opencode-shell-web.apk`（debug） | **5,245,386 B** | **`922117547212296b85dfa80cc116c06d`** | `CN=Android Debug` |
+| `opencode-shell-web-release-nor8.apk` | **3,989,904 B** | **`2041a05f77719da89217661380394a7b`** | `CN=Android Debug` |
+| `opencode-shell-web-release-r8.apk` | **1,445,416 B** | **`840773b1a923fa91c5cd1b1804167a94`** | `CN=Android Debug` |
+| `opencode-shell-web.apk`（debug） | **5,437,748 B** | **`169e3fee0b2057e58ea6e54a936b46a9`** | `CN=Android Debug` |
+
+> 🆕 **UX1 重建（2026-10-05，本表三行已再次整体替换）** —— 本次重建是因为 **UX1 改了 Web 壳的
+> 启动首态与桌面图标**（见 §3.3）。**F21 那一批的三个 md5 全部作废**：
+> `7bcdef48ae8d3ce84bee0b244cb44a94`（nor8）、
+> `4a37e9d600cc0f00618ba89a3654a154`（r8）、
+> `922117547212296b85dfa80cc116c06d`（debug）
+> —— ⚠️ 这三个值**在任何文档里都不得再被当作"当前交付包"引用**。
+> （F18 那一批 `03d7888f…` / `5227c2ac…` / `9f511c5a…` 早在 F21 就已作废，**同样不得引用**。）
+> ⚠️ UX1 **中途**还产出过一批更早的字节体（debug `d408cd22…` / nor8 `fb167563…` / r8 `256f122b…`），
+> 因随后修掉一个被既有单测抓出的性能回归而**作废**，**同样不得引用**。
 
 三份签名证书 SHA-256 同为 `e86b70066546bd0bdc2e6cb4d970704bc48b1a244af59c664564f030cca0510a`
 （沿用 F11 起的做法：release 变体用 `sharedDebug` 证书）。
-**包内含源自查**：三份 dex 均含 `LaunchGuard` 类，且三条运行期字符串
-（`F21 launch BLOCKED` / `H.f21.blockedNoPassword` / `F21 prewarm SKIPPED`）与被挡页文案
-（`等于没有身份验证`）**逐份都在** ⇒ **R8 变体没有把闸门优化掉**。
+**包内含源自查**：三份 dex 均含 `NotConfiguredShell` / `LaunchGuard` 类，且运行期字符串
+`UX1 not-configured shell` / `F21 launch BLOCKED` / `H.f21.blockedNoPassword` /
+`F21 prewarm SKIPPED`、灰态文案（`还没连接服务器` / `去设置服务器`）
+与 `oc-plus-chooser` **逐份都在** ⇒ **R8 变体没有把闸门与新灰态优化掉**。
 
 ### 3.1 ⚠️ 发现的不一致：**不是这三行，是本文件内部新旧值并存**（已点出，未擅自大改）
 
@@ -115,6 +126,25 @@
 **这堵的是 F20 记的 `WebHostActivity.kt:634-637`**（「先不配置」按钮原本仍会 `launch`），
 **设备双路径实测**：空口令 ⇒ 被挡（**起代理日志消失**）；播种口令 ⇒ **官方 UI 照常加载（未被挡住正常使用）**。
 详见 `research/web/FIX_F21_EMPTYPW.md`。
+
+---
+
+### 3.3 UX1 的三处 Web 壳体验改动（这就是本轮重建交付物的理由）
+
+**一句话**：**首启不再弹配置对话框**（直接进应用外壳，未配置时功能全灰且真不可点）、
+**桌面图标改成与原生壳同一套**、**右侧栏「+」弹出「打开终端 / 打开文件」选择面板**。
+**F21 的安全闸门一行未动**，且新路径比原来**更早 return** ⇒ 灰态下代理压根不起。
+详见 `research/web/UX1_IMPROVEMENTS.md`。
+
+**⚠️ 这一轮有两条必须一起读，否则会踩坑**：
+
+1. **F21 的 `showSetupDialog` 并没被删** —— 它从"首启必经"退化为
+   「去设置服务器」这一个入口的落点（`ocshell://setup` 私有 scheme 命中后打开）。
+   首启路径不再经过它，但**配置能力一字未减**。
+2. **灰态页与 F21 被挡页是同族但不同形态** —— 灰态是"应用外壳、功能全灰"
+   （`host/NotConfiguredShell.kt`），F21 被挡页是"一屏报错"（`host/LaunchGuard.blockedHtml()`）。
+   前者走 `startProxyAndLoad` 的空口令分支（**连 `launch()` 都不到**），
+   后者走 `launch()` 顶部被闸门拦下。**判据不同，别混。**
 
 ---
 

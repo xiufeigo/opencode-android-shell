@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 占位前景：一个「W」字形，让两个壳在 launcher 里一眼能分辨（原生壳是官方 OpenCode 标）。 -->
+<!-- ⚠️ **已不再被引用**（UX1 轮，2026-10-05）。
+     原先由 `mipmap-anydpi/ic_launcher_web.xml` 与 `mipmap-anydpi-v26/ic_launcher_web.xml`
+     引用；那两份 XML 已被移除，webapp 改用与原生壳**逐字节相同**的
+     `mipmap-*/ic_launcher_web.png`（见 `research/web/UX1_IMPROVEMENTS.md` §1）。
+     保留本文件仅为留档，**改这个文件不会影响任何 launcher 显示**。
+
+     ⚠️ 旧注释曾写「原生壳是官方 OpenCode 标」—— **那句与实际资源不符**：
+     原生壳 `app/src/main/res/mipmap-*/ic_launcher.png` 实测只有 3 种颜色
+     （#131010 / #FFFFFF / #5A5858）的几何占位图，**不是**官方徽标。
+     旧注释已按像素证据改正，免得下一个人再被它误导。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"

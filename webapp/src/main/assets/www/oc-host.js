@@ -596,4 +596,198 @@
   document.addEventListener("focusin", onImeFocusIn, true);
   // insets 每变一次都刷新一次（IME 收起时 --oc-ime-bottom 归 0，留白自动撤掉）。
   if (lastInsets) doApply(lastInsets);
+
+  // UX1 任务3：右侧栏「+」→ 弹出「打开终端 / 打开文件」选择面板。
+  // ⚠ 为什么**内联**在这里、而不是 fetch 外部文件再 eval：
+  //   实测上游官方 UI 的 CSP 是
+  //     script-src 'self' 'wasm-unsafe-eval' 'sha256-...'
+  //   ——**没有 'unsafe-eval'**，所以 fetch 得到 200（1809 B）后 eval 仍被拒：
+  //     "Refused to evaluate a string as JavaScript because 'unsafe-eval' is not
+  //      an allowed source of script"（logcat 原文，2026-10-05 07:43:49）。
+  //   而本文件是**宿主用 addDocumentStartJavaScript 注入的文档开始脚本**，
+  //   不受页面 CSP 约束 ⇒ 内联是唯一可靠的路。
+  installPlusChooser();
 })();
+
+  /**
+   * UX1 任务3 · 右侧栏「+」的选择面板（终端 / 文件）。
+   *
+   * 上游那个「+」在 shell/titlebar/titlebar.tsx:621-629：`icon={<Icon name="plus" />}
+   * onClick={openNewTab} aria-label={language.t("command.session.new")}`，
+   * `openNewTab`（:271）**直接新建会话**，没有选择层。
+   *
+   * 不复用上游 `DialogCommandPalette`（shell/commands/dialog.tsx:30）的理由：
+   * 它的入口是 Solid 的 `dialog.show(...)`（home/sessions/controller.tsx:119-121、
+   * new-session/commands.tsx:27-29），依赖 useCommand/useGlobal/useTabs 等一整套
+   * 响应式宿主（shell/commands/palette.ts:82-92），WebView 从外部没有任何可达入口。
+   *
+   * 一致性原则：**不替换上游任何行为**，只在点击**之前**加一层选择；
+   * 选完再走上游/宿主原路径。
+   */
+  function installPlusChooser() {
+    if (window.__ocPlusChooser) return;
+    var MIN_TAP_PX = 48;
+    var panel = null;
+    var armed = false;
+
+    function log() {
+      try {
+        console.log("[oc-plus-chooser] " + Array.prototype.join.call(arguments, " "));
+      } catch (e) {}
+    }
+
+    /* 上游是 SPA，节点会重挂 ⇒ 每次重新查，不缓存节点引用。
+     * 判据：内含 svg（上游按钮都是 Icon），且 aria-label/文本命中"新建会话"语义。 */
+    function findPlusButton() {
+      var nodes = document.querySelectorAll("button,[role=button]");
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (el.getAttribute("data-oc-plus-chooser") === "1") continue;
+        var label = (el.getAttribute("aria-label") || el.textContent || "").trim();
+        if (!el.querySelector("svg")) continue;
+        if (!/新建会话|新会话|new session/i.test(label)) continue;
+        if (el.offsetParent === null) continue;
+        return el;
+      }
+      return null;
+    }
+
+    function closePanel() {
+      if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+      panel = null;
+    }
+
+    function buildPanel(anchor) {
+      var r = anchor.getBoundingClientRect();
+      var vw = window.innerWidth || 0;
+      var vh = window.innerHeight || 0;
+      var w = Math.min(300, Math.max(220, vw - 24));
+      var left = Math.max(12, Math.min(r.left, vw - w - 12));
+      var h = 2 * MIN_TAP_PX + 46;
+      var top = r.bottom + 8;
+      if (top + h > vh - 12) top = Math.max(12, r.top - h - 8);
+
+      var p = document.createElement("div");
+      p.setAttribute("data-oc-plus-chooser", "panel");
+      p.setAttribute("role", "menu");
+      p.setAttribute("aria-label", "选择要打开的内容");
+      p.style.cssText = [
+        "position:fixed", "z-index:2147483000",
+        "left:" + left + "px", "top:" + top + "px", "width:" + w + "px",
+        "background:#18181b", "border:1px solid #2e2e35", "border-radius:10px",
+        "box-shadow:0 10px 30px rgba(0,0,0,.55)", "padding:6px",
+        "font:14px/1.4 -apple-system,Roboto,'Noto Sans CJK SC',sans-serif", "color:#e8e8ea",
+      ].join(";");
+
+      var title = document.createElement("div");
+      title.textContent = "打开";
+      title.style.cssText = "font-size:11px;color:#8b8b95;padding:6px 10px 4px";
+      p.appendChild(title);
+
+      [
+        { label: "打开终端", act: "terminal" },
+        { label: "打开文件", act: "file" },
+      ].forEach(function (item) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("role", "menuitem");
+        b.setAttribute("data-oc-plus-chooser", item.act);
+        b.textContent = item.label;
+        b.style.cssText = [
+          "display:flex", "align-items:center", "width:100%",
+          "min-height:" + MIN_TAP_PX + "px",
+          "border:0", "border-radius:8px", "background:transparent", "color:#e8e8ea",
+          "font-size:15px", "text-align:left", "padding:0 10px", "cursor:pointer",
+        ].join(";");
+        b.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          closePanel();
+          run(item.act);
+        });
+        p.appendChild(b);
+      });
+
+      document.body.appendChild(p);
+      panel = p;
+      return p;
+    }
+
+    /* 打开终端：优先点**上游自己的**终端触发器（保持上游行为，不另造一条路）。
+     * 找不到就派发事件并如实标记 found:false —— 不假装成功。 */
+    function runTerminal() {
+      var cands = document.querySelectorAll(
+        "[data-slot*=terminal], [aria-label*=erminal], button[title*=erminal], [data-oc-terminal]"
+      );
+      for (var i = 0; i < cands.length; i++) {
+        if (cands[i].offsetParent !== null) {
+          cands[i].click();
+          log("terminal trigger clicked");
+          return true;
+        }
+      }
+      window.dispatchEvent(new CustomEvent("oc:open-terminal", { detail: { source: "plus-chooser", found: false } }));
+      log("no upstream terminal trigger found; dispatched oc:open-terminal");
+      return false;
+    }
+
+    /* 打开文件：走宿主**原生**文件选择器（WebHostBridge.pickFile），可验证的真动作。 */
+    function runFile() {
+      try {
+        var b = window.__ocAndroid;
+        if (b && b.pickFile) {
+          b.pickFile("*/*", false);
+          log("file picker requested via native bridge");
+          return true;
+        }
+      } catch (e) {
+        log("pickFile failed: " + (e && e.message));
+      }
+      window.dispatchEvent(new CustomEvent("oc:open-file", { detail: { source: "plus-chooser", found: false } }));
+      return false;
+    }
+
+    function run(act) {
+      if (act === "terminal") runTerminal();
+      else if (act === "file") runFile();
+    }
+
+    function onClick(e) {
+      if (panel) { closePanel(); return; }
+      var btn = findPlusButton();
+      if (!btn) return;
+      if (!(e.target === btn || btn.contains(e.target))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      armed = true;
+      buildPanel(btn);
+      log("plus intercepted; chooser shown");
+    }
+
+    function onKey(e) {
+      // ⚠️ **刻意不注册** Esc 关闭：`InputPathHotspotTest.host injection has no
+      // per-keystroke listeners` 会把任何 keydown 监听判为"每次按键都在主线程上多跑一遍
+      // 我们的代码"。面板点空白处即可关闭（onClick 里已处理），不值得为 Esc 付这个代价。
+      // ⇒ 这里**故意留空**，并由该测试守着不被后人加回来。
+    }
+
+    window.__ocPlusChooser = {
+      installed: true,
+      findPlusButton: findPlusButton,
+      open: function () { var b = findPlusButton(); if (b) buildPanel(b); },
+    };
+
+    function arm() {
+      if (armed) return;
+      armed = true;
+      document.addEventListener("click", onClick, true);
+      // ⚠ 故意**不**加 keydown（理由见 onKey 的注释；点空白处即可关闭）。
+      log("armed");
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", arm, { once: true });
+    } else {
+      arm();
+    }
+  }
