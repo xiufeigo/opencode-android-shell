@@ -80,9 +80,24 @@
 
 | 产物 | 体积（磁盘实测） | **磁盘 md5（实测）** | 签名 |
 |---|---|---|---|
-| `opencode-shell-web-release-nor8.apk` | **3,989,904 B** | **`2041a05f77719da89217661380394a7b`** | `CN=Android Debug` |
-| `opencode-shell-web-release-r8.apk` | **1,445,416 B** | **`840773b1a923fa91c5cd1b1804167a94`** | `CN=Android Debug` |
-| `opencode-shell-web.apk`（debug） | **5,437,748 B** | **`169e3fee0b2057e58ea6e54a936b46a9`** | `CN=Android Debug` |
+| `opencode-shell-web-release-nor8.apk` | **3,990,760 B** | **`d6015bf2873fa19776a0e53bb3ab96a0`** | `CN=Android Debug` |
+| `opencode-shell-web-release-r8.apk` | **1,445,812 B** | **`28ee9ffc886da26c40c903d50eb03e12`** | `CN=Android Debug` |
+| `opencode-shell-web.apk`（debug） | **5,437,748 B** | **`69bbe05f772250888d4e1dac4faf9ce0`** | `CN=Android Debug` |
+
+> 🆕 **UX2 重建（2026-10-05，本表三行已第三次整体替换）** —— 本次重建是因为 **UX2 把终端做成
+> 「杀 app 回来自动接回同一会话」**（见 §3.4）。改动是 `LoopbackProxy` 不再绑临时端口、
+> 改钉 `40495`（新增 `StableOrigin.kt`），目的是让 WebView 的 origin 跨启动不变 ⇒
+> 上游那套"持久化 pty id + 自动重连"（`_upstream/packages/app/src/session/terminal/context.tsx:104`
+> 与 `terminal.tsx:573-586`）才能生效。**UX1 那一批的三个 md5 全部作废**：
+> `2041a05f77719da89217661380394a7b`（nor8）、
+> `840773b1a923fa91c5cd1b1804167a94`（r8）、
+> `169e3fee0b2057e58ea6e54a936b46a9`（debug）
+> —— ⚠️ 这三个值**在任何文档里都不得再被当作"当前交付包"引用**。
+> （F21 批 `7bcdef48…`/`4a37e9d6…`/`92211754…`、F18 批 `03d7888f…`/`5227c2ac…`/`9f511c5a…`
+> 早已作废，**同样不得引用**；UX1 中途批 `d408cd22…`/`fb167563…`/`256f122b…` 同样作废。）
+> 设备实测：杀 app 前后 `home=http://127.0.0.1:40495/` **逐字相同**，
+> 重开后重新 attach 的仍是**同一个** `pty_10b1ba6ce001SC8UbQhEKcIQqY`，
+> 长命令计数 **6 → 40 → 58** 接着涨。报告：`research/web/UX2_TERMINAL_REATTACH.md`
 
 > 🆕 **UX1 重建（2026-10-05，本表三行已再次整体替换）** —— 本次重建是因为 **UX1 改了 Web 壳的
 > 启动首态与桌面图标**（见 §3.3）。**F21 那一批的三个 md5 全部作废**：
@@ -145,6 +160,26 @@
    （`host/NotConfiguredShell.kt`），F21 被挡页是"一屏报错"（`host/LaunchGuard.blockedHtml()`）。
    前者走 `startProxyAndLoad` 的空口令分支（**连 `launch()` 都不到**），
    后者走 `launch()` 顶部被闸门拦下。**判据不同，别混。**
+
+### 3.4 UX2 的终端「杀 app 回来自动接回同一会话」（这就是本轮重建交付物的理由）
+
+**一句话**：`LoopbackProxy` 原来绑 `ServerSocket(0)`（**系统临时端口**）⇒ 页面 origin
+`http://127.0.0.1:<随机端口>` **每次启动都变** ⇒ `localStorage` 按 origin 隔离 ⇒
+**上游已经存在的"持久化 pty id + 进终端页自动 attach"根本读不到** ⇒ 回来只能是空终端。
+本轮把端口**钉在 40495**（新增 `host/StableOrigin.kt`，被占时自动退回临时端口、不会起不来），
+让 origin 跨启动不变，**上游那套机制原样生效**。
+详见 `research/web/UX2_TERMINAL_REATTACH.md`。
+
+**下轮必读的三条**：
+
+1. **没有新增任何持久化、没碰凭据** —— 本轮**没有**在宿主侧存 pty id，
+   复用上游 `localStorage` 里那一份（`session/terminal/context.tsx:104`）。
+   `StableOrigin` 里只有一个端口号，`F21` 的口令闸门与 `LaunchGuard` 调用点**一行未动**。
+2. **端口钉住是"尽力而为"** —— 40495 被占时会**静默退回临时端口**（= 退化回改前行为）。
+   若下轮发现"又接不上了"，**先看 logcat 里 `home=http://127.0.0.1:<port>` 的 port 是不是 40495**。
+3. **服务端没有 idle 回收** —— 只有显式 `DELETE`（`pty.remove`）和进程退出两条 kill 路径
+   （`core/src/pty.ts:115-132`）⇒ "等超时回收"这一格**测不出来**，
+   详见报告 §6（如实记为未实测 + 原因）。
 
 ---
 

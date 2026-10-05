@@ -93,6 +93,17 @@ class LoopbackProxy(
      *  - `flat`  ：`min` + `noanim`（帧时地板值）
      */
     private val renderMode: String = "full",
+    /**
+     * UX2 · 回环代理**钉住**的端口（0 = 沿用系统临时端口）。
+     *
+     * 页面 origin = [publicOrigin] = `http://127.0.0.1:<port>`，而 `localStorage` 按 origin
+     * 隔离。上游"持久化 pty id + 自动重连"（`session/terminal/context.tsx:104`、
+     * `terminal.tsx:573-586`）就存在 `localStorage` 里 ⇒ **端口一变，那套机制就永远读不到**
+     * ⇒ 杀掉 app 再打开必然回到空终端。钉住端口即让 origin 跨启动不变。
+     *
+     * 被占用时 [StableOrigin.bind] 自动退回临时端口（不会起不来）。
+     */
+    private val preferredPort: Int = StableOrigin.DEFAULT_PREFERRED_PORT,
 ) : Closeable {
 
     companion object {
@@ -183,7 +194,10 @@ internal const val SSE_SCAN_WINDOW_CHARS = 2048
 
     fun start() {
         if (running.get()) return
-        val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+        // UX2：先钉 [preferredPort]，被占才退回临时端口（见 [StableOrigin]）。
+        val socket = StableOrigin.bind(preferredPort) { candidate ->
+            ServerSocket(candidate, 50, InetAddress.getByName("127.0.0.1"))
+        }
         serverSocket = socket
         port = socket.localPort
         running.set(true)
