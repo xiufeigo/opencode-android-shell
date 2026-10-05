@@ -2,7 +2,8 @@
 
 > 交接时间：**2026-10-05（Asia/Shanghai）** · 硬期限：**2026-10-07 之前**
 > 上一版交接（原生 Kotlin 路线）见 `HANDOFF.md`；**本文件描述的是路线切换后的现状，以本文件为准。**
-> **本轮（F7）只做文档刷新**：未碰设备、未起模拟器、未跑 gradle、未改生产代码。唯一写入 = 本文件 + `research/web/HANDOFF_REFRESH_F7.md`。
+> **本轮（F8）只做文档刷新**：未碰设备、未起模拟器、未跑 gradle、未改生产代码。唯一写入 = 本文件 + `research/web/HANDOFF_REFRESH_F8.md`。
+> **F8 的两件事**：① 把 **V10/V11 查实的"形态切换点更正"并进 §4.3**（两个断点 = 约 768dp + 约 1024dp）；② 把 **"V9 一批数据作废 + 为什么"并进 §4.4**（含撤回"第二切换点在 820–1366dp"那条推论），并把由此得的教训追加进 §6.1 ⑪。
 
 ---
 
@@ -11,9 +12,9 @@
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
-### 0.1 当前可交付（**本轮已用 `Get-FileHash` 逐份复核，以磁盘为准**）
+### 0.1 当前可交付（**F7 已用 `Get-FileHash` 逐份复核；F8 又复核一遍，仍一致，以磁盘为准**）
 
-| 产物（`research/deliver/`） | 体积 | md5（本轮复核值） | 用途 |
+| 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
 | **`opencode-shell-web-release-nor8.apk`** | **3,975,389 B**（≈3.79 MB） | `76ca064b7de9246ee446f765a9198b37` | ✅ **推荐对外分发**（`sharedDebug` 签名，SHA-256 `e86b7006…0510a`）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
 | `opencode-shell-web.apk`（debug） | **5,275,479 B**（≈5.03 MB） | `16c6cf8b7330e5d02879f30333800ad9` | 日常调试（debug 签名）；同上 |
@@ -25,6 +26,19 @@
 包名统一 `com.xiufeigo.opencodeshell.web.debug`（**release 变体也用 debug 包名 + Android Debug 证书**——V5 §1.3 明确"不能据此判可用于对外分发"，是否改名/换证**待 Lead 定调**）。
 **体积对比**：原生壳 release 29.4 MB vs web 壳 release 3.98 MB ⇒ **小 7.4 倍**（**一个前端字节都不打包**）。
 **构建输出一致性**：`webapp/build/outputs/apk/release/webapp-release.apk` 与 `.../debug/webapp-debug.apk` 的 md5 与上表前两行**逐位相同** ⇒ 拿构建目录那份也安全。
+
+**✅ F8 复核（2026-10-05，本轮亲手重跑 `Get-FileHash`）—— 文档与磁盘一致，未发现脱节**：
+
+| 路径 | 体积 | 磁盘 md5 | 与上表 |
+|---|---|---|---|
+| `research/deliver/opencode-shell-web-release-nor8.apk` | 3,975,389 B | `76CA064B7DE9246EE446F765A9198B37` | ✅ 一致 |
+| `research/deliver/opencode-shell-web.apk` | 5,275,479 B | `16C6CF8B7330E5D02879F30333800AD9` | ✅ 一致 |
+| `research/deliver/opencode-shell-debug.apk`（原生壳） | 44,198,253 B | `BD21FF21E72E75DB62FC371D290F438E` | ✅ 一致 |
+| `research/deliver/opencode-shell-release-debugsigned.apk`（原生壳） | 29,393,986 B | `B6073AC63F5D8796708FB269FC855A8D` | ✅ 一致 |
+| `webapp/build/outputs/apk/release/webapp-release.apk` | 3,975,389 B | `76CA064B7DE9246EE446F765A9198B37` | ✅ 与 deliver 同字节 |
+| `webapp/build/outputs/apk/debug/webapp-debug.apk` | 5,275,479 B | `16C6CF8B7330E5D02879F30333800AD9` | ✅ 与 deliver 同字节 |
+
+⇒ **两行交付物 md5（release `76ca064b…` / debug `16c6cf8b…`）本轮复核有效，无需订正**；§4.3 的形态数据也正是取自这份 `76ca064b…`（V11 抬头实测同值同字节）。
 
 #### 已作废的旧 md5（**全部不得再被引用**）
 
@@ -248,15 +262,106 @@
 
 | 量 | 值 | 备注 |
 |---|---|---|
-| 首屏 | **5 次冷启中位数 1,676 ms**（UI 可用标记口径） | 与原生相当；⚠️ 早期报过的 `≥15,395 ms` **是量错**（量成了"最后一个 `_assets` GET"） |
+| 首屏 | **5 次冷启中位数 1,676 ms**（UI 可用标记口径） | 与原生相当；⚠️ 早期报过的 `≥15,395 ms` **是量错**（量成了"最后一个 `_assets` GET"）。⚠️ **V9 轮另报的 `7,252 ms` 已作废**（未鉴权 + harness 开销，见 §4.4-④） |
 | 帧时 | Web 28–31 ms vs 原生 17/26 ms | **87% 是模拟器地板**；跨轮/跨机**只有方向可信** |
 | 耗电 | ❌ **测不到** | 模拟器无电池模型/无 rail 电流 ⇒ **只能真机**（§5 ①） |
+
+### 4.3 形态与切换点（**已鉴权重测**）—— **两个断点：约 768dp 与约 1024dp**
+
+> **口径声明（先钉死，防跨轮串用）**：
+> **本节每一格 = `opencode-shell-web-release-nor8.apk`（md5 `76ca064b7de9246ee446f765a9198b37`，3,975,389 B）+ `emulator-6230`（AVD `OC_Deliver_R2`）+ 2026-10-05 这一天这一轮 + 已鉴权（`F5 probe OK code=200, loading official UI`）。**
+> **本节不与 V9 / F4 / P5 / B1 的任何数字同轴**；V9 那批已作废（§4.4）。
+> 出处：`research/perf/FORMFACTOR_V11.md`（下引 §号 = V11 报告自身的节号）。
+
+**每格先过 4 条前置断言（9/9 全过，否则该格作废）**（V11 §〇）：
+
+| # | 断言 | 判据 |
+|---|---|---|
+| 1 | **已鉴权** | logcat 出现 `F5 probe OK code=200, loading official UI`（证明 `/api/info` 用**正确口令**返回 200，不是 401） |
+| 2 | **数据真的到了** | logcat 出现 `GET http://127.0.0.1:4095/api/session?limit=5000&order=desc&parentID=null`（骨架屏状态下不会有这一行） |
+| 3 | **无认证失败残留** | 本次冷启后 `AUTH FAILED` 计数 = **0** |
+| 4 | **不是空白屏** | 截图 inkPct（≠白像素占比）≥ **1.5%** |
+
+#### ⚠️ 更正：**「≥768dp = 桌面分支」只是第一档，那样写是不完整的**
+
+此前只写"`<768` 移动分支 / `≥768` 桌面分支"，**漏了桌面分支内部还有第二个切换点**。准确说法是**两个切换点**：
+
+| 切换点 | 区间 | 变化（实测） |
+|---|---|---|
+| **① 约 768dp** | `<768` ↔ `768–1023` | **移动分支 → 桌面分支**：`<768` 是标题栏 `Home` + 首行 `All projects`（**可折叠下拉**，带 `⌄`），**无 `Add project`、无 `Settings`/`Help`、无底部栏**，导航靠标题栏图标 + 抽屉；`768–1023` 首行变成 `Projects` **区块标题** + `Add project`（右上角图标），**底部栏**左 `Settings` / 右 `Help` |
+| **② 约 1024dp** | `1024` ↔ `>1024` | **左栏出现，`Settings`·`Help` 移进左栏**：`1000dp` 仍是 `Projects` 区块 + **底部栏** Settings/Help、**无左栏**；`1024dp` 变成**左侧独立栏**（`Projects` + `Add project`），`Settings`/`Help` **移进左栏底部**、**不再有底部栏** |
+
+⇒ **第二切换点夹逼到 1000–1024dp，落在区间 (1000, 1024]，断点 = 1024**，与上游 Tailwind 断点 `lg = 64rem = 1024px` **完全吻合**（V11 §4.2）。
+**代码侧只读印证**（V11 §4.2，未改任何代码）：`_upstream/packages/app/…/home/route.tsx:43` `max-md:grid-rows-[…] lg:grid-cols-[280px_minmax(0,720px)]`（**≥1024 才有 280px 左栏**）、`:52` `hidden … md:block lg:hidden`（**768–1023 才把 Settings/Help 放底部栏**）、`home/projects/view.tsx:290` `mb-8 mt-4 hidden shrink-0 lg:flex`；移动/桌面主切换是 `767/768` 一对（`shell/shell.tsx:26` `(max-width: 767px)` vs `session/…` 的 `(min-width: 768px)`）。上游 Tailwind 刻度 `sm 40rem=640 / md 48rem=768 / lg 64rem=1024 / xl 80rem=1280`（`_upstream/packages/ui/src/styles/theme.css:25-28`）。
+
+**1366×768 的左栏有实证**（V11 §4.1）：截图 `out_v11/tablet1366x768.png`（83,303 B）上肉眼可读左侧一列 `Projects → Add project → Settings → Help`，会话列表整体右移、`Settings`/`Help` **不在底部**；像素侧佐证：左栏带 inkPct **0.87**、底栏带 4.71（**底栏墨量来自系统 Taskbar 导航条，不是 Settings/Help**）。
+
+#### 逐格形态谱（9 格，全部 `401=0`、`apiGET≥10`、inkPct 1.63–6.10）
+
+| 几何 | 分支 | Projects 呈现 | `Add project` | `Settings` / `Help` | 左栏 |
+|---|---|---|---|---|---|
+| **360dp** `720x1280@320` | 移动 | `All projects`（下拉带 `⌄`） | ❌ 无 | ❌ **都没有** | — |
+| **412dp** `824x1280@320` | 移动 | `All projects`（下拉） | ❌ | ❌ 都没有 | — |
+| **442dp** `884x1280@320` | 移动 | `All projects`（下拉） | ❌ | ❌ 都没有 | — |
+| **708dp** `1416x1280@320` | 移动 | `All projects`（下拉） | ❌ | ❌ 都没有 | — |
+| **700dp**（<768）`1400x1280@320` | 移动 | `Home` + `All projects`（下拉） | ❌ | ❌ **都没有** | — |
+| **820dp**（≥768）`1640x1280@320` | **桌面** | `Projects` **区块标题** | ✅ 右上角图标 | ✅ **底部栏**：左 Settings / 右 Help | ❌ 无 |
+| **1000dp**（探针）`2000x1280@320` | 桌面 | `Projects` 区块标题 | ✅ 右上 | ✅ 底部栏 | ❌ **无** |
+| **1024dp**（探针）`2048x1280@320` | 桌面 | `Projects`（**左栏**） | ✅ 左栏 | ✅ **移进左栏底部** | ✅ **有** |
+| **1366×768** `1366x768@160` | 桌面 | `Projects`（**左栏**） | ✅ 左栏 | ✅ **左栏内** | ✅ **有** |
+
+**每格都读到了真实会话**（不是骨架屏）：`Counting from 1 to 4000, one number per line / opencode-android-shell`、`Friendly greeting / DSH 临时会话`、`android-e2e / System32`、`DRAFT_OK / chenjieyan_test`、`DSH插件致后端监听地址报错修复 / DSH-Desktop` 等（V11 §二）。**逐格标题栏的 `Home` 字样：移动分支有，桌面分支无**（V11 §二表"无 `Home` 字样"）。
+
+#### IME 重叠量（逐格；**每格都先断言 `mInputShown=true` 才读数，9/9 通过**）
+
+| 几何 | `type=ime frame=` 原始行（`dumpsys window`） | `contentTopInsets` | `windowBoundsTop` | contentBottom | **重叠(窗口口径)** | **重叠(输入框口径)** |
+|---|---|---|---|---|---|---|
+| 360dp | `…frame=[0,1184][720,1280]… visible=true` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 412dp | `…frame=[0,1184][824,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 442dp | `…frame=[0,1184][884,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 708dp | `…frame=[0,1184][1416,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 700dp | `…frame=[0,1184][1400,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 820dp | `…frame=[0,1184][1640,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 1000dp | `…frame=[0,1184][2000,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 1024dp | `…frame=[0,1184][2048,1280]…` | 1136 | 48 | 1184 | **0 px** | **0 px** |
+| 1366×768 | `…frame=[0,720][1366,768]… visible=true` | 696 | 24 | 720 | **0 px** | **0 px** |
+
+**两个口径都报**（V11 §三）：**窗口口径** = `max(0, contentBottom − imeTop)`，`contentBottom = windowBoundsTop + contentTopInsets`（例 360dp：`48+1136=1184`，`imeTop=1184` ⇒ 0 px ⇒ 窗口已完整缩到 IME 之上）；**输入框口径** = `max(0, 聚焦的 `Search sessions` 输入框底边 − imeTop)`，底边由 IME 弹起后的截图重定位得到（例 1366×768：底边 `y=97`，+6 容差 = 103，`imeTop=720` ⇒ 0 px）⇒ **不只是窗口，连被聚焦的输入框本身也没被 IME 压住**。
+**⇒ 9/9 格重叠 = 0 px，符合预期，IME 这一格无一格需要写"测不到"。**（V9 那批 6 格全是 `frame=[0,0][0,0] visible=false` / `mServedView=null`，因为 IME 根本没被服务给 WebView —— 见 §4.4。）
+
+#### 测不到的量（写"测不到 + 原因"，**不写"通过"**）
+
+| 量 | 状态 | 原因（可复核） |
+|---|---|---|
+| **CDP 节点数 / 关键选择器** | ❌ **9/9 测不到**（不是通过，是**通道不存在**） | 本包是 `:webapp` 模块，`webapp/src/**` 对 `setWebContentsDebuggingEnabled` **零调用**（全仓只有 `:app` 的 `MainActivity.kt:466`，用 `BuildConfig.DEBUG` 做参数）⇒ WebView 不开 `webview_devtools_remote_*`，`DEVTOOLS_SOCKETS=` 空。**要拿 CDP 数字必须先在 `WebHostActivity` 加开关（属改代码，超本轮权限，未动）** |
+| **uiautomator 页内文本** | ❌ **读不到** | `XML_LEN=788 / NODE_COUNT=2 / NONEMPTY_TEXT_COUNT=0 / CLS=android.webkit.WebView` ⇒ 只看得到一个壳节点。⇒ 本节形态判定改由**像素 + 人工读图 + 后端日志**三条证据支撑，**不是** `querySelector` 命中（口径已降级并标注） |
+| **会话消息 composer 的 IME 重叠** | ❌ **未测**（未闭环） | 本轮未进入任何会话详情页 ⇒ 无从聚焦 composer（V11 §八-5） |
+| **每格重复次数** | ⚠️ **单次采样** | 每格只冷启 1 次（未取中位数），inkPct 波动未评估（V11 §八-6） |
+| **真实折叠/横屏/多窗口** | ⚠️ **未测** | 折叠档（442/708）是用 `wm` 覆盖模拟**宽度**，不是真机折叠态（无半折 posture）；横屏/多窗口未测（V11 §八-3） |
+| **412dp 与 V10 的同轴性** | ⚠️ **不严格同轴** | 本轮 412dp 用 `824x1280@320`（压到 1280 规避静默退出），V10 用 `824x1640@320`（高 1640 > 物理 1600）⇒ **宽度同、高度不同**，仅形态分支结论可比（V11 §八-8） |
+
+**另注**：原始行取自 `dumpsys window`，**不是** `dumpsys window insets` —— 后者在本 build 返回 `Bad window command, or no windows match: insets`，是**无效子命令**（V11 §一-④）。
+
+### 4.4 被作废的一批数据（**含原因**）
+
+> **一句话**：**V9（`research/perf/REGRESSION_V9.md`）那批形态/性能数据整体作废**。原因**不是"测得不准"，而是"测的时候被测系统根本没进入可用状态"** —— ① **未鉴权（后端 401）**；② **切完几何立刻取证**，而骨架屏 ~2.2 s 才出现、数据 ~2.4–2.6 s 才到。**两个测量缺陷叠加**，把"根本没数据"伪造成了"小屏渲染不出来"。
+
+| # | 被作废的结论 | 撤回依据 | 现在以什么为准 |
+|---|---|---|---|
+| 1 | **V9 的全部形态结论**（6 格 `uiAvailableMs≈10.7–11.0s`、`renderWhitePct=99.2–99.8`、`proxyGET=0`、`dialogLikely=true`） | V11 §5.1-1：那 6 格 `proxyGET=0` + `AUTH FAILED code=401` ⇒ **从未拿到数据，无法判断任何断点行为** | **§4.3**（V11：9/9 格 `401=0`、`apiGET≥10`、inkPct 1.63–6.10） |
+| 2 | **V9「第二切换点落在 820–1366dp 之间」这条推论** | V11 §5.1-2 明列**作废**。⚠️ 附带说明：V10 §七-1 只写"我没有复测、不敢背书 / **不评价、不推翻**" ⇒ **正式撤回权在 V11，不在 V10** | **断点 = 1024**，实测区间 **(1000, 1024]**（1000dp 无左栏 / 1024dp 有左栏） |
+| 3 | **V9 那张「360dp 停在 `Loading` 骨架屏」的画面 —— 作为形态证据** | V11 §5.1-3；V10 查实那是**两个测量缺陷叠加**（**那轮口令错 401** + **切完几何立刻截图**），**不是 360dp 的缺陷** | V10：正确口令下 **360dp 与 412dp 六次冷启全部离开 `Loading`**（离开均值 2499 ms vs 2404 ms），两档差 **~95 ms** **小于**轮内抖动 **191 ms** ⇒ 落在噪声里 |
+| 4 | **V9 §2.1 首屏「5 次冷启中位数 7252 ms」** | 该数字建立在 **401 + 每档人工点「继续加载」**的路径上，且 V9 §2.1 **自述**含 harness 固定开销约 5–6 s（`am start` + 固定 `Start-Sleep 3s` + `uiautomator dump`≈2 s + tap + 400 ms 轮询）⇒ **不是交付包首屏** | 只作为"V9 那一轮"的历史记录留在 `REGRESSION_V9.md` §2.1，**不进本交接的结论轴**；§4.2 的 **1,676 ms**（G2 口径）仍是交接用数字。**两者不同轮不同包，不相减、不混轴** |
+
+**⇒ 教训（已同步追加进 §6.1 ⑪，不覆盖已有条目）**：
+> **测量前必须先断言被测系统处于"真正可用"的状态 —— 这里是"已鉴权 + 数据已到"；否则量到的可能是空转。**
+> V9 那 6 个 cell **无一例外** `proxyGET=0`（**后端从未向页面交付过数据**），**连 1366dp 平板也是 99.7% 白屏** ⇒ **与视口宽度毫无相关性**，却被读成了"360dp 小屏问题"（V10 §三-4）。V11 已把这两条做成**脚本里的硬门禁**（`_v11_sweep.ps1`）：任一不满足即 `PRECONDITION_VALID=False`、该格结论作废。
 
 ---
 
 ## 5. 未闭环（**接手第一件事；诚实、短**）
 
-### 🔴 两条硬骨头
+### 🔴 三条硬骨头
 
 **① 耗电 mAh —— 必须真机，我们拒绝编数字。**
 模拟器**无电池模型、无 rail 电流** ⇒ 前几轮**全部是代理量，不是耗电**。P6 轮 §7.1 原文：「**本轮没有任何耗电数字。我们没有真机。**」P6 测到的 CPU **−5.6%** 低于其自定阈值 ⇒ 判为"**在测量噪声内，不构成证据**"（**这不等于"两者一样"，更不等于"省了 5.6% 电"**）；WakeLock 两边都是 `size=0` ⇒ **对本项目不具区分度**。
@@ -267,6 +372,11 @@
 1. **连构建成功都还没证明**：`webapp/.../WebHostActivity.kt` 曾在 R8 编译下出现 7 个 `Unresolved reference`（`webViewMajor` / `webViewVersionName` / `watchdogArmed` / `showDiagnostic` / `WebViewRenderProcessDetail` / `didCrash`）。⚠️ **另路完工提醒：请先确认该文件能编译，否则连 debug 包都构建不出来。**
 2. **风险集中在依赖侧**：本 APK **约 94% 是 dex**，R8 缩的主要是 okhttp / coroutines / **Tink**，而**最可能被裁坏的 Tink 会让 `SecretStore` 静默退化成内存存储**（口令不落盘、首启反复要密码）—— 这种"**不崩溃只降级**"的失败在静态检查里看不出来。
 3. **12 项风险清单** + 建议 keep 规则见 `research/web/WEB_RELEASE_BUILD.md`。
+
+**③ release 身份 —— 对外分发前必须换包名 + 换证书。**
+本包**包名带 `.debug` 后缀**（`com.xiufeigo.opencodeshell.web.debug`；`webapp/build.gradle.kts:55` 的 release 变体带后缀，V11 抬头 `aapt2 dump packagename` 读回一致）**且用 Android Debug 证书签名**（`sharedDebug`）。`RELEASE_VERIFY_V5.md` §1.3 明确「**不能据此判可用于对外分发**」。
+⇒ **在改名/换证定调前，§0.1 那行"推荐对外分发"只对内部灰度成立。** 是否改名/换证**待 Lead 定调**。
+**同一条卡着两件事**：§3.4 的相机扫码路径要验收，就必须有一个**DEBUG 构建**或给 release 加**受控**的非 DEBUG 注入/深链钩子；§4.3 想要的 CDP 数字也要在 `WebHostActivity` 里加 `setWebContentsDebuggingEnabled`。**⇒ 这三条（对外分发 / 相机验收 / CDP 读数）其实卡在同一个待裁决项上，建议一次性拍板。**
 
 ### 🟡 其余（照报告如实列出）
 
@@ -286,6 +396,9 @@
 | 14 | **AVD 定义占 ≈39.8 GB** | 进程已关；`OC_Phone_Test`/`B`/`C`、`OC_Narrow_Test`、`Medium_Desktop_B` 仍在磁盘，**待产品负责人决定** | `HOUSEKEEPING.md` |
 | 15 | **上游快照滞后** | 工作区停在 `702a73d`（2026-09-20）；审计一律改用 git 对象读 `origin/v2`（**不切工作区**） | A4 抬头 |
 | 16 | **原生壳 `app/**` 的最终去留** | 属产品/架构决策 | A4 §10-6 |
+| 17 | **形态扫描拿不到 CDP 数字与 DOM 级断言** | `:webapp` 无 `setWebContentsDebuggingEnabled` ⇒ 9/9 格 `nodes` 数 / `data-slot`·`data-action` 选择器命中**一个都没取到**；形态判定靠**像素 + 人工读图 + 后端日志**。要 CDP 数字**必须先改代码**（超本轮权限，未动） | §4.3「测不到的量」；`FORMFACTOR_V11.md` §八-1/§八-2 |
+| 18 | **形态扫描为单次采样、未覆盖真实形态** | 每格只冷启 1 次（未取中位数）；折叠档是 `wm` 覆盖模拟宽度，**不是真机折叠态**；横屏/多窗口未测 | §4.3「测不到的量」；`FORMFACTOR_V11.md` §八-3/§八-6 |
+| 19 | **会话消息 composer 的 IME 重叠未测** | V11 未进入任何会话详情页 ⇒ composer 无从聚焦（页内 `Search sessions` 已 9/9 = 0 px） | §4.3；`FORMFACTOR_V11.md` §八-5 |
 
 ---
 
@@ -305,16 +418,17 @@
 | ⑧ | **量对了才算数**：不许把"最后一个 `_assets` GET"当首屏（曾因此报出错的 `≥15.4s`）；对比数字必须同轮、同参数、同设备指纹，**不许跨轮沿用**（本冲刺三次结论反转都源于此）。 |
 | ⑨ | **`BUILD SUCCESSFUL` + `UP-TO-DATE` 不等于重建**（R2 §1.1：gradle 根本没重新打包，**收工的仍是旧字节**）。真重建的口径是"每一个 task 都真跑了"（R2 记 `35 actionable tasks: 35 executed`）。 |
 | ⑩ | **验证"修复在包里"要用真实标识符**。R2 §2.4 自曝：用自造关键字 grep 资产打出 `fix-marker hits: 0`，一度像"修复没进包"——**该结论是错的**，关键字根本不是代码里的真实标识符；改用与源码**逐字节比 md5** 后确认。 |
+| ⑪ | **测量前必须先断言被测系统处于"真正可用"的状态，否则量到的可能是空转**（F8 由 V9/V10/V11 三轮换来）。V9 的形态扫描跑在**未鉴权（401）**状态下：6 个 cell **无一例外** `proxyGET=0`（后端**从未向页面交付过数据**）、`renderWhitePct=99.2–99.8`，**连 1366dp 平板也是 99.7% 白屏** ⇒ **与视口宽度毫无相关性**，却被读成"360dp 小屏缺陷"；再加上**切完几何立刻截图**（骨架屏 ~2.2 s 才出现、数据 ~2.4–2.6 s 才到）⇒ **两个测量缺陷叠加，把"没数据"伪造成了"渲染慢/渲染不出来"**。**⇒ 任何视口/时序对比都必须先过"已鉴权 + 数据已到"门禁**（V11 已写进脚本：断言 `probe OK code=200` + `/api/session?limit=5000…` 已发出 + `AUTH FAILED=0` + inkPct ≥1.5%，任一不满足即 `PRECONDITION_VALID=False`、该格结论作废）。**⇒ 并且：已作废的数据要显式撤回，不许留在文档里当"另一种说法"** —— V9 声称"第二切换点在 820–1366dp"这条推论，被 V11 用 1000dp/1024dp 两格**夹逼撤回**（V11 §5.1 逐条列了作废台账）。 |
 
 ### 6.2 关于交付物
 
 | # | 教训 |
 |---|---|
-| ⑪ | **交付物命名不许另起后缀**。F5 用 `opencode-shell-web-release-f5.apk` 落产物，与规范名 `…-nor8.apk` 并存 ⇒ 直接造成"**哪个才是交付物**"的歧义。**⇒ 新一轮一律落规范名。** |
-| ⑫ | **文档里的 md5 必须与磁盘产物一致**。Lead 两次靠自查抓到脱节（R2 轮、F6 轮各一次）。**⇒ 每次重建后第一件事：`Get-FileHash` 复核，并把该代次的 md5 显式登记进 `DELIVER_REBUILD_R2.md` §2.1 的现行表 + 作废清单两栏**（V5/V6/V8 复验过的那三个包当时就没登记进去，见 §0.2 裂缝 ①）。 |
-| ⑬ | **区分"APK 的 md5"和"包内资产的 md5"**。`bf542769…`（13,804 B）是 `oc-host.js` 的 md5，曾被误列进"已作废的 APK md5"（见 §0.1 末注）。 |
-| ⑬' | **别用文本级往返写回改含历史编码破损的文件**。F6 第一次改 `DELIVER_REBUILD_R2.md` §2.1 时用了"读成字符串再整体写回"，**把该文件里既有的非法 UTF-8 字节洗成了替换字符**，diff 从 10/3 炸到 160+/152-。已 `git checkout --` 还原，改用**按字节切行、只替换目标行字节**重做。**⇒ 该文件至今仍含坏字节，任何工具都读不回原字。** |
-| ⑭ | **改断言前先想清楚：是改断言还是改产品**。F5 有一条测试先红后绿（`auth page never echoes password`），**按规矩改的是产品文案、不是断言**（`HINT_AUTH` 补上"用户名或口令不对"），复跑通过。 |
+| ⑫ | **交付物命名不许另起后缀**。F5 用 `opencode-shell-web-release-f5.apk` 落产物，与规范名 `…-nor8.apk` 并存 ⇒ 直接造成"**哪个才是交付物**"的歧义。**⇒ 新一轮一律落规范名。** |
+| ⑬ | **文档里的 md5 必须与磁盘产物一致**。Lead 两次靠自查抓到脱节（R2 轮、F6 轮各一次）。**⇒ 每次重建后第一件事：`Get-FileHash` 复核，并把该代次的 md5 显式登记进 `DELIVER_REBUILD_R2.md` §2.1 的现行表 + 作废清单两栏**（V5/V6/V8 复验过的那三个包当时就没登记进去，见 §0.2 裂缝 ①）。 |
+| ⑭ | **区分"APK 的 md5"和"包内资产的 md5"**。`bf542769…`（13,804 B）是 `oc-host.js` 的 md5，曾被误列进"已作废的 APK md5"（见 §0.1 末注）。 |
+| ⑭' | **别用文本级往返写回改含历史编码破损的文件**。F6 第一次改 `DELIVER_REBUILD_R2.md` §2.1 时用了"读成字符串再整体写回"，**把该文件里既有的非法 UTF-8 字节洗成了替换字符**，diff 从 10/3 炸到 160+/152-。已 `git checkout --` 还原，改用**按字节切行、只替换目标行字节**重做。**⇒ 该文件至今仍含坏字节，任何工具都读不回原字。** |
+| ⑮ | **改断言前先想清楚：是改断言还是改产品**。F5 有一条测试先红后绿（`auth page never echoes password`），**按规矩改的是产品文案、不是断言**（`HINT_AUTH` 补上"用户名或口令不对"），复跑通过。 |
 
 ### 6.3 设备与安全纪律（**产品负责人明确要求**）
 
@@ -362,9 +476,12 @@
 | 缺口收口（G2 / G3） | `research/web/GAP_CLOSE_G2.md` · `GAP_CLOSE_G3.md` |
 | 上游回归 | `research/web/UPSTREAM_REGRESSION_A3.md` |
 | 性能四量 | `research/perf/{STARTUP_AND_FRAMETIME,FRAMETIME_AND_GZIP,POST_FIX_RETEST,INPUT_PATH_P5}.md` |
+| **形态 / 切换点（已鉴权重测，V11）** | `research/perf/FORMFACTOR_V11.md` |
+| **360dp「停在 Loading」调查（V10）** | `research/perf/PHONE360_INVESTIGATION.md` |
+| **⚠️ 已作废的 V9 形态/性能数据** | `research/perf/REGRESSION_V9.md`（未鉴权状态下取的，结论见 §4.4） |
 | **耗电套件（本轮未跑）** | `research/perf/battery_real_device.ps1` · `BATTERY_HOWTO.md` |
 | **环境与清理纪律** | `research/HOUSEKEEPING.md` |
-| **本轮改动摘要** | `research/web/HANDOFF_REFRESH_F7.md` |
+| **本轮改动摘要** | `research/web/HANDOFF_REFRESH_F8.md`（前一轮：`HANDOFF_REFRESH_F7.md`） |
 
 ---
 
