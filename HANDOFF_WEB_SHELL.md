@@ -27,10 +27,10 @@
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,990,760 B**（≈3.81 MB） | `d6015bf2873fa19776a0e53bb3ab96a0` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、SHA-256 `e86b7006…0510a`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
-| `opencode-shell-web.apk`（debug） | **5,437,748 B**（≈5.19 MB） | `69bbe05f772250888d4e1dac4faf9ce0` | 日常调试（debug 签名）；同上 |
+| **`opencode-shell-web-release-nor8.apk`** | **3,992,324 B**（≈3.81 MB） | `f47e281c994b572784ba83d2fe511684` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、SHA-256 `e86b7006…0510a`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性）。**UX3 重建值**（2026-10-05，选择面板挪到右侧栏「+」）；旧值 `d6015bf2…` 已作废，见 §0.1 末 UX3 块 |
+| `opencode-shell-web.apk`（debug） | **5,437,748 B**（≈5.19 MB） | `5d3bcc15362acd113dea924ccb3da4fb` | 日常调试（debug 签名）；同上。**UX3 重建值**；旧值 `69bbe05f…` 已作废，见 §0.1 末 UX3 块 |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,445,812 B**（≈1.38 MB，比非 R8 **−63.77%**） | `28ee9ffc886da26c40c903d50eb03e12` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储**（杀进程重开免密、`EncryptedSharedPreferences unavailable` 命中 0 ⇒ 未静默降级）· **JS 桥**（代理吐出 31 条官方 UI 资产、`@JavascriptInterface` 方法名未改）· **错误态三态**（正确/错口令/不可达，三态不串态）· **`shrinkResources`**（首启配置框截图证伪）· **全程无崩溃无渲染进程丢失** · **常亮三段**（**真点官方 UI Send 驱动**，含 tap 前基线 + 连续两回合 + +95 s 不回弹）。⚠️ 仍未闭环见 §5。**设备端 `base.apk` md5 = `0598817026…`，`DEVICE_MD5_MATCH=True`**。原文：`R8_ATTEMPT_F11.md` · `R8_KEEPAWAKE_F12.md` · `R8_UITAP_F13.md` · `R8_UITAP_F15.md` |
+| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 试产、F12–F15 补验**） | **1,447,376 B**（≈1.38 MB，比非 R8 **−63.77%**） | `4917af7293f2e15a3459d0945ae5476a` | 🟡 **核心项已设备验证完毕，但默认推荐仍是上一行的非 R8 版**（理由见 §0.4.4）。✅ 已过：**构建**（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`，独立 `releaseR8` 变体）· **Tink 口令存储**（杀进程重开免密、`EncryptedSharedPreferences unavailable` 命中 0 ⇒ 未静默降级）· **JS 桥**（代理吐出 31 条官方 UI 资产、`@JavascriptInterface` 方法名未改）· **错误态三态**（正确/错口令/不可达，三态不串态）· **`shrinkResources`**（首启配置框截图证伪）· **全程无崩溃无渲染进程丢失** · **常亮三段**（**真点官方 UI Send 驱动**，含 tap 前基线 + 连续两回合 + +95 s 不回弹）。⚠️ 仍未闭环见 §5。**设备端 `base.apk` md5 = `0598817026…`，`DEVICE_MD5_MATCH=True`**。原文：`R8_ATTEMPT_F11.md` · `R8_KEEPAWAKE_F12.md` · `R8_UITAP_F13.md` · `R8_UITAP_F15.md`。**UX3 重建值**；旧值 `28ee9ffc…` 已作废，见 §0.1 末 UX3 块 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
 
@@ -78,6 +78,26 @@
 
 ⇒ **结论：三份交付物与 §0.1 顶表登记的体积 + md5 完全对得上，文档与磁盘无脱节，无需订正。**
 出处：`research/web/FIX_F18_PHONE.md` §5（这三份就是 F18 重建的产物，md5 与该报告表格逐位相同）；F19 复核记录 `research/web/HANDOFF_F19.md`。
+
+#### ✅ UX3 复核（2026-10-05，`Get-FileHash` 重跑，**以本表为当前唯一有效交付物**）—— **本轮重建了三份 web 产物**
+
+> **为什么重建**：UX3 把「打开终端 / 打开文件」选择面板从**顶栏「+」**挪到**右侧栏标签条「审查」旁的「+」**（产品负责人截图批注纠错）。改动只在 `webapp/src/main/assets/www/oc-host.js`（页面注入层）+ 新增绊线测试 `PlusPositionTripwireTest.kt`；**宿主 Kotlin 零改动**。报告：`research/web/UX3_PLUS_POSITION_FIX.md`。
+
+**UX3 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`）：
+
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **3,992,324 B** | **`f47e281c994b572784ba83d2fe511684`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,447,376 B** | **`4917af7293f2e15a3459d0945ae5476a`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **5,437,748 B** | **`5d3bcc15362acd113dea924ccb3da4fb`** | 同上 |
+
+**包内含源自查**：三份 APK 内 `assets/www/oc-host.js` 的 md5 均为 **`a3ce11503f31cf03d6ee58c182c82cad`**，与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（`System.IO.Compression.ZipFile` 解包实测）。
+
+> 🔴 **UX3 批以下旧值全部作废，不得再被当作"当前交付包"引用**：
+> **UX2 批** `d6015bf2…`（nor8）/ `28ee9ffc…`（r8）/ `69bbe05f…`（debug）；
+> **F19/F18 批** `03d7888f…` / `5227c2ac…` / `9f511c5a…`；
+> **F16 批及更早** `76ca064b…` / `05988170…` / `16c6cf8b…` 以及 §0.1「已作废的旧 md5」清单里的全部历代值。
+> 引用 🟡 级设备结论时仍按 §4.5 口径**带它当时测的那个 md5**，别把历史字节体当今天的磁盘文件。
 
 > 🔴 **F19 顺带点出的过期口径（⚠️ 本文件内部新旧值并存，接手时务必以本表为准）**：
 > **F18 重建过一次三份交付物**，所以本文件里**仍有若干处保留着 F18 之前的旧值**——上表（"F8 复核"那块）与 §0.1 顶表写的还是**旧值**，而顶表/F18 §5 已是**新值**。具体三处**仍需按新值理解**的地方：

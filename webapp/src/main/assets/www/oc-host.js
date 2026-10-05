@@ -597,7 +597,7 @@
   // insets 每变一次都刷新一次（IME 收起时 --oc-ime-bottom 归 0，留白自动撤掉）。
   if (lastInsets) doApply(lastInsets);
 
-  // UX1 任务3：右侧栏「+」→ 弹出「打开终端 / 打开文件」选择面板。
+  // UX3：「打开终端 / 打开文件」选择面板挂在**右侧栏标签条的「+」**上。
   // ⚠ 为什么**内联**在这里、而不是 fetch 外部文件再 eval：
   //   实测上游官方 UI 的 CSP 是
   //     script-src 'self' 'wasm-unsafe-eval' 'sha256-...'
@@ -610,25 +610,60 @@
 })();
 
   /**
-   * UX1 任务3 · 右侧栏「+」的选择面板（终端 / 文件）。
+   * UX3 · 右侧栏标签条「+」的选择面板（终端 / 文件）。
    *
-   * 上游那个「+」在 shell/titlebar/titlebar.tsx:621-629：`icon={<Icon name="plus" />}
-   * onClick={openNewTab} aria-label={language.t("command.session.new")}`，
-   * `openNewTab`（:271）**直接新建会话**，没有选择层。
+   * ## 挂点（UX1/UX2 挂错过，UX3 纠正）
    *
-   * 不复用上游 `DialogCommandPalette`（shell/commands/dialog.tsx:30）的理由：
-   * 它的入口是 Solid 的 `dialog.show(...)`（home/sessions/controller.tsx:119-121、
-   * new-session/commands.tsx:27-29），依赖 useCommand/useGlobal/useTabs 等一整套
-   * 响应式宿主（shell/commands/palette.ts:82-92），WebView 从外部没有任何可达入口。
+   * UX1/UX2 把面板挂在了**顶栏标签条的「+」**（`<header>` 内、
+   * aria-label="New session" 的按钮，上游 titlebar.tsx:621-629 →
+   * `openNewTab`(:271) 直接新建会话草稿标签）。产品负责人 2506×1673 截图
+   * 批注纠正：**要的是右侧栏标签条上「审查」旁边的那个「+」**。
+   * ⇒ 顶栏「+」**完全不拦截**，恢复上游 openNewTab 原行为。
    *
-   * 一致性原则：**不替换上游任何行为**，只在点击**之前**加一层选择；
-   * 选完再走上游/宿主原路径。
+   * ## 目标元素的选择器（DOM 结构定位，不绑像素/文案）
+   *
+   * 设备实测（emulator-6550，`oc_debug_eval` 探针 + elementFromPoint 反查）：
+   * 审查面板打开后右侧栏有**两条**非 header 的 `[role=tablist]`：
+   *   条0（审查条，y≈68）：按钮 = [面板切换图标(Toggle file tree)@开头]、
+   *        [role=tab]「Files Changed 8」、尾部「Open file」← 产品负责人指的「+」
+   *   条1（终端条，y≈511）：[role=tab]×N（Terminal 1..N）、aria-label="Close
+   *        terminal"×N、尾部「New terminal」
+   * 页面里 `[role=tablist]` 均不在 `<header>` 内；顶栏「New session」「+」在
+   * `<header>` 内、且不在任何 tablist 里。
+   *
+   * 选择器原文（findPlusButton → scanTablistButtons(list, pickLast=true)）：
+   *     所有 [role=tablist] 中第一个 `!list.closest("header")` 且可见的 list，
+   *     取其内 `button,[role=button]` 里：不是 [role=tab]、不在 [role=tabpanel] 内、
+   *     含 <svg>、aria-label 不以 close/dismiss/关闭/關閉 开头的可见元素中 **DOM
+   *     顺序的最后一个**。
+   * 依据：「+」位于 tablist 尾部 sticky 容器；面板切换图标 sticky 在**开头**；
+   * close × 按各自的 tab 排在「+」之前 —— 取最后一个正好命中「+」、
+   * 天然跳过切换图标（实测"取第一个"会错抓 Toggle file tree，已纠正）。
+   *
+   * ## 上游那个「+」原本干什么（不能弄丢）
+   *
+   * 部署版实测（2026-10-05 09:23，绕过拦截直点）：终端条「+」aria-label="New
+   * terminal"，点击**新建终端标签**（Terminal 4 出现）；审查条「+」aria-label=
+   * "Open file"，点击打开应用内文件树。v2 源码同一结构位是「Add tab」菜单
+   * （session-side-panel.tsx:458-533：打开文件 :503-516 + 浏览器 :517-530）。
+   * ⇒ 取舍（**原功能并进面板当选项**，两条原路都保留）：
+   *   - 「打开终端」= 把合成 click 还给上游终端「+」自己（findTerminalTrigger
+   *     按 terminal/终端 语义找，passThrough 放行）——新建终端功能逐字保留；
+   *   - 「打开文件」= 宿主原生文件选择器（WebHostBridge.pickFile，UX1 定义）。
+   *     上游应用内文件树依赖工作区 fs，WebView 宿主里由原生选择器承接同一意图，
+   *     且是可验证的真动作。
+   *
+   * 不复用上游 DialogCommandPalette（shell/commands/dialog.tsx:30）的理由（沿用 UX1 §3.2）：
+   * 入口是 Solid 的 dialog.show(...)，依赖一整套响应式宿主，WebView 无可达入口。
    */
   function installPlusChooser() {
     if (window.__ocPlusChooser) return;
     var MIN_TAP_PX = 48;
     var panel = null;
     var armed = false;
+    // 「打开终端」会把一次合成 click 还给上游「+」自己；这期间我们的
+    // document 捕获监听必须放行，否则点击会被自己的拦截吃回去（面板重开）。
+    var passThrough = false;
 
     function log() {
       try {
@@ -636,18 +671,61 @@
       } catch (e) {}
     }
 
-    /* 上游是 SPA，节点会重挂 ⇒ 每次重新查，不缓存节点引用。
-     * 判据：内含 svg（上游按钮都是 Icon），且 aria-label/文本命中"新建会话"语义。 */
-    function findPlusButton() {
-      var nodes = document.querySelectorAll("button,[role=button]");
-      for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i];
+    /* 右侧栏标签条 = 页面里**不在 <header> 内**的那个 [role=tablist]（选择器原文见
+     * 上方头注释「目标元素的选择器」）。上游是 SPA，节点会重挂 ⇒ 每次重新查，
+     * 不缓存节点引用；不绑任何文案/像素 —— 顶栏「New session」「+」在 <header>
+     * 内且不在任何 tablist 里，结构上天然命不中。 */
+    var CLOSE_PREFIX = /^\s*(close|dismiss|关闭|關閉)/i;
+    /* 「+」位于 tablist 尾部的 sticky 容器里；面板切换图标（Toggle file tree /
+     * Toggle review）sticky 在**开头** ⇒ 取候选里 DOM 顺序的最后一个。 */
+    var TERMINAL_LABEL = /terminal|终端/i;
+
+    function scanTablistButtons(list, pickLast) {
+      var nodes = list.querySelectorAll("button,[role=button]");
+      var found = null;
+      for (var j = 0; j < nodes.length; j++) {
+        var el = nodes[j];
         if (el.getAttribute("data-oc-plus-chooser") === "1") continue;
-        var label = (el.getAttribute("aria-label") || el.textContent || "").trim();
+        if (el.getAttribute("role") === "tab") continue;
+        if (el.closest("[role=tabpanel]")) continue;
         if (!el.querySelector("svg")) continue;
-        if (!/新建会话|新会话|new session/i.test(label)) continue;
         if (el.offsetParent === null) continue;
-        return el;
+        if (CLOSE_PREFIX.test(el.getAttribute("aria-label") || "")) continue;
+        found = el;
+        if (!pickLast) return found;
+      }
+      return found;
+    }
+
+    function findPlusButton() {
+      var lists = document.querySelectorAll("[role=tablist]");
+      for (var i = 0; i < lists.length; i++) {
+        var list = lists[i];
+        if (list.closest("header")) continue;
+        if (list.offsetParent === null) continue;
+        var hit = scanTablistButtons(list, true);
+        if (hit) return hit;
+      }
+      return null;
+    }
+
+    /* 终端触发器 = 非 header tablist 内 aria-label 命中 terminal/终端 且非 close 的
+     * 按钮（部署版即 "New terminal"）。终端标签自身是 [role=tab] 且无 svg，天然排除。 */
+    function findTerminalTrigger() {
+      var lists = document.querySelectorAll("[role=tablist]");
+      for (var i = 0; i < lists.length; i++) {
+        var list = lists[i];
+        if (list.closest("header")) continue;
+        var nodes = list.querySelectorAll("button,[role=button]");
+        for (var j = 0; j < nodes.length; j++) {
+          var el = nodes[j];
+          if (el.getAttribute("role") === "tab") continue;
+          if (!el.querySelector("svg")) continue;
+          if (el.offsetParent === null) continue;
+          var label = el.getAttribute("aria-label") || "";
+          if (CLOSE_PREFIX.test(label)) continue;
+          if (TERMINAL_LABEL.test(label)) return el;
+        }
       }
       return null;
     }
@@ -713,22 +791,24 @@
       return p;
     }
 
-    /* 打开终端：优先点**上游自己的**终端触发器（保持上游行为，不另造一条路）。
-     * 找不到就派发事件并如实标记 found:false —— 不假装成功。 */
+    /* 打开终端：把一次合成 click **还给上游终端「+」自己**（passThrough 放行）——
+     * 部署版它=新建终端标签（设备实测 Terminal 4 出现），v2 源码它是 Add-tab 菜单；
+     * 不重写、不另造路，上游原功能一个字节不丢。找不到就如实标记 found:false。 */
     function runTerminal() {
-      var cands = document.querySelectorAll(
-        "[data-slot*=terminal], [aria-label*=erminal], button[title*=erminal], [data-oc-terminal]"
-      );
-      for (var i = 0; i < cands.length; i++) {
-        if (cands[i].offsetParent !== null) {
-          cands[i].click();
-          log("terminal trigger clicked");
-          return true;
-        }
+      var btn = findTerminalTrigger();
+      if (!btn) {
+        window.dispatchEvent(new CustomEvent("oc:open-terminal", { detail: { source: "plus-chooser", found: false } }));
+        log("no upstream terminal trigger found; dispatched oc:open-terminal");
+        return false;
       }
-      window.dispatchEvent(new CustomEvent("oc:open-terminal", { detail: { source: "plus-chooser", found: false } }));
-      log("no upstream terminal trigger found; dispatched oc:open-terminal");
-      return false;
+      passThrough = true;
+      try {
+        btn.click();
+      } finally {
+        passThrough = false;
+      }
+      log("upstream terminal trigger re-clicked via passThrough");
+      return true;
     }
 
     /* 打开文件：走宿主**原生**文件选择器（WebHostBridge.pickFile），可验证的真动作。 */
@@ -753,15 +833,15 @@
     }
 
     function onClick(e) {
+      if (passThrough) return; // 面板动作把点击还给上游「+」，这里必须放行
       if (panel) { closePanel(); return; }
       var btn = findPlusButton();
       if (!btn) return;
       if (!(e.target === btn || btn.contains(e.target))) return;
       e.preventDefault();
       e.stopPropagation();
-      armed = true;
       buildPanel(btn);
-      log("plus intercepted; chooser shown");
+      log("side-tablist plus intercepted; chooser shown");
     }
 
     function onKey(e) {
