@@ -22,7 +22,7 @@
 | **`opencode-shell-web-release-nor8.apk`** | **3,975,389 B**（≈3.79 MB） | `76ca064b7de9246ee446f765a9198b37` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、SHA-256 `e86b7006…0510a`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）；含 F6 + 此前全部修复（通知 `f989907`、省电 `c2eaa3b`、D1/F4 常亮、F5 接入健壮性） |
 | `opencode-shell-web.apk`（debug） | **5,275,479 B**（≈5.03 MB） | `16c6cf8b7330e5d02879f30333800ad9` | 日常调试（debug 签名）；同上 |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回上两行（内容相同，md5 差异来自签名时间戳） |
-| **R8 版** | **未产出** | — | ⚠️ **构建未成功**；12 项风险清单，**最高 = Tink 静默降级** ⇒ **设备验证前不要分发** |
+| **R8 版**（`opencode-shell-web-release-r8.apk`，**F11 新增**） | **1,435,193 B**（≈1.37 MB，比非 R8 **−63.90%**） | `0598817026665544a08803055107a9fd` | 🟡 **已设备验证核心项，但默认推荐仍是上一行的非 R8 版**。✅ 已过：构建成功（`minifyReleaseR8WithR8`+`shrinkReleaseR8Res`）、**Tink 口令存储（杀进程重开免密、静默降级命中 0）**、JS 桥、错误态三态、`shrinkResources`、全程无崩溃；同轮首屏中位数 644 ms vs 非 R8 691 ms（**只快 47 ms，不构成"明显更快"**）。❌ **未闭环**：常亮"回合进行中 0x80 置起"段未验（空闲三段含 +90 s 已验且正确）⇒ 分发前需补该段。构建/验证原文：`research/web/R8_ATTEMPT_F11.md` |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用） |
 

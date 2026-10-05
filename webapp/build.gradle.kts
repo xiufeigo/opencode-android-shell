@@ -42,21 +42,37 @@ android {
         // 同一份 `sharedDebug` 签名 + `applicationIdSuffix = ".debug"`，
         // 于是 web 壳的 release 是个"可安装、与官方壳互不覆盖"的包，而不是只装得上的调试包。
         //
-        // R8 是**开关式**的：默认关（release 产物与非 R8 完全一致），
-        // 要实验产物时显式 `-Pwebapp.r8=true`，`isShrinkResources` 一并跟随。
-        // 用开关而不是新建 `releaseR8` buildType，是为了不把变体集合撑大
-        // （会多出 lintVitalReleaseR8 / testReleaseR8 之类的任务），
-        // 也免得"哪份是发布件"在变体列表里出现两个候选。
+        // 🔴 F11（R8 试产轮）**故意收紧了这一块**：删掉 E1 留下的
+        // `-Pwebapp.r8=true` 开关，改为**无条件非 R8**。
+        // 理由（硬要求："不能因为试产把已验收的交付物换掉"）：
+        // 开关式的隐患是**同一个输出路径** `outputs/apk/release/webapp-release.apk`
+        // 在带不带 `-P` 时**静默变成两份不同的包**——只要有人（或 CI）顺手带上那个
+        // 开关，**已验收的分发物就被 R8 版顶替**了，而且从变体列表上看不出来。
+        // 写成常量之后，这条路在**结构上**就不存在。
         release {
-            val r8 = providers.gradleProperty("webapp.r8").orNull == "true"
-            isMinifyEnabled = r8
-            isShrinkResources = r8
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("sharedDebug")
             applicationIdSuffix = ".debug"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+
+        // F11：R8 试产变体，**独立 buildType**（不是开关）。
+        // · 独立 ⇒ 输出路径 `outputs/apk/releaseR8/webapp-releaseR8.apk`，
+        //   与 release 的产物**永不互相覆盖**，"哪份是发布件"在变体列表里也不会混淆。
+        // · `applicationIdSuffix` **故意与 release 相同** ⇒ 两版 applicationId 一致，
+        //   可以**互相覆盖安装**，这正是同机同轮 A/B 对比需要的。
+        // · 真正的混淆规则在 `proguard-rules.pro`（F11 已按 12 项风险逐条落盘）。
+        // ⚠️ 不加 `isDebuggable = true`：C1 契约（`DebugEvalChannelTest`）要求
+        //   release 侧 debug 通道保持关闭，`releaseR8` 同样保持关闭。
+        create("releaseR8") {
+            initWith(getByName("release"))
+            isMinifyEnabled = true
+            isShrinkResources = true
+            matchingFallbacks += listOf("release")
         }
     }
 
