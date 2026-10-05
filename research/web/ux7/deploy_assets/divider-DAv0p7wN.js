@@ -1,0 +1,2 @@
+import{H as e,mt as t,xt as n,z as r}from"./icon-DR7qgx3o.js";var i=e(`<div>`);function a(e){let[a,o]=n(e,[`class`,`classList`]);return(()=>{var e=i();return r(e,t(o,{role:`separator`,"aria-orientation":`horizontal`,"data-component":`divider-v2`,get classList(){return{...a.classList,[a.class??``]:!!a.class}}}),!1,!1),e})()}export{a as t};
+//# sourceMappingURL=divider-DAv0p7wN.js.map

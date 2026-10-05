@@ -16,6 +16,8 @@
 > **F19 改了四类东西**（逐条对照见 `HANDOFF_F19.md`）：① **新增 §0.5「手机形态：走一遍旅程才发现的两条缺陷，已经闭环」**（V13 发现 → F18 修 → V14 复验 10/10 的完整闭环，含两条缺陷的根因与设备读数）；② **md5 三行逐份 `Get-FileHash` 复核，3/3 与磁盘逐位一致**，并在 §0.1 补一条**过期口径警示**（本文件里仍有若干处拿 F18 之前的旧值当"交付包"）；③ **§6.1 追加 1 条教训**（"只有走完整条旅程才会发现这类缺陷"）；④ **§5 补 2 条手机形态遗留项**（D3 / D5），两条硬骨头原样保留。
 > ⚠️ **F19 没有做的事**：**没有重跑任何设备验证、没有改任何设备结论**。V13/F18/V14 的一切结论都**只做并入，不做升级**；凡本轮只是"转述"的地方都标了出处报告路径。**F19 也一个字没改 `app/**`、`webapp/**`、`_upstream/**`、`.github/**`、`research/deliver/**`。**
 
+> **UX7（2026-10-05，当前状态）= 手机档四连修（B-1 终端条「+」误拦 / B-4 左滑与右上角按钮 / B-3 终端空白复查 / B-5 键盘裁切复查）并重建三份产物**。本轮**改了生产代码**（`webapp/src/main/assets/www/oc-host.js` 拦截收窄 + `WebHostActivity.kt` debug 注入通道扩展）+ 新增绊线 `Ux7PhoneSweepTripwireTest`（5 用例）；报告 `research/web/UX7_PHONE_SWEEP.md`。三份产物 md5 已变（见 §0.1 顶表与 UX7 复核块），**UX6 批三个 md5 全部作废**。
+
 ---
 
 ## 0. 一句话现状
@@ -23,14 +25,14 @@
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
-### 0.1 当前可交付（**UX6 批为当前唯一有效值，以磁盘为准**）
+### 0.1 当前可交付（**UX7 批为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,545,375 B**（≈3.38 MB） | `525b68470b01438a04bc5e0d026c9534` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX6 架构重建值**（2026-10-05，报告 `research/web/UX6_OFFICIAL_ENTRY.md`）：**回环代理/未配置灰页/启动配置对话框/口令注入已全部删除，WebView 直连真实后端地址**；OkHttp 依赖移除（release −449 KB）。旧值 `a3a88537…`(UX5) / `9fb24886…`(UX4) / `f47e281c…`(UX3) / `d6015bf2…`(UX2) 已作废 |
-| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `fba7db16c87e0dab3f4bab53d5433490` | 日常调试（debug 签名）；同上。**UX6 重建值**；旧值 `feae3854…`(UX5) / `a7377e06…`(UX4) 已作废 |
+| **`opencode-shell-web-release-nor8.apk`** | **3,545,875 B**（≈3.38 MB） | `3a9a1ced56673589f34a075ceb06718b` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX7 手机档修复值**（2026-10-05，报告 `research/web/UX7_PHONE_SWEEP.md`）：终端标签条「+」误拦截收窄（只锚审查条 `#review-panel`，手机档零拦截）。**UX6 值 `525b6847…` 及更早全部作废** |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `fa6133480c4816c98aafb7d6ac6f9173` | 日常调试（debug 签名）；同上。**UX7 修复值**；**UX6 值 `fba7db16…` 及更早全部作废** |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,265,237 B**（≈1.21 MB，比非 R8 **−64.3%**） | `a854824f3c4a0de3f1ea38ccea00d6dc` | 🟡 同 UX6 架构重建。**UX6 重建值**；旧值 `94baad39…`(UX5) 等已作废。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,265,633 B**（≈1.21 MB，比非 R8 **−64.3%**） | `8d5910bab108dd5e50825467a9788ebd` | 🟡 同 UX7 修复。**UX7 修复值**；**UX6 值 `a854824f…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
@@ -49,7 +51,7 @@
 > **准确表述**：「**不打包官方前端（上游 SPA）的任何字节**；壳自带的 4 个 facade 资产共 40,801 B 未压缩 / 15,975 B 压缩仍在包内。」复现：`unzip -l …apk 'assets/www/*'`（Windows：`System.IO.Compression.ZipFile`）。**"小 7.4 倍"这个事实不受影响**（40,801 B 占 release 包 1.0%），但那句"一个字节都不打包"是**一条 `unzip` 就能推翻的头牌级错话，不要再引用**。
 **构建输出一致性**：`webapp/build/outputs/apk/{release,debug,releaseR8}/` 的 md5 与上表**逐位相同** ⇒ 拿构建目录那份也安全。
 
-#### ✅ UX6 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**本表为当前唯一有效交付值**）
+#### ✅ UX6 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**已被 UX7 批取代，仅存档**）
 
 **UX6 亲手重跑 `Get-FileHash` 的实测结果**（`research/deliver/`）：
 
@@ -65,7 +67,29 @@
 
 **UX6 架构变更一句话**：启动 = `loadUrl(SecretStore[backendUrl] ?: http://127.0.0.1:4095)`（G1 前置检查照旧）；**回环代理、未配置灰页、启动配置对话框、F5 探测、F21 闸门、口令存储/注入全部删除**；服务器与口令只在官方 UI「设置 → 服务器」里配置（官方表单支持密码字段，Basic `opencode:<password>`）；adb reverse tcp:4095 仍是 Android 侧访问宿主后端的前提。F21 在新形态下由**结构**保障（宿主无任何凭据路径），绊线 = `DirectConnectAuthBoundaryTest`。详见 `research/web/UX6_OFFICIAL_ENTRY.md`。
 
-> ⚠️ 下列 F19/F8/UX5/UX4/UX3 复核块**已被本块取代**（历史保留）。
+#### ✅ UX7 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**本表为当前唯一有效交付值**）
+
+> **为什么重建（手机档四连修）**：产品负责人在**手机档（1200×2670）**实测发现四个问题（报告 `research/web/UX7_PHONE_SWEEP.md`，权威规格 `research/web/BUG_QUEUE.md`）：
+> - **B-1（已修）**：手机档**终端标签条的「+」**被我们的选择面板拦截（应直接 `terminal.new()` 新建终端）。根因 = 旧 `findPlusButton()` 扫"页面上第一个非 header 的 `[role=tablist]`"，而审查条（SessionSidePanel）是**桌面限定**（`session-side-panel.tsx:257` `<Show when={isDesktop()…}>`）⇒ 手机档命中了终端条自己的「+」。修法 = 拦截**只锚 `aside#review-panel`**（`:259`）内的 tablist；手机档无审查条 ⇒ `findPlusButton()` 恒 null ⇒ **手机档全页面零拦截**。DOM 区分与两档设备证据（手机点 `+` 直出 Terminal 2 / 平板审查条 `+` 仍弹面板 / 平板终端条 `+` 直建终端）见报告。
+> - **B-4（结论）**：上游手机档**没有右侧栏、也没有左滑手势**（SessionSidePanel 桌面限定；origin/v2 `app/src` 无 swipe 处理器）；手机档正规入口 = 会话页顶部的 会话/更改/文件/终端 视图标签 + `≡` More options 菜单（Usage / Session details）。「右上角按钮」实测 = `≡`，当前构建**未被拦截**（上游菜单正常弹出）——负责人截图里那个弹我们面板的"右上角"就是 B-1 的终端条「+」。
+> - **B-3（当前构建不复现）**：手机终端"空白+打字无反应"在 UX7 构建上**两档均正常**（有提示符、能敲命令、有回显；PTY `connect-token` 200 + WS 建立 + xterm 渲染，浅色/深色主题都验过）。报告记录了完整对照证据与当时构建口径。
+> - **B-5（当前构建不复现）**：软键盘弹起 composer 裁切在两屏（新建 session + 会话界面）**均不复现**；`--oc-ime-bottom` 抬升机制量化验证（IME 起：form padding-bottom=336.38px；收：归 0 自动恢复）。
+> 新增绊线 `Ux7PhoneSweepTripwireTest`（5 用例）；**反向验证实测**：撤回收窄喂旧 oc-host.js ⇒ 2 条真红；撤回 `--oc-ime-bottom` 消费 ⇒ `ImeOcclusionTest.facadeConsumesImeBottomForComposer` 真红。另：`WebHostActivity.consumeDebugEval` 扩展 `b64:` 前缀（debug-only，绕开页面 CSP 的 unsafe-eval 限制），`DebugEvalChannelTest` 契约不变。
+
+**UX7 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`）：
+
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **3,545,875 B** | **`3a9a1ced56673589f34a075ceb06718b`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,265,633 B** | **`8d5910bab108dd5e50825467a9788ebd`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B** | **`fa6133480c4816c98aafb7d6ac6f9173`** | 同上 |
+
+**包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`6e1e7354fc670a5ce87c990d43c743ec`**，与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
+
+> 🔴 **UX7 批以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX6 批** `525b6847…`(nor8) / `a854824f…`(R8) / `fba7db16…`(debug) / 资产 `784e5d27…`；UX5/UX4/UX3/UX2/F19/F18/F16 及更早全部历代值。**本节以下的 UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
+> 顺带（产品负责人问，行号级答案见报告）：新 session 底部 **`Temp`（T 图标+下拉）= 运行位置选择器**（`new-session/workspace/selector.tsx:107-132` 的 Menu.Trigger；label 规则 `:68-73`，"Temp" 是所选 worktree 目录名）⇒ 决定**新会话在哪个目录/分支运行**（主检出 / 新建 git worktree / 已有 worktree）；**`无 Git`（显示器图标）= `PromptGitStatus` 徽章**（`selector.tsx:374-410`，i18n `session.new.git.none`）⇒ 纯展示**所选工作目录不是 git 仓库**（是 git 时显示分支名），**不可点击**（渲染为 div，不是按钮）。
+
+> ⚠️ 下列 UX6/F19/F8/UX5/UX4/UX3 复核块**已被 UX7 块取代**（历史保留）。
 
 **F8 复核（2026-10-05，结论已由 A5 独立复算确认）—— 文档与磁盘一致，未发现脱节**：
 

@@ -40,6 +40,7 @@ import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
+import java.util.Base64
 
 /**
  * W1：WebView 宿主 Activity。
@@ -558,12 +559,22 @@ class WebHostActivity : AppCompatActivity() {
     // ---- BR1 验收用调试注入（仅 DEBUG 构建） ------------------------------
     private fun consumeDebugEval(intent: Intent?) {
         if (!BuildConfig.DEBUG) return
-        val js = intent?.getStringExtra(EXTRA_DEBUG_EVAL) ?: return
+        val raw = intent?.getStringExtra(EXTRA_DEBUG_EVAL) ?: return
         intent.removeExtra(EXTRA_DEBUG_EVAL)
         // 等首屏 + facade 装好再注，否则 evaluateJavascript 落在中间态文档上。
         webView.postDelayed({
-            webView.evaluateJavascript("(function(){try{return String($js)}catch(e){return 'ERR:'+e}})()") { r ->
-                Log.i(EVAL_TAG, "eval=${js.take(200)} -> ${r ?: "null"}")
+            // 官方 UI 的 CSP 没有 'unsafe-eval'，页面里的 eval/Function 一律被浏览器拒
+            // （实测 ERR:EvalError）。所以复杂探针用 `b64:<base64(utf8 js)>` 传：宿主侧
+            // 解码后把 **JS 原文**交给 evaluateJavascript 直接执行（它本身就是表达式
+            // 执行器，不经页面 eval），返回值走 evaluateJavascript 的回调进 logcat。
+            // 不带 b64: 前缀时保持旧行为（String() 包一层，表达式求值）。
+            val js = if (raw.startsWith("b64:")) {
+                String(Base64.getDecoder().decode(raw.removePrefix("b64:")), Charsets.UTF_8)
+            } else {
+                "(function(){try{return String($raw)}catch(e){return 'ERR:'+e}})()"
+            }
+            webView.evaluateJavascript(js) { r ->
+                Log.i(EVAL_TAG, "eval=${raw.take(200)} -> ${r ?: "null"}")
             }
         }, EVAL_SETTLE_MS)
     }

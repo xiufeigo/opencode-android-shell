@@ -1,0 +1,2 @@
+import{mt as e,tt as t,xt as n}from"./icon-DR7qgx3o.js";import{t as r}from"./UKTBL2JL-wTtWYT1h.js";function i(i){let[a,o]=n(i,[`variant`,`size`,`icon`,`class`,`classList`,`state`]);return t(r,e(o,{"data-component":`icon-button-v2`,get"data-size"(){return a.size||`normal`},get"data-variant"(){return a.variant||`neutral`},get"data-state"(){return a.state},get classList(){return{...a.classList,[a.class??``]:!!a.class}},get children(){return a.icon}}))}export{i as t};
+//# sourceMappingURL=icon-button-DgkrDlZx.js.map

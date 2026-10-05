@@ -698,23 +698,15 @@
    *
    * ## 目标元素的选择器（DOM 结构定位，不绑像素/文案）
    *
-   * 设备实测（emulator-6550，`oc_debug_eval` 探针 + elementFromPoint 反查）：
-   * 审查面板打开后右侧栏有**两条**非 header 的 `[role=tablist]`：
-   *   条0（审查条，y≈68）：按钮 = [面板切换图标(Toggle file tree)@开头]、
-   *        [role=tab]「Files Changed 8」、尾部「Open file」← 产品负责人指的「+」
-   *   条1（终端条，y≈511）：[role=tab]×N（Terminal 1..N）、aria-label="Close
-   *        terminal"×N、尾部「New terminal」
-   * 页面里 `[role=tablist]` 均不在 `<header>` 内；顶栏「New session」「+」在
-   * `<header>` 内、且不在任何 tablist 里。
-   *
-   * 选择器原文（findPlusButton → scanTablistButtons(list, pickLast=true)）：
-   *     所有 [role=tablist] 中第一个 `!list.closest("header")` 且可见的 list，
-   *     取其内 `button,[role=button]` 里：不是 [role=tab]、不在 [role=tabpanel] 内、
-   *     含 <svg>、aria-label 不以 close/dismiss/关闭/關閉 开头的可见元素中 **DOM
-   *     顺序的最后一个**。
-   * 依据：「+」位于 tablist 尾部 sticky 容器；面板切换图标 sticky 在**开头**；
-   * close × 按各自的 tab 排在「+」之前 —— 取最后一个正好命中「+」、
-   * 天然跳过切换图标（实测"取第一个"会错抓 Toggle file tree，已纠正）。
+   * UX7 收窄（B-1/B-4）：只锚定**审查条** —— `aside#review-panel`
+   * （session-side-panel.tsx:259，整面板桌面限定 :257）内的 [role=tablist]
+   * （:317），取其尾部 sticky 容器（:458）里 DOM 顺序最后一个「非 tab、含 svg、
+   * 非 close」的按钮（见 findReviewTablist / scanTablistButtons 原文）。
+   * **不再扫描页面上任意非 header 的 tablist** —— 旧抓法在手机档会命中终端
+   * 标签条自己的「+」（aria-label="New terminal"，panel.tsx:330-335，
+   * onClick=terminal.new()），把"直接开终端"替换成我们的面板（产品负责人
+   * 2026-10-05 实测打回）。手机档没有审查条（<768px 不挂载）⇒ 本面板在该档
+   * 全页面零拦截，终端条「+」完全归上游。
    *
    * ## 上游那个「+」原本干什么（不能弄丢）
    *
@@ -766,10 +758,27 @@
       } catch (e) {}
     }
 
-    /* 右侧栏标签条 = 页面里**不在 <header> 内**的那个 [role=tablist]（选择器原文见
-     * 上方头注释「目标元素的选择器」）。上游是 SPA，节点会重挂 ⇒ 每次重新查，
-     * 不缓存节点引用；不绑任何文案/像素 —— 顶栏「New session」「+」在 <header>
-     * 内且不在任何 tablist 里，结构上天然命不中。 */
+    /* 右侧栏**审查条**的标签条 = `aside#review-panel` 内的那个 [role=tablist]
+     * （选择器原文见上方头注释「目标元素的选择器」）。上游是 SPA，节点会重挂 ⇒
+     * 每次重新查，不缓存节点引用；不绑任何文案/像素。
+     *
+     * UX7（B-1/B-4，产品负责人 2026-10-05 实测打回）：**绝不**再扫"页面上任意
+     * 非 header 的 tablist" —— 那个抓法在手机档会命中**终端标签条自己的「+」**
+     * （aria-label="New terminal"，panel.tsx:330-335 → terminal.new()），把
+     * "直接新建终端"的上游语义替换成我们的面板。
+     *
+     * 两条 tablist 的 DOM 区分（origin/v2 行号）：
+     *   审查条「+」= aside#review-panel（session-side-panel.tsx:259）→ Tabs.List
+     *     （:317）尾部 sticky 容器（:458）内 IconButton：aria-label="Open file"
+     *     （:475-482，单文件一键 → openFileBrowser() :205-208）或 "Add tab"
+     *     （:490-500，有浏览器能力时的 Menu）。整个 SessionSidePanel **桌面限定**：
+     *     session-side-panel.tsx:257 `<Show when={isDesktop() && !!params.id}>`。
+     *   终端条「+」= #terminal-panel（terminal/panel.tsx）→ Tabs.List（:305）尾部
+     *     IconButton aria-label="New terminal"（:330-335，onClick=terminal.new()）。
+     *
+     * ⇒ 手机档（<768px）根本没有审查条 ⇒ findReviewTablist() 返回 null ⇒
+     *    findPlusButton() 返回 null ⇒ **手机档全页面零拦截**，终端条「+」完全
+     *    归上游（点了直接 terminal.new()）。这正是 B-1 修法要求第 3 条。 */
     var CLOSE_PREFIX = /^\s*(close|dismiss|关闭|關閉)/i;
     /* 「+」位于 tablist 尾部的 sticky 容器里；面板切换图标（Toggle file tree /
      * Toggle review）sticky 在**开头** ⇒ 取候选里 DOM 顺序的最后一个。 */
@@ -792,16 +801,24 @@
       return found;
     }
 
+    /* 审查条容器 = 上游 SessionSidePanel 的根（session-side-panel.tsx:259
+     * id="review-panel"）。宽度为 0（收起动画/未开）时等同不在 ⇒ 返回 null，
+     * 此时页面上没有任何该拦截的「+」。手机档整面板不挂载 ⇒ 恒 null。 */
+    function findReviewTablist() {
+      var panel = document.getElementById("review-panel");
+      if (!panel || panel.offsetParent === null) return null;
+      if (panel.getBoundingClientRect().width < 2) return null;
+      var list = panel.querySelector("[role=tablist]");
+      if (!list || list.offsetParent === null) return null;
+      if (list.getBoundingClientRect().width < 2) return null;
+      return list;
+    }
+
+    /* 只从审查条里找「+」（DOM 区分与依据见上方注释块）。不再遍历全页 tablist。 */
     function findPlusButton() {
-      var lists = document.querySelectorAll("[role=tablist]");
-      for (var i = 0; i < lists.length; i++) {
-        var list = lists[i];
-        if (list.closest("header")) continue;
-        if (list.offsetParent === null) continue;
-        var hit = scanTablistButtons(list, true);
-        if (hit) return hit;
-      }
-      return null;
+      var list = findReviewTablist();
+      if (!list) return null;
+      return scanTablistButtons(list, true);
     }
 
     /* 终端触发器 = 非 header tablist 内 aria-label 命中 terminal/终端 且非 close 的
