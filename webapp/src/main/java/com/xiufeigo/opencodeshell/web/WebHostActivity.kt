@@ -32,7 +32,6 @@ import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
-import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
@@ -119,7 +118,6 @@ class WebHostActivity : AppCompatActivity() {
     private lateinit var bridge: WebHostBridge
     private lateinit var fileChooser: FileChooserHost
     private lateinit var insets: InsetsHost
-    private lateinit var localUiServer: LocalUiOriginServer
 
     private var pickedUri: Uri? = null
     private var pendingPageScrollY: Int = 0
@@ -259,11 +257,6 @@ class WebHostActivity : AppCompatActivity() {
         NotifierHost.ensureChannels(this)
         PerfMarks.mark("B.helpersReady")
 
-        // UX11：官方前端由 App 自带（assets/www/ui），本机 http 静态来源只服务 UI 资源。
-        // 🔴 这个端点不碰凭据、不代理 API —— 认证与 API 调用全部由页面直连用户配置的服务器。
-        localUiServer = LocalUiOriginServer(assets).also { it.start() }
-        PerfMarks.mark("B2.localUiOrigin", "bound=${localUiServer.boundPort}")
-
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -328,7 +321,7 @@ class WebHostActivity : AppCompatActivity() {
      * 服务器与口令的**配置**不在宿主做 —— 那是官方 UI 「设置 → 服务器」的职责。
      */
     private fun bootUrl(): String =
-        LocalUiOriginServer.origin()
+        SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL
 
     /**
      * UX6 启动链（代理已删，只剩一步直达）：
@@ -817,9 +810,6 @@ class WebHostActivity : AppCompatActivity() {
         // P6：销毁时也清一次（窗口虽马上就没了，但 flag 泄漏会在 `onSaveInstanceState`
         // 重建路径上被观察到；清掉是零成本的）。
         clearKeepScreenOnOnBackground()
-        if (::localUiServer.isInitialized) {
-            localUiServer.stop()
-        }
         if (::webView.isInitialized) {
             webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
             (webView.parent as? ViewGroup)?.removeView(webView)

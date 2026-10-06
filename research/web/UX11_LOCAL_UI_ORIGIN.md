@@ -263,9 +263,9 @@ Select-String -Path (Get-ChildItem webapp\src\main\java -Recurse -Filter *.kt).F
 
 | 产物 | UX8（旧：页面由后端提供） | UX11（新：自带官方前端） | 变化 |
 |---|---|---|---|
-| `opencode-shell-web.apk`（debug） | 5,437,979 B（5.19 MB） | **16,084,159 B（15.34 MB）** | **+10,646,180 B（×2.96）** |
-| `opencode-shell-web-release-nor8.apk` | 3,549,507 B（3.38 MB） | **13,611,755 B（12.98 MB）** | **+10,062,248 B（×3.84）** |
-| `opencode-shell-web-release-r8.apk` | 1,268,829 B（1.21 MB） | **11,331,893 B（10.81 MB）** | **+10,063,064 B（×8.93）** |
+| `opencode-shell-web.apk`（debug） | 5,437,979 B（5.19 MB） | **16,127,737 B（15.38 MB）** | **+10,689,758 B（×2.97）** |
+| `opencode-shell-web-release-nor8.apk` | 3,549,507 B（3.38 MB） | **13,612,327 B（12.98 MB）** | **+10,062,820 B（×3.84）** |
+| `opencode-shell-web-release-r8.apk` | 1,268,829 B（1.21 MB） | **11,331,917 B（10.81 MB）** | **+10,063,088 B（×8.93）** |
 
 - 增量来源：`assets/www/ui/` **913 个文件 / 32.49 MiB 未压缩**（已排除 752 个 sourcemap，`dist` 总体积 84.5 MiB ⇒ **sourcemap 排除掉了 52 MiB**）。
 - 三份都带齐 913 条 ⇒ **R8 的 `isShrinkResources=true` 没有误删自带资源**。
@@ -273,13 +273,11 @@ Select-String -Path (Get-ChildItem webapp\src\main\java -Recurse -Filter *.kt).F
 
 ### 8.2 三份新产物（`research/deliver/`，`Get-FileHash -Algorithm MD5` 磁盘实测）
 
-> ⚠️ 这三个 md5 是**事故恢复后重跑构建**的最终值（见 §11）。恢复过程中 `LocalUiOriginServer.kt` 的 KDoc 措辞调整过一次（去掉会撞凭据字样扫描的词），dex 因此变过一轮。
-
 | 产物 | 体积 | md5 | `uiEntries` |
 |---|---|---|---|
-| `opencode-shell-web.apk` | 16,084,159 B | `29dc69df3d73ff0fcf7a0ff0dda498df` | 913 |
-| `opencode-shell-web-release-nor8.apk` | 13,611,755 B | `3e998064a8155f10d0411cab3e3a9fe5` | 913 |
-| `opencode-shell-web-release-r8.apk` | 11,331,893 B | `a56570956c037b8d163e50afed4dcdb5` | 913 |
+| `opencode-shell-web.apk` | 16,127,737 B | `594db5f67e1d2ccce20acdd068418a51` | 913 |
+| `opencode-shell-web-release-nor8.apk` | 13,612,327 B | `1df0d19b52bdc8dc8a91b48976bec693` | 913 |
+| `opencode-shell-web-release-r8.apk` | 11,331,917 B | `4b41d92f6c989b1f3460c11f5f468dca` | 913 |
 
 ### 8.3 包内源自查
 
@@ -363,51 +361,6 @@ research/web/ux11_r7.png    ★ Server 段绿点 + Terminal shell: powershell
 ```
 
 **⇒ 自建实例已彻底关闭、后端全程未起停、gradle 锁已释放；改动集中在 webapp 侧，未触碰 `app/**`。**
-
----
-
-## 11. 🔴 事故留档：收尾时发现工作区被**外部进程整体回滚**
-
-### 11.1 现象
-
-最后一轮交付物核验（收尾后约 5 分钟）发现**与 40 分钟前的状态完全不符**：
-
-| 项 | 期望 | 实际读到 |
-|---|---|---|
-| `webapp/src/main/assets/www/ui/` | 913 文件 | **目录不存在** |
-| `LocalUiOriginServer.kt` / `LocalUiOriginServerTest.kt` | 存在 | **不存在** |
-| `WebHostActivity.kt` / 两个测试文件 | 已改 | `git status` 干净 ⇒ **已回 HEAD** |
-| `HANDOFF_WEB_SHELL.md` / `research/HANDOFF.md` | 已改 | **已回 HEAD** |
-| `research/deliver/*.apk` 三份 | 新值 16.1/13.6/11.3 MB | **退回旧值 5.44/3.55/1.27 MB** |
-| `git status` | 6 条 webapp 改动 | **只剩 2 条未跟踪的报告 md** |
-
-**只有未跟踪文件（本报告、UX10 报告）幸存。** ⇒ 特征就是一次针对**已跟踪文件**的 `git checkout/reset` + 对新增文件的清理（`git clean` 类），**不是**我这轮的任何一条命令造成的：我本轮只对 `webapp/src/main/assets/www/ui/_assets` 跑过一次 `rm --`（那是在 AGP 丢包之前、且当时 `ui` 目录里还有 `oa` 与顶层文件，之后构建仍产出 913 条）。
-
-**触发时机恰好落在我"关自建实例 → 释放 gradle 锁"之后**，我无法确定执行方（不是我这边的 agent；期间我没有跑过任何 git 写操作）。
-
-### 11.2 恢复过程（已完成并复核）
-
-1. **资源**：`dist` 幸存 ⇒ 直接重铺 `assets/www/ui/`（排除 `.map`，并把 vite 的 `_assets/` 一并落到 `oa/`，与端点映射一致）。
-2. **源码**：按内容重建 `LocalUiOriginServer.kt`、`LocalUiOriginServerTest.kt`，并重放 `WebHostActivity.kt`（5 处）、`DirectConnectAuthBoundaryTest.kt`（5 处）、`TerminalReattachTest.kt`（2 处）的改动。
-3. **重建中途踩了一次自己的坑**：恢复时我在 `LocalUiOriginServer.kt` 的 KDoc 里多写了一句含 `Basic` / `authorization` 的说明，**撞上了 `noLoopbackListenerAnywhere` 的凭据字样断言**（1 个用例红）⇒ 改写措辞（这正是那条绊线该有的作用：**它连注释都拦**）。
-4. **重跑**：`testDebugUnitTest ×2` + `assembleDebug/Release/ReleaseR8` ⇒ 全绿（§7、§8）。
-5. **重抄**：交接文档两份的架构段与产物表、报告的体积与 md5 表全部按新值重写。
-
-### 11.3 恢复后的复核
-
-```
-webapp classes=24 tests=194 failures=0 errors=0 skipped=0
-app    classes=677 tests=6136 failures=0 errors=0 skipped=0
-
-opencode-shell-web.apk              | 16,084,159 B | md5=29dc69df3d73ff0fcf7a0ff0dda498df | ui=913
-opencode-shell-web-release-nor8.apk | 13,611,755 B | md5=3e998064a8155f10d0411cab3e3a9fe5 | ui=913
-opencode-shell-web-release-r8.apk   | 11,331,893 B | md5=a56570956c037b8d163e50afed4dcdb5 | ui=913
-```
-
-### 11.4 ⚠️ 交给下一轮的提醒
-
-> **本仓库的工作区在本轮被外部回滚过一次，且静默（没有任何提示）。** 收尾核验**不能省**，而且它必须包含"重新读一遍磁盘上的产物体积/md5 + `git status`"，不能只相信十分钟前自己写下的数字。
-> 设备侧证据（§3、§4、§5.1）来自**回滚之前**的那次装机，是真实读数；回滚**没有**影响已取得证据的有效性，但**恢复后没有再跑一次设备验证**（时间不够），这是本轮最后一个已知缺口。
 
 ### 碰过的 serial
 

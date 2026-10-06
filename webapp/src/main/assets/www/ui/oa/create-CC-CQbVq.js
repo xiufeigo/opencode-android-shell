@@ -1,2 +1,0 @@
-async function e(e){let t=e.project??(await e.api.location.get({location:{directory:e.directory}})).project,n=await e.api.worktree.create({projectID:t.id,from:t.canonical,branch:e.branch});return await e.data.location.syncInfo({directory:n.directory}),n.directory}export{e as t};
-//# sourceMappingURL=create-CC-CQbVq.js.map

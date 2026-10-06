@@ -24,43 +24,17 @@
 
 ## 0. 一句话现状
 
-**产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 加载**官方前端**。**
-
-> 🔴 **UX11（2026-10-06，当前状态）= 架构再换代：官方前端由 App 自带 + 本机 http 静态来源**（产品负责人拍板：「**Q1：A 做，做成跟官方桌面端同形即可**」）。
->
-> **一句话架构**：`_upstream/packages/app` 的 `bun run build` 产出官方 SPA ⇒ 打进 `webapp/src/main/assets/www/ui/`（913 文件 / 32.49 MiB）⇒ 宿主 `LocalUiOriginServer` 只从**回环** `http://127.0.0.1:4173` 提供这些静态资源（含 SPA 回落）⇒ `WebHostActivity.bootUrl()` = `LocalUiOriginServer.origin()`。
->
-> **为什么必须这样**（机制，非偏好）：上游 `servers/connect/browser.ts:4` 的混合内容判据**只看页面协议**。UX6 之前页面由"所配后端"提供 ⇒ 配了 `https://` 后端页面就是 `https:` ⇒ **那一页再也加不进 `http://` 服务器**（UX10 §4.3 的双向死锁）。自带 UI 后**页面协议恒为 `http:`**，与配了哪台后端彻底解耦 ⇒ 死锁从根上消失。
->
-> **设备实测读数**：`location.href="http://127.0.0.1:4173/"`、`protocol="http:"`、`origin="http://127.0.0.1:4173"`、`isSecureContext=true`、`title="OpenCode"`。
-> **同页加 `http://` 服务器：成功**（段选择器出现 `127.0.0.1:4095`，Server 段**绿点**，`Terminal shell: powershell` 从真实后端读回）。**同页加 `https://`：未验**（无可信证书后端，原因见报告 §5.2）。
->
-> **代价（产品级，已由产品负责人拍板接受）**：
-> 1. **APK 体积上涨**（自带 32.49 MiB 资源，见 §0.1 新旧对比：release nor8 由 3.55 MB → 12.98 MB）；
-> 2. **不再"开箱即连"** —— 页面不再由后端提供，用户需在官方 UI 里加一次服务器；
-> 3. **全链路从同源变跨源** —— 所有 API/SSE/PTY 走 CORS（opencode 服务端默认放行任意 `http://` 回环来源，UX10 §5 实测；UX11 另**实测预检也放行 `authorization` 头**，带 Basic 认证的跨源健康检查在 WebView 里拿到 `200`）；
-> 4. **UI 与 API 版本耦合** —— 后端升级而 APK 未升级会前后端版本错配。
->
-> **形态上与官方桌面端同形**：界面由**外壳自带**、不由某台服务器提供（桌面端是 Electron 自带）。
->
-> 🔴 **红线不变且未松动**：本机端点**只服务静态资源、绝不代理 API（`/api/` 一律 404）、绝不碰凭据**；认证仍**完全由官方 UI 自己**对用户配置的那台服务器完成，宿主一个字节都不参与。凭证禁令由 `DirectConnectAuthBoundaryTest` + 新增 `LocalUiOriginServerTest` 钉死。
-> 报告：`research/web/UX11_LOCAL_UI_ORIGIN.md`。**本轮新增的唯一授权就是"为服务 UI 静态资源起一个本机 http 端点"，它取代了此前"不许 ServerSocket"那条限制。**
->
-> ⚠️ **UX11 批次以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX8 批** `45ed3e89…`(nor8) / `e54752db…`(debug) / `e146e547…`(R8) 及 UX7/UX6/UX5 及更早全部历代值。
-> ⚠️ **UX11 未闭环**：终端、主题三档、常亮/SSE、键盘扫测、平板档这五项**未实跑**（见报告 §9）。
->
-> 🔴 **事故留档（2026-10-06 10:1x）**：本轮收尾时发现**工作区被外部进程整体回滚**（`ui/` 资源、`LocalUiOriginServer.kt`、测试改动、两份交接文档、三份产物全部退回旧值；只有未跟踪的报告文件幸存）。已按内容**逐个恢复并重跑测试与构建**，见报告 §11。
-
+**产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 
 ### 0.1 当前可交付（**UX8 批为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **13,611,755 B**（≈12.98 MB；🔴 **较 UX8 的 3,549,507 B 涨 +10,062,248 B（×3.84）**） | `3e998064a8155f10d0411cab3e3a9fe5` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX11 自带官方前端值**（2026-10-06，报告 `research/web/UX11_LOCAL_UI_ORIGIN.md`）：包内 `assets/www/ui/` 913 文件 / 32.49 MiB，页面从 `http://127.0.0.1:4173` 加载。**UX8 值及更早全部作废** |
-| `opencode-shell-web.apk`（debug） | **16,084,159 B**（≈15.34 MB；较 UX8 的 5,437,979 B 涨 +10,646,180 B） | `29dc69df3d73ff0fcf7a0ff0dda498df` | 日常调试（debug 签名）；同上。**UX11 值** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `e2e6789b376282a0e226b3e117489d4d` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `aefb3bee019764ab775e9b121cd75cce` | 日常调试（debug 签名）；同上。**UX8 修复值**；**UX7 值 `fa613348…` 及更早全部作废** |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **11,331,893 B**（≈10.81 MB；较 UX8 的 1,268,829 B 涨 +10,063,064 B；比非 R8 **−16.7%**） | `a56570956c037b8d163e50afed4dcdb5` | 🟡 **UX11 自带官方前端值**。**UX8 值及更早全部作废**。⚠️ R8 的 `isShrinkResources=true` **未**误删自带 UI 资源（实测三份产物 `uiEntries` 均为 913）；此前🟡级设备结论验于旧架构字节体，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `5e3eea5314a911ce627792aab1346017` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 

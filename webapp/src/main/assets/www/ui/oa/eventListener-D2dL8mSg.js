@@ -1,2 +1,0 @@
-import{E as e,b as t,it as n,ot as r,v as i}from"./icon-DhNOMwJt.js";function a(t,n,r,i){return t.addEventListener(n,r,i),e(t.removeEventListener.bind(t,n,r,i))}function o(e,o,s,c){let l=()=>{t(i(e)).forEach(e=>{e&&t(i(o)).forEach(t=>a(e,t,s,c))})};typeof e==`function`?n(l):r(l)}export{a as n,o as t};
-//# sourceMappingURL=eventListener-D2dL8mSg.js.map
