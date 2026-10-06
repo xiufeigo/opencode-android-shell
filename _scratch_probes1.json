@@ -1,0 +1,17 @@
+[
+  {
+    "label": "1a defaultServerUrl + 精确找 4173 串（localStorage 全量 grep）",
+    "js": "(function(){var hits=[],all=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=String(localStorage.getItem(k));all.push(k);if(v.indexOf('4173')>=0||v.indexOf('server')>=0.toLowerCase()){}if(v.indexOf('4173')>=0)hits.push(k)}return JSON.stringify({defaultServerUrl:localStorage.getItem('opencode.settings.dat:defaultServerUrl'),settingsKeys:(function(){var a=[];for(var j=0;j<localStorage.length;j++){var kk=localStorage.key(j);if(kk.indexOf('settings')>=0||kk.indexOf('server')>=0)a.push(kk)}return a})(),keysWith4173:hits,allKeys:all})})()",
+    "wait": 7
+  },
+  {
+    "label": "2a 启动异步探测：indexedDB.databases() + caches.keys() + CDP 缺席自检（把结果写进 localStorage 暂存键）",
+    "js": "(function(){var o={hasIdb:('indexedDB' in window),hasCaches:('caches' in window)};try{indexedDB.databases().then(function(d){localStorage.setItem('__p4_idb',JSON.stringify(d))},function(e){localStorage.setItem('__p4_idb','REJ:'+e)})}catch(e){localStorage.setItem('__p4_idb','THROW:'+e)}try{if(window.caches){caches.keys().then(function(k){localStorage.setItem('__p4_caches',JSON.stringify(k))},function(e){localStorage.setItem('__p4_caches','REJ:'+e)})}else{localStorage.setItem('__p4_caches','NOCACHES')}}catch(e){localStorage.setItem('__p4_caches','THROW:'+e)}localStorage.setItem('__p4_flags',JSON.stringify(o));return 'KICKED:'+JSON.stringify(o)})()",
+    "wait": 8
+  },
+  {
+    "label": "2b 读回 IndexedDB 库名 / CacheStorage 键名 / flags",
+    "js": "JSON.stringify({flags:localStorage.getItem('__p4_flags'),idb:localStorage.getItem('__p4_idb'),caches:localStorage.getItem('__p4_caches')})",
+    "wait": 7
+  }
+]

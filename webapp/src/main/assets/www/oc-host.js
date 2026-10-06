@@ -1369,3 +1369,146 @@
       arm();
     }
   }
+
+  // ======================================================================
+  // UX14-P6 · 幻影服务器条目清除（宿主注入层 DOM 级隐藏）
+  //
+  // 机制事实（P4/P5 已钉死，直接采信）：
+  //  · 服务器注册表 = localStorage['opencode.global.dat:server']，
+  //    首次 Add 成功才惰性创建；结构 {"list":[…],"hidden":{},…}。
+  //  · 4173 那条 = 上游 **builtin**：它来自 location.origin
+  //    （currentServerUrl），**不在 list 里**。
+  //  · 上游 Remove 的渲染条件只是"该条目在 list 里" ⇒ builtin 永远
+  //    canRemove 不成立；`hidden` 容器虽存在但上游没有任何写入入口
+  //    ⇒ 也没有 hide 出口。**上游侧永远删不掉这条。**
+  //
+  // 产品决策（2026-10-06 拍板）："这条不应该存在" ⇒ 由宿主注入层
+  // 把它从界面上隐藏掉。
+  //
+  // 已放弃的选项 A（仅记录理由）：预置 defaultServerUrl=4095。
+  //   幻影换成 4095 地址后，它就只是注册表里的一条普通条目，**一样要靠
+  //   宿主过滤才能消失**，而且会把"UI 静态来源 origin"与"真实服务器"
+  //   两个概念搅在一起 —— 治标不治本。
+  //
+  // 保守约束：**只隐藏、不删除、不改文本** —— 上游数据模型完全不动，
+  // 避免破坏 visible[0] 焦点逻辑。
+  //   （首启 Home 仍停在 4173 上下文 Loading —— 既有行为，不在本轮范围；
+  //    用户加了自己的服务器后切换即可。）
+  // ======================================================================
+  var PHANTOM_ATTR = "data-oc-phantom";
+  var PHANTOM_STYLE_ID = "oc-phantom-hide";
+  var PHANTOM_THROTTLE_MS = 250;
+  var PHANTOM_ROW_SEL =
+    'a,li,button,[role="button"],[role="menuitem"],[role="menuitemradio"],[data-slot]';
+
+  /** 目标标识：location.origin 的 "host:port"（动态取，不写死端口字面量）。 */
+  function phantomOriginToken() {
+    try {
+      var o = window.location && window.location.origin;
+      if (!o) return "";
+      return String(o).replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  /** 注入隐藏 CSS。 */
+  function installPhantomServerHideStyle() {
+    if (document.getElementById(PHANTOM_STYLE_ID)) return;
+    try {
+      var st = document.createElement("style");
+      st.id = PHANTOM_STYLE_ID;
+      st.textContent = "[" + PHANTOM_ATTR + '="1"]{display:none!important}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) {}
+  }
+
+  /**
+   * 扫出文本里含该 URL 的元素，取其最近的行容器祖先打标记。
+   * 幂等（已标记即跳过）；**不删除任何节点**。
+   */
+  function phantomRowFor(el, cap) {
+    // 🔴 血泪坑（2026-10-06 设备复验当场踩到）：**不能无脑 closest()**。
+    //   `closest('…, [data-slot]')` 会一路爬到页面外壳；而 <html>/<body> 自身
+    //   也含该 URL 文本（它们在 querySelectorAll('*') 里），没有匹配祖先时
+    //   回落成"标记自身" ⇒ 实测把 <html> 打了标记，**整页连 <style> 一起
+    //   消失，屏幕全黑**。
+    //   第二次收紧：上爬到的祖先若"文本量超过紧凑上限"，说明它是分区/页面
+    //   容器（连 "Add server" 按钮一起包住），**不能**当行容器。
+    //   ⇒ 找不到紧凑的行祖先时回落标记命中元素自身（宁可少隐藏，不可多隐藏）。
+    var node = el.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      if ((node.textContent || "").trim().length > cap) break;
+      if (node.matches && node.matches(PHANTOM_ROW_SEL)) return node;
+      node = node.parentElement;
+    }
+    return el;
+  }
+
+  function hidePhantomRows() {
+    var token = phantomOriginToken();
+    if (!token) return 0;
+    var all;
+    try {
+      all = document.querySelectorAll("*");
+    } catch (e) {
+      return 0;
+    }
+    var candMax = token.length * 6 + 40;
+    var n = 0;
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (!el || el.nodeType !== 1) continue;
+      var tag = (el.tagName || "").toUpperCase();
+      if (tag === "SCRIPT" || tag === "STYLE") continue;
+      // 🔴 永不标记根节点 —— 标记 <html> 会让整页（含 <style>）一起消失。
+      if (el === document.documentElement || el === document.body) continue;
+      if (el.getAttribute(PHANTOM_ATTR) === "1") continue; // 幂等
+      // 不碰输入框：Add server 对话框里可能正输入着同一个地址
+      if (tag === "INPUT" || tag === "TEXTAREA") continue;
+      var txt = "";
+      try {
+        txt = el.textContent || "";
+      } catch (e) {
+        continue;
+      }
+      if (txt.indexOf(token) < 0) continue;
+      if (txt.trim().length > candMax) continue; // 聚合容器，不是行
+      // 容器里带着输入框的一律不动（保护 Add server 对话框）
+      if (el.querySelector("input,textarea")) continue;
+      var row = phantomRowFor(el, candMax);
+      if (!row || row === document.documentElement || row === document.body) continue;
+      if (row.getAttribute(PHANTOM_ATTR) === "1") continue;
+      row.setAttribute(PHANTOM_ATTR, "1");
+      n++;
+    }
+    return n;
+  }
+
+  /** 启动：立即跑一次 + MutationObserver 节流跟住 SPA 重渲染。 */
+  function startPhantomServerHide() {
+    if (window.__ocPhantomHideStarted) return;
+    window.__ocPhantomHideStarted = true;
+    installPhantomServerHideStyle();
+    try {
+      hidePhantomRows();
+      var pending = false;
+      var mo = new MutationObserver(function () {
+        if (pending) return;
+        pending = true;
+        window.setTimeout(function () {
+          pending = false;
+          hidePhantomRows();
+        }, PHANTOM_THROTTLE_MS);
+      });
+      mo.observe(document.body, { subtree: true, childList: true });
+      window.__ocPhantomHideObserver = mo;
+    } catch (e) {}
+  }
+
+  // 只在首屏加载完之后启动，避免阻断首屏渲染
+  if (document.readyState === "complete") {
+    startPhantomServerHide();
+  } else {
+    window.addEventListener("load", startPhantomServerHide, { once: true });
+  }

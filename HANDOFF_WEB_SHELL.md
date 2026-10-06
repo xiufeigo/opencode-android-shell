@@ -57,7 +57,7 @@
 > - **`oc-host.js` 最终 md5 口径（更新）**：源文件与包内一致 = **`232E916B5B16E99A6D94C3C4561A9B8A`**（**62,186 B**，自 P10 起稳定）。⚠️ **这与 UX12 批记录的 `8A3B3E93…`（57,236 B）不是换行符差异、而是不同字节体** —— P9/P10 两次修复给该注入件加了通知权限 shim 与后台读数 shim，文件因此变大。引用资产 md5 时**必须带体积**，否则新旧两批数字会互相误判。
 > - **红线自检（各轮实测）**：凭据扫描（`aapt2 dump strings`，逐包 debug/release/releaseR8）**各轮总命中 0**；`git status --porcelain -- webapp/src/main/assets/www/ui/` **恒为空**（官方前端资源一个字节没动）；`app/**` **零改动**；全程未 commit、未起停 4095 后端、只关自建模拟器。
 >
-> **UX14（2026-10-06，当前状态）= 渲染崩溃自愈接线（UX14-P1，**改了生产代码**）+ last-route 归属查证与新架构首屏基准（UX14-P2，**只验证、不改代码**）**。报告 `research/web/UX14_P1_RENDER_RECOVERY.md` · `research/web/UX14_P2_ROUTE_AND_BOOT.md`。**当前交付包 = 产物批 #6**（§0.1 顶表）。
+> **UX14（2026-10-06，当前状态）= 渲染崩溃自愈接线（UX14-P1，**改了生产代码**）+ last-route 归属查证与新架构首屏基准（UX14-P2，**只验证、不改代码**）+ 服务器注册表机制侦察（UX14-P4/P5，**只读**）+ 幻影服务器条目清除（UX14-P6，**改了生产代码**）**。报告 `research/web/UX14_P1_RENDER_RECOVERY.md` · `UX14_P2_ROUTE_AND_BOOT.md` · `UX14_P4_REGISTRY_RECON.md` · `UX14_P5_REGISTRY_RECON2.md` · `UX14_P6_PHANTOM_HIDE.md`。**当前交付包 = 产物批 #7**（§0.1 顶表）。
 >
 > **① render 自愈已接线（P1）—— `onRenderProcessGone` 不再是死枚举**
 > - **行为**：崩溃发生时**首崩 = `reload()` 自愈**（先 `armWatchdog()` 重挂 12 s 看门狗；页面从本机 4173 源重载，会话/服务器状态在 `localStorage`）⇒ 恢复后与桌面端一致；**60 s 窗口内连崩 = 认输**，落 `showDiagnostic(RENDER_CRASH)` 诊断页；两条路径都 `return true` **消费**事件（**刻意不调 `super`** —— super 就是 `return false`，WebView 会走默认行为 finish 掉整个 Activity，正在跑的回合全丢）。日志带 `detail.didCrash()` / `rendererPriorityAtExit()` 两个**平台真值**。
@@ -75,7 +75,7 @@
 >
 > **④ 批 #6 启动冒烟 PASS**：5 次冷启**全部**渲染官方 Home（`All projects / 127.0.0.1:4095` + 真实会话列表），无白屏 / 无诊断页 / 无 crash ⇒ P1 的接线**未把正常启动弄坏**。
 >
-> **⑤ 产物批 #6（最终；`Get-FileHash -Algorithm MD5` 本轮亲手实测复核，与磁盘逐位一致）**
+> **⑤ 产物批 #6（⚠️ 已被批 #7 取代，仅存档；`Get-FileHash -Algorithm MD5` P1/P2 轮亲手实测复核，与磁盘逐位一致）**
 >
 > | 产物 | 体积（磁盘实测） | **md5（实测）** | SHA256 |
 > |---|---:|---|---|
@@ -83,10 +83,53 @@
 > | `opencode-shell-web-release-nor8.apk` | **14,307,626 B** | **`BC3E9027819CF4B7CBB8B37CC0EDAF48`** | `90F587DB04BE2530077C6D2610AF05A7…` |
 > | `opencode-shell-web-release-r8.apk` | **12,027,472 B** | **`B6A346F6E9BE56F2280AECF9B73CE26B`** | `A4DF3DDA7F6E98FDAC067BD5A817713…` |
 >
-> - 🔴 **UX13 批及以下全部作废，不得再被引用**：UX13 `297a71cd…`(nor8) / `6d93ecb1…`(debug) / `dd26b0af…`(R8)；UX12 及更早历代值见 §0.1 作废清单。
+> - 🔴 **本批 #6 现亦已作废**：**现行唯一有效值 = 批 #7**（见 ⑪ / §0.1 顶表）。作废清单：**UX14 批 #6**（本表三行）/ UX13 `297a71cd…`(nor8) / `6d93ecb1…`(debug) / `dd26b0af…`(R8)；UX12 及更早历代值见 §0.1 作废清单。
 > - 相对 UX13 批 #5：release **+704 B**、R8 **+620 B**（与新增 Kotlin 代码体量相符）；**debug 反而 −66,713 B** —— 归因于 `--rerun-tasks` 全量重建清掉了上一轮的增量 dex 残留，**不是本轮删了东西**（已做落地验证：在三个 APK 的 `classes*.dex` **原始字节**里搜新增日志串 `"UX14 render process gone"`，**三份全部 `True`**，含 R8 —— 该串是日志字面量、不参与混淆）。
-> - **`oc-host.js` md5 保持不变**：**62,186 B / `232E916B5B16E99A6D94C3C4561A9B8A`**（自 P10 起稳定；**本轮两个注入件一字未动**）。
-> - **红线自检（UX14 两轮实测）**：凭据扫描（`aapt2 dump strings` 逐包）命中 **0**（debug 2404 串 / nor8 2404 / R8 1322，**与 UX13 基线完全一致**）；`git status --porcelain -- webapp/src/main/assets/www/ui/` **恒为空**；**`app/**` 零改动**；**未 commit**（HEAD 仍是 `290ed63`）；4095 后端（pid **12748**）**只读未起停**；P2 **仅**关闭自建 `emulator-6790`，他人 `emulator-5554` **未触碰**，`adb reverse tcp:4095` 已收尾 remove、未 `kill-server`。
+> - **`oc-host.js` md5 本批保持不变**：**62,186 B / `232E916B5B16E99A6D94C3C4561A9B8A`**（自 UX13-P10 起稳定；**批 #6 两个注入件一字未动**）。⚠️ **该口径止于批 #6** —— P6 例程已把它改成 **68,564 B / `7E89FAF5…`**，现行值见 ⑪。
+> - **红线自检（UX14 P1/P2 实测）**：凭据扫描（`aapt2 dump strings` 逐包）命中 **0**（debug 2404 串 / nor8 2404 / R8 1322，**与 UX13 基线完全一致**）；`git status --porcelain -- webapp/src/main/assets/www/ui/` **恒为空**；**`app/**` 零改动**；**未 commit**（HEAD 仍是 `290ed63`）；4095 后端（pid **12748**）**只读未起停**；P2 **仅**关闭自建 `emulator-6790`，他人 `emulator-5554` **未触碰**，`adb reverse tcp:4095` 已收尾 remove、未 `kill-server`。
+>
+> **⑥ 服务器注册表机制彻底厘清（P4/P5，只读侦察）—— 4173 那条不是"我们加的"，上游删不掉**
+> - **注册表载体** = `localStorage['opencode.global.dat:server']`，**首次 Add 成功才惰性创建**（首启实测 `registryRaw=null`，而同一 `localStorage` 里另有 3 个键都在）；结构 `{"list":[…],"hidden":{},"projects":{},"lastProject":{},"recentlyClosed":{}}`。
+> - 🔑 **4173 条目 = 上游 builtin**：由 `location.origin`（`currentServerUrl`）**派生，压根不在 `list` 里** ⇒ 上游 `canRemove` 判定**永不成立**；`hidden` 容器虽在，但**上游无任何写入入口** ⇒ **没有 hide 出口** ⇒ **上游侧永远删不掉这条**。
+> - **"四个面全部无出口"只对 builtin 成立（P5 已修正）**：**非 builtin 行（实测 4095）菜单确有 `Remove`** —— `Edit` / `Set as default` / **`Remove`** 三项，而 4173 行只有前两项 ⇒ **4173 不可删是 builtin 属性，不是权限或 UI 缺陷**。
+> - **移除实测语义**：单击即生效、**无二次确认**；`list` 置空但**键保留**；分区通知键 `…:4095notification`（⚠️ **URL 与 `notification` 之间没有分隔符**）**留成孤儿** —— **每次 add/remove 循环都会留下一个孤儿键**。
+> - ⚠️ **口令明文存 `localStorage`（`"password":"opencode"`）—— 上游既有行为，如实记录，不在本轮整改范围**。
+> - 出处：`research/web/UX14_P4_REGISTRY_RECON.md` · `UX14_P5_REGISTRY_RECON2.md`。
+>
+> **⑦ 幻影 4173 条目已清除（P6，**改了生产代码**：仅 `assets/www/oc-host.js` 新增例程 + 新增 1 个源码级绊线）**
+> - **决策（产品负责人 2026-10-06 拍板）**：**"这条不应该存在"** —— 静态来源 origin 不该以"服务器"身份出现在列表里。
+> - **实现 = 宿主注入层 DOM 级隐藏例程**（`oc-host.js`，1493 → **1514 行**）：目标 `phantomOriginToken()` = `location.origin` **去 scheme 动态取**（**无端口字面量**）；CSS `[data-oc-phantom="1"]{display:none!important}` —— **只藏不删**（例程内无 `.remove()` / `removeChild`，文件里唯一的 `removeChild` 是既有的 plus-chooser 面板关闭，与本轮无关）；`querySelectorAll('*')` 扫 `textContent` 命中串；`MutationObserver(document.body,{subtree:true,childList:true})` **250 ms 节流** + 幂等跳过；**排除 `input`/`textarea`**（带输入框的容器整体跳过）；仅 `readyState==='complete'`/`load` 后启动、**不阻断首屏**。**上游数据模型完全不动**，`visible[0]` 焦点逻辑未破坏。
+> - **测试**：`:webapp` **234 用例全绿**（基线 230 + 新增 4）；**反向验证外科撤除例程 ⇒ 4 条真红**（`tests=4 failures=4`），逐字节恢复后 md5 回到 `7E89FAF5…`。
+>
+> **🔴 ⑧ 设备复验当场抓到的严重缺陷：「Server 页整屏全黑」—— 已修，两轮收紧固化进绊线（必读）**
+> - **现象**：初版按派单原文实现 `closest('a,li,[role="button"],[data-slot]')`，在 `/settings?tab=servers` 实测**整屏全黑**（证据截图 `research/web/p6_shots/p6_s03_server_page`）。
+> - **根因（CDP 注入读数，非猜测）**：`markedCount=12`，最外层两个是 **`HTML`（textLen=58736）与 `BODY`（393）**。两条原因叠加：① `querySelectorAll('*')` **包含 `<html>`/`<body>`**，它们自身 `textContent` 就含该 URL；② `closest()` 在 `<html>` 上找不到匹配祖先 ⇒ 回落"标记自身" ⇒ **把根节点标了** ⇒ 整页含 `<style>` 一起 `display:none`。（`[data-slot]` 还会一路爬到页面外壳。）
+> - **两轮修复**：① **永不标记根节点**（显式 `continue` 掉 `documentElement`/`body`）；② **"紧凑"上界** —— 文本量 > `candMax = token.length*6+40` 即跳过（聚合容器不是行）、`phantomRowFor` 上爬也只接受 ≤ 上界的祖先，否则回落标记自身；③ 保护输入框。
+> - ⚠️ **收紧 ②③ 是第二轮才发现的**：第一轮修掉 `<html>` 后，行容器仍爬到 **167 字符**的容器 —— 它连 "Add server" 按钮一起包着，**会把按钮也藏掉**。加上紧凑上界后，最终命中的最外层是 `SECTION`（**45 字符**，正好是那一行）。
+> - **教训**：**"只藏不删"的例程也可能藏掉整页**；**元素命中 ≠ 行容器命中，上爬必须有紧凑上界**。四条收紧全部钉进 `PhantomServerHideTest.kt`。
+>
+> **⑨ 选项 A（预置 `defaultServerUrl=4095`）正式放弃 —— 理由留档**
+> - 幻影换成 4095 地址后就只是注册表里一条普通条目，**一样要靠宿主过滤才能消失**；而且会把"UI 静态来源 origin"与"真实服务器"两个概念搅在一起。⇒ **治标不治本。**
+>
+> **⑩ 遗留（如实记为观察，不粉饰）**
+> - 🔴 **4173 空转仍在**：本轮只隐藏 **UI 行**，**没有**停掉对 origin 的事件流订阅 —— `/api/event` 仍**严格 1 Hz**（`status=404`、`OPEN→NON2XX→disconnected` 循环）。⚠️ **桌面端同款行为**。
+> - ⚠️ **"设为默认后停止"这条预期不成立**：`Set as default` 后 `defaultServerUrl=http://127.0.0.1:4095` **确已写入**，4173 仍以 **20 s 内 3 次**继续打 ⇒ **列为遗留，不是已闭环**。
+> - 其它遗留：下拉菜单未成功弹开截图（判定 4 改由 4095 页绿点单行 + 下拉组 DOM 读数**双证据**支撑，结论不依赖那张截图）；首启 Home 仍停在 4173 上下文 `Loading`（既有行为，不碰上游数据模型）；`<html>` 全黑缺陷在**其它路由**下的表现未验证。
+> - **设备六项判定**：① 设置导航无 4173 项 ✅ ② 首启 Home/上下文切换器无 4173 行 ✅ ③ Add server 完好 ✅ ④ 加 4095 后列表只有 4095、绿点正常 ✅ ⑤ ⚠️ **部分**（见上）⑥ 控制台无 MutationObserver 相关报错 ✅。
+>
+> **⑪ 产物批 #7（最终；`Get-FileHash -Algorithm MD5` 本轮亲手实测复核，与磁盘逐位一致）**
+>
+> | 产物 | 体积（磁盘实测） | **md5（实测）** |
+> |---|---:|---|
+> | `opencode-shell-web.apk`（debug） | **16,827,915 B** | **`BC6542E399D8375B99DEE201B61767D9`** |
+> | `opencode-shell-web-release-nor8.apk` | **14,309,970 B** | **`E50EB58B7C84C7D6D81E26A198186D17`** |
+> | `opencode-shell-web-release-r8.apk` | **12,029,812 B** | **`D89EC5C8CE78207C7EF9216BB5D5B1E4`** |
+>
+> - 🔴 **UX13 批及以下全部作废，不得再被引用**：**UX14 批 #6** `a71b0f45…`(debug) / `bc3e9027…`(nor8) / `b6a346f6…`(R8)；**UX13 批 #5** `6d93ecb1…` / `297a71cd…` / `dd26b0af…`；UX12 及更早历代值见 §0.1 作废清单。
+> - **`oc-host.js` md5 已变（新口径）**：源文件与包内一致 = **`7E89FAF5C1BFEFF47A37E04757CE6B0D`**（**68,564 B** / 1514 行，`node --check` 通过）。⚠️ **与批 #6 的 `232E916B…`（62,186 B）不是换行符差异、而是不同字节体** —— P6 例程新增约 6.4 KB。**引用资产 md5 时必须带体积**，否则新旧两批数字会互相误判。
+> - **包内自查**：三份 `assets/www/ui/*` 条目均 **1613**（1612 非空 + 1 个零长 `oa/__vite-browser-external-*.js`）；包内 `oc-host.js` md5 与源码**一致**；包内含 `data-oc-phantom` ✅；⚠️ **包内无硬编码 `127.0.0.1:4173`**（例程在 JS 不在 dex），`classes.dex` / `classes2.dex` 搜该串（ASCII + UTF-16）**0 命中**、搜 `data-oc-phantom` **0 命中**。
+> - **红线自检（P6 实测）**：凭据扫描真实口令 `eBWz…NECI` **0 命中**（`password=` 唯一命中在自带官方产物 `ui/oa/dialog-C2XTJVXj.js`，原文 `n.password&&(s.password=n.password)` —— **上游表单字段名，非凭据**）；`git status --porcelain -- webapp/src/main/assets/www/ui/` **恒为空**；**`app/**` 零改动**；**未 commit**；4095 后端 pid **21092** 起止时间 22:16:19 **全程未变**、`/api/info` **HTTP 200**；仅关闭自建 `emulator-6790`，他人 `emulator-5554` **未触碰**，`adb reverse` / `adb forward` 均已 remove、**未** `kill-server`。
+> - **改动面**：**仅** `webapp/src/main/assets/www/oc-host.js`（+例程）+ 新增 `webapp/src/test/java/com/xiufeigo/opencodeshell/web/PhantomServerHideTest.kt`（4 用例）。**宿主 Kotlin 零改动。**
 
 ---
 
@@ -96,24 +139,24 @@
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
 ⇒ **2026-10-06 起形态再次演进（UX12）**：官方前端**已自带进包**，页面从**本机 `http://127.0.0.1:4173`** 加载 ⇒ 页面协议恒 `http:` ⇒ **B-6 已修复**（官方「添加服务器」http/https 都能加）；代价是**包体积 ×3–×9**（§0.1、附录「已实施的方案 A（UX12）」）。
 ⇒ **2026-10-06 再演进（UX13）**：**选项 C 拍板并落地**（全局明文放行，可直连任意 http 后端，代价=公网 http 口令明文）；**相机扫码已修复并设备复验转绿**；**通知全链路四段修复**（保活 / 权限 shim / 后台读数 shim / 冷启竞态）⇒ **后台通知端到端打通**。
-⇒ **2026-10-06 再再演进（UX14，当前状态）**：**渲染崩溃自愈已接线**（`onRenderProcessGone` 不再是死枚举，首崩 reload / 60 s 内连崩落诊断页 / `return true` 消费）⇒ HANDOFF §5 第 11 条闭环；**last-route 恢复的归属查清 = 上游 standalone 闸门（不是我们没存）**；**新架构冷启首屏基线 = 中位 2,344 ms（n=5）**。**当前交付包 = 产物批 #6**（§0.1 顶表）。
+⇒ **2026-10-06 再再演进（UX14，当前状态）**：**渲染崩溃自愈已接线**（`onRenderProcessGone` 不再是死枚举，首崩 reload / 60 s 内连崩落诊断页 / `return true` 消费）⇒ HANDOFF §5 第 11 条闭环；**last-route 恢复的归属查清 = 上游 standalone 闸门（不是我们没存）**；**新架构冷启首屏基线 = 中位 2,344 ms（n=5）**；**服务器注册表机制彻底厘清**（4173 条目 = 上游 builtin ⇒ 上游 `canRemove` 永不成立、**永远删不掉**）；**幻影 4173 条目已清除**（宿主注入层 DOM 级隐藏，只藏不删；设备复验当场抓到并修掉「Server 页整屏全黑」，两轮收紧固化进绊线）。**当前交付包 = 产物批 #7**（§0.1 顶表）。
 
-### 0.1 当前可交付（**UX14 产物批 #6 为当前唯一有效值，以磁盘为准**）
+### 0.1 当前可交付（**UX14 产物批 #7 为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **14,307,626 B**（≈13.6 MB） | `bc3e9027819cf4b7cbb8b37cc0edaf48` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5②**）。**UX14 批 #6 值**（2026-10-06，报告 `research/web/UX14_P1_RENDER_RECOVERY.md`）：官方前端自带（1613 文件）+ 本机 http 静态来源（4173）+ 全局明文放行（选项 C）+ 相机可信 origin 修复 + 通知四段修复 + **渲染崩溃自愈接线**。**⚠️ UX13 批 #5 值 `297a71cd…` 及更早全部作废** |
-| `opencode-shell-web.apk`（debug） | **16,800,362 B**（≈16.0 MB） | `a71b0f45d796b257b96780ee7aa1c42d` | 日常调试（debug 签名）；同上。**UX14 批 #6 值**；**⚠️ UX13 批 #5 值 `6d93ecb1…` 及更早全部作废**（⚠️ 批 #6 的 debug 比批 #5 **小 66,713 B** —— 归因于 `--rerun-tasks` 全量重建清掉增量 dex 残留，**不是删了东西**：新增日志串在三个 APK 的 `classes*.dex` 原始字节里都能搜到） |
+| **`opencode-shell-web-release-nor8.apk`** | **14,309,970 B**（≈13.6 MB） | `e50eb58b7c84c7d6d81e26a198186d17` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5②**）。**UX14 批 #7 值**（2026-10-06，报告 `research/web/UX14_P6_PHANTOM_HIDE.md`）：官方前端自带（1613 文件）+ 本机 http 静态来源（4173）+ 全局明文放行（选项 C）+ 相机可信 origin 修复 + 通知四段修复 + 渲染崩溃自愈接线 + **幻影 4173 条目宿主隐藏**。**⚠️ UX13 批及以下全部作废** |
+| `opencode-shell-web.apk`（debug） | **16,827,915 B**（≈16.0 MB） | `bc6542e399d8375b99dee201b61767d9` | 日常调试（debug 签名）；同上。**UX14 批 #7 值**；**⚠️ UX13 批及以下全部作废**（含 UX14 批 #6 的 `a71b0f45…` 与 UX13 批 #5 的 `6d93ecb1…`） |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **12,027,472 B**（≈11.5 MB，比非 R8 **−15.9%**） | `b6a346f6e9be56f2280aecf9b73ce26b` | 🟡 同 UX14 批 #6。**⚠️ UX13 批 #5 值 `dd26b0af…` 及更早全部作废**。⚠️⚠️ **"R8 能把包压到 1.3 MB"这个旧结论在自带前端形态下已不成立**（三份包内 `assets/www/ui` 均为 1613 条 ⇒ `shrinkResources` 没误删，但也压不动这批 chunk）。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **12,029,812 B**（≈11.5 MB，比非 R8 **−15.9%**） | `d89ec5c8ce78207c7ef9216bb5d5b1e4` | 🟡 同 UX14 批 #7。**⚠️ UX13 批及以下全部作废**（含批 #6 的 `b6a346f6…` 与批 #5 的 `dd26b0af…`）。⚠️⚠️ **"R8 能把包压到 1.3 MB"这个旧结论在自带前端形态下已不成立**（三份包内 `assets/www/ui` 均为 1613 条 ⇒ `shrinkResources` 没误删，但也压不动这批 chunk）。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
-> 🔴 **口径警示（F19 起、UX12 加强、UX13 升级为"批 #5"、UX14 再升级为"批 #6"）**：本文件里**所有更早批次的体积/md5 复核块一律为历史记录**，其中出现的 md5 一律指向旧字节体。凡与"当前交付包"相关处，均以本表为准。引用 🟡 级设备结论时仍按 §4.5 口径**带它当时测的那个 md5**。
+> 🔴 **口径警示（F19 起、UX12 加强、UX13 升级为"批 #5"、UX14 升级为"批 #6"、本轮再升级为"批 #7"）**：本文件里**所有更早批次的体积/md5 复核块一律为历史记录**，其中出现的 md5 一律指向旧字节体。凡与"当前交付包"相关处，均以本表为准。引用 🟡 级设备结论时仍按 §4.5 口径**带它当时测的那个 md5**。
 
 包名统一 `com.xiufeigo.opencodeshell.web.debug`（**release 变体也用 debug 包名 + Android Debug 证书**——V5 §1.3 明确"不能据此判可用于对外分发"，是否改名/换证**待 Lead 定调**；UX12 另注：本批**签名证书与历史交付物不同**，因本机无原机器的 `debug.keystore`、按标准参数新生成）。
-**体积对比（UX14 批 #6）**：原生壳 release 29.4 MB vs web 壳 release 14.3 MB ⇒ **小 2.1 倍**（⚠️ UX6–UX8 期间的"小 8.3 倍"**已因自带前端作废**）。
-**自带前端净增**：`assets/www/ui` 下 1613 个官方前端文件 / 33.58 MiB（未压缩）。**UX14 批 #6 相对 UX13 批 #5 的增量极小**：release **+704 B**、R8 **+620 B**、debug **−66,713 B**（后者归因于 `--rerun-tasks` 全量重建清掉增量 dex 残留）—— 体量变化小是因为本轮只加了宿主侧一段 Kotlin override 与新绊线，**前端资源一字未动**。与 UX12 批的累计对比见 UX12 复核块与附录。
+**体积对比（UX14 批 #7）**：原生壳 release 29.4 MB vs web 壳 release 14.3 MB ⇒ **小 2.1 倍**（⚠️ UX6–UX8 期间的"小 8.3 倍"**已因自带前端作废**）。
+**自带前端净增**：`assets/www/ui` 下 1613 个官方前端文件 / 33.58 MiB（未压缩）。**UX14 批 #7 相对批 #6 的增量**：nor8 **+2,344 B**、R8 **+2,340 B**、debug **+27,553 B**。⚠️ **debug 增量明显大于两个 release，本轮未逐项拆解归因，不猜** —— 已知 P6 **只改了 `oc-host.js`（+6,378 B 源码，68,564 − 62,186）且宿主 Kotlin 零改动**，release 侧 +2.3 KB 与该资产增量同量级；debug 侧差额**未经落地验证**，引用前请先解包对比。与 UX12 批的累计对比见 UX12 复核块与附录。
 > 🔴 **⚠️ 本块以下整段（facade 资产表 + "不打包官方前端"口径 + "构建输出一致性"）是 UX6–UX8 期间的历史记录，UX12 起已整体作废** —— 因为 UX12 **真的把官方前端打进包了**（`assets/www/ui/` 1613 个文件 / 33.58 MiB）。**下面那句"不打包官方前端（上游 SPA）的任何字节"在当前交付包上是错的，不要再引用。** 仅保留作历史推演记录：
 >
 > **⚠️ 口径更正（A5 推翻旧表述）**：本文件上一版在此处写的是「**一个前端字节都不打包**」——**这句字面为假，已撤回**。当时的交付包里确实带着 **4 个壳自带的 facade 资产**（不是上游 SPA）：
@@ -132,7 +175,7 @@
 >
 > **构建输出一致性（⚠️ 仅 UX6–UX8 期间验过）**：`webapp/build/outputs/apk/{release,debug,releaseR8}/` 的 md5 与当时上表**逐位相同**。⚠️ **UX12 批没有重跑这项对比** —— 本轮只对 `research/deliver/` 三份做了 `Get-FileHash`（§UX12 复核块）。**引用 UX12 产物时请只用 `research/deliver/` 那三份**，别假定构建目录那份同字节。
 
-#### ⚠️ UX12 复核（2026-10-06，`Get-FileHash -Algorithm MD5` 实测，**已被 UX13 批 #5、并进而被 UX14 产物批 #6 取代，仅存档**）
+#### ⚠️ UX12 复核（2026-10-06，`Get-FileHash -Algorithm MD5` 实测，**已被 UX13 批 #5、并进而被 UX14 产物批 #7 取代，仅存档**）
 
 > **为什么重建**：落地「方案 A」修复 B-6（官方「添加服务器」拒 http）。做法 = 官方前端自带进包 + 本机回环 `http` 静态来源端点加载页面 ⇒ 页面协议恒 `http:` ⇒ 上游 `isMixedContent()` 入口闸永不触发。**最终摘要见 `research/web/UX12_PLAN_A_FULL.md`；已被取代的原因与新值见顶部 UX13 段落。**
 
@@ -174,7 +217,7 @@
 > **UX12 改了什么（文件级）**：新增 `webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt`（本机静态来源端点，4173）+ 绊线 `webapp/src/test/java/com/xiufeigo/opencodeshell/web/LocalUiOriginServerTest.kt`（10 用例）；`WebHostActivity.kt` 启动页改从 `http://127.0.0.1:4173` 加载；`DirectConnectAuthBoundaryTest.kt` / `TerminalReattachTest.kt` 随新启动语义改写；新增资源目录 `webapp/src/main/assets/www/ui/`（1613 文件）。**`app/**` 零改动。**
 > **红线**：两次凭据扫描 `HITCOUNT=0`；`refuseApiPath()` 对 `/api`、`/event` 一律 404（**不代理 API**）；只绑回环 `InetAddress.getByName("127.0.0.1")`；**没有自定义页**。**`:webapp` 单测 194/194 全绿**，**反向验证撤回真红 3 条**。⚠️ **`:app` 6136 用例中 57 条本机预置环境失败**（缺 gitignore 的设备工件 XML 与 `_upstream` 工作副本；与本轮无关，`app/**` 未改）。
 
-#### ⚠️ 以下 UX12 及 UX6–UX8 复核块均为历史记录（已被 UX13 批 #5、并进而被 UX14 产物批 #6 取代）
+#### ⚠️ 以下 UX12 及 UX6–UX8 复核块均为历史记录（已被 UX13 批 #5、并进而被 UX14 产物批 #7 取代）
 
 #### ✅ UX6 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**已被 UX7 批取代，仅存档**）
 
@@ -201,7 +244,7 @@
 > - **B-5（当前构建不复现）**：软键盘弹起 composer 裁切在两屏（新建 session + 会话界面）**均不复现**；`--oc-ime-bottom` 抬升机制量化验证（IME 起：form padding-bottom=336.38px；收：归 0 自动恢复）。
 > 新增绊线 `Ux7PhoneSweepTripwireTest`（5 用例）；**反向验证实测**：撤回收窄喂旧 oc-host.js ⇒ 2 条真红；撤回 `--oc-ime-bottom` 消费 ⇒ `ImeOcclusionTest.facadeConsumesImeBottomForComposer` 真红。另：`WebHostActivity.consumeDebugEval` 扩展 `b64:` 前缀（debug-only，绕开页面 CSP 的 unsafe-eval 限制），`DebugEvalChannelTest` 契约不变。
 
-**UX8 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`，**历史记录 —— 早已被 UX12 / UX13 / UX14 批取代，当前唯一有效值见 §0.1 顶表（批 #6）**）：
+**UX8 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`，**历史记录 —— 早已被 UX12 / UX13 / UX14 批取代，当前唯一有效值见 §0.1 顶表（批 #7）**）：
 
 | 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
 |---|---|---|---|
@@ -259,7 +302,7 @@
 ⇒ **结论：三份交付物与 §0.1 顶表登记的体积 + md5 完全对得上，文档与磁盘无脱节，无需订正。**
 出处：`research/web/FIX_F18_PHONE.md` §5（这三份就是 F18 重建的产物，md5 与该报告表格逐位相同）；F19 复核记录 `research/web/HANDOFF_F19.md`。
 
-#### ✅ UX5 复核（2026-10-05，`Get-FileHash` 重跑，**已被 UX12 / UX13 / UX14 批取代 —— 当前唯一有效交付物见 §0.1 顶表（批 #6）**）—— **本轮（UX5）又重建了三份 web 产物**
+#### ✅ UX5 复核（2026-10-05，`Get-FileHash` 重跑，**已被 UX12 / UX13 / UX14 批取代 —— 当前唯一有效交付物见 §0.1 顶表（批 #7）**）—— **本轮（UX5）又重建了三份 web 产物**
 
 > **为什么重建**：产品负责人实测打回 UX3/UX4 版选择面板的两个动作（报告 `research/web/UX5_CHOOSER_ACTIONS.md`）：
 > ① 「打开终端」按了没反应（终端面板收起时终端条不在 DOM，旧实现只 passThrough 点终端条「+」⇒ 找不到按钮什么都不做）；
@@ -1063,7 +1106,7 @@ pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <串号> -Pa
 | 28 | **手机档的 IME 遮挡 / `Changes`·`Files`·`Terminal` 页未走查** | V13/V14 走的是"列表→会话→发消息→返回"主链；**键盘遮挡在 360dp 下未重测**，三个 Tab 页在手机档**未逐个走查** | `E2E_PHONE_V14.md` §10-4 · `FIX_F18_PHONE.md` §11.1 |
 | 29 | **重进 App 状态恢复（桌面端语义）** → **部分一致 · last-route 归因已升级（UX14-P2，归属 B）** | ✅ **服务器上下文恢复**（UX13-P12 实测）：重进后首屏直接渲染 `127.0.0.1:4095` 与会话列表、`defaultServerUrl` 有值、`opencode.global.dat:server` 完整、4173 红点/4095 绿点状态保持 —— 与桌面端"重开仍在原服务器"一致；UX14-P2 复测同样确认（走的是**另一条**机制，**不受 PWA 闸门影响**）。❌ **last-route 恢复未生效**：重进后落回 `/` 而非上次会话。🔴 **归因已被 UX14-P2 精确化**：上一版写"根因 = `AndroidMemoryRouter` 内存 history 随进程丢失"，**现查明那是错的** —— 真因是**上游 standalone 闸门**：`tL()`（`matchMedia("(display-mode: standalone)")`）在 WebView 里**三重实测恒 false**，于是**写侧** `rL` 组件**从未被挂载**（`opencode.pwa.last-route` **压根没被创建**：会话路由真实切换过、同一 `localStorage` 里另有 10 个键都在、`lastRoute` 恒 `null`），**读侧** `n&&nL()` 同样短路 ⇒ **恢复链路两端都没启动**，不是"写了没生效"。本次真实会话路由 `/server/<base64>/session/<id>` **本就在 `nL()` 白名单内** ⇒ **若写键则能恢复**。⇒ **归 B：上游固有**，非宿主缺陷。⚠️ **`matchMedia` 方案留产品裁决**：强行让 `tL()` 为 true 会**激活上游那条我们从未跑过的 PWA 恢复路径**，本轮**明确不碰** | **`UX14_P2_ROUTE_AND_BOOT.md` §2** · `UX13_P12_PARITY.md` §4 |
 | 30 | ~~B-2 输入框 → 到行尾后焦点跑到边栏~~ **不复现（UX13-P12）** | 当前构建上**焦点全程留在 composer**：真实点入后 `document.activeElement` = composer 内的 `DIV`；`input text "hello world"` 落入 `hello` 后连按 **15 次 `keyevent 22`**（第 3/6/9/12/15 次各探一次，**五次全部** `inComposer=true`、`x=21,y=453`），终态 caret `anchorOffset=5`/`nodeLen=5`（**光标确实已抵行尾**）后再吃 10 次**仍无一次跳出**。其它快捷键抽查正常：composer 内 `keyevent 66`(Enter) **发送成功**，会话里真实出现消息并收到模型回复 ⇒ 键位通路正常。**归因**：现象本身未发生，**无需**做"上游键位 vs 我方注入"的二分归类 | **`UX13_P12_PARITY.md` §1** · `research/web/BUG_QUEUE.md` B-2 |
-| 31 | **新架构冷启首屏基线（本轮新建基准 · UX14-P2）** | ✅ 已建基线：批 #6 + 本机 API 37 AVD `emulator-6790` 冷启 5 次 = 2897 / 2344 / 2321 / 2306 / 2347 ms ⇒ **中位 2,344 ms**（min 2,306 / max 2,897）。口径 = logcat `OcPerf` 的 `M.g1.firstContent` 的 `t=`（**以进程创建为 0**，不受设备时钟影响）；状态已鉴权已连 4095，**不含**"添加服务器"耗时。⚠️ **kind 实测 4×`raf` + 1×`dcl`**（`report()` 单次闸门，谁先到谁上报；2 帧 rAF 通常早于 `DOMContentLoaded`）⇒ **拿不到保证的 `dcl` 口径**。🔴 **不与 §4.2 的旧 1,676 ms 相减**：那是**已作废 R2 件 `7b578cee…` + `emulator-5910` + 旧前端架构 + 另一套口径**，构件与口径都不同，**只作新架构记录**。⇒ §4.2 那句"如需交付包首屏须重测"**已由本条在新架构上部分兑现**（但换包/换机仍需重测） | `UX14_P2_ROUTE_AND_BOOT.md` §3 · §4.2 口径块 |
+| 31 | **新架构冷启首屏基线（本轮新建基准 · UX14-P2）** | ✅ 已建基线：⚠️ **批 #6 字节体**（`a71b0f45…` / `bc3e9027…` / `b6a346f6…`，**已作废**；P6 只改 JS 资产、宿主 Kotlin 零改动，⚠️ **但批 #7 未重测 ⇒ 换包仍需重测**）+ 本机 API 37 AVD `emulator-6790` 冷启 5 次 = 2897 / 2344 / 2321 / 2306 / 2347 ms ⇒ **中位 2,344 ms**（min 2,306 / max 2,897）。口径 = logcat `OcPerf` 的 `M.g1.firstContent` 的 `t=`（**以进程创建为 0**，不受设备时钟影响）；状态已鉴权已连 4095，**不含**"添加服务器"耗时。⚠️ **kind 实测 4×`raf` + 1×`dcl`**（`report()` 单次闸门，谁先到谁上报；2 帧 rAF 通常早于 `DOMContentLoaded`）⇒ **拿不到保证的 `dcl` 口径**。🔴 **不与 §4.2 的旧 1,676 ms 相减**：那是**已作废 R2 件 `7b578cee…` + `emulator-5910` + 旧前端架构 + 另一套口径**，构件与口径都不同，**只作新架构记录**。⇒ §4.2 那句"如需交付包首屏须重测"**已由本条在新架构上部分兑现**（但换包/换机仍需重测） | `UX14_P2_ROUTE_AND_BOOT.md` §3 · §4.2 口径块 |
 
 > 📌 **F19 对 §5 的处理**：**上面两条硬骨头（① 真机耗电 mAh ② 对外分发的正式包名 + 证书）原样保留、一条没动**——F18/V14 **没有产生任何能解掉它们的新证据**。新补的 25–28 都是**手机形态这一批的遗留项**，与那两条硬骨头**性质不同**（它们是"某一形态的体验没到位"，不是"对外发布的前置条件没满足"）。
 >
@@ -1086,11 +1129,13 @@ pwsh -NoProfile -File research\perf\battery_real_device.ps1 -Serial <串号> -Pa
 | | **页面重载后权限回落** | 每次 `onPageFinished` 按宿主真值重推权限 | `UX13_P11_PERM_REPUSH.md` |
 | | **文件选（onShowFileChooser）** | 全链路通：DocumentsUI → 回传 → composer 附件 | `UX13_P1` 步骤 4a |
 | | **渲染进程崩溃自愈（`onRenderProcessGone`）** | 首崩 reload / 60 s 内连崩落 `RENDER_CRASH` 诊断页 / `return true` 消费；230 全绿 + 撤回 4 红 | `UX14_P1` · §5 第 11 条 |
+| | **幻影 4173 服务器条目（列表里多出一条本机静态来源 origin）** | ✅ **已修复（宿主隐藏）**。产品负责人 2026-10-06 拍板"这条不该存在" ⇒ 宿主注入层 `oc-host.js` **DOM 级隐藏例程**：目标 = `location.origin` **去 scheme 动态取**（无端口字面量）、CSS `data-oc-phantom` **只藏不删**（不碰上游数据模型）、`MutationObserver` **250 ms 节流** + 幂等、排除 `input`/`textarea`。**机制根源（P4/P5 钉死）**：4173 条目 = **上游 builtin**（由 `location.origin` 派生、**不在 `list` 里**）⇒ 上游 `canRemove` **永不成立**，`hidden` 容器虽在但**上游无任何写入入口** ⇒ **上游侧永远删不掉**（非 builtin 行实测有 `Remove`，故这是 builtin 属性、非 UI 缺陷）。234 全绿 + 撤回 4 红；设备六项判定 5 ✅ / 1 ⚠️。⚠️ **修法过程中踩过「Server 页整屏全黑」**（`closest()` 把 `<html>` 标上、整页连 `<style>` 一起 `display:none`），已按**永不标根 + 有界上爬 + 紧凑上界 + 保护输入框**两轮收紧并固化进绊线 | `UX14_P4` · `UX14_P5` · `UX14_P6` · §5.1 |
 | **⛔ 不复现（无法证伪，留档）** | B-2 → 到行尾后焦点跳边栏 | 当前构建焦点全程留在 composer（15 次按键 + 终态 caret 读数） | `UX13_P12` §1 · `BUG_QUEUE.md` B-2 |
 | **🔺 上游固有（维持观察，宿主不可单独消除）** | D5 冷启首屏无 `New session` | 触发条件收敛为"**首帧数据未就绪**"；连接就绪后按钮会出现 | `UX13_P12` §2 |
 | | D3 Tab 条挤压（360dp） | 与 V14 读数一字不差，横向排布未变好未变坏 | `UX13_P12` §3 |
 | | 「用户可达路径打不通」属 connect 页 fallback 语义 | **我们与官方一致，不是缺陷**（历史结论，UX13 未推翻） | §3.3 · `UX13_P3` 未动此定性 |
 | | **last-route 恢复（重进后落回 `/`）→ 改判为上游固有（UX14-P2，归属 B）** | 上下文恢复 ✅ / last-route ❌。🔴 **上一版"根因 = `AndroidMemoryRouter` 内存 history 随进程丢失"的归因经实测证伪，已撤**（**过期归因不留文档**，§6.1 ⑪ 同一条纪律）：真因 = **上游 standalone 闸门** `tL()`（`matchMedia("(display-mode: standalone)")`）在 WebView **恒 false** ⇒ 写侧 `rL` 组件**从未被挂载**（`opencode.pwa.last-route` **压根没被创建**）、读侧 `n&&nL()` 同样短路 ⇒ **恢复链路两端都没启动**。本次真实会话路由**本就在 `nL()` 白名单内** ⇒ **若写键则能恢复** ⇒ **宿主无法单独消除、非我方缺陷**。⚠️ **`matchMedia` 方案留产品裁决** | `UX14_P2` §2.3 · `UX13_P12` §4 |
+| | **4173 空转（对静态来源 origin 的事件流 1 Hz 404）** | ⚠️ **上游固有 / 遗留观察，未闭环**。本轮只隐藏了 **UI 行**，**没有**停掉对 origin 的事件流订阅 ⇒ `/api/event` 仍**严格 1 Hz**、`status=404`、`OPEN→NON2XX→disconnected` 循环；**桌面端同款行为**。🔴 **"设为默认后停止"这条预期实测不成立**：`defaultServerUrl=http://127.0.0.1:4095` **确已写入**，4173 仍以 **20 s 内 3 次**继续打。⚠️ **停订阅与隐藏 UI 行是两件事**，需另开一轮 | `UX14_P6` §5 判定 5 · §6 遗留 ① |
 | **🏗 架构差异（换壳形态的固有代价）** | 自带前端导致包体 ×3–×9 | 自主权换一致性，已知情接受 | §0.1 · UX12 复核块 |
 | **🌐 环境受限（缺条件，非缺陷）** | 耗电 mAh | 模拟器无电池模型；**本仓至今没有任何 mAh 数字** | §5① · `BATTERY_HOWTO.md` |
 | | 首屏中位数 | 每格只冷启 1 次，未取中位数 | §4.3 |

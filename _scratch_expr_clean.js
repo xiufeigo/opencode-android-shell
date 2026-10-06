@@ -1,0 +1,1 @@
+(function(){var removed=[];['__p4_idb','__p4_caches','__p4_flags'].forEach(function(k){if(localStorage.getItem(k)!==null){localStorage.removeItem(k);removed.push(k)}});var a=[];for(var i=0;i<localStorage.length;i++)a.push(localStorage.key(i));return JSON.stringify({removed:removed,cleanKeys:a})})()
