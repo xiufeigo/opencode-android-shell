@@ -1,25 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  W1 明文放行范围：**只**放行回环、模拟器宿主和自建局域网调试地址。
+  2026-10-06 决策记录（产品负责人拍板）：**选项 C —— 全局明文放行**，
+  与官方桌面端同形态。本文件即真正生效的那一处（Android 语义：
+  networkSecurityConfig 存在时会**覆盖** manifest 的 usesCleartextTraffic，
+  所以 manifest 里那个开关只是同一决策的镜像，两处必须一致）。
 
-  为什么需要明文：宿主 origin 是 https://appassets.androidplatform.net，而 opencode
-  后端常跑在 PC 的 http://192.168.x.x:4096 —— 那是 *混合内容* + 明文。本模块用
-  WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE（仅兼容模式）放行混合内容，
-  网络侧再由本文件把回环/自建地址的明文限定住。
+  目标形态：App 像官方桌面端那样能直连**任意 http 服务器**，
+  不再需要"每换一个后端地址就改一行 domain、重装 APK"。
+  所以 base-config 的 cleartextTrafficPermitted 从 false 改为 true。
 
-  为什么不是全局 usesCleartextTraffic="true"：那会让**所有**第三方 http 目标
-  （前端里出现的任意 http 图片/脚本/跳转）都能明文传输。本文件默认 deny，
-  只有下面这些具体主机可明文，且不含通配符 —— network-security-config 不支持
-  IP 段通配，所以新增自建后端要**显式**加一行 domain，宁可啰嗦也不要全局放开。
+  已知并被接受的代价：**所有** http:// 目标一律明文传输，包括公网 http
+  目标里的 Basic 口令。这与官方桌面端浏览器的行为一致，所以这是
+  **刻意的安全姿态选择**，不是疏漏 —— 不要当成待办事项"修回去"。
+
+  ⚠️ 明文放行**不等于**放宽证书信任：https 目标仍然只认系统 CA
+  （trust-anchors 保持 system），自签证书依旧不被接受。
+  这两条是独立的，别借明文放行之名顺手加上 <certificates src="user" />。
+
+  为什么还需要混合内容那一侧：宿主 origin 是 https://appassets.androidplatform.net，
+  而 opencode 后端常跑在 PC 的 http://192.168.x.x:4096，那是 *混合内容* + 明文。
+  该侧由 WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE（仅兼容模式）放行，与本文件相互独立。
+
+  关于下方 domain-config：全局放行后它**已无实际作用**（base-config 已允许明文），
+  仅作为历史参考与调试文档保留，不删是为了让旧记录可追溯。
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
 
     <domain-config cleartextTrafficPermitted="true">
+        <!--
+          全局放行后本节仅作历史参考保留（base-config 已允许明文，此处不再产生差异）。
+          以下是当初"逐条放行"时代真正起作用的主机清单：
+        -->
         <!-- WebView 内的 127.0.0.1（应用内回环网关 / WebSocket polyfill 目标） -->
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
@@ -31,7 +47,7 @@
           自建局域网后端：按需显式追加本机在用的地址，例如
             <domain includeSubdomains="false">192.168.1.10</domain>
             <domain includeSubdomains="false">192.168.0.7</domain>
-          （不要写 192.168.x.x —— 不支持通配；写错就会静默变回 https 失败。）
+          （不要写 192.168.x.x —— 不支持通配。）
         -->
     </domain-config>
 </network-security-config>

@@ -537,6 +537,12 @@
     ShimNotification.permission = "default";
     ShimNotification.requestPermission = function () {
       var has = oc.hasNotificationPermission();
+      // P9 root-cause fix: write the host truth back into the static property.
+      // Previously only the resolved promise value changed; ShimNotification.permission
+      // stayed "default" forever. If upstream reads Notification.permission first
+      // (calling requestPermission only when it reads "default"), then after the
+      // permission dialog was accepted the property is still "default" => never notify.
+      ShimNotification.permission = has === 1 ? "granted" : (has < 0 ? "denied" : "default");
       if (has === 1) return Promise.resolve("granted");
       if (has < 0) return Promise.resolve("denied");
       oc.requestNotificationPermission();
@@ -548,7 +554,69 @@
     try {
       window.Notification = ShimNotification;
     } catch (e) {}
+
+    // P9 · Host push entry for the permission result.
+    // The Android side cannot observe the async grant round-trip from JS, so
+    // WebHostActivity's POST_NOTIFICATIONS launcher callback dispatches this
+    // custom event via evaluateJavascript:
+    //   window.dispatchEvent(new CustomEvent('oc:notifyPerm', {detail:'granted'|'denied'}))
+    // Listen for it and refresh the static property, so a gate that reads
+    // Notification.permission (instead of calling requestPermission) stops
+    // seeing a stale "default" after the user accepted the system dialog.
+    try {
+      window.addEventListener("oc:notifyPerm", function (ev) {
+        var detail = ev && ev.detail;
+        if (detail === "granted" || detail === "denied") {
+          ShimNotification.permission = detail;
+        }
+      });
+    } catch (e) {}
   }
+
+  // ======================================================================
+  // P10 · 后台"未聚焦"页面状态 shim —— 通知闸门的最后一道墙。
+  //
+  // 上游 notify 闸门原文（bundle `ui/oa/index-D2r3WEwY.js`）：
+  //   if ((…Notification.requestPermission().catch(()=>'denied')
+  //        : Notification.permission) !== 'granted'
+  //       || document.visibilityState === 'visible' && document.hasFocus()) return;
+  //   let r = new Notification(...)
+  //
+  // 即：授权 granted（P9 已修）之外，**还要求"页面不是 可见且聚焦"** 才通知。
+  // 而保活路径下 WebView 切后台只 pause 渲染/JS 时钟，**不改这两个属性/方法**的取值：
+  //   document.visibilityState 恒 "visible"、document.hasFocus() 恒 true
+  // （P7 合成的 blur 事件是"事件"，不是这两个读数；WebView 后台不发原生
+  //   visibilitychange，也不让 hasFocus() 变 false —— 这正是 P9 设备实测
+  //   `ctor=0`（上游从未构造 Notification）的最后一堵墙）。
+  //
+  // 所以宿主在 onPause/onResume 显式改写这两个**读数**。
+  //
+  // 🔴 **只覆盖属性/方法，绝不派发 visibilitychange / blur / focus 事件。**
+  //   P7 已证：上游 pageLifecycle 监听 visibilitychange，且在 visible 时会
+  //   触发 resync → abort，把保活路径下的 4095 SSE 掐死 ⇒ "终帧必丢"的
+  //   P6 死锁原样复活（P6/P7 报告 §死锁链）。blur/focus 派发则由
+  //   WebHostActivity 的 dispatchPageLifecycleEvent 负责，本 shim 不碰事件面。
+  //   任何"顺手补个事件让它更真"的修改都属于**回退**，见 NotificationShimTest。
+  //
+  // 取值语义：ocBackgrounded 由宿主在**进入后台时**置 true、回前台置 false，
+  // 两条路径（回合保活 / 空闲断流）都设，不作区分 —— 闸门只读这两个值，
+  // 与 SSE 是否仍活着无关。
+  // ======================================================================
+  var ocBackgrounded = false;
+  try {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: function () {
+        return ocBackgrounded ? "hidden" : "visible";
+      },
+    });
+    document.hasFocus = function () {
+      return !ocBackgrounded;
+    };
+  } catch (e) {}
+  window.__ocSetBackground = function (v) {
+    ocBackgrounded = !!v;
+  };
 
   // 上游兼容入口（android-proxy.ts 会读这两个）
   window.OpenCodeAndroid = {
@@ -790,19 +858,39 @@
       }
     }
 
+    // 取绝对 URL 的 origin（纯诊断用；失败时退化成 "?"，绝不抛）。
+    function originOf(url) {
+      try {
+        return new URL(url, window.location.href).origin;
+      } catch (e) {
+        return "?";
+      }
+    }
+
     // 给 /api/event 响应体套透明 tee：字节原样透传，顺便扫帧 + 记录开合。
-    function teeEventStream(resp, path) {
+    function teeEventStream(resp, path, absUrl) {
       var body = resp.body;
       if (!body || body.__ocPowed) return;
       var id = ++streamSeq;
-      log("event stream OPEN #" + id + " " + path);
+      var origin = originOf(absUrl || path);
+      var status = resp.status;
+      // P7：日志补 origin 与 status。
+      // 动机（P6 §B.4 原文）：EVENT_PATH_RE 是**纯 pathname 匹配、不查 status**，
+      // 所以页面 origin(4173) 被 LocalUiOriginServer 按红线 3 打成 404 + Connection: close
+      // 的空转流，也一样会打出 `event stream OPEN`。P5 据此误判成"4095 真流被重连风暴
+      // 截断"，P6 也差点跟着走偏 —— 缺的就是 origin 和 status 这两个字段。
+      log("event stream OPEN #" + id + " " + origin + path + " status=" + status);
+      if (typeof status === "number" && (status < 200 || status >= 300)) {
+        // 单独再打一行非 2xx：一条 grep 即可区分「4173-404 空转」与「4095 真实流」。
+        log("event stream NON2XX #" + id + " " + origin + " status=" + status);
+      }
       var decoder = new TextDecoder();
       var leftover = "";
       var closed = false;
       function markClosed(reason) {
         if (closed) return;
         closed = true;
-        log("event stream CLOSE #" + id + " " + reason);
+        log("event stream CLOSE #" + id + " " + origin + " " + reason);
       }
       var ts = new TransformStream({
         transform: function (chunk, ctl) {
@@ -867,7 +955,7 @@
 
       return NativeFetch.apply(window, arguments).then(function (resp) {
         try {
-          if (resp && EVENT_PATH_RE.test(path)) teeEventStream(resp, path);
+          if (resp && EVENT_PATH_RE.test(path)) teeEventStream(resp, path, url);
         } catch (e) {}
         return resp;
       });

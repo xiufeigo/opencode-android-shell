@@ -169,6 +169,11 @@ class WebHostBridge(
         val tracker = ctx.roundActivityTracker()
         if (on) {
             tracker.onRoundStart(System.currentTimeMillis())
+            // P7 · 回合开始 = 宿主首次观测到"有活要干"的真实时刻。
+            // 这里主动申请一次 POST_NOTIFICATIONS，打破 P6 §D.3 判定的死锁
+            // （上游闸门只挂终态帧 ⇒ 终帧不到 ⇒ 闸门从不评估 ⇒ 永不申请）。
+            // 复用既有 launcher 链，未 granted 且在前台时才弹。
+            ctx.runOnUiThread { ctx.requestNotificationPermissionOnRoundStart() }
         } else {
             tracker.onRoundEnd()
         }

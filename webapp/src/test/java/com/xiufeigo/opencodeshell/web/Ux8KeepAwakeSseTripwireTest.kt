@@ -168,15 +168,30 @@ class Ux8KeepAwakeSseTripwireTest {
 
     @Test
     fun onPauseDispatchesPagehide() {
+        // 🔴 UX13-P7 更新：不变量从「**无条件**派 pagehide」收窄为
+        // 「**空闲**后台派 pagehide」。
+        //
+        // 历史理由（别改回去）：UX8 的原意是"切后台就断 SSE 省电"，因为 WebView
+        // 切后台不发 pagehide、扳机缺失。但 P6 实测证明这条无条件断流会把
+        // **回合终态帧**掐死在断点上（HOME 后 ~2s 后端才发 succeeded），而上游
+        // notify 闸门只挂终态帧 ⇒ 后台通知 100% 丢失、且 `POST_NOTIFICATIONS`
+        // 首次申请形成自锁。
+        //
+        // 本用例因此只保留"空闲后台照样断流"这条 UX8 真正的不变量
+        // （回归时它必须仍然为绿），回合分支的新不变量改由
+        // `BackgroundRoundKeepaliveTest.roundActiveBackgroundDoesNotDispatchPagehide`
+        // 钉住 —— 它额外断言了 pagehide 落在 `} else {` 之后，即回合进行中绝不派发。
         val body = bodyOf(activitySrc, "override fun onPause()")
         assertTrue(
-            "onPause 必须合成派发 pagehide（WebView 不发；上游 stop() 靠它触发）",
+            "空闲后台必须合成派发 pagehide（WebView 不发；上游 stop() 靠它触发）",
             body.contains("dispatchPageLifecycleEvent(\"pagehide\")"),
         )
     }
 
     @Test
     fun onResumeDispatchesPageshow() {
+        // 🔴 UX13-P7 更新：同上，pageshow 现在是"空闲路径回前台"的对偶事件；
+        // 保活路径回前台派 focus（那条路径从未断过流）。pageshow 本身不许消失。
         val body = bodyOf(activitySrc, "override fun onResume()")
         assertTrue(
             "onResume 必须合成派发 pageshow（上游 start() 靠它重建 SSE）",

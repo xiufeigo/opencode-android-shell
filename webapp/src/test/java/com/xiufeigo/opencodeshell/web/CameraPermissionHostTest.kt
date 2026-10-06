@@ -49,6 +49,32 @@ class CameraPermissionHostTest {
     private val activity: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    /**
+     * 只切出 `isTrustedWebOrigin` **函数体**（从声明处到配对的收尾 `}`）。
+     *
+     * ⚠️ 不能对整个 activity 源做 contains：`bootUrl()` 也在用
+     * `LocalUiOriginServer.origin()`，那样旧代码（未修）会假绿。
+     */
+    private fun isTrustedWebOriginSource(): String {
+        val source = activity
+        val start = source.indexOf("private fun isTrustedWebOrigin")
+        assertTrue("必须存在 isTrustedWebOrigin(origin)", start >= 0)
+        var depth = 0
+        var i = source.indexOf('{', start)
+        assertTrue("isTrustedWebOrigin 必须有函数体", i >= 0)
+        while (i < source.length) {
+            when (source[i]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, i + 1)
+                }
+            }
+            i++
+        }
+        throw AssertionError("isTrustedWebOrigin 的花括号不配对")
+    }
+
     // ---- ① manifest 声明 -------------------------------------------------
 
     @Test
@@ -133,6 +159,27 @@ class CameraPermissionHostTest {
         assertTrue(
             "可信来源必须包含默认后端 origin（未配置时的启动地址）",
             activity.contains("SecretStore.DEFAULT_BACKEND_URL"),
+        )
+        assertTrue(
+            "可信来源必须包含自带官方前端的页面来源 LocalUiOriginServer.origin()——" +
+                "方案 A 之后页面 origin 是 http://127.0.0.1:4173，不在名单会让扫码被宿主误拒",
+            isTrustedWebOriginSource().contains("LocalUiOriginServer.origin()"),
+        )
+    }
+
+    /**
+     * UX13/P3 回归：相机权限必须认自带官方前端的页面来源。
+     *
+     * P1 实测（`research/web/UX13_P1_CAPABILITIES.md` 步骤 2）：PairingScanner 正常渲染，
+     * 但宿主 logcat 打出 `camera permission DENIED origin=http://127.0.0.1:4173` ×6 ——
+     * 宿主实现与浏览器 `isSecureContext` 判定不一致导致的宿主 bug。
+     */
+    @Test
+    fun bundledUiOriginIsTrustedForCamera() {
+        assertTrue(
+            "isTrustedWebOrigin 的可信来源必须包含 LocalUiOriginServer.origin()：" +
+                "扫码配对的页面来源就是它，缺失会让 onPermissionRequest 误拒 RESOURCE_VIDEO_CAPTURE",
+            isTrustedWebOriginSource().contains("LocalUiOriginServer.origin()"),
         )
     }
 

@@ -197,7 +197,16 @@
 
 ## B-2 输入框按 → 到行尾后焦点跑到边栏
 
-- **状态**：处理中（UX6 那一轮）
+- **状态**：✅ **不复现（UX13-P12，2026-10-06）** —— 在当前交付包（UX13 产物批 #5 之前的 P11 批）上**焦点全程留在 composer**，本轮**未改任何代码**（只验证）。
 - **产品负责人原话**：
   > 「我在输入框按键盘→键，当到输入框最后一个字之后，会直接跳到边栏去，也就是输入离开了输入框，这也是个问题，请修复」
 - **要求**：输入框内按方向键**只移动光标**，**绝不把焦点移出输入框**；修好后**其它快捷键仍能用**（如终端 `ctrl+alt+t`）；绊线 + 撤回必须真红。
+- **本轮实测（设备 `emulator-6790` / AVD `Medium_Phone_API_37.0` / 后端 4095，全程真实点击与按键）**：
+  - 真实点入 composer：`document.activeElement` = **`DIV`**，`class="relative z-10 block min-h-[60px] w-full whitespace-pre-wrap"`，`closest('[contenteditable]')` = **true**；
+  - `input text "hello world"` → 落入 `hello`（`input text` 吞空格，非缺陷），`anchorNode=#text`、`nodeLen=5`；
+  - `input keyevent 22`（→）**连按 15 次**，第 3/6/9/12/15 次各探一次 —— **五次全部** `tag=DIV`、`inComposer=true`、`x=21,y=453`、`txt=hello`；
+  - 终态 caret `anchorOffset=5` / `nodeLen=5` ⇒ **光标确实已抵行尾**，其后又吃 10 次 → **仍无任何一次跳出到侧边栏**。
+- **其它快捷键抽查**：composer 内 `keyevent 66`(Enter) **发送成功** —— 会话里真实出现用户消息 `hello` 并收到模型回复 ⇒ 键位通路正常。
+- **归因说明（只读）**：未发现焦点被劫持迹象，也未触及 `oc-host.js` 里任何我方 keydown 监听即可解释的跳转；**现象本身未发生**，因此**无需**做"上游键位 vs 我方注入"的二分归类。
+- **诚实边界**：这是**单包单轮**的"不复现"，**不等于"已证明永不发生"**；若日后复现，请直接重开本条并附当时的包 md5 与按键序列。
+- **报告**：`research/web/UX13_P12_PARITY.md` §1。

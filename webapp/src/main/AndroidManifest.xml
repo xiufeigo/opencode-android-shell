@@ -33,10 +33,25 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
-      没有 INTERNET 权限上的全局明文开关。
-      明文（http://）**只**对回环 / 模拟器宿主 / 自建局域网地址放行，
-      范围由 res/xml/network_security_config.xml 逐条列出；
-      其余一律 https（manifest 的 usesCleartextTraffic 不写 true）。
+      2026-10-06 决策记录（产品负责人拍板）：**选项 C —— 全局明文放行**，
+      与官方桌面端同形态。
+
+      为什么改：要让 App 像官方桌面端一样能直连**任意 http 服务器**，
+      而不是只能连回环 / 10.0.2.2 / 逐条手写进 network_security_config 的
+      自建地址。此前逐条 domain 的做法，每换一个后端地址就要改一行 XML、
+      重装 APK，实测属于不可用的自缚（见 research/web/UX13_P4_CLEARTEXT_GLOBAL.md）。
+
+      已知并被接受的代价：**所有** http:// 目标一律明文传输，
+      包括公网 http 目标里的 Basic 口令。这与官方桌面端浏览器的行为一致，
+      所以这是**刻意的安全姿态选择**，不是疏漏 —— 不要当成待办事项"修回去"。
+
+      真正生效点：Android 语义下 networkSecurityConfig 存在时会**覆盖**
+      manifest 的 usesCleartextTraffic，所以 res/xml/network_security_config.xml
+      的 base-config cleartextTrafficPermitted 必须同步改成 true，
+      两处缺一即静默回落到明文禁止。两侧由单测 CleartextPolicyTest 钉死。
+
+      注意：明文放行**不等于**放宽证书信任。https 目标仍然只认系统 CA，
+      自签证书依旧不被接受（trust-anchors 保持 system）。
     -->
     <application
         android:name=".WebHostApp"
@@ -47,7 +62,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.OcWebHost"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".WebHostActivity"
