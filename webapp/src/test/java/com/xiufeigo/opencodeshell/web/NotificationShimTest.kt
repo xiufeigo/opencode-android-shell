@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -202,12 +203,54 @@ class NotificationShimTest {
             src.contains("ocBackgrounded ? \"hidden\" : \"visible\""),
         )
         assertTrue(
-            "document.hasFocus 必须被覆盖为 !ocBackgrounded（闸门的第二个条件）",
+            "document.hasFocus 必须被覆盖（闸门的第二个条件）——覆盖成什么见 " +
+                "hasFocusOverrideDelegatesToNativeWhenForegrounded",
             src.contains("document.hasFocus = function ()"),
         )
         assertTrue(
             "ocBackgrounded 变量必须存在（shim 状态源）",
             src.contains("var ocBackgrounded = false;"),
+        )
+    }
+
+    /**
+     * UX15-P1 · hasFocus 覆盖**必须委托原生**，不得在前台硬编码 true。
+     *
+     * 原实现 `document.hasFocus = function () { return !ocBackgrounded; }` 把"前台"
+     * 一律答成 true —— 等于替 WebView 撒了一个谎：只要宿主认为在前台，系统弹窗
+     * （权限/选择器）遮挡、多窗口/分屏、系统面板拉起这些**页面确实没有焦点**的时刻，
+     * 上游闸门仍读到 `hasFocus() === true`，与原生语义偏差。
+     *
+     * 现在的语义是"只叠加宿主**确知**的那一个事实（我进了后台）"：
+     *   - 后台 ⇒ 强制 false（闸门得以在后台放行通知，这是 P9/P10 的既有收益）；
+     *   - 前台 ⇒ 委托原生 `document.hasFocus`，还原真实焦点语义。
+     */
+    @Test
+    fun hasFocusOverrideDelegatesToNativeWhenForegrounded() {
+        val src = hostJs
+        assertTrue(
+            "必须先把原生 hasFocus 绑定留一份引用（ocOrigHasFocus）再覆盖 —— " +
+                "否则前台无法还原原生焦点语义",
+            src.contains("var ocOrigHasFocus = document.hasFocus.bind(document);"),
+        )
+        assertTrue(
+            "覆盖后的 hasFocus 必须是 '后台 false / 前台委托原函数' 的两分支形态",
+            src.contains("return ocBackgrounded ? false : ocOrigHasFocus();"),
+        )
+        // 🔴 反向：前台硬编码 true 的原实现不得复活。
+        assertFalse(
+            "hasFocus 覆盖里不得再出现 `return !ocBackgrounded;`（那把前台硬编码成 true，" +
+                "系统弹窗/多窗口场景下与原生语义偏差）",
+            src.contains("return !ocBackgrounded;"),
+        )
+        // 原生引用必须在覆盖**之前**取，否则委托的是自己（自调用死循环/恒 false）。
+        val grab = src.indexOf("var ocOrigHasFocus = document.hasFocus.bind(document);")
+        val cover = src.indexOf("document.hasFocus = function ()")
+        assertTrue("未找到原生 hasFocus 引用绑定", grab >= 0)
+        assertTrue("未找到 hasFocus 覆盖点", cover >= 0)
+        assertTrue(
+            "必须先取原生引用再覆盖（顺序反了会把 shim 自身当成'原生'委托）",
+            grab < cover,
         )
     }
 

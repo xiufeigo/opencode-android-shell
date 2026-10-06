@@ -602,6 +602,13 @@
   // 两条路径（回合保活 / 空闲断流）都设，不作区分 —— 闸门只读这两个值，
   // 与 SSE 是否仍活着无关。
   // ======================================================================
+  // 🔴 UX15-P1 · hasFocus 覆盖改为**委托原生**：原实现 `return !ocBackgrounded`
+  //   把"前台"硬编码成 true，等于替 WebView 撒了一个谎 —— 只要宿主认为在前台，
+  //   系统弹窗（权限/选择器）遮挡、多窗口/分屏、系统面板拉起这些**页面确实没有
+  //   焦点**的时刻，上游闸门仍会读到 hasFocus()===true，与原生 WebView 语义偏差。
+  //   现在只叠加宿主**确知**的那一个事实（"我进了后台"），其余一律委托原生。
+  //   visibilityState 的覆盖维持原样：原生在前台本就恒为 "visible"，WebView 后台
+  //   又不发 visibilitychange（见上），所以覆盖前后取值完全一致，不引入偏差。
   var ocBackgrounded = false;
   try {
     Object.defineProperty(document, "visibilityState", {
@@ -610,8 +617,9 @@
         return ocBackgrounded ? "hidden" : "visible";
       },
     });
+    var ocOrigHasFocus = document.hasFocus.bind(document);
     document.hasFocus = function () {
-      return !ocBackgrounded;
+      return ocBackgrounded ? false : ocOrigHasFocus();
     };
   } catch (e) {}
   window.__ocSetBackground = function (v) {
@@ -1392,14 +1400,51 @@
   //
   // 保守约束：**只隐藏、不删除、不改文本** —— 上游数据模型完全不动，
   // 避免破坏 visible[0] 焦点逻辑。
-  //   （首启 Home 仍停在 4173 上下文 Loading —— 既有行为，不在本轮范围；
-  //    用户加了自己的服务器后切换即可。）
+  //
+  // 🔴 UX15-P2 · 隐藏**条件化**："有用户服务器才隐藏"。
+  //   P1 自查抓到首启空态缺陷：全新安装（未加任何服务器）时 builtin 行
+  //   被隐藏 ⇒ Home 无限期停在 Loading 骨架屏、无"添加服务器"引导、入口
+  //   只剩一个无文字的 "+"。而首启时那条红点行恰恰是**唯一可操作的上下文**
+  //   （P8 实证：Edit 它就能改成自己的服务器 = 官方自带 onboarding 路径）。
+  //   ⇒ 与产品意图（"加了自己的服务器后 4173 不该还在"）冲突。
+  //
+  //   闸门信号 = 注册表键 `opencode.global.dat:server` 的**存在性**。
+  //   机制依据（P5 实证）：该键**首次 Add 成功后才惰性创建** ⇒ 键不存在
+  //   ⟺ 用户还没有任何自己的服务器。键存在时才执行隐藏；不存在则
+  //   **完全不动**（builtin 行照常显示，可 Edit、可设为默认）。
+  //
+  //   取舍（明确记录）：用户**移除全部**自己的服务器后，注册表 list 为空
+  //   但**键仍在** ⇒ 仍然隐藏 ⇒ 4173 不复活。这符合"删掉的不该自己回来"
+  //   的直觉，也避免"清空列表 ⇒ 幻影立刻冒出来"这种更困惑的行为。
+  //
+  //   即时生效：扫描本来就由 MutationObserver 周期性触发；用户添加服务器
+  //   必然引起 DOM 变更 ⇒ 自然触发下一轮扫描，此时闸门已放行。
+  //   **不需要**额外事件监听（加了反而是第二套真相来源）。
   // ======================================================================
   var PHANTOM_ATTR = "data-oc-phantom";
   var PHANTOM_STYLE_ID = "oc-phantom-hide";
   var PHANTOM_THROTTLE_MS = 250;
   var PHANTOM_ROW_SEL =
     'a,li,button,[role="button"],[role="menuitem"],[role="menuitemradio"],[data-slot]';
+  // 服务器注册表键：P5 实证"首次 Add 成功才惰性创建"⇒ 存在性 = 有无用户服务器
+  var PHANTOM_REGISTRY_KEY = "opencode.global.dat:server";
+
+  /**
+   * 隐藏闸门：用户是否**已经添加过自己的服务器**（注册表键是否存在）。
+   * 惰性读取 —— 每次扫描读一次，当次生效。
+   * localStorage 不可用（隐私模式/被拒）时按"没有用户服务器"处理，
+   * 退回首启行为（不隐藏），这是更保守、也更不会误伤的一侧。
+   */
+  function hasUserServerRegistry() {
+    try {
+      return !!(
+        window.localStorage &&
+        window.localStorage.getItem(PHANTOM_REGISTRY_KEY)
+      );
+    } catch (e) {
+      return false;
+    }
+  }
 
   /** 目标标识：location.origin 的 "host:port"（动态取，不写死端口字面量）。 */
   function phantomOriginToken() {
@@ -1424,56 +1469,103 @@
   }
 
   /**
-   * 扫出文本里含该 URL 的元素，取其最近的行容器祖先打标记。
+   * 从命中元素上爬，取**要打标记的行/块容器**。
    * 幂等（已标记即跳过）；**不删除任何节点**。
+   *
+   * 🔴 血泪坑（2026-10-06 设备复验当场踩到）：**不能无脑 closest()**。
+   *   `closest('…, [data-slot]')` 会一路爬到页面外壳；而 <html>/<body> 自身
+   *   也含该 URL 文本（它们在 querySelectorAll('*') 里），没有匹配祖先时
+   *   回落成"标记自身" ⇒ 实测把 <html> 打了标记，**整页连 <style> 一起
+   *   消失，屏幕全黑**。
+   *   第二次收紧：上爬到的祖先若"文本量超过紧凑上限"，说明它是分区/页面
+   *   容器（连 "Add server" 按钮一起包住），**不能**当行容器。
+   *   ⇒ 找不到紧凑的行祖先时回落标记命中元素自身（宁可少隐藏，不可多隐藏）。
+   *
+   * 🔴 UX15-P1 血泪坑之二（同轮设备复验踩到，**改 XPath 引入**）：
+   *   改用 XPath 直接文本匹配后，候选只剩"**直接**文本节点含目标串"的元素。
+   *   而真实 DOM（设置 → Server 页）长这样：
+   *     bdi.settings-servers-name   ← XPath 命中（直接文本 = 页面 origin）
+   *       div.settings-servers-copy
+   *         div.settings-servers-lead
+   *           div.settings-servers-row
+   *             div
+   *               section.settings-section.settings-server-connection  ← 旧扫描在这里收口
+   *   这条链上**没有一个祖先匹配 PHANTOM_ROW_SEL**（全是 div/section），
+   *   于是"回落标记命中元素自身"就只把那个 <bdi> 藏了 ⇒ **行的红点与 "…" 还在**，
+   *   设备上表现为"服务器行只剩一个红点和三个点，名字没了"。
+   *   旧的全量扫描之所以能整块隐藏，是因为**祖先元素自己的 textContent 同样含
+   *   目标串**，所以 section 本身也是候选、并在"父级文本超上限"处收口被标记。
+   *   ⇒ 现在保留同样的收口语义：沿链记住**最外层仍然紧凑**的那个祖先，
+   *     找不到行选择器匹配时用它兜底（而不是用命中的 <bdi>）。
    */
   function phantomRowFor(el, cap) {
-    // 🔴 血泪坑（2026-10-06 设备复验当场踩到）：**不能无脑 closest()**。
-    //   `closest('…, [data-slot]')` 会一路爬到页面外壳；而 <html>/<body> 自身
-    //   也含该 URL 文本（它们在 querySelectorAll('*') 里），没有匹配祖先时
-    //   回落成"标记自身" ⇒ 实测把 <html> 打了标记，**整页连 <style> 一起
-    //   消失，屏幕全黑**。
-    //   第二次收紧：上爬到的祖先若"文本量超过紧凑上限"，说明它是分区/页面
-    //   容器（连 "Add server" 按钮一起包住），**不能**当行容器。
-    //   ⇒ 找不到紧凑的行祖先时回落标记命中元素自身（宁可少隐藏，不可多隐藏）。
     var node = el.parentElement;
+    var lastCompact = null;
     while (node && node !== document.body && node !== document.documentElement) {
+      if (node === document.head) break;
       if ((node.textContent || "").trim().length > cap) break;
+      lastCompact = node; // 仍然紧凑 ⇒ 记为当前最外层的合法收口点
       if (node.matches && node.matches(PHANTOM_ROW_SEL)) return node;
       node = node.parentElement;
     }
-    return el;
+    return lastCompact || el;
   }
 
   function hidePhantomRows() {
+    // 🔴 UX15-P2 · 条件化闸门：**有用户服务器才隐藏**。
+    //   键不存在（首启，用户还没加过任何服务器）⇒ 原样返回，一个节点都不动。
+    //   此时 4173 那条 builtin 行是首启用户**唯一可操作的上下文**
+    //   （Edit 它 = 官方自带 onboarding 路径），藏了就是断掉上手入口。
+    if (!hasUserServerRegistry()) return 0;
     var token = phantomOriginToken();
     if (!token) return 0;
-    var all;
+    // 🔴 UX15-P1 · 候选取元素改用 **XPath 直接文本匹配**。
+    //   原实现是 `querySelectorAll("*")` + 逐个 `el.textContent.includes(token)`：
+    //   textContent 是 O(子树) 的串接读取，把全页元素轮一遍就是 O(整页文本量)；
+    //   而流式输出期间 DOM 高频变动，250ms 节流窗口内反复全量扫描 ⇒
+    //   中低端机掉帧风险（本轮自我回归审查定的性能红线）。
+    //   `//*[text()[contains(., "…")]]` 只命中"**直接**文本节点含目标串"的元素：
+    //   浏览器原生实现只走文本节点通道，且**天然免疫 P6 踩到的祖先污染** ——
+    //   祖先的 textContent 含该串、但它自己的直接文本并不含，根本不会进入上爬。
+    //   目标串是 host:port（. : - 数字），与双引号无冲突；仍做一次实体转义兜底。
+    var hits;
     try {
-      all = document.querySelectorAll("*");
+      var lit = token.replace(/"/g, "&quot;");
+      hits = document.evaluate(
+        "//*[text()[contains(., \"" + lit + "\")]]",
+        document,
+        null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+        null,
+      );
     } catch (e) {
       return 0;
     }
+    var m = hits.snapshotLength;
     var candMax = token.length * 6 + 40;
     var n = 0;
-    for (var i = 0; i < all.length; i++) {
-      var el = all[i];
+    for (var i = 0; i < m; i++) {
+      var el = hits.snapshotItem(i);
       if (!el || el.nodeType !== 1) continue;
       var tag = (el.tagName || "").toUpperCase();
+      // <style>/<script> 的"直接文本"就是其内容本身，XPath 会直接命中它们 ⇒ 必跳。
       if (tag === "SCRIPT" || tag === "STYLE") continue;
       // 🔴 永不标记根节点 —— 标记 <html> 会让整页（含 <style>）一起消失。
       if (el === document.documentElement || el === document.body) continue;
+      if (el === document.head) continue; // 同理：<head> 一藏，页面所有样式都没了
       if (el.getAttribute(PHANTOM_ATTR) === "1") continue; // 幂等
       // 不碰输入框：Add server 对话框里可能正输入着同一个地址
+      //（XPath 命中的是文本节点，而 input 的 value 并不是文本节点，这里是双保险；
+      //  真正兜底的是下面"容器里带输入框就整体跳过"那条。）
       if (tag === "INPUT" || tag === "TEXTAREA") continue;
-      var txt = "";
+      // 紧凑上界：命中的元素自己可能是个大容器（直接文本里带地址、子树却超大）。
+      var own = "";
       try {
-        txt = el.textContent || "";
+        own = el.textContent || "";
       } catch (e) {
         continue;
       }
-      if (txt.indexOf(token) < 0) continue;
-      if (txt.trim().length > candMax) continue; // 聚合容器，不是行
+      if (own.trim().length > candMax) continue;
       // 容器里带着输入框的一律不动（保护 Add server 对话框）
       if (el.querySelector("input,textarea")) continue;
       var row = phantomRowFor(el, candMax);
