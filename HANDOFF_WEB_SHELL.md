@@ -31,10 +31,10 @@
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `45ed3e896a9779debdc374ca5672fc94` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
-| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `e54752db94e2528d54f0774b8f7b9646` | 日常调试（debug 签名）；同上。**UX8 修复值**；**UX7 值 `fa613348…` 及更早全部作废** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `e2e6789b376282a0e226b3e117489d4d` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `aefb3bee019764ab775e9b121cd75cce` | 日常调试（debug 签名）；同上。**UX8 修复值**；**UX7 值 `fa613348…` 及更早全部作废** |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `e146e547ce359259b456c1a336802519` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `5e3eea5314a911ce627792aab1346017` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
@@ -82,9 +82,9 @@
 
 | 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
 |---|---|---|---|
-| `opencode-shell-web-release-nor8.apk` | **3,549,507 B** | **`45ed3e896a9779debdc374ca5672fc94`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
-| `opencode-shell-web-release-r8.apk` | **1,268,829 B** | **`e146e547ce359259b456c1a336802519`** | 同上 |
-| `opencode-shell-web.apk`（debug） | **5,437,979 B** | **`e54752db94e2528d54f0774b8f7b9646`** | 同上 |
+| `opencode-shell-web-release-nor8.apk` | **3,549,507 B** | **`e2e6789b376282a0e226b3e117489d4d`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,268,829 B** | **`5e3eea5314a911ce627792aab1346017`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **5,437,979 B** | **`aefb3bee019764ab775e9b121cd75cce`** | 同上 |
 
 **包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`b5057679b1a419af15d81ef72ff0fd9e`**（55,953 B），与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
 
@@ -1138,3 +1138,54 @@ UX6 不需要 CORS 的**唯一依据就是"页面 origin == API origin"**。
 `:webapp` 184 + `:app` 6136 = **6320 用例，0 失败 0 错误 0 跳过**（与上轮一致）；`DirectConnectAuthBoundaryTest` **10/10 绿**。
 **0 代码改动 ⇒ 0 新产物**，交付物体积/md5 **维持原值**（见 §0 产物清单表）。
 ⚠️ **环境坑（与本轮无关但会复发）**：`JAVA_HOME` 现指向 JDK `25.0.4.1`，Gradle 8.11.1 抛 `IllegalArgumentException: 25.0.4.1`；**换 JBR 21.0.10 即全绿 ⇒ 建议把 `JAVA_HOME` 钉到 21**。
+
+---
+
+# 附录：B-6「官方添加服务器拒绝 http 服务器」—— 判据、机制、以及**未实施的方案 A**
+
+> 追加时间：2026-10-06 10:2x ｜ 触发：产品负责人实测「**直接添加 http 的也不行，这高低是你的 bug 了吧**」
+> **详细证据**：`research/web/UX9_HTTP_SERVER.md`（判据与 CORS 初判）· `research/web/UX10_HTTP_HTTPS_TOGETHER.md`（**端到端复现 + CORS 更正 + 修法代价**）· `research/web/UX11_LOCAL_UI_ORIGIN.md`（**方案 A 的技术实现与踩坑**）
+> **决定**：产品负责人明确「**新功能可以先不做留着写交接文档就行**」⇒ **方案 A 已整体回退**，本附录即其存档。
+
+## 1. 现象
+在官方「连接到服务器」屏 / 「添加服务器」对话框里填 **`http://…`** ⇒ 红字：
+> **无法从 HTTPS 页面连接此 HTTP 服务器。请使用 HTTPS 服务器地址。**
+**连"还没连上任何服务器"的那一屏也一样拒** —— 这是关键线索。
+
+## 2. 判据（**已钉死，行号 + 原文**）
+- `_upstream/packages/app/src/servers/connect/browser.ts:3-12`：判据 = **`new URL(page).protocol !== "https:"`**，`page` 实参来自 `dialog.tsx:285` 的 **`location.href`**；
+- **不是** `isSecureContext`（全文无此用法；`file://` 的 `isSecureContext=true` 但协议非 https，仍判 false）；
+- 上游 `runtime/server/registry.tsx:15-20` **没有任何"禁止 http"的规定**；
+- 同源逻辑另有 `servers/connect/screen.tsx:25-30`（扫码配对页），判据一致。
+
+## 3. 机制：**鸡生蛋死锁**（这是本项目的形态决定的）
+- 我们的壳 `loadUrl(配置过的后端地址 ?: http://127.0.0.1:4095)` ⇒ **界面是从"已配置的那台服务器"取来的**；
+- ⇒ **页面协议 = 所配置后端的协议**；先配了 https 后端 ⇒ **整页（含"连接到服务器"屏）都是 https** ⇒ **http 服务器永远加不进去**；
+- **官方桌面端没这问题**：它的界面**不是"由某台服务器提供的一页"**（外壳自带）⇒ 连接屏 origin 非 https ⇒ http/https 都能加。
+⇒ **一句话**：「**想加 http 服务器，得先有一个非 https 的页面；而页面只能从服务器来**」。
+
+## 4. 实测更正：CORS 不是"没发"，而是"**只放行 http 回环来源**"
+- UX9 初判「服务端 0 个 CORS 头」；**UX10 实测更正为**：**服务端有 CORS 白名单，且放行 `http` 的回环来源**；
+- ⇒ 这解释了为什么"页面为 http 回环"时 `http://localhost:4095` **能添加成功**（UX10 §3 端到端复现成功，日志可见 API 切到新服务器）；
+- ⇒ **这条也说明：只要页面来自 `http://127.0.0.1:<port>`，跨源那道墙本来就不挡**（对我们的场景友好）。
+
+## 5. 方案 A（**技术已跑通，但按决定未采用**）—— 与官方桌面端同形
+> **把官方前端作为 App 自带资源 + 用本机 `http` 静态来源加载**，使页面协议恒为 `http:`，从而**一页可同时添加 http 与 https 服务器**。
+
+**UX11 已实测到的关键事实（留档，供日后重启该方案）**：
+- **资源来源走通**：**从 `_upstream` 自己构建官方前端**（`_upstream` 自带 `node_modules`、`bun` 在 PATH ⇒ 无需额外安装）；**排除 sourcemap 后 913 个文件 / 32.49 MiB**；
+- **本机来源**：端点跑在 **`http://127.0.0.1:4173`**，`location.protocol` **实测恒为 `http:`** ⇒ UX10 §4.3 的双向死锁从根上消失；
+- **踩到的坑（必须留档）**：**AGP 会丢弃下划线开头的资源目录**（自带资源目录命名要避开）；
+- **代价（当时写明的）**：APK **体积暴涨**（debug 5.44 MB → **16.13 MB**；release 3.55 MB → **13.61 MB**；R8 1.27 MB → **11.33 MB**）；
+- **未完成的部分（UX11 自己声明）**：**没有证明"跨源化"不回归已验收项**（终端/键盘/主题/常亮/SSE/加服务器等全量双档回归**未跑**）。⇒ **这正是当时不能直接交付的原因。**
+
+## 6. 回退记录（**已执行**）
+- 回退：`WebHostActivity.kt` / `DirectConnectAuthBoundaryTest.kt` / `TerminalReattachTest.kt` 恢复；**删除** `host/LocalUiOriginServer.kt` 与 `LocalUiOriginServerTest.kt`；**删除自带前端资源目录（913 文件）**；
+- **三份产物已重建为"已验证架构"**（体积回到 **5,437,979 / 3,549,507 / 1,268,829 B**）；
+- ⚠️ 因重建，**md5 与重建前不同**（签名时间戳），本节所记 md5 为**当前磁盘值**；`oc-host.js` 仍为 **`b5057679b1a419af15d81ef72ff0fd9e`**（= 已验证值，包内可自证）。
+
+## 7. 今天就能用的绕行（**已实测可用**，见 UX10 §3）
+1. 设备上让 **`127.0.0.1:4095` 可达**（`adb reverse tcp:4095 tcp:4095`，或设备本机有服务）；
+2. **清除 App 数据**（设置→应用→OpenCode Web→存储→清除数据）⇒ 壳回到默认地址 ⇒ **页面变 `http`**；
+3. 在官方「添加服务器」里填 **`http://…` + 密码** ⇒ **可添加成功**（此路径已端到端复现）。
+⚠️ 前提：设备必须够得到 `127.0.0.1:4095`；**够不到时只能采用 §5 的方案 A**。
