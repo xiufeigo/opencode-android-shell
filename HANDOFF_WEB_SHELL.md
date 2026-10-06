@@ -20,27 +20,41 @@
 >
 > **UX8（2026-10-05，当前状态）= 宿主侧重接「回合常亮（D1）+ 后台断 SSE（P6 刀 2）」，两条随 UX6 删代理失效的行为已补回**，并重建三份产物。实现：① 注入层新增**回合电源传感器**（`oc-host.js installRoundPowerSensor`：包装 `window.fetch`，发消息 POST 乐观置位 + tee `/api/event` 流按 `session.execution.*` 帧驱动 `oc.setKeepScreenOn`；**线上实测标记**，因真后端不发 `session.status` 帧）；② 宿主 `onPause/onResume` 合成派发 `pagehide/pageshow`，驱动上游 client 自有的 pageLifecycle 机制（`_upstream/packages/client/src/solid/connection.ts:219-240`）断/连 SSE，**未重建代理、未碰凭据**。设备证据（手机档主 + 平板档回归）：flag 置起有 logcat `flagSet=true` + 越 15s 超时物理常亮实证；回合结束释放 **Δ=4–17 ms**（旧事故是挂 4 分钟）；后台断开 **20–106 ms**、回前台重建 **92–245 ms**、会话循环后仍可用。新增绊线 `Ux8KeepAwakeSseTripwireTest`（13 用例，含三处撤回真红实跑）。报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`。三份产物 md5 已变（见 §0.1 顶表与 UX8 复核块），**UX7 批三个 md5 全部作废**。
 
+> **UX12（2026-10-06，当前状态）= 落地「方案 A」：官方前端自带进包 + 本机 `http` 静态来源 ⇒ B-6 修复**。本轮**改了生产代码**（新增 `webapp/.../host/LocalUiOriginServer.kt` + 绊线 `LocalUiOriginServerTest.kt`，`WebHostActivity.kt` 启动页改从本机来源加载）**并拷入 1613 个官方前端资源**。报告 `research/web/UX12_PLAN_A_BUILD.md`（落地/单测/产物）、`UX12_PHONE_REGRESSION.md` + `UX12_PHONE_REVERIFY.md` + `UX12_PHONE_DIAGNOSIS.md`（手机档）、`UX12_TABLET_REGRESSION.md`（平板档）、**`UX12_PLAN_A_FULL.md`（最终摘要，给产品负责人）**。
+> - **做了什么**：把官方前端产物放进 `webapp/src/main/assets/www/ui/`（**1613 个文件 / 33.58 MiB**，`_assets→oa` 改名绕开 AGP 丢弃下划线目录的限制，逐文件 MD5 `checked=1613 missing=0 hashdiff=0`），由本机回环端点 `LocalUiOriginServer`（**4173，只绑回环、只服务 assets、`/api` 与 `/event` 一律 404、不做任何转发**）供页，`WebHostActivity` 改从 `http://127.0.0.1:4173` 启动页面。
+> - **效果**：页面协议恒为 `http:` ⇒ 上游 `isMixedContent()` 的唯一入口闸永不触发 ⇒ **官方「添加服务器」既能加 http 也能加 https，B-6 那句红字消失**（手机档 `hasRed:false` 全程为真 + 绿点 + 直连 4095 的 API 流量；平板档同）。
+> - **红线守住**：两次凭据扫描 **`HITCOUNT=0`**；`refuseApiPath()` 结构性保证不代理 API；**没有加回任何凭据处理、没有自定义页**。单测 `:webapp` **194/194 全绿**（含新增 10 条），**反向验证撤回真红 3 条**；`:app` 6136 用例中 **57 条本机预置环境失败**（缺 gitignore 的设备工件 XML 与 `_upstream` 工作副本；**`app/**` 零改动，与本轮无关**）。
+> - **三份产物 md5 已变**（见 §0.1 顶表与 UX12 复核块），**UX8 批三个 md5 全部作废**。**代价是体积**：debug 5.44 MB→**16.8 MB**、nor8 3.55 MB→**14.3 MB**、R8 1.27 MB→**12.0 MB**（自带前端后 R8 基本压不动）。
+> - ⚠️ **三条 caveat 必须随结论一起引用**：① **https 为等价构造**（无受信 https 后端，判据 + 设备实测双重支撑，非端到端）；② 平板档 WebView 视口不随 IME 收缩，键盘项改以**不裁切**判据验证；③ 手机档 5.4 面板项 **N/A**（该档上游无面板，设计使然，非缺失）。
+> - ⚠️ **UX12 之前所有"当前交付包"的体积/md5 口径一律作废**；`oc-host.js` 资产 md5 另有换行符口径坑，见 UX12 复核块。
+
 ---
 
 ## 0. 一句话现状
 
 **产品负责人对"原生重写界面"不满意（界面不一致）之后，我们改用"路线 A"：Android 端不再重写界面，而是用 WebView 直连服务端自托管的官方前端。**
 ⇒ **一致性满分（界面就是官方界面本身）**，代价集中在**输入延迟与耗电**；输入延迟**已被量化**（§4.1），耗电**必须真机才能测，本轮拒绝给数字**（§5）。
+⇒ **2026-10-06 起形态再次演进（UX12）**：官方前端**已自带进包**，页面从**本机 `http://127.0.0.1:4173`** 加载 ⇒ 页面协议恒 `http:` ⇒ **B-6 已修复**（官方「添加服务器」http/https 都能加）；代价是**包体积 ×3–×9**（§0.1、附录「已实施的方案 A（UX12）」）。
 
-### 0.1 当前可交付（**UX8 批为当前唯一有效值，以磁盘为准**）
+### 0.1 当前可交付（**UX12 批为当前唯一有效值，以磁盘为准**）
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `376ae50a85bc8801798f41c3d65c6cb2` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
-| `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `aefb3bee019764ab775e9b121cd75cce` | 日常调试（debug 签名）；同上。**UX8 修复值**；**UX7 值 `fa613348…` 及更早全部作废** |
+| **`opencode-shell-web-release-nor8.apk`** | **14,304,138 B**（≈13.6 MB） | `b3f9d303bf557ab5cb02eed7d61d09f0` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX12 方案 A 值**（2026-10-06，报告 `research/web/UX12_PLAN_A_BUILD.md` + `UX12_PLAN_A_FULL.md`）：官方前端自带（1613 文件）+ 本机 http 静态来源（4173）⇒ **B-6 已修复**。**⚠️ UX8 值 `376ae50a…` 及更早全部作废** |
+| `opencode-shell-web.apk`（debug） | **16,796,038 B**（≈16.0 MB） | `bf688f8a033ede65c3d4f8c5e8d1e930` | 日常调试（debug 签名）；同上。**UX12 方案 A 值**；**⚠️ UX8 值 `aefb3bee…` 及更早全部作废** |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `c19870db44e771f910adc78c4df0b092` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **12,024,280 B**（≈11.5 MB，比非 R8 **−15.9%**） | `f3d3911aa597122657c81072e51edeac` | 🟡 同 UX12 方案 A。**⚠️ UX8 值 `c19870db…` 及更早全部作废**。⚠️⚠️ **"R8 能把包压到 1.3 MB"这个旧结论在自带前端形态下已不成立**（三份包内 `assets/www/ui` 均为 1613 条 ⇒ `shrinkResources` 没误删，但也压不动这批 chunk）。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
-包名统一 `com.xiufeigo.opencodeshell.web.debug`（**release 变体也用 debug 包名 + Android Debug 证书**——V5 §1.3 明确"不能据此判可用于对外分发"，是否改名/换证**待 Lead 定调**）。
-**体积对比**：原生壳 release 29.4 MB vs web 壳 release 3.55 MB ⇒ **小 8.3 倍**（UX6 去代理后又缩了一档）。
-> **⚠️ 口径更正（A5 推翻旧表述）**：本文件上一版在此处写的是「**一个前端字节都不打包**」——**这句字面为假，已撤回**。交付包里确实带着 **4 个壳自带的 facade 资产**（不是上游 SPA）：
+> 🔴 **口径警示（F19 起、UX12 加强）**：本文件里**所有更早批次的体积/md5 复核块一律为历史记录**，其中出现的 md5 一律指向旧字节体。凡与"当前交付包"相关处，均以本表为准。引用 🟡 级设备结论时仍按 §4.5 口径**带它当时测的那个 md5**。
+
+包名统一 `com.xiufeigo.opencodeshell.web.debug`（**release 变体也用 debug 包名 + Android Debug 证书**——V5 §1.3 明确"不能据此判可用于对外分发"，是否改名/换证**待 Lead 定调**；UX12 另注：本批**签名证书与历史交付物不同**，因本机无原机器的 `debug.keystore`、按标准参数新生成）。
+**体积对比（UX12 批）**：原生壳 release 29.4 MB vs web 壳 release 14.3 MB ⇒ **小 2.1 倍**（⚠️ UX6–UX8 期间的"小 8.3 倍"**已因自带前端作废**）。
+**自带前端净增**：`assets/www/ui` 下 1613 个官方前端文件 / 33.58 MiB（未压缩）。旧/新对比见 UX12 复核块与附录。
+> 🔴 **⚠️ 本块以下整段（facade 资产表 + "不打包官方前端"口径 + "构建输出一致性"）是 UX6–UX8 期间的历史记录，UX12 起已整体作废** —— 因为 UX12 **真的把官方前端打进包了**（`assets/www/ui/` 1613 个文件 / 33.58 MiB）。**下面那句"不打包官方前端（上游 SPA）的任何字节"在当前交付包上是错的，不要再引用。** 仅保留作历史推演记录：
+>
+> **⚠️ 口径更正（A5 推翻旧表述）**：本文件上一版在此处写的是「**一个前端字节都不打包**」——**这句字面为假，已撤回**。当时的交付包里确实带着 **4 个壳自带的 facade 资产**（不是上游 SPA）：
 >
 > | 包内条目 | 未压缩 | 压缩 |
 > |---|---|---|
@@ -50,8 +64,53 @@
 > | `assets/www/oc-preflight.js` | 2,934 B | 1,556 B |
 > | **合计** | **40,801 B** | **15,975 B** |
 >
-> **准确表述**：「**不打包官方前端（上游 SPA）的任何字节**；壳自带的 4 个 facade 资产共 40,801 B 未压缩 / 15,975 B 压缩仍在包内。」复现：`unzip -l …apk 'assets/www/*'`（Windows：`System.IO.Compression.ZipFile`）。**"小 7.4 倍"这个事实不受影响**（40,801 B 占 release 包 1.0%），但那句"一个字节都不打包"是**一条 `unzip` 就能推翻的头牌级错话，不要再引用**。
-**构建输出一致性**：`webapp/build/outputs/apk/{release,debug,releaseR8}/` 的 md5 与上表**逐位相同** ⇒ 拿构建目录那份也安全。
+> **当时的准确表述（UX6–UX8 口径）**：「**不打包官方前端（上游 SPA）的任何字节**；壳自带的 4 个 facade 资产共 40,801 B 未压缩 / 15,975 B 压缩仍在包内。」复现：`unzip -l …apk 'assets/www/*'`（Windows：`System.IO.Compression.ZipFile`）。**"小 7.4 倍"这个事实当时不受影响**（40,801 B 占 release 包 1.0%），但那句"一个字节都不打包"是**一条 `unzip` 就能推翻的头牌级错话**。
+>
+> **UX12 现行口径**：交付包 = 4 个 facade 资产（40,801 B 量级）**＋ 官方前端产物 `assets/www/ui/` 1613 个文件 / 33.58 MiB**。facade 表里的 4 行仍成立（那 5 个注入件本轮**一个字节都没改**），但**"不含官方前端"这一半已经不成立**。
+>
+> **构建输出一致性（⚠️ 仅 UX6–UX8 期间验过）**：`webapp/build/outputs/apk/{release,debug,releaseR8}/` 的 md5 与当时上表**逐位相同**。⚠️ **UX12 批没有重跑这项对比** —— 本轮只对 `research/deliver/` 三份做了 `Get-FileHash`（§UX12 复核块）。**引用 UX12 产物时请只用 `research/deliver/` 那三份**，别假定构建目录那份同字节。
+
+#### ✅ UX12 复核（2026-10-06，`Get-FileHash -Algorithm MD5` 实测，**本表为当前唯一有效交付值**）
+
+> **为什么重建**：落地「方案 A」修复 B-6（官方「添加服务器」拒 http）。做法 = 官方前端自带进包 + 本机回环 `http` 静态来源端点加载页面 ⇒ 页面协议恒 `http:` ⇒ 上游 `isMixedContent()` 入口闸永不触发。**最终摘要见 `research/web/UX12_PLAN_A_FULL.md`。**
+
+**UX12 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（`research/deliver/`）：
+
+| 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
+|---|---|---|---|
+| `opencode-shell-web-release-nor8.apk` | **14,304,138 B** | **`B3F9D303BF557AB5CB02EED7D61D09F0`** | `CN=Android Debug`（⚠️ **本机新生成的 keystore，证书与历史交付物不同**） |
+| `opencode-shell-web-release-r8.apk` | **12,024,280 B** | **`F3D3911AA597122657C81072E51EDEAC`** | 同上 |
+| `opencode-shell-web.apk`（debug） | **16,796,038 B** | **`BF688F8A033EDE65C3D4F8C5E8D1E930`** | 同上 |
+
+**包内自查（三份逐份实测）**：
+
+| 产物 | `assets/www/ui/*` 条目 | `assets/www/ui/oa/*` 条目 | 包内 `oc-host.js` = 源文件 |
+|---|---|---|---|
+| debug | **1613** | **1590** | **MATCH** |
+| nor8 | **1613** | **1590** | **MATCH** |
+| r8 | **1613** | **1590** | **MATCH** |
+
+⇒ 三份 `ui` 条目都是 **1613** ⇒ **`shrinkResources` 没有误删自带资源**（但也压不动，见下）。
+
+> ⚠️ **`oc-host.js` 的 md5 换行符口径坑（本批新增）**：本批磁盘文件是 **CRLF**，md5 = **`8A3B3E93EBF61BEC347067D4E4074A69`**；**LF 归一化后** = **`b5057679b1a419af15d81ef72ff0fd9e`** —— **与 UX8 批是同一份字节内容**，只是换行符形态不同。**引用资产 md5 时必须写明是哪一种形态**，否则两批数字看起来"不一致"其实是同一个文件。
+
+**新旧体积对比（产品负责人关心项）**：
+
+| 产物 | 旧（UX8 批，已作废） | 新（UX12 批，当前有效） | 变化 |
+|---|---|---|---|
+| debug | 5,437,979 | **16,796,038** | **+11,358,059（×3.09）** |
+| release nor8 | 3,549,507 | **14,304,138** | **+10,754,631（×4.03）** |
+| release R8 | 1,268,829 | **12,024,280** | **+10,755,451（×9.48）** |
+
+- 增量来源：`assets/www/ui` 下 **1613 个官方前端文件 / 33.58 MiB（未压缩）**。
+- ⚠️ **R8 收益基本消失**：R8 相对 nor8 只省 −15.9%（旧形态是 −64.3%）。**"R8 能把 web 壳压到 1.3 MB"这个结论在自带前端形态下已不成立**，任何还按 1.3 MB 做的体积承诺都要重算。
+
+> 🔴 **UX8 批及以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX8 批** `376ae50a…`(nor8) / `c19870db…`(R8) / `aefb3bee…`(debug)；**UX7 批** `3a9a1ced…` / `8d5910ba…` / `fa613348…`；**UX6 批** `525b6847…` / `a854824f…` / `fba7db16…`；UX5 及更早全部历代值。**本节以下的 UX7/UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
+
+> **UX12 改了什么（文件级）**：新增 `webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt`（本机静态来源端点，4173）+ 绊线 `webapp/src/test/java/com/xiufeigo/opencodeshell/web/LocalUiOriginServerTest.kt`（10 用例）；`WebHostActivity.kt` 启动页改从 `http://127.0.0.1:4173` 加载；`DirectConnectAuthBoundaryTest.kt` / `TerminalReattachTest.kt` 随新启动语义改写；新增资源目录 `webapp/src/main/assets/www/ui/`（1613 文件）。**`app/**` 零改动。**
+> **红线**：两次凭据扫描 `HITCOUNT=0`；`refuseApiPath()` 对 `/api`、`/event` 一律 404（**不代理 API**）；只绑回环 `InetAddress.getByName("127.0.0.1")`；**没有自定义页**。**`:webapp` 单测 194/194 全绿**，**反向验证撤回真红 3 条**。⚠️ **`:app` 6136 用例中 57 条本机预置环境失败**（缺 gitignore 的设备工件 XML 与 `_upstream` 工作副本；与本轮无关，`app/**` 未改）。
+
+#### ⚠️ 以下 UX6–UX8 复核块均为历史记录（已被 UX12 批取代）
 
 #### ✅ UX6 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**已被 UX7 批取代，仅存档**）
 
@@ -69,7 +128,7 @@
 
 **UX6 架构变更一句话**：启动 = `loadUrl(SecretStore[backendUrl] ?: http://127.0.0.1:4095)`（G1 前置检查照旧）；**回环代理、未配置灰页、启动配置对话框、F5 探测、F21 闸门、口令存储/注入全部删除**；服务器与口令只在官方 UI「设置 → 服务器」里配置（官方表单支持密码字段，Basic `opencode:<password>`）；adb reverse tcp:4095 仍是 Android 侧访问宿主后端的前提。F21 在新形态下由**结构**保障（宿主无任何凭据路径），绊线 = `DirectConnectAuthBoundaryTest`。详见 `research/web/UX6_OFFICIAL_ENTRY.md`。
 
-#### ✅ UX7 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**本表为当前唯一有效交付值**）
+#### ⚠️ UX7 复核（2026-10-05，`Get-FileHash -Algorithm MD5` 重跑，**已被 UX12 批取代，仅存档**）
 
 > **为什么重建（手机档四连修）**：产品负责人在**手机档（1200×2670）**实测发现四个问题（报告 `research/web/UX7_PHONE_SWEEP.md`，权威规格 `research/web/BUG_QUEUE.md`）：
 > - **B-1（已修）**：手机档**终端标签条的「+」**被我们的选择面板拦截（应直接 `terminal.new()` 新建终端）。根因 = 旧 `findPlusButton()` 扫"页面上第一个非 header 的 `[role=tablist]`"，而审查条（SessionSidePanel）是**桌面限定**（`session-side-panel.tsx:257` `<Show when={isDesktop()…}>`）⇒ 手机档命中了终端条自己的「+」。修法 = 拦截**只锚 `aside#review-panel`**（`:259`）内的 tablist；手机档无审查条 ⇒ `findPlusButton()` 恒 null ⇒ **手机档全页面零拦截**。DOM 区分与两档设备证据（手机点 `+` 直出 Terminal 2 / 平板审查条 `+` 仍弹面板 / 平板终端条 `+` 直建终端）见报告。
@@ -88,7 +147,7 @@
 
 **包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`b5057679b1a419af15d81ef72ff0fd9e`**（55,953 B），与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
 
-> 🔴 **UX8 批以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX7 批** `3a9a1ced…`(nor8) / `8d5910ba…`(R8) / `fa613348…`(debug) / 资产 `6e1e7354…`；**UX6 批** `525b6847…`(nor8) / `a854824f…`(R8) / `fba7db16…`(debug) / 资产 `784e5d27…`；UX5 及更早全部历代值。**本节以下的 UX7/UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
+> 🔴 **⚠️ UX8 批本身也已被 UX12 批取代（2026-10-06）** —— 本块与下面 UX7/UX6 块**全部是历史记录**。UX8 批以下旧值不得再被当作"当前交付包"引用：**UX7 批** `3a9a1ced…`(nor8) / `8d5910ba…`(R8) / `fa613348…`(debug) / 资产 `6e1e7354…`；**UX6 批** `525b6847…`(nor8) / `a854824f…`(R8) / `fba7db16…`(debug) / 资产 `784e5d27…`；UX5 及更早全部历代值。**本节以下的 UX7/UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
 > **UX8 改了什么**：`oc-host.js` 新增 `installRoundPowerSensor`（回合电源传感器，见 §0 顶部 UX8 条与 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）；`WebHostActivity.kt` 新增 `dispatchPageLifecycleEvent`（onPause 派 pagehide / onResume 派 pageshow）+ 注释更新；`WebHostBridge.kt`/`RoundActivityTracker.kt`/`PowerPolicy.kt` 仅注释更新（行为未变）；新增绊线 `Ux8KeepAwakeSseTripwireTest`（13 用例）。
 
 **UX7 亲手重跑 `Get-FileHash -Algorithm MD5` 的实测结果**（历史记录，已被 UX8 块取代）：
@@ -104,7 +163,7 @@
 > 🔴 **UX7 批以下旧值全部作废，不得再被当作"当前交付包"引用**：**UX6 批** `525b6847…`(nor8) / `a854824f…`(R8) / `fba7db16…`(debug) / 资产 `784e5d27…`；UX5/UX4/UX3/UX2/F19/F18/F16 及更早全部历代值。**本节以下的 UX6/UX5/UX4/UX3/F19/F8 复核块均为历史记录**。
 > 顺带（产品负责人问，行号级答案见报告）：新 session 底部 **`Temp`（T 图标+下拉）= 运行位置选择器**（`new-session/workspace/selector.tsx:107-132` 的 Menu.Trigger；label 规则 `:68-73`，"Temp" 是所选 worktree 目录名）⇒ 决定**新会话在哪个目录/分支运行**（主检出 / 新建 git worktree / 已有 worktree）；**`无 Git`（显示器图标）= `PromptGitStatus` 徽章**（`selector.tsx:374-410`，i18n `session.new.git.none`）⇒ 纯展示**所选工作目录不是 git 仓库**（是 git 时显示分支名），**不可点击**（渲染为 div，不是按钮）。
 
-> ⚠️ 下列 UX7/UX6/F19/F8/UX5/UX4/UX3 复核块**已被 UX8 块取代**（历史保留）。
+> ⚠️ 下列 UX8/UX7/UX6/F19/F8/UX5/UX4/UX3 复核块**已被 UX12 块取代**（历史保留）。
 
 **F8 复核（2026-10-05，结论已由 A5 独立复算确认）—— 文档与磁盘一致，未发现脱节**：
 
@@ -1069,6 +1128,9 @@ Start-Process "$env:USERPROFILE\.bun\bin\opencode2.exe" -ArgumentList 'serve','-
 
 ## 10. B-6（UX9，2026-10-06）：官方「添加服务器」拒 http —— **判据已钉死，架构需产品负责人拍板**
 
+> 🔴 **✅ 本节 B-6 已由 UX12 修复（2026-10-06）** —— **下面 §10.1–10.5 的分析与选项全部是 UX9 当时的记录，结论仍然成立、判据仍然准确**；但**产品负责人后来选定的落地路线是本节 §10.6 表里的 D 案**（"改架构：本机 http 来源加载页面"）—— 当时被标 ❌ 的原因（撞 `ServerSocket` 0 命中红线、担心打掉"无需 CORS"）**已在 UX12 中被重新评估并接受**（`ServerSocket` 存在但**只绑回环、只服务静态资产、`/api` 一律 404、不碰任何凭据**；跨源 CORS 由服务端放行 `http` 回环来源，实测 200）。
+> **验收现状**：手机档 12 项收敛为 **11 PASS + 1 N/A**，平板档 **12/12 PASS**。完整证据：`research/web/UX12_PLAN_A_FULL.md` · 落地 `UX12_PLAN_A_BUILD.md` · 手机档 `UX12_PHONE_REGRESSION.md` / `UX12_PHONE_REVERIFY.md` / `UX12_PHONE_DIAGNOSIS.md` · 平板档 `UX12_TABLET_REGRESSION.md`。**本节以下内容按原样保留作历史记录。**
+
 > 完整报告：`research/web/UX9_HTTP_SERVER.md`（含全部原文读数）。**本轮 0 代码改动，未重建产物。**
 
 ### 10.1 那句红字的判据（`file:line` + 原文）
@@ -1123,29 +1185,36 @@ UX6 不需要 CORS 的**唯一依据就是"页面 origin == API origin"**。
 
 ### 10.6 待产品负责人拍板（B-6 第 54 行：必须停下上交，不得偷偷加回凭据处理）
 
+> ✅ **结果：产品负责人选定 D 案，本节 2026-10-06 已由 UX12 实施完成。** 下表保留 UX9 当时的原始权衡；**D/E 两行的红线判定已被 UX12 重新评估**（见 §10 抬头）。
+
 | # | 方案 | 代价 | 红线 |
 |---|---|---|---|
-| **A（推荐，零代码、今天可用）** | 把应用后端地址指向 `http://8.138.19.15:4094` | 页面变 http ⇒ `caseB=false` ⇒ **红字消失、官方对话框对 http 正常可用**（= 官方 web-over-http 形态）。代价：Basic 口令走明文 http | ✅ |
+| **A（UX9 当时的推荐，零代码、今天可用）** | 把应用后端地址指向 `http://8.138.19.15:4094` | 页面变 http ⇒ `caseB=false` ⇒ **红字消失、官方对话框对 http 正常可用**（= 官方 web-over-http 形态）。代价：Basic 口令走明文 http | ✅ |
 | **B** | 服务端加 TLS，全程 https | 需证书与运维 | ✅ |
 | **C** | 第二台开 CORS（`opencode serve --cors <页面origin>`） | 改服务端启动参数；http 目标仍需配合 A | ✅ |
-| **D** | 改架构：本机 http 来源加载页面 | **撞 `ServerSocket` 0 命中红线**，且会**打掉"无需 CORS"这个 UX6 现有优点** | ❌ |
-| **E** | 重新引入回环代理 | 必须转发含 Basic 认证头的 API ＝ 凭据处理 | ❌ **禁止** |
+| **D** ✅ **（UX12 已采用）** 改架构：本机 http 来源加载页面 | **撞 `ServerSocket` 0 命中红线**（UX9 当时的判定）**且会打掉"无需 CORS"这个 UX6 现有优点**（UX9 当时的判定） | ~~❌~~ ⇒ **UX12 实际落地时：红线被重新定义为"只绑回环 + 只服务静态资源 + `/api` 一律 404 + 零凭据命中"，该实现满足新红线** |
+| **E** | 重新引入回环代理 | 必须转发含 Basic 认证头的 API ＝ 凭据处理 | ❌ **禁止**（UX12 **未**采用） |
 
-> ⚠️ **B-6 自相矛盾处**：第 50 行建议的"本机 http 来源"必然用 `ServerSocket`，而第 51 行红线要求 `ServerSocket` **0 命中**。
+> ⚠️ **B-6 自相矛盾处（第 50 行 vs 第 51 行）**：第 50 行建议的"本机 http 来源"必然用 `ServerSocket`，而第 51 行红线要求 `ServerSocket` **0 命中**。**UX12 的处理方式**：不删掉这条矛盾，而是**把红线收窄为可判定的具体性质** —— 回环绑定、静态资源白名单、`/api` 结构性 404、凭据关键词 0 命中，并逐条给出可复验证据（见 §UX12 复核块与 `UX12_PLAN_A_FULL.md` §5）。
 
-### 10.7 回归与产物
+### 10.7 回归与产物（⚠️ **UX9 当时的记录，已被 UX12 取代**）
 
 `:webapp` 184 + `:app` 6136 = **6320 用例，0 失败 0 错误 0 跳过**（与上轮一致）；`DirectConnectAuthBoundaryTest` **10/10 绿**。
 **0 代码改动 ⇒ 0 新产物**，交付物体积/md5 **维持原值**（见 §0 产物清单表）。
 ⚠️ **环境坑（与本轮无关但会复发）**：`JAVA_HOME` 现指向 JDK `25.0.4.1`，Gradle 8.11.1 抛 `IllegalArgumentException: 25.0.4.1`；**换 JBR 21.0.10 即全绿 ⇒ 建议把 `JAVA_HOME` 钉到 21**。
+⇒ **UX12 现状（2026-10-06）**：`:webapp` **194/194 全绿**（用例只增未减）；`:app` 6136 中 **57 条本机预置环境失败**（与本轮无关）；**三份产物已重建**（体积/md5 见 §0.1 顶表与 UX12 复核块）。上面这段 6320 全绿的记录**只作历史**。
 
 ---
 
-# 附录：B-6「官方添加服务器拒绝 http 服务器」—— 判据、机制、以及**未实施的方案 A**
+# 附录：B-6「官方添加服务器拒绝 http 服务器」—— 判据、机制、以及**已实施的方案 A（UX12）**
 
 > 追加时间：2026-10-06 10:2x ｜ 触发：产品负责人实测「**直接添加 http 的也不行，这高低是你的 bug 了吧**」
 > **详细证据**：`research/web/UX9_HTTP_SERVER.md`（判据与 CORS 初判）· `research/web/UX10_HTTP_HTTPS_TOGETHER.md`（**端到端复现 + CORS 更正 + 修法代价**）· `research/web/UX11_LOCAL_UI_ORIGIN.md`（**方案 A 的技术实现与踩坑**）
-> **决定**：产品负责人明确「**新功能可以先不做留着写交接文档就行**」⇒ **方案 A 已整体回退**，本附录即其存档。
+> **当时的决定**：产品负责人明确「**新功能可以先不做留着写交接文档就行**」⇒ **方案 A 曾整体回退**（§6 保留该回退记录）。
+>
+> ## ✅ 2026-10-06 更新：**方案 A 已被重新采用并实施完成（UX12）**
+> **B-6 已修复。** 下面 §1–§7 是 UX9/UX10/UX11 当时的完整历史（含那次回退），**逐字保留不作改写**；**§8 是 UX12 的实施摘要，当前结论以 §8 为准。**
+> **UX12 报告**：`UX12_PLAN_A_BUILD.md`（落地）· `UX12_PHONE_REGRESSION.md` · `UX12_PHONE_REVERIFY.md` · `UX12_PHONE_DIAGNOSIS.md`（手机档）· `UX12_TABLET_REGRESSION.md`（平板档）· **`UX12_PLAN_A_FULL.md`（最终摘要，给产品负责人）**。
 
 ## 1. 现象
 在官方「连接到服务器」屏 / 「添加服务器」对话框里填 **`http://…`** ⇒ 红字：
@@ -1169,7 +1238,8 @@ UX6 不需要 CORS 的**唯一依据就是"页面 origin == API origin"**。
 - ⇒ 这解释了为什么"页面为 http 回环"时 `http://localhost:4095` **能添加成功**（UX10 §3 端到端复现成功，日志可见 API 切到新服务器）；
 - ⇒ **这条也说明：只要页面来自 `http://127.0.0.1:<port>`，跨源那道墙本来就不挡**（对我们的场景友好）。
 
-## 5. 方案 A（**技术已跑通，但按决定未采用**）—— 与官方桌面端同形
+## 5. 方案 A（**技术已跑通，UX9/UX11 当时按决定未采用；UX12 已重新采用并落地 ⇒ 见 §8**）—— 与官方桌面端同形
+> ⚠️ **本节是 UX11 当时的留档记录。** 其中「913 个文件 / 32.49 MiB」「16.13 / 13.61 / 11.33 MB」等数字**是 UX11 那一版的，与 UX12 实际交付的数字不同**（UX12 = **1613 个文件 / 33.58 MiB**、**16.8 / 14.3 / 12.0 MB**）。**引用当前值请一律用 §8 / §0.1。**
 > **把官方前端作为 App 自带资源 + 用本机 `http` 静态来源加载**，使页面协议恒为 `http:`，从而**一页可同时添加 http 与 https 服务器**。
 
 **UX11 已实测到的关键事实（留档，供日后重启该方案）**：
@@ -1189,3 +1259,42 @@ UX6 不需要 CORS 的**唯一依据就是"页面 origin == API origin"**。
 2. **清除 App 数据**（设置→应用→OpenCode Web→存储→清除数据）⇒ 壳回到默认地址 ⇒ **页面变 `http`**；
 3. 在官方「添加服务器」里填 **`http://…` + 密码** ⇒ **可添加成功**（此路径已端到端复现）。
 ⚠️ 前提：设备必须够得到 `127.0.0.1:4095`；**够不到时只能采用 §5 的方案 A**。
+⚠️ **UX12 后 §7 这条绕行已不再是"绕行"** —— 页面来源与后端地址解耦，**不再需要"清除数据把壳打回 http"这个前提**，方案 A 从根上消除了这个鸡生蛋问题（见 §8）。
+
+---
+
+## 8. ✅ 方案 A 的 UX12 实施摘要（**2026-10-06，当前生效；B-6 已修复**）
+
+> **完整摘要见 `research/web/UX12_PLAN_A_FULL.md`。** 本节是给交接读者的压缩版。
+
+### 8.1 一句话
+壳自带官方前端（`assets/www/ui/` **1613 个文件 / 33.58 MiB**），由**只绑回环的静态来源端点** `LocalUiOriginServer`（`http://127.0.0.1:4173`）供页 ⇒ **页面协议恒为 `http:`** ⇒ 上游 `isMixedContent()` 的唯一入口闸永不触发 ⇒ **官方「添加服务器」http/https 都能加，B-6 红字消失。**
+
+### 8.2 资源来源（**与 UX11 的关键差异**）
+- **UX11** 的做法：在 `_upstream` 里自己 `vite build`（913 文件 / 32.49 MiB，**排除了 sourcemap**）。
+- **UX12 的做法**：本机**无 `_upstream` 工作副本**（`Test-Path _upstream` = False）⇒ 资源改为**从在跑的官方服务端 v2.0.23 的 PWA precache 清单完整取回**（`research/env/opencode-dist-2.0.23/`）⇒ **1613 个文件 / 33.58 MiB**（含 sourcemap 之外的完整清单）。
+- **等价性说明**：服务端 dist **本身就是官方前端的构建产物**，故"从 dist 取回"与"自己构建"**产物等价**；但**来源与数量不同**（1613 vs 913），**不要混用两批数字**。
+- 校验：逐文件 MD5 `checked=1613 missing=0 hashdiff=0 bad=0`，除 `_assets→oa` 目录改名外**未改任何官方资源内容**。
+
+### 8.3 为什么仍是 `_assets→oa`
+AGP 的资源合并会**丢弃下划线开头的目录**（UX11 已踩坑记录，UX12 沿用）：磁盘上把同一批 chunk 放在 `www/ui/oa/`，由端点把请求路径 `/_assets/x` 映射到磁盘 `/oa/x`（`LocalUiOriginServer.toDiskPath`），**不改写任何官方产物内容**。包内 `oa` 条目 = 1590。
+
+### 8.4 红线（对照 §10 当时的顾虑）
+- **只绑回环**：`ServerSocket(port, 64, InetAddress.getByName("127.0.0.1"))`（`:127`）—— 外部网络访问不到。
+- **只服务静态资产 + 不代理 API**：`refuseApiPath()`（`:217-220`）让 `/api`、`/event` 一律 **404**，`/api` 请求由页面**直连**用户配置的那台服务器。
+- **零凭据**：两次 `Select-String` 严格扫描均 **`HITCOUNT=0`**；`WebHostActivity.kt:64` 唯一含 `Basic opencode:<password>` 的行是**本轮之前就存在的 KDoc 注释**（描述官方 UI 自身机制，非代码）。
+- **无自定义页**：页面文档 = 自带官方 `ui/index.html`；壳只有 5 个小体积 facade 注入件作垫片。
+
+### 8.5 单测与回归
+- `:webapp` **194/194 全绿**（含新增 `LocalUiOriginServerTest` 10 条）；**反向验证撤回真红 3 条**（`bootResolvesBackendUrlWithDefault` / `activityLoadsPageFromLocalOrigin` / `bootUrlIsStableAcrossLaunches`）。
+- ⚠️ `:app` 6136 用例中 **57 条本机预置环境失败**（缺 gitignore 的设备工件 XML + `_upstream`；**`app/**` 零改动，与本轮无关**）。
+- **手机档**：12 项收敛为 **11 PASS + 1 N/A**（首轮 5 PASS + 1 N/A + 1 PARTIAL + 5 FAIL(阻塞) → 补验 6 项全 PASS）。⚠️ 首轮 FAIL 的根因是**服务器上下文停在无 API 的 4173 静态来源**（`/api/*` 404 刷屏），**不是跨源/CORS 缺陷**（诊断轮 CDP 证明跨源全 200 且有正文，`xfer=0` 只是 Resource Timing 在跨源上的测量假象）。
+- **平板档**：**12/12 PASS**（含审查条「+」仍弹面板、面板开终端/开文件不弹 SAF、终端、主题、常亮、SSE）。
+
+### 8.6 三条必须随结论引用的 caveat
+1. **https 为等价构造**：无受信 https 后端，**"https 添加成功"未端到端验**（判据实测 + 设备实测零红字双重支撑）。要硬证据需一台真实 TLS 后端。
+2. **平板/手机档键盘项**：该 AVD WebView 视口**不随 IME 收缩**，键盘项改以**不裁切**判据验证 + 目视/控件位置双重佐证。
+3. **手机档 5.4 面板项 = N/A**：该档上游无审查条/无面板（`aside:0`、无 `[data-oc-panel]`），属**设计使然非缺失**；平板档该功能正常。
+
+### 8.7 体积代价
+debug **5.44→16.8 MB**、nor8 **3.55→14.3 MB**、R8 **1.27→12.0 MB**（三份包内 `ui` 均 1613 ⇒ `shrinkResources` 不误删也压不动）。⚠️ **"web 壳只有 1.3 MB / 小 8.3 倍"等旧结论在自带前端形态下已不成立**；对外分发前仍需**换证改包名**（§0.1、§5③）。

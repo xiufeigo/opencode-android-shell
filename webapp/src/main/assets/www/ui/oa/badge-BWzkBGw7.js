@@ -1,0 +1,2 @@
+import{A as e,D as t,S as n,rt as r,ut as i}from"./store-CWFQZoRe.js";var a=e(`<span>`);function o(e){let[o,s]=i(e,[`class`,`classList`,`children`,`appearance`,`variant`]);return(()=>{var e=a();return t(e,r(s,{"data-component":`tag`,get"data-appearance"(){return o.appearance??`compact`},get"data-variant"(){return o.variant??`neutral`},get classList(){return{...o.classList,[o.class??``]:!!o.class}}}),!1,!0),n(e,()=>o.children),e})()}export{o as t};
+//# sourceMappingURL=badge-BWzkBGw7.js.map
