@@ -31,10 +31,10 @@
 
 | 产物（`research/deliver/`） | 体积 | md5（磁盘实测值） | 用途 |
 |---|---|---|---|
-| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `e2e6789b376282a0e226b3e117489d4d` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
+| **`opencode-shell-web-release-nor8.apk`** | **3,549,507 B**（≈3.38 MB） | `376ae50a85bc8801798f41c3d65c6cb2` | ⚠️ **仅内部灰度可用**（`sharedDebug` 签名 = `CN=Android Debug`、包名带 `.debug`；**对外分发前必须换证改包名，见 §5③**）。**UX8 宿主侧重接值**（2026-10-05，报告 `research/web/UX8_RESTORE_KEEPAWAKE_SSE.md`）：回合常亮驱动（注入层回合电源传感器）+ 后台断 SSE/回前台重建（合成 pagehide/pageshow 驱动上游 pageLifecycle）。**UX7 值 `3a9a1ced…` 及更早全部作废** |
 | `opencode-shell-web.apk`（debug） | **5,437,979 B**（≈5.19 MB） | `aefb3bee019764ab775e9b121cd75cce` | 日常调试（debug 签名）；同上。**UX8 修复值**；**UX7 值 `fa613348…` 及更早全部作废** |
 | ~~`…-f5.apk`~~ | — | — | ⚠️ **已删除**：F5 曾另起 `-f5` 后缀落产物 ⇒ 歧义 ⇒ 归拢回规范名（md5 差异来自签名时间戳） |
-| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `5e3eea5314a911ce627792aab1346017` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
+| **R8 版**（`opencode-shell-web-release-r8.apk`） | **1,268,829 B**（≈1.21 MB，比非 R8 **−64.3%**） | `c19870db44e771f910adc78c4df0b092` | 🟡 同 UX8 修复。**UX8 修复值**；**UX7 值 `8d5910ba…` 及更早全部作废**。⚠️ 此前🟡级设备结论（错误态三态/常亮三段等）**验于旧代理架构字节体**，UX6 起那些组件已不存在，引用旧结论必须带旧 md5 |
 | `opencode-shell-debug.apk` | 44,198,253 B | `bd21ff21e72e75db62fc371d290f438e` | **原生壳** debug（对比用，未重建） |
 | `opencode-shell-release-debugsigned.apk` | 29,393,986 B | `b6073ac63f5d8796708fb269fc855a8d` | **原生壳** release（对比用，未重建） |
 
@@ -82,8 +82,8 @@
 
 | 产物 | 体积（磁盘实测） | **磁盘 md5（实测，当前有效）** | 签名 |
 |---|---|---|---|
-| `opencode-shell-web-release-nor8.apk` | **3,549,507 B** | **`e2e6789b376282a0e226b3e117489d4d`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
-| `opencode-shell-web-release-r8.apk` | **1,268,829 B** | **`5e3eea5314a911ce627792aab1346017`** | 同上 |
+| `opencode-shell-web-release-nor8.apk` | **3,549,507 B** | **`376ae50a85bc8801798f41c3d65c6cb2`** | `CN=Android Debug`，证书 SHA-256 `e86b7006…0510a` |
+| `opencode-shell-web-release-r8.apk` | **1,268,829 B** | **`c19870db44e771f910adc78c4df0b092`** | 同上 |
 | `opencode-shell-web.apk`（debug） | **5,437,979 B** | **`aefb3bee019764ab775e9b121cd75cce`** | 同上 |
 
 **包内含源自查**：三份 APK 解包 `assets/www/oc-host.js` 的 md5 均为 **`b5057679b1a419af15d81ef72ff0fd9e`**（55,953 B），与 `webapp/src/main/assets/www/oc-host.js` 源文件**逐位一致**（3/3 MATCH=True，`System.IO.Compression.ZipFile` 解包实测）。
