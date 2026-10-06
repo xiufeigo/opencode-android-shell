@@ -1064,3 +1064,77 @@ Start-Process "$env:USERPROFILE\.bun\bin\opencode2.exe" -ArgumentList 'serve','-
   - ⚠️ **`0a46301` 在本机不是有效对象**（`git -C _upstream cat-file -t 0a46301` → `fatal: Not a valid object name`）。早期版本文档把它写成 `origin/v2 = 0a46301`，**是错的，已撤回，请勿引用**（F9 已更正 §0.3 该行）。
   - 上游证据一律走 `git show` / `git grep … origin/v2 -- packages/*/src`（**在 `_upstream` 里执行**），**或**读 `_upstream/` 只读检出（并注明行号取自哪一处）。
   - 复核锚点：`git -C _upstream rev-list --count 702a73d..origin/v2` → **526**（§1 的"上游两周 526 提交"，精确吻合）。
+
+---
+
+## 10. B-6（UX9，2026-10-06）：官方「添加服务器」拒 http —— **判据已钉死，架构需产品负责人拍板**
+
+> 完整报告：`research/web/UX9_HTTP_SERVER.md`（含全部原文读数）。**本轮 0 代码改动，未重建产物。**
+
+### 10.1 那句红字的判据（`file:line` + 原文）
+
+`_upstream/packages/app/src/servers/connect/browser.ts:3-12`：
+
+```ts
+export function isMixedContent(page: string, address: string) {
+  if (new URL(page).protocol !== "https:") return false
+  ...
+  if (url.protocol !== "http:") return false
+  // Secure Contexts treats loopback HTTP origins as potentially trustworthy.
+  const host = url.hostname.replace(/\.$/, "")
+  return !(host === "localhost" || host.endsWith(".localhost") || host === "[::1]" || /^127(?:\.\d+){3}$/.test(host))
+}
+```
+
+- 判据 = **页面协议为 `https:`**（实参 `page` 就是 `dialog.tsx:285` 传的 `location.href`）**∧ 目标 `http:` ∧ 目标非回环**。
+- **不是 `isSecureContext`**（全文没有；它只用于相机，`dialog.tsx:181`）。
+- ⚠️ **它不是闸门**：`dialog.tsx:281` 的 `if (!result.healthy)` 才是。`:285` 只在**已失败之后挑文案**（`server.connect.mixedContent`，原文 `runtime/i18n/en.ts:436-437`）。
+- 上游**没有**禁止 http：`runtime/server/registry.tsx:15-20` 原样保留 `http://`。
+
+### 10.2 "官方可以加 http" 成立于哪种形态
+
+`browser.ts:4` 只看页面协议 ⇒ **页面不是 https 就一律允许**：桌面 Electron 的 `file://`、web 端用 http 打开页面，都直接短路。
+⇒ **"官方可以既加 https 又加 http"是桌面 Electron 形态的记忆**（它有一页不隶属任何服务器的 origin）。
+**官方 web 端同样会拒** —— 官方 web 与我们跑同一份代码。
+
+### 10.3 我们页面的实测协议（`emulator-6752` / `OC_UX6_Phone` / debug 包 / CDP 原文）
+
+```json
+{"location_protocol":"http:","location_origin":"http://127.0.0.1:4095",
+ "isSecureContext":true,"proxyOrigin":"","proxyPrefix":""}
+```
+
+真实页面里执行上游判据：`caseA(页面http→回环http)=false`、**`caseB(页面http→远端http)=false`**、
+**`caseC(页面https→远端http)=true`**、回环豁免复测 `127.0.0.1=true` / `8.138.19.15=false`。
+⇒ **只有 `caseC` 能产出那句红字** ⇒ 产品负责人那台当时页面是 https。
+
+### 10.4 https 从哪来
+
+`webapp/.../WebHostActivity.kt:323-324` `bootUrl()`（`SecretStore.KEY_BACKEND_URL`，默认 `http://127.0.0.1:4095`）→ `:340` → `:360 loadUrl(url)`。
+**页面 URL 就是后端地址**（UX6：origin == API origin，无回环代理）。先配 https 后端 ⇒ 页面即 https。
+⚠️ 更正两处旧猜测：**不是** `app/.../MainActivity.kt:737-739` 的 asset loader（旧 `app` 模块；现行壳只剩诊断页 `WebHostActivity.kt:79`），也**不是**我们把 http 改成 https。
+
+### 10.5 🔑 第二道墙是 CORS，不是混合内容
+
+实测在跑的后端：`GET /global/health` 带 `Origin` ⇒ `200`，但 **`Access-Control-Allow-Origin` 为空**。
+UX6 不需要 CORS 的**唯一依据就是"页面 origin == API origin"**。
+⇒ **`setMixedContentMode` 放行只拆得掉墙①（混合内容），拆不掉墙②（CORS）⇒ 无效。**
+（现行 `WebHostActivity.kt:388` 是 `MIXED_CONTENT_COMPATIBILITY_MODE`，最弱档，**不允许混合 XHR/fetch**。）
+
+### 10.6 待产品负责人拍板（B-6 第 54 行：必须停下上交，不得偷偷加回凭据处理）
+
+| # | 方案 | 代价 | 红线 |
+|---|---|---|---|
+| **A（推荐，零代码、今天可用）** | 把应用后端地址指向 `http://8.138.19.15:4094` | 页面变 http ⇒ `caseB=false` ⇒ **红字消失、官方对话框对 http 正常可用**（= 官方 web-over-http 形态）。代价：Basic 口令走明文 http | ✅ |
+| **B** | 服务端加 TLS，全程 https | 需证书与运维 | ✅ |
+| **C** | 第二台开 CORS（`opencode serve --cors <页面origin>`） | 改服务端启动参数；http 目标仍需配合 A | ✅ |
+| **D** | 改架构：本机 http 来源加载页面 | **撞 `ServerSocket` 0 命中红线**，且会**打掉"无需 CORS"这个 UX6 现有优点** | ❌ |
+| **E** | 重新引入回环代理 | 必须转发含 Basic 认证头的 API ＝ 凭据处理 | ❌ **禁止** |
+
+> ⚠️ **B-6 自相矛盾处**：第 50 行建议的"本机 http 来源"必然用 `ServerSocket`，而第 51 行红线要求 `ServerSocket` **0 命中**。
+
+### 10.7 回归与产物
+
+`:webapp` 184 + `:app` 6136 = **6320 用例，0 失败 0 错误 0 跳过**（与上轮一致）；`DirectConnectAuthBoundaryTest` **10/10 绿**。
+**0 代码改动 ⇒ 0 新产物**，交付物体积/md5 **维持原值**（见 §0 产物清单表）。
+⚠️ **环境坑（与本轮无关但会复发）**：`JAVA_HOME` 现指向 JDK `25.0.4.1`，Gradle 8.11.1 抛 `IllegalArgumentException: 25.0.4.1`；**换 JBR 21.0.10 即全绿 ⇒ 建议把 `JAVA_HOME` 钉到 21**。

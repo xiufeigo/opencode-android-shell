@@ -528,3 +528,39 @@ Lead 裁定，v158 已落成 pin（`ReverseJumpRoomJudgeV158Test`，5 例，`_v1
 768 的 **140/92**、600 的 **51**、两档 ①(i) **−10/−12**、**48dp 靶**、**v77 P0 pin**、
 `quarantine/` 分工、v154/v156 已签字的 **4 处极性** —— 本轮**全部保持现状**。
 v158 对生产源码的改动**只有注释**（`git diff` 44 行 ±，**非注释非空行 = 0**）。
+
+---
+
+## 附：B-6 / UX9（2026-10-06）官方「添加服务器」拒 http —— 结论与待拍板项
+
+> 完整报告：`research/web/UX9_HTTP_SERVER.md`。**本轮 0 代码改动、0 新产物、未碰任何产品负责人实例。**
+
+**判据（原文，`file:line`）**：`_upstream/packages/app/src/servers/connect/browser.ts:3-12` 的 `isMixedContent(page, address)` ——
+`browser.ts:4` 判 **`new URL(page).protocol === "https:"`**（`page` 实参 = `dialog.tsx:285` 的 `location.href`），
+**不是 `isSecureContext`**；再加"目标 `http:` ∧ 目标非回环"（`:8`、`:10-11` 回环豁免）。
+⚠️ **它不是闸门**：`dialog.tsx:281` 的 `if (!result.healthy)` 才是；`:285` 只在失败后**挑文案**（`runtime/i18n/en.ts:436-437`）。
+上游并未禁止 http：`runtime/server/registry.tsx:15-20` 原样保留 `http://`。
+
+**"官方可以加 http"成立于**：页面**不是 https** 时 —— 桌面 Electron 的 `file://`、web 端用 http 打开页面。
+⇒ 产品负责人的记忆来自**桌面 Electron 形态**；**官方 web 端同样会拒**（与我们同一份代码）。
+
+**我们页面实测（`emulator-6752` / debug 包 / CDP 原文）**：`location.protocol="http:"`、`origin="http://127.0.0.1:4095"`、`isSecureContext=true`。
+真实页面跑判据：`caseB(页面http→远端http)=false`、**`caseC(页面https→远端http)=true`** ⇒ **只有页面为 https 才会出那句红字**。
+
+**https 从哪来**：`webapp/.../WebHostActivity.kt:323-324` `bootUrl()`（`SecretStore.KEY_BACKEND_URL`）→ `:340` → `:360 loadUrl(url)`。
+**页面 URL 就是后端地址**（UX6：origin == API origin、无回环代理）⇒ 先配 https 后端，页面即 https。
+（更正：**不是** `app/.../MainActivity.kt:737-739` 的 asset loader —— 那是旧 `app` 模块，现行壳只用于诊断页 `WebHostActivity.kt:79`。）
+
+**🔑 第二道墙 = CORS**：实测后端 `GET /global/health` 带 `Origin` ⇒ `200` 但 **`Access-Control-Allow-Origin` 空**。
+UX6 无需 CORS 的唯一依据就是"页面 origin == API origin" ⇒ **`setMixedContentMode` 放行无效**（只拆混合内容，拆不掉 CORS）。
+
+**待产品负责人拍板**（B-6 第 54 行要求停下上交）：
+**A（推荐，零代码）** 把应用后端地址指向 `http://8.138.19.15:4094` ⇒ 页面变 http ⇒ 红字消失、官方对话框对 http 可用（= 官方 web-over-http 形态；代价：Basic 口令明文 http）·
+**B** 服务端加 TLS ·
+**C** 第二台开 `--cors`（http 目标仍需配合 A）·
+**D** 改架构用本机 http 来源加载页面 —— **撞 `ServerSocket` 0 命中红线，且打掉"无需 CORS"现有优点** ·
+**E** 重新引入回环代理 —— **转发含 Basic 认证头 = 凭据处理，禁止**。
+⚠️ B-6 自身矛盾：第 50 行的"本机 http 来源"必然用 `ServerSocket`，与第 51 行红线冲突。
+
+**回归**：`:webapp` 184 + `:app` 6136 = **6320 用例，0 失败/错误/跳过**；`DirectConnectAuthBoundaryTest` 10/10 绿。
+⚠️ **环境坑**：`JAVA_HOME` 现为 JDK `25.0.4.1` 会让 Gradle 8.11.1 抛 `IllegalArgumentException: 25.0.4.1`；换 **JBR 21.0.10** 即全绿 —— 建议把 `JAVA_HOME` 钉到 21。

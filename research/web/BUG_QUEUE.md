@@ -32,7 +32,7 @@
 
 ## B-6 官方「添加服务器」拒绝 http 服务器（提示"无法从 HTTPS 页面连接此 HTTP 服务器"）
 
-- **状态**：**处理中（P0：可能直接挡住产品负责人连自己的服务器）**
+- **状态**：**🔴 调查完成，待产品负责人拍板**（UX9，2026-10-06 09:5x）。**本轮 0 代码改动**，未重建产物。完整报告：`research/web/UX9_HTTP_SERVER.md`
 - **发现时间**：2026-10-06 09:12（产品负责人实测，手机档）
 - **产品负责人原话**：
   > 「**为啥这里显示这个？官方我记得是可以添加 http 的服务器的**」
@@ -59,6 +59,27 @@
   4. **我们能不能、该不该让 http 服务器可添加**：若上游只按页面协议判断，我们能否（a）让页面以 http 加载（若后端本身是 http），或（b）在 WebView 层允许 mixed content（`setMixedContentMode`），或（c）**这属于上游规则、我们不该绕过** —— **给依据与取舍**。
 - **验收**：手机档能按"官方支持的方式"添加服务器并**真的连上**（截图 + 证据）；**若结论是"上游规则如此、不该绕过"** ⇒ **必须给出为什么、以及官方在什么形态下才可以**，并明确告知产品负责人可行路径（例如给他的服务端加 https）。
 - **红线**：**不许**为了绕过校验而引入凭据处理，**不许**加回自定义页；改完必须**重建三份产物 + 同步交接文档**。
+
+### UX9 调查结论（2026-10-06，回答本节 4 个"要查清"）
+
+1. **校验在哪 / 判据是什么** ⇒ `_upstream/packages/app/src/servers/connect/browser.ts:3-12` `isMixedContent(page, address)`。判据 = **`new URL(page).protocol === "https:"`（`page` 实参就是 `dialog.tsx:285` 传的 `location.href`）∧ 目标 `http:` ∧ 目标非回环**。**不是 `isSecureContext`**（全文没有该变量；它只用于相机，`dialog.tsx:181`）——⇒ **本节第 52 行的假设被排除**。
+   真正的闸门是 **`dialog.tsx:281` 的 `if (!result.healthy)`**；`:285` 的 `isMixedContent` **只在失败之后挑文案**（`server.connect.mixedContent`，原文在 `runtime/i18n/en.ts:436-437`）。上游**没有**禁止 http：`runtime/server/registry.tsx:15-20` 原样保留 http。
+2. **官方什么形态允许 http** ⇒ `browser.ts:4` 只看页面协议：**页面不是 https（桌面 Electron 的 `file://`、web 端 http 打开）⇒ 一律允许**；页面 https 时仅**回环**目标被豁免（`browser.ts:10-11`）。**"官方可以既加 https 又加 http"成立于桌面 Electron 形态**（它有一页不隶属任何服务器的 origin）；**官方 web 端同样会拒** —— 官方 web 与我们跑的是同一份代码。
+3. **我们页面实际协议（设备原文读数，emulator-6752 / OC_UX6_Phone / debug 包 / CDP）** ⇒ `location.protocol = "http:"`、`location.origin = "http://127.0.0.1:4095"`、`isSecureContext = true`。在真实页面里跑上游判据：`caseA(页面http→回环http)=false`、`caseB(页面http→远端http)=false`、**`caseC(页面https→远端http)=true`**、回环豁免复测 `127.0.0.1=true / 8.138.19.15=false`。⇒ **只有 `caseC` 能产出那句红字**。
+4. **https 从哪来** ⇒ 来自 **`SecretStore.KEY_BACKEND_URL`**：`webapp/.../WebHostActivity.kt:323-324` `bootUrl()` → `:340` → `:360 loadUrl(url)`。**页面 URL 就是后端地址**（UX6：origin == API origin，无回环代理）。产品负责人自述"最初添加了一个 https 的后端"与 `caseC` 唯一命中**完全吻合**。⚠️ 更正本节两处猜测：**不是** `app/.../MainActivity.kt:737-739` 的 asset loader（那是旧 `app` 模块，现行壳里只剩诊断页 `WebHostActivity.kt:79`），也**不是**我们把 http 改成了 https。
+
+**🔑 决定性发现：真正的第二道墙是 CORS，不是混合内容。** 实测在跑的后端：`GET /global/health` 带 `Origin` ⇒ `200`，但 `Access-Control-Allow-Origin` **为空**。UX6 不需要 CORS 的**唯一依据就是"页面 origin == API origin"**。所以「放行 `setMixedContentMode`」**只拆得掉墙①（混合内容），拆不掉墙②（CORS）⇒ 无效**。当前形态下加**任何第二台**服务器（不论协议）都需要那台开 CORS。
+
+**⚠️ 本 B-6 自身的矛盾（需产品负责人裁）**：第 50 行建议"本机 http 来源"必然要用 `ServerSocket`，而第 51 行红线要求 `ServerSocket` **0 命中**。**建议修法与自家红线冲突。**
+
+**⇒ 按第 54 行指示停下，上交选项与代价**（详见报告 §6）：
+- **A（推荐，零代码、今天可用）** 把应用后端地址指向 `http://8.138.19.15:4094` ⇒ 页面变 http ⇒ `caseB=false` ⇒ **红字消失、官方对话框对 http 正常可用**（正是官方 web-over-http 形态）。代价：该页需网络可达；Basic 口令走明文 http。
+- **B** 给服务端加 TLS，全程 `https://`（零代码，需证书运维）。
+- **C** 第二台服务器开 CORS（`opencode serve --cors <页面origin>`）；http 目标仍需配合 A 才生效。
+- **D** 改架构（本机 http 来源加载页面）——**撞 `ServerSocket` 红线**，且会**打掉"无需 CORS"这个 UX6 现有优点**（所有服务器全变跨源）。
+- **E** 重新引入回环代理 —— **必须转发含 Basic 认证头的 API ＝ 凭据处理，明确禁止**。
+
+**回归**：`:webapp` 184 + `:app` 6136 = **6320 用例，0 失败 0 错误 0 跳过**（用例数与上轮一致）。`DirectConnectAuthBoundaryTest` 10/10 绿。⚠️ 首次执行失败于环境：`JAVA_HOME` 指向 JDK 25.0.4.1，Gradle 8.11.1 抛 `IllegalArgumentException: 25.0.4.1`；**改用 JBR 21.0.10 即全绿，建议把 `JAVA_HOME` 钉到 21**。
 
 ---
 

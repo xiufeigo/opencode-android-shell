@@ -167,3 +167,28 @@
 - 未闭环：① D1 回合常亮/后台断流随代理删除而失效（页面可用、待上游接线）；② 冷启动未配置时官方内置无凭据
   服务器会 401 停在 Loading（当前部署前端的自动注册行为；用户在官方设置里补密码后即恢复）；③ ArrowUp/Down
   在 textarea 软折行边界未做吞咽（刻意收窄范围，防误伤上游搜索导航）；④ contenteditable 的 Up/Down 同理。
+
+---
+
+## 附：UX9 / B-6（2026-10-06）—— 本架构的直接代价：官方「添加服务器」拒 http
+
+> 完整报告：`research/web/UX9_HTTP_SERVER.md`。**0 代码改动。** 这是"删掉回环代理"这一决定的**已知代价**，现已被产品负责人实测撞上。
+
+**现象**：官方「添加服务器」填 `http://8.138.19.15:4094` ⇒ 红字「无法从 HTTPS 页面连接此 HTTP 服务器」。
+
+**判据**：`servers/connect/browser.ts:3-12` 的 `isMixedContent()`，`browser.ts:4` 判**页面协议为 `https:`**（实参 = `dialog.tsx:285` 的 `location.href`）；**不是 `isSecureContext`**。
+⚠️ **不是闸门** —— 闸门是 `dialog.tsx:281` 的 `if (!result.healthy)`；`:285` 只在失败后挑文案。
+上游并未禁止 http（`runtime/server/registry.tsx:15-20` 原样保留 `http://`）；"官方可以加 http"成立于**页面不是 https** 的形态（桌面 Electron 的 `file://`、web 端 http 打开）—— **官方 web 端同样会拒**。
+
+**与本架构的关系（关键）**：本架构 `loadUrl(后端地址)`（`WebHostActivity.kt:323-324` → `:340` → `:360`）⇒ **页面 origin == API origin**。两个后果：
+1. **"页面 origin == API origin" 既是本架构不需要 CORS 的唯一原因，也是它只能零配置服务"那一台"的原因** —— 添加**不同源**的第二台，无论协议都走 CORS。
+2. 实测本机后端 `GET /global/health` 带 `Origin` ⇒ `200` 但 **`Access-Control-Allow-Origin` 为空** ⇒ 服务端默认 0 个 CORS 头。
+
+**⇒ 因此 `setMixedContentMode` 放行无效**：它只拆得掉"混合内容"这道墙，拆不掉 CORS 那道。
+（现行 `WebHostActivity.kt:388` = `MIXED_CONTENT_COMPATIBILITY_MODE`，最弱档，本就不允许混合 XHR/fetch。）
+
+**设备实测（`emulator-6752` / `OC_UX6_Phone` / debug 包 / CDP）**：`location.protocol="http:"`、`origin="http://127.0.0.1:4095"`；
+真实页面跑判据 `caseB(页面http→远端http)=false`、**`caseC(页面https→远端http)=true`** ⇒ 默认配置不出这句；**产品负责人那台页面是 https（他先配了 https 后端，与自述吻合）**。
+
+**⇒ 零代码可行路径**：把应用后端地址指向 `http://8.138.19.15:4094` ⇒ 页面变 http ⇒ 红字消失、官方对话框对 http 可用（正是官方 web-over-http 形态；代价是 Basic 口令明文 http）。
+若要**同时**保留 https 那台并加 http 那台，则**必须**引入跨源（CORS），或改架构（撞 `ServerSocket` 红线 / 重新引入回环代理 = 凭据处理）——**二者都需产品负责人拍板；本轮按 B-6 第 54 行停下上交，未自行实现**。
