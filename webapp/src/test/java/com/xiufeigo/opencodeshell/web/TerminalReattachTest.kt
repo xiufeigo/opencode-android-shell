@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,15 +56,20 @@ class TerminalReattachTest {
 
     @Test
     fun bootUrlIsStableAcrossLaunches() {
-        // 同一持久键 + 同一默认值 ⇒ 什么都不改时，每次冷启动的 origin 逐字节相同。
+        // UX11：页面来源改为**编译期常量**的本机静态来源 `http://127.0.0.1:4173`。
+        // 稳定性不变量**反而更强**了：它不再依赖任何持久键或运行时状态，
+        // 每次冷启动逐字节相同 ⇒ 上游 pty 持久化照样读得到。
         assertTrue(
-            "bootUrl 必须来自 KEY_BACKEND_URL ?: DEFAULT_BACKEND_URL（持久键，非内存态）",
-            activitySrc.contains(
-                "SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL",
-            ),
+            "bootUrl 必须来自 LocalUiOriginServer.origin()（编译期常量端口，origin 恒定）",
+            activitySrc.contains("LocalUiOriginServer.origin()"),
         )
         assertEquals(
-            "默认后端地址不得漂移（origin 稳定性的默认值那一半）",
+            "本机静态来源 origin 必须逐字节固定（终端重接的前提）",
+            "http://127.0.0.1:4173",
+            LocalUiOriginServer.origin(),
+        )
+        assertEquals(
+            "默认后端地址不得漂移（通知路由仍用它推导）",
             "http://127.0.0.1:4095",
             SecretStore.DEFAULT_BACKEND_URL,
         )

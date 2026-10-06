@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,21 +58,46 @@ class DirectConnectAuthBoundaryTest {
             .joinToString("\n") { it.readText() }
     }
 
+    /**
+     * UX11：产品负责人**明确授权**的唯一一个本机 http 端点就是"服务 UI 静态资源"的那个。
+     * 它必须存在，但不得出现在"代理/凭据残留"扫描域里 —— 它的合规性由
+     * [noLoopbackListenerAnywhere] 单独逐条钉死（只绑回环、只服务 assets、/api 拒答、0 凭据字样）。
+     */
+    private val AUTHORIZED_STATIC_ORIGIN = "LocalUiOriginServer.kt"
+
+    /** 除"已授权的静态来源端点"之外的全部 main 源码（代理/凭据残留扫描域）。 */
+    private val allMainSourcesExceptAuthorized: String by lazy {
+        File("src/main/java").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && it.name != AUTHORIZED_STATIC_ORIGIN }
+            .joinToString("\n") { it.readText() }
+    }
+
     // ---- 1) 启动路径 = 直连后端 ---------------------------------------------
 
     @Test
     fun bootResolvesBackendUrlWithDefault() {
+        // UX11：页面来源改为本机 http 静态来源（官方前端自带），**不再**是所配后端。
+        // 这正是"死锁从根上消失"的机制点：页面协议恒为 http:，与后端协议无关。
         assertTrue(
-            "bootUrl() 必须 = SecretStore[KEY_BACKEND_URL] ?: DEFAULT_BACKEND_URL —— " +
-                "启动地址的唯一来源，不能再冒出第二个口径",
-            activitySrc.contains(
-                "SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL",
-            ),
+            "bootUrl() 必须 = LocalUiOriginServer.origin() —— 页面来自本机静态来源，" +
+                "而不是某个后端地址（否则配了 https 后端页面就变 https，死锁复发）",
+            activitySrc.contains("LocalUiOriginServer.origin()"),
         )
+        // 反向验证：启动链不允许再回到"加载后端地址"的老形态。
+        assertFalse(
+            "bootUrl() 不得再解析后端地址作为页面来源（UX10 的双向死锁来源）",
+            activitySrc.contains("SecretStore.getSecret(this, SecretStore.KEY_BACKEND_URL) ?: SecretStore.DEFAULT_BACKEND_URL"),
+        )
+        // 本机静态来源端口必须固定且避开 4095（4095 是后端/adb reverse 口径）。
         assertEquals(
-            "默认后端地址不得漂移（adb reverse tcp:4095 tcp:4095 口径）",
+            "默认后端地址不得漂移（通知路由仍用它推导）",
             "http://127.0.0.1:4095",
             SecretStore.DEFAULT_BACKEND_URL,
+        )
+        assertEquals(
+            "本机静态来源端口必须避开 4095",
+            4173,
+            LocalUiOriginServer.DEFAULT_PORT,
         )
     }
 
@@ -119,10 +145,36 @@ class DirectConnectAuthBoundaryTest {
 
     @Test
     fun noLoopbackListenerAnywhere() {
-        assertFalse(
-            "宿主不得再监听 ServerSocket（回环代理的底座；直连架构下它是多余的攻击面）",
-            allMainSources.contains("ServerSocket"),
+        // UX11：产品负责人授权了"为服务 UI 静态资源起一个本机 http 端点"，
+        // 这**取代**了此前"不许 ServerSocket"那条限制。但授权范围极窄：
+        // 监听器**只准**服务 assets 里的 UI 静态文件，**不准**碰凭据、**不准**代理 API。
+        // 下面把这条窄授权钉成可执行的断言，而不是简单删掉这个用例。
+        val server = File("src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt")
+        assertTrue("找不到 LocalUiOriginServer.kt（UX11 的本机静态来源端点）", server.isFile)
+        val serverSrc = server.readText()
+
+        // 只绑回环：外部网络访问不到这个端点。
+        assertTrue(
+            "本机静态来源端点必须只绑 127.0.0.1",
+            serverSrc.contains("InetAddress.getByName(\"127.0.0.1\")"),
         )
+        // 只服务 assets 静态资源，且 /api 一律 404（绝不代理 API）。
+        assertTrue(
+            "本机静态来源端点必须只服务 assets 静态资源",
+            serverSrc.contains("assets.open(assetPath)"),
+        )
+        assertTrue(
+            "本机静态来源端点必须显式拒答 /api（红线：不许把 API 代理过去）",
+            serverSrc.contains("refuseApiPath") && serverSrc.contains("p.startsWith(\"/api/\")"),
+        )
+        // 🔴 最关键：静态来源端点里不得出现任何凭据字样。
+        listOf("Authorization", "password", "Basic", "authTokenFromCredentials", "KEY_SERVER_PASSWORD")
+            .forEach { banned ->
+                assertFalse(
+                    "本机静态来源端点不得出现凭据相关字样：$banned",
+                    serverSrc.contains(banned),
+                )
+            }
     }
 
     @Test
@@ -208,7 +260,7 @@ class DirectConnectAuthBoundaryTest {
         )
         assertTrue(
             "扫描器必须对当前真实源码判零残留（否则是扫描器自己坏了）",
-            scanResiduals(allMainSources, "main").isEmpty(),
+            scanResiduals(allMainSourcesExceptAuthorized, "main").isEmpty(),
         )
     }
 }

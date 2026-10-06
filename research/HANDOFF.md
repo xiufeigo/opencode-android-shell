@@ -547,8 +547,16 @@ v158 对生产源码的改动**只有注释**（`git diff` 44 行 ±，**非注�
 **我们页面实测（`emulator-6752` / debug 包 / CDP 原文）**：`location.protocol="http:"`、`origin="http://127.0.0.1:4095"`、`isSecureContext=true`。
 真实页面跑判据：`caseB(页面http→远端http)=false`、**`caseC(页面https→远端http)=true`** ⇒ **只有页面为 https 才会出那句红字**。
 
-**https 从哪来**：`webapp/.../WebHostActivity.kt:323-324` `bootUrl()`（`SecretStore.KEY_BACKEND_URL`）→ `:340` → `:360 loadUrl(url)`。
-**页面 URL 就是后端地址**（UX6：origin == API origin、无回环代理）⇒ 先配 https 后端，页面即 https。
+**https 从哪来（🔴 UX11 起此段已作废）**：~~`WebHostActivity.kt:323-324` `bootUrl()`（`SecretStore.KEY_BACKEND_URL`）→ `:340` → `:360 loadUrl(url)`。页面 URL 就是后端地址（UX6：origin == API origin、无回环代理）⇒ 先配 https 后端，页面即 https。~~
+
+> 🔴 **UX11（2026-10-06）已把这一条从根上拔掉**：**页面不再由后端提供**。
+> - 官方前端由 `_upstream/packages/app` 的 `bun run build` 构建（路线 a 成功，913 文件 / 32.49 MiB）⇒ 打进 `webapp/src/main/assets/www/ui/`；
+> - 宿主 `LocalUiOriginServer` 从**回环** `http://127.0.0.1:4173` 提供这些静态资源（含 SPA 回落，`/api/` 一律 404、绝不代理、绝不碰凭据）；
+> - `bootUrl()` 现在是 `LocalUiOriginServer.origin()`。
+> - **设备实测原文**：`location.href="http://127.0.0.1:4173/"`、`protocol="http:"`、`origin="http://127.0.0.1:4173"`、`isSecureContext=true`、`title="OpenCode"`。
+> - **同页加 `http://127.0.0.1:4095`：成功**（Server 段绿点，`Terminal shell: powershell` 从真实后端读回；CDP 抓到 `GET /api/info` + 认证头 ⇒ `200` + `ACAO: http://127.0.0.1:4173`）。
+> ⇒ **页面协议恒为 `http:`，与配了哪台后端彻底解耦** ⇒ `caseC`（页面 https ∧ 目标远端 http）永远不可能再出现 ⇒ **那句混合内容红字与 B-6 死锁一起消失**。代价（APK release nor8 由 3.55 MB → 12.98 MB、不再开箱即连、全链路跨源、UI 与 API 版本耦合）见 `research/web/UX11_LOCAL_UI_ORIGIN.md` 与 `HANDOFF_WEB_SHELL.md` §0。
+> ⚠️ **UX11 未闭环项**：「同页再加一台 `https://`」**未端到端验**（无可信证书后端）；终端、主题三档、常亮/SSE、键盘扫测、平板档五项**未实跑**。详见 UX11 报告 §5.2 / §9。
 （更正：**不是** `app/.../MainActivity.kt:737-739` 的 asset loader —— 那是旧 `app` 模块，现行壳只用于诊断页 `WebHostActivity.kt:79`。）
 
 **🔑 第二道墙 = CORS**：实测后端 `GET /global/health` 带 `Origin` ⇒ `200` 但 **`Access-Control-Allow-Origin` 空**。

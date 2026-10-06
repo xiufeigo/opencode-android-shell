@@ -1,0 +1,2 @@
+function e(e){return e.id?e.id:e.source.type===`package`?e.source.target:e.source.type===`local`?e.source.path:e.source.type}function t(t){return t.filter(e=>e.source.type!==`builtin`).map(e)}export{t as n,e as t};
+//# sourceMappingURL=plugin-CMjYw5M4.js.map

@@ -1,0 +1,2 @@
+import{C as e,b as t,gt as n,it as r,v as i,w as a}from"./icon-DhNOMwJt.js";function o(e,t){let r=new ResizeObserver(e);return n(r.disconnect.bind(r)),{observe:e=>r.observe(e,t),unobserve:r.unobserve.bind(r)}}function s(n,s,c){let l=new WeakMap,{observe:u,unobserve:d}=o(e=>{for(let t of e){let{contentRect:e,target:n}=t,r=Math.round(e.width),i=Math.round(e.height),a=l.get(n);(!a||a.width!==r||a.height!==i)&&(s(e,n,t),l.set(n,{width:r,height:i}))}},c);r(r=>{let o=e(t(i(n)));return a(o,r,u,d),o},[])}export{s as t};
+//# sourceMappingURL=dist-DAusw-AM.js.map
