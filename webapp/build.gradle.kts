@@ -1,6 +1,9 @@
-// W1 — WebView 宿主模块（骨架）。
-// 独立 applicationId，与现有原生壳 `com.xiufeigo.opencodeshell[.debug]` 并存，
-// 便于同一台设备上 A/B 对比：两个 launcher 图标、两个 pm 条目、互不覆盖。
+// W1 — WebView 宿主模块。
+// 2026-10-07 起 applicationId 对齐**原生壳**（原 `com.xiufeigo.opencodeshell.web` 退役）：
+// 产品负责人要求 CI 的 web 壳**直接覆盖更新**设备上已装的原生壳 debug 包
+// （`com.xiufeigo.opencodeshell.debug`，同为 CI sharedDebug 证书 ⇒ 平滑更新成立）。
+// 早年"两个壳并存互不覆盖"的设计就此退役；曾装过的 `.web.debug` 测试包成为孤立应用需手动卸载。
+// 注意：namespace / Kotlin 包名仍是 `.web`（与 Android applicationId 无关，无需改代码）。
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,9 +14,9 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        // `.debug` 由 buildTypes 的 applicationIdSuffix 拼出，debug 构建的最终 id 是
-        // `com.xiufeigo.opencodeshell.web.debug`（与原生壳的 debug id 也不撞）。
-        applicationId = "com.xiufeigo.opencodeshell.web"
+        // 两个 buildTypes 都带 `.debug` 后缀 ⇒ 最终 id = `com.xiufeigo.opencodeshell.debug`
+        // （= 原生壳 debug 包名，覆盖更新成立）。
+        applicationId = "com.xiufeigo.opencodeshell"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
