@@ -1,18 +1,20 @@
-# OC-FIX · 幻影服务器条目（origin）改为上游注册表机制 + CI 出正式包
+# OC-FIX · 幻影服务器条目（origin）改为上游注册表机制 + CI 出正式包 + 弹层不再抢键盘
 
-- 轮次：OC-FIX（产品负责人 2026-10-07 16:35 报单）
+- 轮次：OC-FIX（产品负责人 2026-10-07 16:35 / 18:38 两次报单）
 - 仓库：`D:\XiaoZhuTouTou\opencode-android-shell`
-- 设备：**自建 AVD `ocfix_tab`**（android-35 平板镜像，`-no-window -memory 3072`，端口 6792）——本轮创建、本轮删除。`emulator-5554`（`dshr_tab`）/ `emulator-5680`（`Medium_Phone_API_37.0`）**全程零写入**（只 `adb devices` 读取）。
-- 后端：宿主 `127.0.0.1:4095`（v2 opencode **2.0.24**，pid 1804）——只读使用（`adb reverse` + 浏览会话列表），**未起停**。
+- 设备：**自建 AVD** —— `ocfix_tab`（android-35 平板，2560×1600）+ `ocphone`（android-35 镜像 + medium_phone 档，1080×2400/420 = **411×914 CSS**，与产品负责人手机同形态）；**两台都本轮自建自删**。`emulator-5554`（`dshr_tab`）/ `emulator-5680`（`Medium_Phone_API_37.0`）**全程零写入**（只 `adb devices` 读取）。
+- 后端：宿主 `127.0.0.1:4095`（v2 opencode **2.0.24**，pid 1804）——只读使用（`adb reverse` + 浏览/打开会话），**未起停**。
 - 性质：**改代码 + 设备复验**。
 
 ---
 
 ## 0. 一句话结论
 
-1. **CI 出的从来不是"正式包"**：三份产物同属 `com.xiufeigo.opencodeshell.debug`（`.debug` 后缀写在 webapp 的三个 buildType 上）。已改为：**release 变体用正式包名 `com.xiufeigo.opencodeshell`，CI 只发这一个包**。
+1. **CI 出的从来不是"正式包"**：三份产物同属 `com.xiufeigo.opencodeshell.debug`（`.debug` 后缀写在 webapp 的三个 buildType 上）。已改为：**全变体共用正式包名 `com.xiufeigo.opencodeshell`，CI 只发 release 这一个包**。
 2. **4173 不是"多一行"，而是 Home 的当前上下文**：上游把页面 origin 当内建服务器，`visible[0]` 恒为它 ⇒ Home 的当前服务器恒为 4173 ⇒ 而 4173 的 API 前缀一律 404 ⇒ 永久 `Loading`。v1–v4 的 DOM 隐藏只遮界面，**遮不住上下文**（这正是报单里"设置里没了、主页还在而且不能用"的形态）。
    已改为**上游自己的注册表机制**：写 `opencode.global.dat:server` 的 `hidden[origin]=true` ⇒ Home 的当前服务器自动落到用户自己的服务器上。设备实测：**Home 渲染出 4095 后端的真实会话列表、DOM 里 4173 文本节点 = 0**。
+3. **"菜单从底部往上弹 + 自己弹键盘"是同一个根因**：模型菜单本来就是 popper 锚在芯片上；是上游给菜单里搜索框的 `autofocus` 让 Android WebView 拉起了 IME，键盘吃掉半屏把菜单顶到屏幕中部。已改为**只拦"程序化 + 浮层内 + 非用户点击"的 focus**：键盘不弹、菜单回到芯片上方；用户点搜索框时键盘照常弹。
+
 
 ---
 
@@ -168,9 +170,61 @@ GUARD OK
 
 **改动文件**：
 
-- `webapp/src/main/assets/www/oc-host.js`（注册表机制 + DOM 闸门改同一事实源）
+- `webapp/src/main/assets/www/oc-host.js`（注册表机制 + DOM 闸门改同一事实源 + 弹层聚焦守卫）
 - `webapp/src/test/java/com/xiufeigo/opencodeshell/web/PhantomServerHideTest.kt`（绊线重写）
-- `webapp/build.gradle.kts`（正式包名 + versionCode 27 / versionName 2.0.0）
+- `webapp/src/test/java/com/xiufeigo/opencodeshell/web/OverlayFocusKeyboardTest.kt`（新增：弹层键盘绊线）
+- `webapp/build.gradle.kts`（正式包名 + versionCode 29 / versionName 2.0.2）
 - `.github/workflows/build.yml`（只发一个包 + 身份守卫）
 - `research/web/out_ocfix/**`（CDP 探针、行为探针、截图）
 - `local.properties`（本机 SDK 路径，gitignored）
+
+---
+
+## 7. OC-KEYBOARD · 弹层里的自动聚焦不再抢键盘（产品负责人 18:38 报单）
+
+### 7.1 两条抱怨是一个根因
+
+报单原话：
+
+> 这类弹窗我期望是从对应选择的地方拉下来，而非从底部往上弹，这块能做不？
+> 另外图2界面我选模型的时候，默认会弹出键盘，能不弹出不？按理说有且只有我点击输入框内容要写东西时才会弹出键盘
+
+设备实测（`ocphone`，411×914 CSS，dpr 2.625，真机触摸 `input tap`）：
+
+| 项 | 读数 |
+| --- | --- |
+| 模型菜单真实身份 | **popper 锚定菜单**：`[data-component=menu-v2-content][data-appearance=compact]`，包在 `[data-popper-positioner]` 里，宽 284 |
+| 触发点 | 作曲家模型芯片 `button-v2`（“Fledge Alpha Free”），rect `{x:61, y:858, w:171, h:28}` |
+| 修前：键盘 | **`mInputShown=true`** |
+| 修前：菜单矩形 | `{x:61, **y:230**, w:284, h:286}` —— 被键盘挤到屏幕中上部（= 用户眼里的“从底部往上弹”） |
+| 修前：焦点 | 菜单里的 `input[placeholder="Search models"]`（上游 `autofocus` + `onOpenAutoFocus`） |
+
+⇒ 菜单**本来就是**贴着芯片的下拉；是键盘把可用高度砍掉一半，popper 只好把它顶上去。
+
+### 7.2 修法（`oc-host.js` · OC-KEYBOARD 段）
+
+包装 `HTMLElement.prototype.focus`，只在**三个条件同时成立**时不聚焦（于是不拉 IME）：
+
+1. 目标可编辑（`input` / `textarea` / `contenteditable`）；
+2. 目标位于**浮层**内（`[role=menu]` / `[role=dialog]` / `[data-component=menu-v2-content]` / `[data-slot=dialog-container]` / `[data-popper-positioner]` / `[data-corvu-drawer-content]`）；
+3. 这次 focus **不是用户刚点出来的**（1 s 手势窗口 + 点的就是它/它的祖先；手势靠 `pointerdown` 记录 —— **非逐键**，不违反 `InputPathHotspotTest`）。
+
+其余情况一律 `orig.apply(this, arguments)` 原样放行（参数透传）。不用 `inputmode=none`（要维护第二套状态）、不用 focus 后 blur（会闪）、不在宿主关 IME（会把作曲家键盘一起废）——理由都写进代码注释与绊线。
+
+### 7.3 修后实测（同一台设备、同一路径）
+
+| 项 | 读数 | 判定 |
+| --- | --- | --- |
+| 点模型芯片 → 键盘 | **`mInputShown=false`** | ✅ |
+| 点模型芯片 → 菜单矩形 | `{x:61, **y:566**, w:284, h:286}`（底边 852，芯片顶边 858）⇒ **紧贴芯片上方** | ✅ |
+| `window.__ocFocusGuard` | `{blocked:1, last:"Search models"}` | ✅ 只拦了那一次 |
+| 用户真点搜索框 | `mInputShown=true`，输入 `fl` 过滤出 MiMo-V2.6-Flash | ✅ 键盘照常弹 |
+| 点作曲家 → 键盘 + 输入 | `mInputShown=true`，编辑器内容 = `hello` | ✅ 未被波及 |
+| 作曲家是否被误判成浮层 | `[data-component=composer-editor]` 的 `closest(...)` = **false** | ✅ 不误伤 |
+
+> 截图：`research/web/out_ocfix/c2_model_menu_no_keyboard.png`（菜单贴芯片、无键盘）、`c1_model_menu_anchored.png`。
+
+### 7.4 绊线
+
+新增 `OverlayFocusKeyboardTest`（5 条）：包装唯一且透传参数 / 三条件必须同时成立 / 手势三条（pointerdown、记 target、1 s 窗口、目标匹配）/ 文档开始安装 + 设备可读计数 / **反向禁止第二套机制**（`inputmode`、`blur()`、直接改 `document.activeElement`）。
+

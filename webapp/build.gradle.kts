@@ -27,11 +27,11 @@ android {
         applicationId = "com.xiufeigo.opencodeshell"
         minSdk = 26
         targetSdk = 35
-        // 27 是原生壳版本线（1.4.0 / 26）的续号；28 是本轮（幻影 4173 修复）的续号。
-        // 必须**严格大于**设备上已装的 versionCode 才能原地升级（26 → 28 ✅）。
-        versionCode = 28
-        // 跟 GitHub tag 走（v2.0.1 = 本轮发布版本）。
-        versionName = "2.0.1"
+        // 27 是原生壳版本线（1.4.0 / 26）的续号；28 是幻影 4173 修复；29 是弹层键盘修复。
+        // 必须**严格大于**设备上已装的 versionCode 才能原地升级（26 → 29 ✅）。
+        versionCode = 29
+        // 跟 GitHub tag 走（v2.0.2 = 本轮发布版本）。
+        versionName = "2.0.2"
     }
 
     signingConfigs {
