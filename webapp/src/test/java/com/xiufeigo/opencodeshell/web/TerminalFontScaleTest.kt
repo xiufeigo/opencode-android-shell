@@ -54,10 +54,14 @@ class TerminalFontScaleTest {
 
     @Test
     fun scalesTerminalMetricsOnlyOnNarrowScreens() {
-        assertTrue("必须有缩放常量 OC_TERM_FONT_SCALE", code.contains("OC_TERM_FONT_SCALE"))
+        assertTrue("必须有默认比例 OC_TERM_SCALE_DEFAULT", code.contains("OC_TERM_SCALE_DEFAULT"))
         assertTrue(
-            "缩放常量必须是一个 (0,1) 的系数（否则列数不会变多 / 会画出格）",
-            Regex("""OC_TERM_FONT_SCALE\s*=\s*0\.\d+""").containsMatchIn(code),
+            "默认比例必须是一个 (0,1) 的系数（否则列数不会变多 / 会画出格）",
+            Regex("""OC_TERM_SCALE_DEFAULT\s*=\s*0\.\d+""").containsMatchIn(code),
+        )
+        assertTrue(
+            "可选项必须是 (0,1] 的比例列表",
+            Regex("""OC_TERM_SCALE_CHOICES\s*=\s*\[[^\]]*0\.\d+[^\]]*\]""").containsMatchIn(code),
         )
         assertTrue(
             "只在窄屏生效（与上游窄屏断点一致）",

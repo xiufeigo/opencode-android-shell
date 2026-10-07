@@ -127,6 +127,20 @@ both the Actions artifact and the GitHub Release asset:
 | Release asset | `opencode-2.0.4.apk` (built from `webapp/build/outputs/apk/release/`) |
 | Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
 | Version | `versionCode 31` / `versionName 2.0.4` (`webapp/build.gradle.kts`) |
+
+## Terminal font size (phone)
+
+Upstream hardcodes the terminal font at 14px and exposes no size setting, so on a
+411px-wide phone the terminal only fits 41 columns and PowerShell tables collapse to one
+character per column. The host layer scales the terminal's font *metrics* on narrow screens
+(`max-width: 767px`) instead of using CSS zoom - zoom would desynchronise the widget's
+pointer math from the unscaled layout pixels.
+
+Settings → **Appearance** gets an injected **Terminal font size** row (cloned from upstream's
+own row markup, so it matches the real design): 100% / 80% / 65% / 55% ≈ 41 / 52 / 63 / 75
+columns. The choice is stored in `localStorage['oc.settings.terminalFontScale']` (default
+65%, clamped to 0.5-1) and the page reloads once so the change takes effect on the next
+terminal; `?tab=appearance` keeps you on the same panel. Wide screens are untouched.
 | Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
 
 `debug` and `releaseR8` are **local-only** variants: three APKs sharing one
