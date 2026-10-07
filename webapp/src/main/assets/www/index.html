@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- initialScale=1 + 无固定宽度：保证 1 CSS px == 1 dp，宿主给的 inset 变量才准 -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>OpenCode Web Host — 连接失败</title>
+    <title>OpenCode — 连接失败</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -196,7 +196,7 @@
           return;
         }
 
-        document.title = "OpenCode Web Host — " + c.title;
+        document.title = "OpenCode — " + c.title;
         set("title", c.title);
         // reason 已知时，顶部那句「代理起不来」默认文案会误导人，收起来。
         $("lead").hidden = true;

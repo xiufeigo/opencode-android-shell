@@ -407,5 +407,27 @@ GUARD OK
 与 `lp.height != -1` 回归、默认必须是 RESIZE；注入层两条 CSS 规则都必须带 resize 闸门，
 **反向禁止**无双垫）。现有 `ImeOcclusionTest` 继续守 composer 几何与 `--oc-ime-bottom` 通道。
 
+---
+
+## 11. NAME1 · 应用名改叫 "OpenCode"（产品负责人 21:21）
+
+报单："装完的包不要叫 opencode web 了，就叫 OpenCode 就行"。
+
+改前 `aapt2 dump badging`：`application-label:'OpenCode Web'`。名字只有一个真源头：
+
+| 位置 | 内容 | 处置 |
+| --- | --- | --- |
+| `webapp/src/main/res/values/strings.xml` → `app_name` | `OpenCode Web` | **改成 `OpenCode`** —— 桌面图标 / 通知 / 最近任务 / 设置→应用 全读它（manifest 的 `android:label="@string/app_name"`，Activity 不覆盖） |
+| `assets/www/index.html` 兜底页 `<title>` 与 `document.title` | `OpenCode Web Host — …` | 一并去掉 "Web Host"（宿主不把页面标题写进 Activity 标题，所以只是文档标题；但既然定名就不留旧名） |
+| 上游 UI `www/ui/index.html` | `<title>OpenCode</title>` | 本来就对，不动 |
+
+**验收**（构建产物上用 `aapt2 dump badging`，这正是 launcher 读的那份元数据）：
+`application-label:'OpenCode'`，全 80+ 语言变体一致 ✅；包名 `com.xiufeigo.opencodeshell` 与
+`versionCode 33` 不变（**改名字不影响原地升级**，不用卸载）；Release 资产名仍是
+`opencode-2.0.6.apk`（由 `versionName` 生成，与 label 无关）；268 项单测 0 失败。
+
+> 本轮没有起模拟器：这处改动是**静态资源**（launcher 直接读 APK 里的 label），
+> `aapt2 dump badging` 就是权威口径，与 CI 守卫同一把尺子。
+
 
 
