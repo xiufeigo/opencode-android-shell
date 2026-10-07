@@ -342,5 +342,70 @@ GUARD OK
 摘掉 `data-action` 且幂等且只在设置页跑 / 档位单一来源 + 选中态 + 重载 / 列数提示必须用原生度量 /
 文案跟随上游语言。
 
+---
+
+## 10. TERM1 · 键盘遮住终端：补上"IE 视口兜底"（产品负责人 20:35 报单）
+
+### 10.1 根因（不是终端的问题，是**视口**的问题）
+
+边到边窗口（`WindowCompat.setDecorFitsSystemWindows(window, false)`）下 `adjustResize` 失效，
+**布局视口不随键盘变矮**。设备实测（411×914 CSS / dpr 2.625）：
+
+| 读数 | 修前 |
+| --- | --- |
+| `mInputShown` | true |
+| `--oc-ime-bottom` | **336.38** CSS px（= 883px ÷ 2.625，与 `type=ime` frame 高一致 ✅） |
+| `innerHeight` | **915（不变）** |
+| `visualViewport.height` | **915（也不变）** |
+| 终端面板底沿 | 906 ⇒ 被键盘遮 **328px** |
+| 终端画布底沿 | 888 ⇒ 被遮 **304px**（光标/最新输出全在键盘后面） |
+
+上游只认自己的布局，不消费 `--oc-ime-*`；而此前**只有"给 composer 垫留白"一条让位路径**
+（IME1）。靠视口高度的界面（终端画布、对话框）就没人管。
+
+研究里**早就写明**这是脆弱点（`research/env/FORMFACTORS_F4.md` §6 问题 3）：
+> 一旦 composer 让位逻辑在某个宽度上失效，**不会退化成 resize 兜底，而是直接被遮挡**。
+
+本轮就是把这条兜底补上。
+
+### 10.2 修法：宿主把视口真的压矮（两处）
+
+1. **`InsetsHost.applyResize` 重写**：旧实现 `root.findViewById(android.R.id.content)` —— content 是
+   WebView 的**祖先**（`setContentView(webView)` 把它塞进 content FrameLayout），往下找永远 null
+   ⇒ **`applyResize` 从未生效**（旧代码里那道 `lp.height` 守卫也只是第二层死保险）。
+   现在压在**真正那一层**：WebView 的父（content 层）`paddingBottom = max(ime, nav)`
+   ⇒ 内容区变矮 ⇒ 页面 `innerHeight` 跟着变 ✅。
+2. **默认模式 `ImeMode.RESIZE`**，并新增纯函数 `ImeResize.bottomPadPx`：
+   - 取 `max(ime, nav)`（键盘一定比导航条高）；
+   - **僵死读数守卫**：占比 ≥ 85% 不压（v77 实测事故：上报 2195px vs 真实键盘 766px，窗口 2400 ⇒ 91%）；
+     宁可退化成老行为，也不把界面压坏。
+   - 基准用**整窗高**（`root.rootView`）而不是 WebView 当前高度：否则"已压矮的高度"会让守卫自我触发。
+3. **页面侧抬升加闸门**：`html:not([data-oc-ime-mode="resize"])` —— resize 模式下视口已经变矮，
+   再垫一次 = 双倍留白（composer 会飘到半空）。宿主把 `imeMode` 透成 `html` 属性供 CSS 判据。
+
+### 10.3 修后实测（同机同路径）
+
+| 场景 | 修前遮挡 | 修后遮挡 | 备注 |
+| --- | --- | --- | --- |
+| 终端面板 | **328px** | **0** ✅ | 726 → 413 高（随视口收缩） |
+| 终端画布 | **304px** | **0** ✅ | backing 1829 → 992 ⇒ 控件按新高度重排、PTY 一并 resize |
+| composer | 0（老机制） | **0** ✅ | `padding-bottom: 0px` ⇒ **无双垫**，离键盘 21px 是应用自身留白 |
+| 设置页搜索框 | 0 | **0** ✅ | 面板随视口收缩（891 → 578） |
+| 设置页 Terminal Font 输入框 | 未测 | **0** ✅ | 同上 |
+| 模型菜单搜索框（turn-4 的修法） | — | **0** ✅ | 键盘弹起后 popper 自动重排到 229..515 |
+| Add server 对话框（3 个输入框） | 未测 | **0** ✅ | 对话框重新居中到 87..492 |
+
+`innerHeight` 915 → **578**（= 914 − 336 ✅）；键盘收起后自动回到 891 ✅。
+
+> ⚠️ 探针口径：屏幕坐标的 IME 上沿 = **整窗高 − ime**，不是 `innerHeight − ime`
+> （resize 后 `innerHeight` 已被压矮，再减一次就是双重扣减 —— 第一版探针就错在这，误报"仍被遮 328"）。
+
+### 10.4 绊线
+
+`ImeViewportResizeTest`（6 条）：几何四条（ime/nav 取大、收起与无效几何不动、僵死读数 ≥85% 不压、
+压矮量恒小于窗高）+ 契约两条（宿主必须压 WebView 的父、**反向禁止** `findViewById(android.R.id.content)`
+与 `lp.height != -1` 回归、默认必须是 RESIZE；注入层两条 CSS 规则都必须带 resize 闸门，
+**反向禁止**无双垫）。现有 `ImeOcclusionTest` 继续守 composer 几何与 `--oc-ime-bottom` 通道。
+
 
 

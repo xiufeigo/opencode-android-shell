@@ -170,14 +170,28 @@
   // - AndroidManifest 已声明 windowSoftInputMode="adjustResize"；
   // - 但 InsetsHost.init 调了 WindowCompat.setDecorFitsSystemWindows(window, false)
   //   ⇒ 边到边。API 30+ 上边到边窗口不再因 IME 压矮，adjustResize 的效果被抵消
-  //   （InsetsHost.applyResize 又被 "lp.height != -1" 守卫挡住，对 MATCH_PARENT
-  //     的 WebView 永远不生效）⇒ **布局视口不随键盘变矮**。
+  //   ⇒ **布局视口不随键盘变矮**（设备实测：IME 336.38px 时 innerHeight 仍 915）。
   // - 宿主仍然把**实测正确**的 IME 高度交到 --oc-ime-bottom（IME1 实测
   //   336.38 CSS px × dpr 2.625 = 883px = type=ime frame 高度，完全一致）。
   // - 上游 SPA 不认识 --oc-ime-*，也不消费 env(safe-area-inset-bottom)
-  //   （WebView 边到边 ⇒ env() 恒为 0）⇒ composer 停在视口底部、被键盘盖住。
+  //   （WebView 边到边 ⇒ env() 恒为 0）。
   //
-  // 所以修法落在**页面消费侧**：由宿主注入层给 composer 容器垫 --oc-ime-bottom。
+  // ### 两条路，按宿主的 imeMode 二选一（**别同时上，会双倍留白**）
+  //
+  // 1. `resize`（**宿主默认**，见 InsetsHost.ImeMode / ImeResize）：
+  //    宿主把窗口 content 的**底部内边距**压成 max(ime, nav) ⇒ 布局视口真的变矮
+  //    ⇒ 任何靠视口高度的界面（终端画布、对话框、composer）**自动**跟着收。
+  //    这条是"兜底"：不再依赖"每个界面都记得自己让位"。
+  // 2. `vars`（老路子，保留）：视口不变，页面**自己**垫 --oc-ime-bottom：
+  //    composer 用 :has() 锚定；实在锚不到就退到 [data-oc-ime-lift]。
+  //
+  // 线上事故背景（TERM1，2026-10-07 产品负责人报单"键盘遮住终端"）：
+  // 只有 composer 一条让位路径时，**终端画布被键盘遮住 310px**（实测），
+  // 因为画布高度来自视口、而视口没变。研究里早写明了这条脆弱点：
+  // `research/env/FORMFACTORS_F4.md` §6 问题 3 ——"一旦 composer 让位逻辑在某个宽度上
+  // 失效，不会退化成 resize 兜底，而是直接被遮挡"。本轮补上兜底。
+  //
+  // 所以下面前两条 CSS 只在 `vars` 模式生效（`html:not([data-oc-ime-mode="resize"])`）。
   // ======================================================================
   var IME_STYLE_ID = "oc-ime-lift";
 
@@ -189,13 +203,15 @@
       // composer 容器是 <form class="group/composer ...">（上游结构）。
       // 用 :has() 按**语义**锚定，不绑上游类名/标签名。
       // WebView 124 = Chrome 124，:has() 已支持。
-      "form:has(textarea),form:has([contenteditable=\"true\"]){",
+      "html:not([data-oc-ime-mode=\"resize\"]) form:has(textarea),",
+      "html:not([data-oc-ime-mode=\"resize\"]) form:has([contenteditable=\"true\"]){",
       "padding-bottom:var(--oc-ime-bottom,0px);",
       "box-sizing:border-box;",
       "transition:padding-bottom .12s ease;",
       "}",
       // 兜底：若 composer 不是 <form>，退到"最近 fixed/sticky 祖先"上抬。
-      "[data-oc-ime-lift]{padding-bottom:calc(var(--oc-ime-bottom,0px) + var(--oc-safe-bottom-eff,0px));",
+      "html:not([data-oc-ime-mode=\"resize\"]) [data-oc-ime-lift]{",
+      "padding-bottom:calc(var(--oc-ime-bottom,0px) + var(--oc-safe-bottom-eff,0px));",
       "box-sizing:border-box;transition:padding-bottom .12s ease;}",
     ].join("\n");
     var st = document.createElement("style");
@@ -241,6 +257,9 @@
     s.setProperty("--oc-scheme", d.scheme);
     // 让浏览器自带的表单控件/滚动条也跟着深浅色走
     s.colorScheme = d.scheme;
+    // 宿主是"压矮视口"还是"只发变量"——决定页面侧还要不要自己垫 IME（见 IME 抬升段）：
+    // resize 模式下视口已经变矮，再垫一次 = 双倍留白（composer 会飘到半空）。
+    el.setAttribute("data-oc-ime-mode", d.imeMode || "vars");
   }
 
   var oc = {

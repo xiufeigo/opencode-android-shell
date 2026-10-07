@@ -124,9 +124,19 @@ both the Actions artifact and the GitHub Release asset:
 | | |
 |---|---|
 | Steps | `:webapp:testDebugUnitTest` → `:webapp:assembleRelease` |
-| Release asset | `opencode-2.0.4.apk` (built from `webapp/build/outputs/apk/release/`) |
+| Release asset | `opencode-2.0.5.apk` (built from `webapp/build/outputs/apk/release/`) |
 | Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
-| Version | `versionCode 31` / `versionName 2.0.4` (`webapp/build.gradle.kts`) |
+| Version | `versionCode 32` / `versionName 2.0.5` (`webapp/build.gradle.kts`) |
+
+## Keyboard (IME) and the viewport
+
+The window is edge-to-edge (`setDecorFitsSystemWindows(false)`), so `adjustResize` does nothing and
+the layout viewport never shrank for the keyboard: the terminal canvas stayed 915 CSS px tall while
+the keyboard covered its last ~310 px. The host now pads the content layer by `max(ime, nav)` so the
+viewport really shrinks - every surface that sizes itself from the viewport follows automatically.
+Guards: reports >= 85% of the window are treated as stale IME readings (a v77 incident reported
+2195px for a 766px keyboard) and ignored; the page-side composer lift only runs in `vars` mode
+(`html:not([data-oc-ime-mode="resize"])`) so it never double-pads.
 
 ## Terminal font size (phone)
 

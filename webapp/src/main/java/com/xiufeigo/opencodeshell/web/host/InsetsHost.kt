@@ -62,7 +62,7 @@ class InsetsHost(
         private const val TAG = "OcWebHost/Insets"
     }
 
-    var imeMode: ImeMode = ImeMode.VARS
+    var imeMode: ImeMode = ImeMode.RESIZE
         private set
 
     private var last: JSONObject? = null
@@ -157,7 +157,10 @@ class InsetsHost(
             // ime 盖到窗口一半以上时，height 只可能是"僵死读数"，不是键盘。
             put("imeHeight", (ime.bottom / d).css())
             put("imeVisible", ime.bottom > 0)
-            put("windowHeight", (root.height / d).css())
+            // **整窗**高（不是 WebView 当前内容高）：resize 模式下 WebView 本来就被压矮了，
+            // 拿它当基准会让"僵死读数守卫"（占比 ≥85%）被二次触发、也会让页面算错
+            // IME 上沿（屏幕坐标 = 整窗高 − ime）。所以取 decor（rootView）高。
+            put("windowHeight", (windowHeightPx() / d).css())
             put("imeMode", imeMode.name.lowercase(Locale.ROOT))
             put("dark", dark)
             put("scheme", if (dark) "dark" else "light")
@@ -175,21 +178,48 @@ class InsetsHost(
     }
 
     /**
-     * `ImeMode.RESIZE` 才动 WebView 高度。
+     * `ImeMode.RESIZE` 时把**视口底部**压矮 `max(nav, ime)`，让布局视口真的跟着键盘收。
      *
-     * 取 `max(nav, ime)`：键盘一定比导航条高，两者重叠时 nav 已经被 ime 盖住。
+     * ### 改了什么（TERM1，2026-10-07）
+     * 旧实现想在 `android.R.id.content` 上找宿主层（`root.findViewById(android.R.id.content)`）
+     * —— content 是 WebView 的**祖先**（`setContentView(webView)` 把它塞进 content FrameLayout），
+     * 往下找只会得到 null ⇒ `applyResize` 从来没生效过（旧代码里那道针对 MATCH_PARENT
+     * 的 `lp.height` 守卫也只是第二层死保险，MATCH_PARENT 恒等于它排除掉的那个值）。
+     * 于是视口永不 resize，只有 composer 一条让位路径，终端画布被键盘遮住 310px（实测）。
+     *
+     * 现在压在**真正的那一层**：WebView 的父（= content 层）的 `paddingBottom`。
+     * 子 View 是 MATCH_PARENT ⇒ 内容区直接变矮 ⇒ 页面 `innerHeight` 跟着变 ✅。
+     * 取 `max(nav, ime)`，并用 [ImeResize.bottomPadPx] 挡掉平台的"僵死读数"。
      */
     private fun applyResize(imeBottom: Int, navBottom: Int) {
-        if (imeMode != ImeMode.RESIZE) return
-        val host = root.findViewById<View>(android.R.id.content)
-        val target = host?.height ?: return
-        val pad = maxOf(imeBottom, navBottom)
-        val lp = host.layoutParams ?: return
-        val want = (target - pad).coerceAtLeast(1)
-        if (lp.height != want && lp.height != -1 && lp.height != -2) {
-            lp.height = want
-            host.layoutParams = lp
+        val want = if (imeMode == ImeMode.RESIZE) {
+            // 基准是**整窗高**：`root.height` 在压矮之后就是"已压矮的高度"，
+            // 拿它算占比会在键盘偏大时自我触发守卫（越压越像僵死读数）。
+            ImeResize.bottomPadPx(windowHeightPx(), imeBottom, navBottom)
+        } else {
+            0
         }
+        val layer = resizeTarget()
+        if (layer.paddingBottom == want) return
+        layer.setPadding(layer.paddingLeft, layer.paddingTop, layer.paddingRight, want)
+        Log.i(TAG, "viewport bottom pad = $want px (ime=$imeBottom nav=$navBottom window=${windowHeightPx()} target=${layer.javaClass.simpleName})")
+    }
+
+    /** 整窗高（px）：decor 视图高，边到边下就是包含系统栏的整块屏幕。 */
+    private fun windowHeightPx(): Int {
+        val decor = root.rootView
+        return if (decor != null && decor.height > 0) decor.height else root.height
+    }
+
+    /**
+     * 真正被压矮的那一层：WebView 的父（window 的 content FrameLayout）。
+     *
+     * 用 `parent` 而不是 `findViewById`：content 是祖先，往下找永远找不到（旧代码的坑）。
+     * 真拿不到父（极端布局）时退化成压 WebView 自己 —— 同样能让内容区变矮。
+     */
+    private fun resizeTarget(): View {
+        val p = root.parent
+        return if (p is View) p else root
     }
 
     /** px→dp（=CSS px）并格式化成两位小数，避免浮点尾巴进 CSS。 */

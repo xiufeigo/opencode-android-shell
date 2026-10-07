@@ -4,6 +4,49 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
+ * "要压矮多少像素" —— IME 视口兜底的**纯函数**（[InsetsHost] 消费，[ImeResizeTest] 钉住）。
+ *
+ * ### 为什么需要它（TERM1，2026-10-07）
+ *
+ * 边到边窗口下布局视口不随键盘变矮（实测：IME 336.38 CSS px 时 `innerHeight` 仍 915），
+ * 早先只给 composer 垫了底部留白 ⇒ **终端画布被键盘遮住 310px**。
+ * 研究里已预告过这个脆弱点（`research/env/FORMFACTORS_F4.md` §6 问题 3）：
+ * "一旦 composer 让位逻辑在某个宽度上失效，**不会退化成 resize 兜底，而是直接被遮挡**"。
+ *
+ * 所以宿主自己把视口压矮，任何靠视口高度的界面都自动跟着收 —— 不再依赖"每个界面记得让位"。
+ *
+ * ### 为什么要有"僵死读数"守卫
+ *
+ * `WindowInsetsCompat.Type.ime()` 是平台每次交付的读数，平台自己也可能是**僵死**的：
+ * v77 实测上报 2195px 而真实键盘只有 766px（窗口 2400px，占比 **91%**）。
+ * 照抄这个数会把视口压成一条缝、下方留一大块空白。所以占比 ≥ [STALE_RATIO] 时**不压**
+ * （退化成"页面自己让位"的老行为，而不是把界面压坏）。
+ */
+object ImeResize {
+
+    /** 上报的 IME 高度占窗口比例达到这个值就判定为僵死读数（实测事故 91%）。 */
+    const val STALE_RATIO = 0.85
+
+    /**
+     * 视口底部要让出的 px。`0` = 不动（IME 收起 / 读数不可信 / 几何无效）。
+     *
+     * 取 `max(ime, nav)`：键盘一定比导航条高，两者重叠时导航条已经被键盘盖住。
+     */
+    fun bottomPadPx(
+        windowHeightPx: Int,
+        imeBottomPx: Int,
+        navBottomPx: Int,
+    ): Int {
+        if (windowHeightPx <= 0) return 0
+        val pad = max(imeBottomPx, navBottomPx)
+        if (pad <= 0) return 0
+        // 僵死读数：见类注释（别把一个 91% 的假读数当成键盘）。
+        if (pad >= windowHeightPx * STALE_RATIO) return 0
+        return min(pad, windowHeightPx - 1)
+    }
+}
+
+/**
  * IME 遮挡几何 —— "composer 有多少像素落在键盘下面" 的**纯函数**。
  *
  * 存在的理由：这条判据是本轮修复的守护对象（IME1：composer 被键盘完全遮挡 ⇒ 等于没法打字），
