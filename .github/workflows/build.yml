@@ -1,4 +1,4 @@
-name: android-debug
+name: web-shell
 
 on:
   push:
@@ -33,8 +33,9 @@ jobs:
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       # Same debug signature as local builds: restore the shared debug
-      # keystore next to the checkout; app/build.gradle.kts points its
-      # explicit debug signingConfig at it (no ~/.android path guessing).
+      # keystore next to the checkout; webapp/build.gradle.kts reads the
+      # DEBUG_KEYSTORE_* env vars for its sharedDebug signingConfig
+      # (no ~/.android path guessing).
       - name: Restore shared debug keystore
         env:
           KS_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
@@ -46,52 +47,71 @@ jobs:
           keytool -list -v -keystore .ci-debug.keystore \
             -storepass "$ANDROID_DEBUG_STORE_PASSWORD" 2>/dev/null | grep -E "Alias name|SHA256" || true
 
+      # The product is the web shell (:webapp). The legacy native shell
+      # (:app) is intentionally NOT tested here: dozens of its tests depend
+      # on gitignored device-capture fixtures (research/v97_verify/**) that
+      # do not exist on a clean checkout and fail by design. Build it locally
+      # if you need it.
       - name: Unit tests
         env:
           DEBUG_KEYSTORE_PATH: ${{ github.workspace }}/.ci-debug.keystore
           DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
           DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
-        run: ./gradlew :app:testDebugUnitTest --no-daemon
+        run: ./gradlew :webapp:testDebugUnitTest --no-daemon
 
-      - name: Assemble debug APK
+      - name: Assemble web-shell APKs
         env:
           DEBUG_KEYSTORE_PATH: ${{ github.workspace }}/.ci-debug.keystore
           DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
           DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :webapp:assembleDebug :webapp:assembleRelease :webapp:assembleReleaseR8 --no-daemon
 
       # Guard: CI APKs must carry the shared cert (760dc05f…); fail loudly
       # on any keystore drift instead of shipping uninstall-required builds.
-      - name: Verify APK signature
+      - name: Verify APK signatures
         run: |
           export PATH="$ANDROID_SDK_ROOT/build-tools/35.0.0:$PATH"
-          apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee /tmp/certs.txt | grep -E "Signer #1|SHA-256"
-          grep -q "760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6" /tmp/certs.txt
+          for apk in \
+            webapp/build/outputs/apk/debug/webapp-debug.apk \
+            webapp/build/outputs/apk/release/webapp-release.apk \
+            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk; do
+            echo "== $apk"
+            apksigner verify --print-certs "$apk" | tee /tmp/certs.txt | grep -E "Signer #1|SHA-256"
+            grep -q "760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6" /tmp/certs.txt
+          done
 
-      - name: Compute checksum
-        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
+      - name: Compute checksums
+        run: sha256sum \
+          webapp/build/outputs/apk/debug/webapp-debug.apk \
+          webapp/build/outputs/apk/release/webapp-release.apk \
+          webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
 
       # Distribution is via GitHub Actions run artifacts (every build) and,
-      # on tag pushes, a GitHub Release (download link no longer goes to
-      # filebin).
-      - name: Upload debug APK as Actions artifact
+      # on tag pushes, a GitHub Release.
+      - name: Upload web-shell APKs as Actions artifact
         uses: actions/upload-artifact@v4
         # Artifact storage quota can be hit; do not fail the build — GitHub
         # Releases (below) remain the reliable download path.
         continue-on-error: true
         with:
-          name: OpenCode-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: opencode-web-shell-apks
+          path: |
+            webapp/build/outputs/apk/debug/webapp-debug.apk
+            webapp/build/outputs/apk/release/webapp-release.apk
+            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
           if-no-files-found: error
 
-      - name: Attach APK to GitHub Release (tags only)
+      - name: Attach APKs to GitHub Release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
-          name: OpenCode ${{ github.ref_name }}
+          files: |
+            webapp/build/outputs/apk/debug/webapp-debug.apk
+            webapp/build/outputs/apk/release/webapp-release.apk
+            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
+          name: OpenCode Web Shell ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false
