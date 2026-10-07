@@ -83,10 +83,11 @@ jobs:
           done
 
       - name: Compute checksums
-        run: sha256sum \
-          webapp/build/outputs/apk/debug/webapp-debug.apk \
-          webapp/build/outputs/apk/release/webapp-release.apk \
-          webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
+        run: |
+          sha256sum \
+            webapp/build/outputs/apk/debug/webapp-debug.apk \
+            webapp/build/outputs/apk/release/webapp-release.apk \
+            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
 
       # Distribution is via GitHub Actions run artifacts (every build) and,
       # on tag pushes, a GitHub Release.
