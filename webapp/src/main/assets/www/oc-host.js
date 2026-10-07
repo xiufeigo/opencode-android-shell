@@ -2272,6 +2272,20 @@
   var OC_TERM_TOUCH_SLOP = 6;
   var OC_TERM_TOUCH_STYLE_ID = "oc-term-touch";
 
+  // ---- 松手惯性（fling）参数（单位：CSS px / ms，与拖动同一套坐标）----------
+  /** 起甩的最低速度：约 150 px/s。低于它当普通拖动，不继续滑。 */
+  var OC_TERM_FLING_MIN = 0.15;
+  /** 每 16.7ms 保留的速度比例（0.94 ⇒ 约 700ms 衰减到停下）。 */
+  var OC_TERM_FLING_DECAY = 0.94;
+  /** 低于这个速度就停（约 15 px/s）。 */
+  var OC_TERM_FLING_STOP = 0.015;
+  /** 速度采样窗口：只取最后 120ms 的位移算速度（更长会把减速段算进去）。 */
+  var OC_TERM_FLING_WINDOW_MS = 120;
+  /** 单帧最大时长，掉帧时别一次滑过头。 */
+  var OC_TERM_FLING_MAX_FRAME_MS = 48;
+  /** 一次甩动最长持续（保险丝，防止异常时一直滚）。 */
+  var OC_TERM_FLING_MAX_MS = 900;
+
   function installTerminalTouchStyle() {
     if (document.getElementById(OC_TERM_TOUCH_STYLE_ID)) return;
     var st = document.createElement("style");
@@ -2312,7 +2326,7 @@
     window.__ocTermTouch = true;
     installTerminalTouchStyle();
 
-    var track = null; // {id, lastY, moved}
+    var track = null; // {id, lastY, moved, target, samples:[{t,y}]}
 
     // 一次拖动会来几十个 pointermove；逐个发 wheel 会让控件的 smoothScrollTo 反复重启，
     // 实测会出现"画布只重绘了一部分"的残留（截图上 13..22 与 50..65 叠在一起）。
@@ -2337,13 +2351,74 @@
       if (!rafId) rafId = window.requestAnimationFrame(flushWheel);
     }
 
+    // ---- 松手惯性（fling）------------------------------------------------
+    // 手机上看长输出时，一次快速上/下滑后还应该继续滑一段并减速停下 —— 与系统列表一致。
+    // 速度取"最后 120ms 窗口"内的样本（只取最后两点会被抖动放大），逐帧衰减；
+    // 每帧发一个 wheel（与拖动同一条通道），所以不会和控件自己的平滑滚动打架。
+    function flingVelocity(samples) {
+      if (!samples || samples.length < 2) return 0;
+      var last = samples[samples.length - 1];
+      var first = samples[0];
+      for (var i = samples.length - 1; i >= 0; i--) {
+        if (last.t - samples[i].t > OC_TERM_FLING_WINDOW_MS) break;
+        first = samples[i];
+      }
+      var dt = last.t - first.t;
+      if (dt <= 0) return 0;
+      // 与拖动同一套方向：手指上滑（y 变小）为正 = 往最新走
+      return (first.y - last.y) / dt;
+    }
+
+    var flingRaf = 0;
+
+    function stopFling() {
+      if (flingRaf) window.cancelAnimationFrame(flingRaf);
+      flingRaf = 0;
+    }
+
+    function stillInTerminal(target) {
+      try {
+        return !!(target && target.closest && target.closest('[data-component="terminal"]') && document.contains(target));
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function startFling(velocity, target, ev) {
+      stopFling();
+      if (!stillInTerminal(target)) return;
+      var v = velocity;
+      var startedAt = 0;
+      var lastAt = 0;
+      var pos = ev ? { clientX: ev.clientX, clientY: ev.clientY } : { clientX: 0, clientY: 0 };
+
+      function step(now) {
+        flingRaf = 0;
+        if (!startedAt) {
+          startedAt = now;
+          lastAt = now;
+        }
+        var dt = Math.min(OC_TERM_FLING_MAX_FRAME_MS, now - lastAt); // 掉帧保护
+        lastAt = now;
+        // 逐帧衰减（按真实帧时长折算，掉帧时不会"多滑"）
+        v *= Math.pow(OC_TERM_FLING_DECAY, dt / 16.7);
+        if (Math.abs(v) < OC_TERM_FLING_STOP || now - startedAt > OC_TERM_FLING_MAX_MS) return;
+        if (!stillInTerminal(target)) return;
+        ocDispatchTerminalWheel(target, v * dt, pos);
+        flingRaf = window.requestAnimationFrame(step);
+      }
+
+      flingRaf = window.requestAnimationFrame(step);
+    }
+
     document.addEventListener(
       "pointerdown",
       function (e) {
+        stopFling(); // 手一碰就停，符合列表直觉
         if (e.pointerType === "mouse") return;
         var t = e.target;
         if (!t || !t.closest || !t.closest('[data-component="terminal"]')) return;
-        track = { id: e.pointerId, lastY: e.clientY, moved: 0 };
+        track = { id: e.pointerId, lastY: e.clientY, moved: 0, target: t, samples: [{ t: e.timeStamp, y: e.clientY }] };
       },
       true,
     );
@@ -2354,6 +2429,11 @@
         if (!track || e.pointerId !== track.id) return;
         var dy = track.lastY - e.clientY; // 手指上滑 = 正
         track.lastY = e.clientY;
+        track.samples.push({ t: e.timeStamp, y: e.clientY });
+        // 只留惯性窗口内的样本（防止长按后那一段老样本把速度算小/算反）
+        while (track.samples.length > 2 && e.timeStamp - track.samples[0].t > OC_TERM_FLING_WINDOW_MS) {
+          track.samples.shift();
+        }
         if (!dy) return;
         track.moved += Math.abs(dy);
         // 还没超过轻点阈值：什么都不做，把事件留给控件（聚焦/选择/点链接）
@@ -2366,7 +2446,14 @@
     );
 
     var stop = function (e) {
-      if (track && (!e || e.pointerId === track.id)) track = null;
+      if (!track || (e && e.pointerId !== track.id)) return;
+      var t = track;
+      track = null;
+      // 只有"真的拖过"才可能甩：轻点不产生惯性（否则点一下就自己滚）。
+      if (!e || e.type !== "pointerup") return;
+      if (t.moved < OC_TERM_TOUCH_SLOP) return;
+      var v = flingVelocity(t.samples);
+      if (Math.abs(v) >= OC_TERM_FLING_MIN) startFling(v, t.target, e);
     };
     document.addEventListener("pointerup", stop, true);
     document.addEventListener("pointercancel", stop, true);

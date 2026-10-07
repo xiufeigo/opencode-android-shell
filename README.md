@@ -152,6 +152,11 @@ own row markup, so it matches the real design): 100% / 80% / 65% / 55% ≈ 41 / 
 columns. The choice is stored in `localStorage['oc.settings.terminalFontScale']` (default
 65%, clamped to 0.5-1) and the page reloads once so the change takes effect on the next
 terminal; `?tab=appearance` keeps you on the same panel. Wide screens are untouched.
+
+The terminal also gets **touch scrolling** the widget itself never had: a vertical drag is
+translated into the wheel events ghostty-web listens for (1:1 with the finger, one wheel per
+frame, `touch-action:none` scoped to the terminal) and a flick keeps gliding with a decaying
+velocity (150 px/s to start, ~700ms decay, 900ms fuse, stops the moment you touch the screen).
 | Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
 
 `debug` and `releaseR8` are **local-only** variants: three APKs sharing one

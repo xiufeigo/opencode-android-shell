@@ -92,4 +92,46 @@ class TerminalTouchScrollTest {
         assertTrue("安装必须幂等", block.contains("__ocTermTouch"))
         assertTrue("文档开始就装（终端懒挂载）", block.contains("installTerminalTouchScroll();"))
     }
+
+    // ---- 松手惯性（fling）--------------------------------------------------
+
+    @Test
+    fun flingHasBoundedConstants() {
+        listOf(
+            "OC_TERM_FLING_MIN",
+            "OC_TERM_FLING_DECAY",
+            "OC_TERM_FLING_STOP",
+            "OC_TERM_FLING_WINDOW_MS",
+            "OC_TERM_FLING_MAX_FRAME_MS",
+            "OC_TERM_FLING_MAX_MS",
+        ).forEach { k -> assertTrue("缺少惯性常量 $k", block.contains(k)) }
+        assertTrue("衰减必须是 (0,1) 的比值", Regex("""OC_TERM_FLING_DECAY\s*=\s*0\.\d+""").containsMatchIn(block))
+        assertTrue(
+            "必须有停止阈值与最长时长两道保险（否则可能一直滚）",
+            Regex("""OC_TERM_FLING_STOP\s*=\s*0\.0\d+""").containsMatchIn(block) &&
+                Regex("""OC_TERM_FLING_MAX_MS\s*=\s*\d+""").containsMatchIn(block),
+        )
+    }
+
+    @Test
+    fun flingVelocityUsesATimeWindowNotJustTheLastTwoSamples() {
+        assertTrue("必须有算速度的具名函数", block.contains("function flingVelocity("))
+        assertTrue("样本必须按时间窗口裁剪", block.contains("OC_TERM_FLING_WINDOW_MS") && block.contains("samples.length > 2"))
+        assertTrue("必须用真实时间差算（不是假定 16ms 一帧）", block.contains("var dt = last.t - first.t"))
+        assertTrue(
+            "方向必须与拖动一致（手指上滑为正 = 往最新走）",
+            block.contains("return (first.y - last.y) / dt"),
+        )
+    }
+
+    @Test
+    fun flingOnlyStartsAfterARealDragAndStopsOnTouch() {
+        assertTrue("轻点/未超阈值不得起甩", block.contains("if (t.moved < OC_TERM_TOUCH_SLOP) return;"))
+        assertTrue("速度不够不得起甩", block.contains("if (Math.abs(v) >= OC_TERM_FLING_MIN) startFling(v, t.target, e)"))
+        assertTrue("只认 pointerup 起甩（cancel 不起）", block.contains("e.type !== \"pointerup\""))
+        assertTrue("手指一碰就停", block.contains("stopFling(); // 手一碰就停"))
+        assertTrue("掉帧保护用真实帧长", block.contains("OC_TERM_FLING_MAX_FRAME_MS"))
+        assertTrue("目标离开文档/终端就停", block.contains("stillInTerminal(target)"))
+        assertTrue("每帧只发一个 wheel", block.contains("ocDispatchTerminalWheel(target, v * dt, pos)"))
+    }
 }
