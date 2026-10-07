@@ -2242,3 +2242,134 @@
   // 设置页是懒挂载的，常驻观察（内部先判路径，非设置页立刻返回）。
   if (document.body) startTermSizeRowWatch();
   else document.addEventListener("DOMContentLoaded", startTermSizeRowWatch, { once: true });
+
+  // ======================================================================
+  // OC-TERM-TOUCH · 手机上"拖动终端看历史"（产品负责人 21:21 报单）
+  //
+  // ### 现象与根因
+  // 终端里拖不动、看不到上面的内容。根因在控件：ghostty-web 只监听 **wheel / mousedown /
+  // mousemove / click**，**一个 touch 监听都没有**（`touchstart`/`touchmove` 在它的包里
+  // 出现 0 次）——桌面靠滚轮、靠右侧滚动条拖动；手机既没有滚轮，手指拖动又落不到
+  // 滚动条那条 8px 窄带上 ⇒ 屏幕中间怎么拖都不动。
+  //
+  // ### 修法：把"手指竖直拖动"翻译成控件认得的 **wheel**
+  // 控件的 `handleWheel` 在 `deltaMode === DOM_DELTA_PIXEL` 时按
+  // `lines = deltaY / 单元格高` 换算（实测单元格高 10.9 CSS px）⇒ 我们发 1px 的
+  // deltaY 就是 1px 的滚动，**跟手**；它内部再 `smoothScrollTo()` 平滑过去。
+  //
+  // 方向（与控件内部语义对齐，别写反）：`viewportY = 0` 表示"贴着最新输出"
+  // （控件画滚动条时 `c = viewportY/t`、`thumbY = 4 + (n-s)*(1-c)` ⇒ 0 时拇指在最下），
+  // `viewportY - deltaY/行高` ⇒ **deltaY > 0 = 往最新走**。手指上滑（内容上移）应当看
+  // *更新* 的内容 ⇒ `deltaY = 手指位移(向上为正)` ✅。
+  //
+  // ### 边界（不许踩）
+  // · 只认**起点在 `[data-component="terminal"]` 内**的触摸；
+  // · 位移小于 `OC_TERM_TOUCH_SLOP` 一律当轻点 ⇒ 不动 `preventDefault`，
+  //   控件自己的 tap/聚焦/选择照旧（否则点一下终端就弹不出键盘了）；
+  // · 只加 `touch-action:none` 到终端面板（它本来就没有原生滚动），页面别处不受影响；
+  // · 逐键事件一个都不碰（`InputPathHotspotTest` 的红线）。
+  // ======================================================================
+  var OC_TERM_TOUCH_SLOP = 6;
+  var OC_TERM_TOUCH_STYLE_ID = "oc-term-touch";
+
+  function installTerminalTouchStyle() {
+    if (document.getElementById(OC_TERM_TOUCH_STYLE_ID)) return;
+    var st = document.createElement("style");
+    st.id = OC_TERM_TOUCH_STYLE_ID;
+    // touch-action:none 让浏览器别把这串触摸当滚动/缩放去处理（否则我们会收到 pointercancel）
+    st.textContent = '[data-component="terminal"],[data-component="terminal"] canvas{touch-action:none;}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  /**
+   * 派发一个合成 wheel。
+   *
+   * ⚠️ 必须从**触发点（画布）**派发，不能派在面板上：控件是把监听挂在
+   * `open(element)` 传来的那个节点上，而事件只向上冒泡 —— 派给它的祖先它收不到
+   * （2026-10-07 第一版就踩了这个：计数器显示 wheel 到了面板、控件却毫无反应）。
+   */
+  function ocDispatchTerminalWheel(target, deltaY, ev) {
+    try {
+      var node = target;
+      if (!node || !node.closest || !node.closest('[data-component="terminal"]')) return false;
+      var wheel = new WheelEvent("wheel", {
+        deltaY: deltaY,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true,
+        clientX: ev ? ev.clientX : 0,
+        clientY: ev ? ev.clientY : 0,
+      });
+      node.dispatchEvent(wheel);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function installTerminalTouchScroll() {
+    if (window.__ocTermTouch) return;
+    window.__ocTermTouch = true;
+    installTerminalTouchStyle();
+
+    var track = null; // {id, lastY, moved}
+
+    // 一次拖动会来几十个 pointermove；逐个发 wheel 会让控件的 smoothScrollTo 反复重启，
+    // 实测会出现"画布只重绘了一部分"的残留（截图上 13..22 与 50..65 叠在一起）。
+    // 所以**每帧只发一个** wheel（把这一帧的位移合起来），控件一次动画滚到位。
+    var pendingDy = 0;
+    var rafId = 0;
+    var lastTarget = null;
+    var lastEv = null;
+
+    function flushWheel() {
+      rafId = 0;
+      var dy = pendingDy;
+      pendingDy = 0;
+      if (!dy || !lastTarget) return;
+      ocDispatchTerminalWheel(lastTarget, dy, lastEv);
+    }
+
+    function queueWheel(target, dy, ev) {
+      pendingDy += dy;
+      lastTarget = target;
+      lastEv = ev;
+      if (!rafId) rafId = window.requestAnimationFrame(flushWheel);
+    }
+
+    document.addEventListener(
+      "pointerdown",
+      function (e) {
+        if (e.pointerType === "mouse") return;
+        var t = e.target;
+        if (!t || !t.closest || !t.closest('[data-component="terminal"]')) return;
+        track = { id: e.pointerId, lastY: e.clientY, moved: 0 };
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "pointermove",
+      function (e) {
+        if (!track || e.pointerId !== track.id) return;
+        var dy = track.lastY - e.clientY; // 手指上滑 = 正
+        track.lastY = e.clientY;
+        if (!dy) return;
+        track.moved += Math.abs(dy);
+        // 还没超过轻点阈值：什么都不做，把事件留给控件（聚焦/选择/点链接）
+        if (track.moved < OC_TERM_TOUCH_SLOP) return;
+        // 控件只认 wheel：1px 位移 → 1px deltaY（它再按单元格高换算成行），每帧合并一次
+        queueWheel(e.target, dy, e);
+        if (e.cancelable) e.preventDefault();
+      },
+      { capture: true, passive: false },
+    );
+
+    var stop = function (e) {
+      if (track && (!e || e.pointerId === track.id)) track = null;
+    };
+    document.addEventListener("pointerup", stop, true);
+    document.addEventListener("pointercancel", stop, true);
+  }
+
+  installTerminalTouchScroll();

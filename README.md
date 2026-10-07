@@ -124,10 +124,10 @@ both the Actions artifact and the GitHub Release asset:
 | | |
 |---|---|
 | Steps | `:webapp:testDebugUnitTest` → `:webapp:assembleRelease` |
-| Release asset | `opencode-2.0.6.apk` (built from `webapp/build/outputs/apk/release/`) |
+| Release asset | `opencode-2.0.7.apk` (built from `webapp/build/outputs/apk/release/`) |
 | Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
 | App label | `OpenCode` (`webapp/src/main/res/values/strings.xml` → `app_name`) — what the launcher, notifications, Recents and Settings → Apps show. The APK *file* keeps the `opencode-<version>.apk` name |
-| Version | `versionCode 33` / `versionName 2.0.6` (`webapp/build.gradle.kts`) |
+| Version | `versionCode 34` / `versionName 2.0.7` (`webapp/build.gradle.kts`) |
 
 ## Keyboard (IME) and the viewport
 

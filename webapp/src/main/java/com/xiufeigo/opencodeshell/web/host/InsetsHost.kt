@@ -67,6 +67,19 @@ class InsetsHost(
 
     private var last: JSONObject? = null
 
+    /** 已落地的视口压矮量（px）；-1 = 还没落过（首次立即生效）。 */
+    private var committedPadPx = -1
+
+    /** 合并窗口里待落的压矮量（px）；-1 = 没有挂起的提交。 */
+    private var pendingPadPx = -1
+    private var pendingImePx = 0
+    private var pendingNavPx = 0
+
+    private val commitResizeRunnable = Runnable {
+        val pad = pendingPadPx
+        if (pad >= 0) commitResize(pad, pendingImePx, pendingNavPx, "settled")
+    }
+
     init {
         // 边到边：让内容自己铺到系统栏下面，padding 由页面按变量加。
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -199,10 +212,35 @@ class InsetsHost(
         } else {
             0
         }
+
+        // 第一次（还没有已提交值）立即生效：启动时的 inset 就是静态读数，等 80ms 没意义。
+        if (committedPadPx < 0) {
+            commitResize(want, imeBottom, navBottom, "first")
+            return
+        }
+        if (want == committedPadPx) {
+            // 回到已提交值（例如键盘动画来回抖了一下）⇒ 撤掉挂起的提交，别多压一次。
+            pendingPadPx = -1
+            root.removeCallbacks(commitResizeRunnable)
+            return
+        }
+        // 键盘动画期间平台可能逐帧上报不同高度：只记最新值，等稳定 80ms 再落一次。
+        // 逐帧落 = 页面里的终端反复重排（"闪 + 字体缩放"），合并后一次开关只重排一次。
+        pendingPadPx = want
+        pendingImePx = imeBottom
+        pendingNavPx = navBottom
+        root.removeCallbacks(commitResizeRunnable)
+        root.postDelayed(commitResizeRunnable, ImeResize.COMMIT_DELAY_MS)
+    }
+
+    /** 真正落 padding 的那一次（合并窗口到期 / 首次）。 */
+    private fun commitResize(pad: Int, imeBottom: Int, navBottom: Int, why: String) {
+        committedPadPx = pad
+        pendingPadPx = -1
         val layer = resizeTarget()
-        if (layer.paddingBottom == want) return
-        layer.setPadding(layer.paddingLeft, layer.paddingTop, layer.paddingRight, want)
-        Log.i(TAG, "viewport bottom pad = $want px (ime=$imeBottom nav=$navBottom window=${windowHeightPx()} target=${layer.javaClass.simpleName})")
+        if (layer.paddingBottom == pad) return
+        layer.setPadding(layer.paddingLeft, layer.paddingTop, layer.paddingRight, pad)
+        Log.i(TAG, "viewport bottom pad = $pad px (ime=$imeBottom nav=$navBottom window=${windowHeightPx()} target=${layer.javaClass.simpleName} why=$why)")
     }
 
     /** 整窗高（px）：decor 视图高，边到边下就是包含系统栏的整块屏幕。 */

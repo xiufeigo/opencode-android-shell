@@ -28,11 +28,11 @@ android {
         minSdk = 26
         targetSdk = 35
         // 27 原生壳版本线（1.4.0/26）续号；28 幻影 4173；29 弹层键盘；30 窄屏终端列数；
-        // 31 终端字号设置项；32 IME 视口兜底；33 应用名改 OpenCode。
-        // 必须**严格大于**设备上已装的 versionCode 才能原地升级（26 → 33 ✅）。
-        versionCode = 33
-        // 跟 GitHub tag 走（v2.0.6 = 待发版本；产品负责人 2026-10-07 定规：**只有点名发版才打 tag**）。
-        versionName = "2.0.6"
+        // 31 终端字号设置项；32 IME 视口兜底；33 应用名；34 终端触摸滚动+resize 合并。
+        // 必须**严格大于**设备上已装的 versionCode 才能原地升级（26 → 34 ✅）。
+        versionCode = 34
+        // 跟 GitHub tag 走（v2.0.7 = 待发版本；产品负责人 2026-10-07 定规：**只有点名发版才打 tag**）。
+        versionName = "2.0.7"
     }
 
     signingConfigs {

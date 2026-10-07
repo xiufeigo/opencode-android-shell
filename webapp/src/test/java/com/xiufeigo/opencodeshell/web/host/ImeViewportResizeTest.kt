@@ -114,6 +114,18 @@ class ImeViewportResizeTest {
         )
     }
 
+    @Test
+    fun `键盘动画期间的多次上报只落一次 避免终端反复重排`() {
+        val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val occl = read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeOcclusion.kt")
+        assertTrue("必须有合并窗口常量（纯函数宿主侧可测）", occl.contains("COMMIT_DELAY_MS"))
+        assertTrue("必须 postDelayed 提交", src.contains("postDelayed(commitResizeRunnable"))
+        assertTrue("新的上报必须撤掉上一个挂起的提交", src.contains("removeCallbacks(commitResizeRunnable)"))
+        assertTrue("值回到已提交值时不得多压一次", src.contains("if (want == committedPadPx)"))
+        assertTrue("首次必须立即生效（启动时 inset 是静态读数，等窗口没意义）", src.contains("if (committedPadPx < 0)"))
+        assertTrue("真正落 padding 的只有一个地方", Regex("""layer\.setPadding\(""").findAll(src).count() == 1)
+    }
+
     // ---- 3. 注入层契约层（防"双倍留白"） -----------------------------------
 
     private fun facade(): String = read("src/main/assets/www/oc-host.js")
