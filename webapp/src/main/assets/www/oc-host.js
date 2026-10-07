@@ -1379,71 +1379,219 @@
   }
 
   // ======================================================================
-  // UX14-P6 · 幻影服务器条目清除（宿主注入层 DOM 级隐藏）
+  // 幻影服务器条目（页面 origin 那条）· **上游注册表机制为主，DOM 兜底为辅**
   //
-  // 机制事实（P4/P5 已钉死，直接采信）：
-  //  · 服务器注册表 = localStorage['opencode.global.dat:server']，
-  //    首次 Add 成功才惰性创建；结构 {"list":[…],"hidden":{},…}。
-  //  · 4173 那条 = 上游 **builtin**：它来自 location.origin
-  //    （currentServerUrl），**不在 list 里**。
-  //  · 上游 Remove 的渲染条件只是"该条目在 list 里" ⇒ builtin 永远
-  //    canRemove 不成立；`hidden` 容器虽存在但上游没有任何写入入口
-  //    ⇒ 也没有 hide 出口。**上游侧永远删不掉这条。**
+  // ## 这一层要解决的问题（2026-10-07 产品负责人报的缺陷）
   //
-  // 产品决策（2026-10-06 拍板）："这条不应该存在" ⇒ 由宿主注入层
-  // 把它从界面上隐藏掉。
+  // `127.0.0.1:4173` 是本壳 `LocalUiOriginServer` 托管的**页面自身来源**；
+  // 上游把它当"内建服务器"（`currentServerUrl = location.origin`），永远在
+  // `list` 之外，于是：
+  //   · 上游 Remove 永远删不掉它（canRemove 只看 list）；
+  //   · 上游 Home 的服务器列表与**当前上下文**都读 store 的 `visible`
+  //     （`server.list: () => visible`、`focused = visible.find(…) ?? visible[0]`），
+  //     而 origin 恒在 `visible[0]` ⇒ Home 的当前服务器恒为 4173；
+  //   · 4173 的 `/api/*` 由 LocalUiOriginServer 按设计一律 404
+  //     ⇒ 事件流 404 @1Hz 空转 ⇒ Home 永久 `Loading`。
   //
-  // 已放弃的选项 A（仅记录理由）：预置 defaultServerUrl=4095。
-  //   幻影换成 4095 地址后，它就只是注册表里的一条普通条目，**一样要靠
-  //   宿主过滤才能消失**，而且会把"UI 静态来源 origin"与"真实服务器"
-  //   两个概念搅在一起 —— 治标不治本。
+  // v1–v4 的 DOM 隐藏只遮界面：设置里的行藏了，**Home 的当前上下文仍钉在
+  // 4173**（页头/搜索框写着 127.0.0.1:4173，正文 Loading），设备复验
+  // （UX17-P6）当场可见。产品负责人 2026-10-07 的原话就是
+  // "设置界面添加服务器后 4173 消失了，但是主页这里还在，而且也不能用"。
   //
-  // 保守约束：**只隐藏、不删除、不改文本** —— 上游数据模型完全不动，
-  // 避免破坏 visible[0] 焦点逻辑。
+  // ## 修法：写上游自己的 `hidden` 映射
   //
-  // 🔴 UX15-P2 · 隐藏**条件化**："有用户服务器才隐藏"。
-  //   P1 自查抓到首启空态缺陷：全新安装（未加任何服务器）时 builtin 行
-  //   被隐藏 ⇒ Home 无限期停在 Loading 骨架屏、无"添加服务器"引导、入口
-  //   只剩一个无文字的 "+"。而首启时那条红点行恰恰是**唯一可操作的上下文**
-  //   （P8 实证：Edit 它就能改成自己的服务器 = 官方自带 onboarding 路径）。
-  //   ⇒ 与产品意图（"加了自己的服务器后 4173 不该还在"）冲突。
+  // store 的 `visible = list.filter(s => !hidden[Key(s)])`。把 origin 写进
+  // `hidden` ⇒ 它**从所有读 visible 的表面消失**（Home 列表、Home 切换器、
+  // 设置里的服务器行/分段菜单），**并且 Home 的当前服务器自动落到用户的
+  // 服务器上**（`focused = visible[0]`）⇒ 不点切换器也能用。
   //
-  //   闸门信号 = 注册表键 `opencode.global.dat:server` 的**存在性**。
-  //   机制依据（P5 实证）：该键**首次 Add 成功后才惰性创建** ⇒ 键不存在
-  //   ⟺ 用户还没有任何自己的服务器。键存在时才执行隐藏；不存在则
-  //   **完全不动**（builtin 行照常显示，可 Edit、可设为默认）。
+  // 关键在**写入时机**：本文件由 `addDocumentStartJavaScript` 注入，
+  // 顶层代码早于页面脚本 ⇒ 这里写下的 `hidden` 会在应用 hydration 时被读进
+  // 内存，**当次启动即生效**，不需要刷新。应用运行期间用户 Add/Remove 时，
+  // 应用自己会写这个键 —— 我们挂一个只认这一个键的观察器补写一次并 reload
+  // 一次（应用内存里的 hidden 只有重新 hydration 才跟得上）。
   //
-  //   取舍（明确记录）：用户**移除全部**自己的服务器后，注册表 list 为空
-  //   但**键仍在** ⇒ 仍然隐藏 ⇒ 4173 不复活。这符合"删掉的不该自己回来"
-  //   的直觉，也避免"清空列表 ⇒ 幻影立刻冒出来"这种更困惑的行为。
+  // ## 产品语义（产品负责人拍板）
   //
-  //   即时生效：扫描本来就由 MutationObserver 周期性触发；用户添加服务器
-  //   必然引起 DOM 变更 ⇒ 自然触发下一轮扫描，此时闸门已放行。
-  //   **不需要**额外事件监听（加了反而是第二套真相来源）。
+  // · 用户**还没有自己的服务器**（注册表键不存在）⇒ 一个字节都不动：
+  //   origin 那条是首启唯一的 onboarding 入口（Edit 它即可改成自己的服务器）。
+  // · 用户**已有自己的服务器** ⇒ `hidden[origin] = true`：它从全界面消失，
+  //   Home 落到用户的服务器上。
+  // · 用户把服务器**全部删掉** ⇒ 撤掉 `hidden[origin]`：placeholder 回来，
+  //   应用仍然可用（不留一个"没有任何服务器"的死界面）。
+  //
+  // ## 已放弃的选项（留档，别再走一遍）
+  //
+  // · 预置 `defaultServerUrl`（4095/4096）：UX18-P1 设备实测证明它是**死指针**
+  //   —— 列表/切换器/事件流三方都不读它。写了也没用。
+  // · 纯 DOM 隐藏（v1–v4）：见上，遮不住上下文。
+  // · 往注册表 list 里塞占位服务器：会**抢走 focused**（list[0] 顺序），
+  //   等于用一个新的坏上下文换掉旧的坏上下文。
   // ======================================================================
   var PHANTOM_ATTR = "data-oc-phantom";
   var PHANTOM_STYLE_ID = "oc-phantom-hide";
   var PHANTOM_THROTTLE_MS = 250;
   var PHANTOM_ROW_SEL =
     'a,li,button,[role="button"],[role="menuitem"],[role="menuitemradio"],[data-slot]';
-  // 服务器注册表键：P5 实证"首次 Add 成功才惰性创建"⇒ 存在性 = 有无用户服务器
+  // 服务器注册表键（P5 实证"首次 Add 成功才惰性创建"⇒ 存在性 = 有无用户服务器）
   var PHANTOM_REGISTRY_KEY = "opencode.global.dat:server";
+  // reload 防环计数（sessionStorage：同一次会话内跨 reload 存活）
+  var PHANTOM_RELOAD_KEY = "oc.originHideReloads";
+  var PHANTOM_RELOAD_MAX = 3;
+  var phantomWritingRegistry = false; // 我们自己在写 ⇒ 观察器别再递归
+  var phantomReloadPending = false; // 一次只排一次 reload
+
+  /** 页面 origin（去掉结尾斜杠）。host:port 由它派生 —— 不写死端口字面量。 */
+  function phantomOrigin() {
+    try {
+      var o = window.location && window.location.origin;
+      return o ? String(o).replace(/\/+$/, "") : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  /** 注册表里一条服务器条目的 url（兼容上游三种形态：字符串 / {url} / {http:{url}}）。 */
+  function phantomServerUrl(entry) {
+    if (!entry) return "";
+    if (typeof entry === "string") return entry;
+    if (entry.http && typeof entry.http.url === "string") return entry.http.url;
+    if (typeof entry.url === "string") return entry.url;
+    return "";
+  }
 
   /**
-   * 隐藏闸门：用户是否**已经添加过自己的服务器**（注册表键是否存在）。
-   * 惰性读取 —— 每次扫描读一次，当次生效。
-   * localStorage 不可用（隐私模式/被拒）时按"没有用户服务器"处理，
-   * 退回首启行为（不隐藏），这是更保守、也更不会误伤的一侧。
+   * 惰性读注册表。键不存在 / 坏 JSON / localStorage 不可用（隐私模式）一律 null。
+   * **绝不缓存**：每次调用都重读，否则首启判定之后加服务器就再也放行不了。
    */
-  function hasUserServerRegistry() {
+  function phantomReadRegistry() {
     try {
-      return !!(
-        window.localStorage &&
-        window.localStorage.getItem(PHANTOM_REGISTRY_KEY)
-      );
+      var raw = window.localStorage && window.localStorage.getItem(PHANTOM_REGISTRY_KEY);
+      if (!raw) return null;
+      var reg = JSON.parse(raw);
+      return reg && typeof reg === "object" ? reg : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** 整表写回（唯一写入口径：读-改-写，不改 list/不删条目）。 */
+  function phantomWriteRegistry(reg) {
+    phantomWritingRegistry = true;
+    try {
+      window.localStorage.setItem(PHANTOM_REGISTRY_KEY, JSON.stringify(reg));
+      return true;
     } catch (e) {
       return false;
+    } finally {
+      phantomWritingRegistry = false;
     }
+  }
+
+  /** 用户**自己的**服务器 = list 里 url ≠ 页面 origin 的那些。 */
+  function phantomUserServers(reg) {
+    var out = [];
+    var list = reg && Array.isArray(reg.list) ? reg.list : [];
+    var origin = phantomOrigin();
+    for (var i = 0; i < list.length; i++) {
+      var u = phantomServerUrl(list[i]).replace(/\/+$/, "");
+      if (u && u !== origin) out.push(u);
+    }
+    return out;
+  }
+
+  /**
+   * 让注册表的 `hidden[origin]` 与产品语义对齐：
+   *   用户有自己的服务器 ⇒ 置 true（origin 让位）；没有 ⇒ 删掉（placeholder 回来）。
+   * 返回 true = **这次改了 localStorage**（调用方若在 hydration 之后，需要 reload 才生效）。
+   *
+   * 只动 `hidden` 这一个容器：`list` 一字不改、条目一个不删 —— 上游数据模型
+   * 保持原样，避免破坏它的焦点/排序逻辑。
+   */
+  function syncOriginHidden() {
+    var origin = phantomOrigin();
+    if (!origin) return false;
+    var reg = phantomReadRegistry();
+    // 键不存在 = 用户还没有任何服务器 ⇒ 原样不动（首启 onboarding 路径）。
+    if (!reg) return false;
+    var want = phantomUserServers(reg).length > 0;
+    var hidden = reg.hidden && typeof reg.hidden === "object" ? reg.hidden : null;
+    var has = !!(hidden && hidden[origin]);
+    if (want === has) return false; // 已经对齐，不写、不 reload
+    if (want) {
+      if (!hidden) {
+        hidden = {};
+        reg.hidden = hidden;
+      }
+      hidden[origin] = true;
+    } else {
+      delete hidden[origin];
+    }
+    return phantomWriteRegistry(reg);
+  }
+
+  /**
+   * DOM 兜底层的闸门：**直接读注册表的 `hidden[origin]`**（单一事实来源）。
+   * 上游渲染层没消费 hidden 的表面由 DOM 层补齐 —— 两侧同进同退，
+   * 不会出现"设置里藏了、主页还在"这种半隐藏状态。
+   */
+  function isOriginHiddenInRegistry() {
+    var origin = phantomOrigin();
+    if (!origin) return false;
+    var reg = phantomReadRegistry();
+    if (!reg || !reg.hidden || typeof reg.hidden !== "object") return false;
+    return !!reg.hidden[origin];
+  }
+
+  /**
+   * 应用自己写注册表之后的补写路径。
+   * 只有当**状态真的需要变**时才 reload —— 已经对齐的写入（打开项目、
+   * 记 lastProject 等）不打扰用户。
+   */
+  function afterRegistryWrite() {
+    if (!syncOriginHidden()) return; // 已对齐
+    if (phantomReloadPending) return; // 一次只排一次
+    // 还没挂载完（boot 路径已处理）⇒ 不 reload，避免启动期空转。
+    if (document.readyState !== "complete") return;
+    if (!document.querySelector("[data-opencode-mounted]")) return;
+    var n = 0;
+    try {
+      n = parseInt(window.sessionStorage.getItem(PHANTOM_RELOAD_KEY) || "0", 10) || 0;
+    } catch (e) {}
+    if (n >= PHANTOM_RELOAD_MAX) return; // 结构性防环：同一次会话最多 3 次
+    try {
+      window.sessionStorage.setItem(PHANTOM_RELOAD_KEY, String(n + 1));
+    } catch (e) {}
+    phantomReloadPending = true;
+    window.setTimeout(function () {
+      try {
+        window.location.reload();
+      } catch (e) {}
+    }, 200);
+  }
+
+  /**
+   * 观察器：只认注册表这一个键。
+   * （不挂 MutationObserver 去猜"用户刚加了服务器"—— 应用写注册表本身就是
+   *   最准确的信号，而 DOM 变更在流式输出期间遍地都是。）
+   */
+  function watchRegistryWrites() {
+    try {
+      var proto = window.Storage && window.Storage.prototype;
+      if (!proto || proto.__ocRegistryWatcher) return;
+      var orig = proto.setItem;
+      if (typeof orig !== "function") return;
+      proto.__ocRegistryWatcher = true;
+      proto.setItem = function (key, value) {
+        var out = orig.apply(this, arguments);
+        if (key === PHANTOM_REGISTRY_KEY && !phantomWritingRegistry) {
+          try {
+            afterRegistryWrite();
+          } catch (e) {}
+        }
+        return out;
+      };
+    } catch (e) {}
   }
 
   /** 目标标识：location.origin 的 "host:port"（动态取，不写死端口字面量）。 */
@@ -1512,11 +1660,10 @@
   }
 
   function hidePhantomRows() {
-    // 🔴 UX15-P2 · 条件化闸门：**有用户服务器才隐藏**。
-    //   键不存在（首启，用户还没加过任何服务器）⇒ 原样返回，一个节点都不动。
-    //   此时 4173 那条 builtin 行是首启用户**唯一可操作的上下文**
-    //   （Edit 它 = 官方自带 onboarding 路径），藏了就是断掉上手入口。
-    if (!hasUserServerRegistry()) return 0;
+    // 闸门 = 注册表的 `hidden[origin]`（单一事实来源）。它由 syncOriginHidden()
+    // 按"用户是否已有自己的服务器"维护，DOM 层只负责把上游漏渲染的表面补齐
+    // ⇒ 两侧同进同退，不会再出现 v1–v4 那种"设置里藏了、主页还在"的半隐藏。
+    if (!isOriginHiddenInRegistry()) return 0;
     var token = phantomOriginToken();
     if (!token) return 0;
     // 🔴 UX15-P1 · 候选取元素改用 **XPath 直接文本匹配**。
@@ -1608,3 +1755,16 @@
   } else {
     window.addEventListener("load", startPhantomServerHide, { once: true });
   }
+
+  // ---- 注册表机制 · ① boot 路径（必须在文档开始跑，早于页面脚本）----------
+  // 本文件由 addDocumentStartJavaScript 注入 ⇒ 顶层代码在**文档开始**执行。
+  // 这里写下的 `hidden[origin]` 会在应用 hydration 时被读进内存 ⇒ **当次启动
+  // 即生效**（用户手机上"已经有自己的服务器"的状态，装上这版一开就好）。
+  try {
+    syncOriginHidden();
+  } catch (e) {}
+
+  // ---- 注册表机制 · ② 运行期路径 ------------------------------------------
+  // 应用运行期间 Add/Edit/Remove 都会自己写注册表键；观察器在那里补写一次，
+  // 必要时 reload 一次让应用重新 hydration（hidden 才会进它的内存）。
+  watchRegistryWrites();

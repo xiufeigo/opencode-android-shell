@@ -103,15 +103,43 @@ Studio/jbr`) — a newer system JDK can crash the Kotlin daemon
 ## Testing
 
 ```bash
-./gradlew :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest      # legacy native shell
+./gradlew :webapp:testDebugUnitTest   # web shell (what CI runs)
 ```
 
-JVM unit suite (≈1,250 tests; 1,249 green — see
-`research/v2_audit/wave2.4a-notes.md` / `wave2.4b-notes.md`). CI runs the same
-task plus `assembleDebug` (`.github/workflows/build.yml`).
+JVM unit suite (native shell ≈1,250 tests; the web shell adds ≈246 — see
+`research/v2_audit/wave2.4a-notes.md` / `wave2.4b-notes.md`).
 
 Device verification is not claimed here: Wave 4 E2E is still in flight — see
 `research/wave4_*_report.md` as the acceptance evidence location.
+
+## CI: what the GitHub Release contains
+
+`.github/workflows/build.yml` builds the **web shell only** (`:webapp`; the
+legacy native `:app` is not built in CI because dozens of its tests depend on
+gitignored device-capture fixtures under `research/v97_verify/**`). It runs the
+web-shell unit tests, assembles **one** APK and publishes exactly that file as
+both the Actions artifact and the GitHub Release asset:
+
+| | |
+|---|---|
+| Steps | `:webapp:testDebugUnitTest` → `:webapp:assembleRelease` |
+| Release asset | `opencode-2.0.1.apk` (built from `webapp/build/outputs/apk/release/`) |
+| Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
+| Version | `versionCode 28` / `versionName 2.0.1` (`webapp/build.gradle.kts`) |
+| Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
+
+`debug` and `releaseR8` are **local-only** variants: three APKs sharing one
+applicationId + versionCode can never coexist on a device, so shipping them all
+only made the download page ambiguous. A `debug` APK is produced only when the
+build itself is debug (`./gradlew :webapp:assembleDebug`), never by CI.
+
+> ⚠️ Locally built APKs are signed with this machine's `~/.android/debug.keystore`
+> (`220657df…`), which is *not* the CI key (`760dc05f…`): installing a local
+> debug build over a CI-signed install fails with
+> `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. That is a keystore mismatch, not a
+> package-name problem — point `DEBUG_KEYSTORE_PATH` at a copy of the CI
+> keystore if you need the two to be interchangeable.
 
 ## Repo layout
 

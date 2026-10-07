@@ -1,8 +1,17 @@
 // W1 — WebView 宿主模块。
-// 2026-10-07 起 applicationId 对齐**原生壳**（原 `com.xiufeigo.opencodeshell.web` 退役）：
-// 产品负责人要求 CI 的 web 壳**直接覆盖更新**设备上已装的原生壳 debug 包
-// （`com.xiufeigo.opencodeshell.debug`，同为 CI sharedDebug 证书 ⇒ 平滑更新成立）。
-// 早年"两个壳并存互不覆盖"的设计就此退役；曾装过的 `.web.debug` 测试包成为孤立应用需手动卸载。
+// 2026-10-07（第 3 次改）**全变体统一为正式包名 `com.xiufeigo.opencodeshell`**。
+// 产品负责人拍板："包依旧是 `com.xiufeigo.opencodeshell` 这个哈。只有这个，
+// 只有当前[构建]是 debug 时，才打 debug 包。" 定稿形态：
+//   · debug / release / releaseR8 **都不带 `.debug` 后缀** ⇒ 设备上永远是同一个 App；
+//   · CI 只发 **release 这一个**（`.github/workflows/build.yml`）；debug 包只在该构建
+//     就是 debug 时产出（本地 `:webapp:assembleDebug`），**永不进 Release**；
+//   · 签名沿用 secrets 里的 sharedDebug keystore —— **历史上的 GitHub Release 就是这么发的**：
+//     老 CI 跑的是 `:app:assembleDebug`，而 `:app` 的 debug 变体没有后缀 ⇒ 包名同样是
+//     `com.xiufeigo.opencodeshell`。所以"从 GitHub 装过包"的设备，这一版是**原地升级**。
+//   · ⚠️ 本机自建的 APK 用本机 `~/.android/debug.keystore`（`220657df…`），与 CI 那把
+//     （`760dc05f…`）**不是同一把** ⇒ 装到 CI 签名的设备上会 UPDATE_INCOMPATIBLE。
+//     那是 keystore 的事、不是包名的事：要让两边互换，得让 `DEBUG_KEYSTORE_PATH`
+//     指向同一份 keystore。
 // 注意：namespace / Kotlin 包名仍是 `.web`（与 Android applicationId 无关，无需改代码）。
 plugins {
     id("com.android.application")
@@ -14,13 +23,15 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        // 两个 buildTypes 都带 `.debug` 后缀 ⇒ 最终 id = `com.xiufeigo.opencodeshell.debug`
-        // （= 原生壳 debug 包名，覆盖更新成立）。
+        // 全变体共用这一个包名（= 历史发版包的包名）。
         applicationId = "com.xiufeigo.opencodeshell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-webhost"
+        // 27 是原生壳版本线（1.4.0 / 26）的续号；28 是本轮（幻影 4173 修复）的续号。
+        // 必须**严格大于**设备上已装的 versionCode 才能原地升级（26 → 28 ✅）。
+        versionCode = 28
+        // 跟 GitHub tag 走（v2.0.1 = 本轮发布版本）。
+        versionName = "2.0.1"
     }
 
     signingConfigs {
@@ -39,11 +50,20 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("sharedDebug")
-            applicationIdSuffix = ".debug"
+            // 🔴 刻意**不加** `applicationIdSuffix = ".debug"`：包名必须与正式包一致
+            //    （产品负责人："只有这个"）。代价是 debug 包与正式包互相覆盖 —— 装哪个是哪个，
+            //    这正是要的语义。debug 包只在"该构建就是 debug"时产出，不进 CI 发布。
         }
-        // E1 发布工程：release 变体**对齐原生壳约定**（app/build.gradle.kts 的 release 块）——
-        // 同一份 `sharedDebug` 签名 + `applicationIdSuffix = ".debug"`，
-        // 于是 web 壳的 release 是个"可安装、与官方壳互不覆盖"的包，而不是只装得上的调试包。
+        // 正式发布变体：**无 `applicationIdSuffix`** ⇒ 包名 = `com.xiufeigo.opencodeshell`。
+        //
+        // 🔴 与 E1（`.debug` 后缀）的差别，逐条记账：
+        //   · E1 的理由是"与官方壳互不覆盖，可并存"；产品负责人 2026-10-07 两次改判：
+        //     ① 要正式包名（GitHub 下载件必须是被安装应用的一次更新，而不是又一个新 App）；
+        //     ② "只有这个"⇒ debug 变体也不再带后缀，全仓一个包名。
+        //   · 于是设备上只会有一个 OpenCode；从 GitHub 装的旧包（1.4.0 / versionCode 26，
+        //     同一把 sharedDebug 签名）会被这一版**原地升级**，数据不丢。
+        //   · 想并存做 A/B 的老做法（`.debug` 子包）已退役；要并存只能在本地临时改
+        //     `applicationIdSuffix`，别把改动提交回来。
         //
         // 🔴 F11（R8 试产轮）**故意收紧了这一块**：删掉 E1 留下的
         // `-Pwebapp.r8=true` 开关，改为**无条件非 R8**。
@@ -56,7 +76,6 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("sharedDebug")
-            applicationIdSuffix = ".debug"
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -66,11 +85,12 @@ android {
         // F11：R8 试产变体，**独立 buildType**（不是开关）。
         // · 独立 ⇒ 输出路径 `outputs/apk/releaseR8/webapp-releaseR8.apk`，
         //   与 release 的产物**永不互相覆盖**，"哪份是发布件"在变体列表里也不会混淆。
-        // · `applicationIdSuffix` **故意与 release 相同** ⇒ 两版 applicationId 一致，
-        //   可以**互相覆盖安装**，这正是同机同轮 A/B 对比需要的。
+        // · 继承 release ⇒ applicationId 同样**无后缀**（`com.xiufeigo.opencodeshell`），
+        //   两版**互相覆盖安装**，这正是同机同轮 A/B 对比需要的。
         // · 真正的混淆规则在 `proguard-rules.pro`（F11 已按 12 项风险逐条落盘）。
         // ⚠️ 不加 `isDebuggable = true`：C1 契约（`DebugEvalChannelTest`）要求
         //   release 侧 debug 通道保持关闭，`releaseR8` 同样保持关闭。
+        // ⚠️ R8 变体**不进 CI 发布**（只有 release 进）——它是本地 A/B 用的试产品。
         create("releaseR8") {
             initWith(getByName("release"))
             isMinifyEnabled = true

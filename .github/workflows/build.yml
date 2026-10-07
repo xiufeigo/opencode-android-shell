@@ -32,10 +32,18 @@ jobs:
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      # Same debug signature as local builds: restore the shared debug
-      # keystore next to the checkout; webapp/build.gradle.kts reads the
-      # DEBUG_KEYSTORE_* env vars for its sharedDebug signingConfig
-      # (no ~/.android path guessing).
+      # Restore the shared debug keystore next to the checkout;
+      # webapp/build.gradle.kts reads DEBUG_KEYSTORE_* env vars for its
+      # sharedDebug signingConfig (no ~/.android path guessing).
+      #
+      # ⚠️ Truth about "the same signature as local": CI signs with the
+      # keystore held in the ANDROID_DEBUG_KEYSTORE_BASE64 secret, pinned
+      # below by its public cert fingerprint (760dc05f…). A developer
+      # machine's ~/.android/debug.keystore is a *different* key unless it
+      # was copied from that secret, so locally built APKs and CI APKs do
+      # NOT update each other (INSTALL_FAILED_UPDATE_INCOMPATIBLE). To make
+      # them interchangeable, set DEBUG_KEYSTORE_PATH to a local copy of the
+      # CI keystore before building.
       - name: Restore shared debug keystore
         env:
           KS_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
@@ -60,59 +68,65 @@ jobs:
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: ./gradlew :webapp:testDebugUnitTest --no-daemon
 
-      - name: Assemble web-shell APKs
+      # ONE shipping artifact: the `release` variant. Every variant carries the
+      # same product package id `com.xiufeigo.opencodeshell` (no `.debug`
+      # suffix anywhere), which is also what every previous GitHub release
+      # shipped — so this APK updates an installed GitHub build in place.
+      # debug / releaseR8 are local-only: three APKs with the same
+      # applicationId + versionCode can never coexist on a device, so shipping
+      # all of them only made the download page ambiguous. A debug APK is built
+      # only when the build itself is debug, never here.
+      - name: Assemble release APK
         env:
           DEBUG_KEYSTORE_PATH: ${{ github.workspace }}/.ci-debug.keystore
           DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_STORE_PASSWORD }}
           DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
-        run: ./gradlew :webapp:assembleDebug :webapp:assembleRelease :webapp:assembleReleaseR8 --no-daemon
+        run: ./gradlew :webapp:assembleRelease --no-daemon
 
-      # Guard: CI APKs must carry the shared cert (760dc05f…); fail loudly
-      # on any keystore drift instead of shipping uninstall-required builds.
-      - name: Verify APK signatures
+      # Guard: the shipped APK must be the product identity — package id
+      # exactly `com.xiufeigo.opencodeshell` (a `.debug` suffix means the
+      # release buildType drifted), and must carry the shared cert
+      # (760dc05f…). Fail loudly instead of publishing a wrong-identity file.
+      - name: Verify APK identity and signature
         run: |
           export PATH="$ANDROID_SDK_ROOT/build-tools/35.0.0:$PATH"
-          for apk in \
-            webapp/build/outputs/apk/debug/webapp-debug.apk \
-            webapp/build/outputs/apk/release/webapp-release.apk \
-            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk; do
-            echo "== $apk"
-            apksigner verify --print-certs "$apk" | tee /tmp/certs.txt | grep -E "Signer #1|SHA-256"
-            grep -q "760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6" /tmp/certs.txt
-          done
+          APK=webapp/build/outputs/apk/release/webapp-release.apk
+          aapt2 dump badging "$APK" > /tmp/badging.txt
+          grep -E "^package:|^application-label:" /tmp/badging.txt | head -3
+          PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" /tmp/badging.txt)
+          CODE=$(sed -n "s/^package:.*versionCode='\([0-9]*\)'.*/\1/p" /tmp/badging.txt)
+          NAME=$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" /tmp/badging.txt)
+          echo "package=$PKG versionCode=$CODE versionName=$NAME"
+          test "$PKG" = "com.xiufeigo.opencodeshell"
+          apksigner verify --print-certs "$APK" | tee /tmp/certs.txt | grep -E "Signer #1|SHA-256"
+          grep -q "760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6" /tmp/certs.txt
+          echo "APK_NAME=opencode-${NAME}.apk" >> "$GITHUB_ENV"
 
-      - name: Compute checksums
+      - name: Stage distribution APK and checksum
         run: |
-          sha256sum \
-            webapp/build/outputs/apk/debug/webapp-debug.apk \
-            webapp/build/outputs/apk/release/webapp-release.apk \
-            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
+          mkdir -p dist
+          cp webapp/build/outputs/apk/release/webapp-release.apk "dist/${APK_NAME}"
+          sha256sum "dist/${APK_NAME}"
 
       # Distribution is via GitHub Actions run artifacts (every build) and,
-      # on tag pushes, a GitHub Release.
-      - name: Upload web-shell APKs as Actions artifact
+      # on tag pushes, a GitHub Release — both carry the same single APK.
+      - name: Upload APK as Actions artifact
         uses: actions/upload-artifact@v4
         # Artifact storage quota can be hit; do not fail the build — GitHub
         # Releases (below) remain the reliable download path.
         continue-on-error: true
         with:
-          name: opencode-web-shell-apks
-          path: |
-            webapp/build/outputs/apk/debug/webapp-debug.apk
-            webapp/build/outputs/apk/release/webapp-release.apk
-            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
+          name: opencode-apk
+          path: dist/${{ env.APK_NAME }}
           if-no-files-found: error
 
-      - name: Attach APKs to GitHub Release (tags only)
+      - name: Attach APK to GitHub Release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            webapp/build/outputs/apk/debug/webapp-debug.apk
-            webapp/build/outputs/apk/release/webapp-release.apk
-            webapp/build/outputs/apk/releaseR8/webapp-releaseR8.apk
-          name: OpenCode Web Shell ${{ github.ref_name }}
+          files: dist/${{ env.APK_NAME }}
+          name: OpenCode ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false

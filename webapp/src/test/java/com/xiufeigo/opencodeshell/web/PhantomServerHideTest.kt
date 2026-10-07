@@ -6,34 +6,28 @@ import org.junit.Test
 import java.io.File
 
 /**
- * UX14-P6 · **幻影服务器条目清除**（宿主注入层 DOM 级隐藏）绊线。
+ * 幻影服务器条目（页面 origin `127.0.0.1:4173`）绊线。
  *
- * ## 为什么需要宿主注入层
+ * ## 这一层为什么存在
  *
- * P4/P5 已把机制钉死，这里直接采信：
+ * 上游把页面 origin 当"内建服务器"（`currentServerUrl = location.origin`），它不在注册表
+ * `list` 里，因此上游 Remove 永远删不掉；而 Home 的服务器列表与**当前上下文**都读 store 的
+ * `visible = list.filter(s => !hidden[Key(s)])`，origin 恒在 `visible[0]` ⇒ Home 的当前
+ * 服务器恒为 4173 ⇒ 而 4173 的 API 前缀（`/api/`）由 `LocalUiOriginServer` 一律 404 ⇒ 事件流
+ * 404@1Hz ⇒ Home 永久 Loading。
  *
- * - 服务器注册表 = `localStorage['opencode.global.dat:server']`，
- *   **首次 Add 成功才惰性创建**；结构 `{"list":[…],"hidden":{},…}`。
- * - 页面 origin 那条（本机静态来源 4173）是**上游 builtin**：它来自
- *   `location.origin`（`currentServerUrl`），**不在 `list` 里**。
- * - 上游 `Remove` 的渲染条件只是"该条目在 `list` 里"
- *   ⇒ builtin 永远 `canRemove` 不成立；`hidden` 容器虽存在，但上游
- *   **没有任何写入入口** ⇒ 也没有 hide 出口。
- * - ⇒ **上游侧永远删不掉这条。** 产品负责人 2026-10-06 拍板："这条不应该存在"。
+ * ## 修法（2026-10-07 改判，取代 v1–v4 的纯 DOM 隐藏）
  *
- * 修法只能是宿主注入层（`oc-host.js`）做 DOM 级隐藏。
+ * 写**上游自己的机制**：`registry.hidden[origin] = true`。它让 origin 从所有读 `visible`
+ * 的表面消失，**并让 Home 的当前服务器落到用户自己的服务器上**。纯 DOM 隐藏只遮界面、
+ * 遮不住上下文（UX17-P6 设备复验：设置里藏了、页头/搜索框仍写着 4173、Home 仍 Loading），
+ * 产品负责人 2026-10-07 报的就是这个半隐藏形态。
  *
  * ## 本类钉住的不变量
  *
- * 1. 例程存在，且目标是**动态** `location.origin`（不许硬编码端口字面量）。
- * 2. 用 `data-oc-phantom` 标记 + CSS 隐藏，**不删除节点**。
- * 3. 有 `MutationObserver` 节流（跟住 SPA 重渲染）。
- * 4. 排除 `input`/`textarea`（不碰 Add server 对话框的输入）。
- * 5. UX15-P1：候选取元素走 **XPath 直接文本匹配**，不做全页 `textContent` 扫描。
- *
- * ## 反向验证
- *
- * 外科撤除例程 ⇒ 本类 5 条真红；恢复 ⇒ 全绿。
+ * A. 注册表机制（主）：闸门/幂等/只动 `hidden`/origin 动态/reload 有界。
+ * B. DOM 兜底（辅）：只对上游没消费 `hidden` 的表面补齐，**闸门读同一份 `hidden`**
+ *    （单一事实来源），且仍然只隐藏、不删节点、不碰 Home 切换器。
  */
 class PhantomServerHideTest {
 
@@ -45,333 +39,238 @@ class PhantomServerHideTest {
 
     private val js: String by lazy { read("src/main/assets/www/oc-host.js") }
 
-    /** 只取例程自身的那一段，避免扫到文件里与本轮无关的既有代码。 */
-    private val routine: String by lazy {
-        val marker = "UX14-P6"
-        val idx = js.indexOf(marker)
-        assertTrue("oc-host.js 里找不到 UX14-P6 例程段（幻影服务器行隐藏）", idx >= 0)
-        js.substring(idx)
+    /** DOM 兜底层的常量段（PHANTOM_ATTR / STYLE_ID / THROTTLE_MS / ROW_SEL）。 */
+    private val domConstants: String by lazy {
+        val start = js.indexOf("var PHANTOM_ATTR")
+        val end = js.indexOf("var PHANTOM_REGISTRY_KEY")
+        assertTrue("oc-host.js 里找不到 DOM 常量段（PHANTOM_ATTR…）", start >= 0 && end > start)
+        js.substring(start, end)
     }
 
-    /** 注释之外的代码文本（用于"不许出现删除节点调用"的检查）。 */
-    private val routineCode: String by lazy {
-        routine.lineSequence()
-            .map { it.substringBefore("//") }
-            .filter { it.contains("remove", ignoreCase = true) }
-            .joinToString("\n")
+    /** 注册表机制那一段（常量 + 读写函数）。 */
+    private val registry: String by lazy {
+        val start = js.indexOf("var PHANTOM_REGISTRY_KEY")
+        val end = js.indexOf("function phantomOriginToken")
+        assertTrue("oc-host.js 里找不到注册表机制段（PHANTOM_REGISTRY_KEY…）", start >= 0)
+        assertTrue("oc-host.js 里找不到段边界 function phantomOriginToken", end > start)
+        js.substring(start, end)
     }
 
-    /**
-     * 去掉 `//` 行注释后的整段例程代码。
-     *
-     * 只用于**负向**断言：源码注释里允许保留"原实现是 `querySelectorAll("*")` 全页扫描"
-     * 这类动机说明，负向断言必须只盯可执行代码，否则会被自己的说明文字误伤。
-     * （正向断言仍走原始文本，因为 XPath 表达式本身就含 `//` 前缀。）
-     */
-    private val routineNoComments: String by lazy {
-        routine.lineSequence()
-            .map { it.substringBefore("//") }
-            .joinToString("\n")
+    /** DOM 兜底 + 启动 + 文件末尾的 boot/观察器调用。 */
+    private val dom: String by lazy {
+        val start = js.indexOf("function phantomOriginToken")
+        assertTrue("oc-host.js 里找不到 DOM 兜底段", start >= 0)
+        js.substring(start)
     }
 
-    // ---- 1) 例程存在，目标动态取自 location.origin --------------------------
+    /** DOM 相关断言的合集（常量段 + 实现段）。 */
+    private val domAll: String by lazy { domConstants + "\n" + dom }
+
+    /** 去掉 `//` 行注释后的代码文本（负向断言只盯可执行代码）。 */
+    private fun code(text: String): String =
+        text.lineSequence().map { it.substringBefore("//") }.joinToString("\n")
+
+    private val registryCode: String by lazy { code(registry) }
+    private val domCode: String by lazy { code(dom) }
+
+    // ================= A. 注册表机制（主） =================
 
     @Test
-    fun routineExistsAndTargetsDynamicLocationOrigin() {
+    fun syncOriginHiddenRefusesToTouchAnythingBeforeAUserServerExists() {
         assertTrue(
-            "必须存在幻影行隐藏例程的入口函数 startPhantomServerHide",
-            routine.contains("function startPhantomServerHide"),
+            "必须有 syncOriginHidden() 这个唯一写入口",
+            registry.contains("function syncOriginHidden"),
+        )
+        // 键不存在（首启：用户还没加过任何服务器）⇒ 一个字节都不写。
+        // 断言"闸门早于任何写入"：`if (!reg) return false;` 必须出现在**写回调用**之前
+        // （注意找的是调用点 `return phantomWriteRegistry(reg);`，不是函数定义）。
+        val gate = registryCode.indexOf("if (!reg) return false;")
+        val write = registryCode.indexOf("return phantomWriteRegistry(reg);")
+        assertTrue("syncOriginHidden 必须有 `if (!reg) return false;` 的首启闸门", gate >= 0)
+        assertTrue("首启闸门必须早于写回调用（否则首启就会被我们写脏注册表）", write > gate)
+    }
+
+    @Test
+    fun hidesOriginExactlyWhenTheUserHasTheirOwnServer() {
+        assertTrue(
+            "语义判据必须是「list 里存在 url ≠ origin 的条目」（用户自己的服务器）",
+            registryCode.contains("phantomUserServers(reg).length > 0"),
         )
         assertTrue(
-            "目标标识必须动态取自 location.origin",
-            routine.contains("window.location.origin"),
+            "命中语义时必须写 hidden[origin] = true（上游 visible 才会过滤掉它）",
+            registryCode.contains("hidden[origin] = true"),
         )
-        // 🔴 反向：不得把本机静态来源端口写死。
-        //     （写死等于把架构常量焊进注入层，端口一变就失效。）
+        assertTrue(
+            "必须整表写回注册表（读-改-写）",
+            registryCode.contains("JSON.stringify(reg)"),
+        )
+    }
+
+    @Test
+    fun isIdempotentAndNeverWritesWhenAlreadyAligned() {
+        assertTrue(
+            "必须先用 `want === has` 判定再决定写不写 —— 已对齐时不写、也就不会触发 reload",
+            registryCode.contains("if (want === has) return false;"),
+        )
+        assertTrue(
+            "hidden 容器缺失时必须**补建**而不是放弃（首启 Add 后上游写出的 hidden 是 {}）",
+            registryCode.contains("hidden = {};"),
+        )
+    }
+
+    @Test
+    fun unhidesOriginWhenTheUserRemovesEveryServer() {
+        // 用户把自己的服务器全删了 ⇒ 撤掉 hidden[origin]，placeholder 回来，
+        // 否则界面会变成"一个服务器都没有"的死状态。
+        assertTrue(
+            "非命中语义时必须 `delete hidden[origin]`（placeholder 语义：删光了就还回来）",
+            registryCode.contains("delete hidden[origin]"),
+        )
+    }
+
+    @Test
+    fun neverTouchesTheServerListNorDeletesEntries() {
+        // 红线：只动 hidden 容器。list / 条目一律不改 —— 上游的焦点、排序、project
+        // 归属都挂在 list 上，动它就等于改上游数据模型。
         assertFalse(
-            "例程不得硬编码 127.0.0.1:4173 字面量（目标必须是动态 location.origin）",
-            routine.contains("127.0.0.1:4173"),
-        )
-    }
-
-    // ---- 2) 只隐藏、不删除 --------------------------------------------------
-
-    @Test
-    fun usesDataAttributeAndCssHideWithoutDeletingNodes() {
-        assertTrue(
-            "必须用 data-oc-phantom 标记要隐藏的行容器",
-            routine.contains("data-oc-phantom"),
-        )
-        assertTrue(
-            "必须靠 CSS 隐藏标记元素（display:none!important）",
-            routine.contains("display:none!important"),
-        )
-        assertTrue(
-            "必须用受控的行容器选择器定位要隐藏的行",
-            routine.contains("PHANTOM_ROW_SEL"),
-        )
-        // 🔴 血泪坑（2026-10-06 设备复验当场踩到，必须钉死）：
-        //     无脑 closest('…, [data-slot]') 会爬到页面外壳，
-        //     <html>/<body> 自身也含该 URL 文本且无匹配祖先 ⇒ 回落成"标记自身"
-        //     ⇒ 实测 <html> 被标记，整页连 <style> 一起消失、屏幕全黑。
-        assertTrue(
-            "必须显式跳过 <html>/<body> 根节点（标记 <html> 会让整页消失）",
-            routine.contains("el === document.documentElement") &&
-                routine.contains("el === document.body"),
-        )
-        assertTrue(
-            "必须给上爬加文本量上界（避免把分区/页面外壳当行容器）",
-            routine.contains("candMax"),
-        )
-        assertFalse(
-            "例程不得再用无约束 closest()（已改为 phantomRowFor 有界上爬）",
-            routine.contains("closest('a,li,"),
-        )
-        // 容器里带输入框的一律不动 —— 保护 Add server 对话框。
-        assertTrue(
-            "带 input/textarea 的容器必须整体跳过（保护 Add server 对话框）",
-            routine.contains("el.querySelector(\"input,textarea\")"),
-        )
-        // 🔴 核心红线：只隐藏、不删除、不改上游数据模型。
-        //     （删除节点会破坏 visible[0] 焦点逻辑。）
-        assertFalse(
-            "例程里不得对行容器调用 remove()/removeChild —— 只允许隐藏，" +
-                "删除会破坏上游 visible[0] 焦点逻辑。当前命中：$routineCode",
-            routineCode.contains("removeChild") || routineCode.contains(".remove()"),
-        )
-    }
-
-    // ---- 3) MutationObserver 节流 -------------------------------------------
-
-    @Test
-    fun mutationObserverIsThrottled() {
-        assertTrue(
-            "必须有 MutationObserver 跟住 SPA 重渲染",
-            routine.contains("new MutationObserver"),
-        )
-        assertTrue(
-            "必须 subtree+childList 全量监听（服务器行是动态插入的）",
-            routine.contains("subtree: true") && routine.contains("childList: true"),
-        )
-        assertTrue(
-            "必须有节流常量（防止每次 DOM 变动都全量扫描）",
-            routine.contains("PHANTOM_THROTTLE_MS"),
-        )
-        // 幂等：已标记的元素跳过。
-        assertTrue(
-            "例程必须幂等（已打 data-oc-phantom 的元素要跳过）",
-            routine.contains("已标记即跳过") || routine.contains("幂等"),
-        )
-    }
-
-    // ---- 4) 不碰输入框 ------------------------------------------------------
-
-    @Test
-    fun skipsInputAndTextarea() {
-        assertTrue(
-            "必须排除 input（Add server 对话框里可能正输入着同一个地址）",
-            routine.contains("\"INPUT\""),
-        )
-        assertTrue(
-            "必须排除 textarea",
-            routine.contains("\"TEXTAREA\""),
-        )
-        // 启动时机：只在首屏加载完之后启动，避免阻断首屏。
-        assertTrue(
-            "必须等 readyState==='complete' / load 之后再启动（不得阻断首屏）",
-            routine.contains("readyState === \"complete\"") && routine.contains("\"load\""),
-        )
-    }
-
-    // ---- 5) UX15-P1 · 候选取元素必须是 XPath 直接文本匹配（性能红线） ------
-
-    /**
-     * 自我回归审查（2026-10-06）钉的性能红线。
-     *
-     * 原实现是 `document.querySelectorAll("*")` + 逐元素 `el.textContent.includes(token)`：
-     * `textContent` 是 O(子树) 的串接读取，把全页元素轮一遍就是 **O(整页文本量)**；而
-     * 流式输出期间 DOM 高频变动，250ms 节流窗口内反复全量扫描 ⇒ 中低端机掉帧风险。
-     *
-     * 现在改为 `document.evaluate(<全文档后代元素轴> + [text()[contains(., "<token>")]] 谓词, …)`：
-     * 浏览器原生实现只走文本节点通道，且**天然免疫 P6 踩到的祖先污染** ——
-     * 祖先的 `textContent` 含该串，但它自己的**直接文本**并不含，根本不会进入上爬。
-     *
-     * 下面三条**只针对候选取元素这一段**；P6 保留的紧凑上界（`phantomRowFor` 里的
-     * `node.textContent` 长度判定）是有界上爬的兜底，属于必须保留的血泪坑防护，
-     * 不在禁用范围内（负向断言因此精确匹配 `querySelectorAll("*")` 与 `indexOf(token)`，
-     * 而不是笼统禁 `textContent`）。
-     */
-    @Test
-    fun candidateScanUsesXpathDirectTextMatchInsteadOfFullPageTextScan() {
-        assertTrue(
-            "候选取元素必须用 document.evaluate 走 XPath —— 全页 textContent 扫描在流式" +
-                "输出期间是掉帧源（O(整页文本量) × 节流窗口）",
-            routine.contains("document.evaluate"),
-        )
-        assertTrue(
-            "必须用 ORDERED_NODE_SNAPSHOT_TYPE 取一次性快照（迭代期 DOM 变动不能影响候选集）",
-            routine.contains("XPathResult.ORDERED_NODE_SNAPSHOT_TYPE"),
-        )
-        assertTrue(
-            "XPath 必须是 '//*[text()[contains(., \"…\")]]' 的**直接文本**匹配形态 —— " +
-                "这同时免疫 P6 的祖先污染（祖先 textContent 含目标串但直接文本不含）",
-            routine.contains("//*[text()[contains(., \\\"\" + lit + \"\\\")]]"),
-        )
-        assertTrue(
-            "必须经 snapshotItem(i) 遍历快照结果",
-            routine.contains("hits.snapshotItem(i)"),
-        )
-        // 🔴 反向：全页元素枚举扫描不得复活。
-        //    （只看**代码**、不看注释：oc-host.js 里允许留"原实现是这样的"说明文字，
-        //      那是本轮改动的动机记录，不是可执行代码。）
-        assertFalse(
-            "例程不得再做 `querySelectorAll(\"*\")` 全页元素枚举（性能红线）",
-            routineNoComments.contains("querySelectorAll(\"*\")"),
+            "注册表例程不得改写 reg.list（只允许读）",
+            registryCode.contains("reg.list =") || registryCode.contains("reg.list.push"),
         )
         assertFalse(
-            "例程不得再用 textContent.indexOf(token) 做候选命中判定（改为 XPath 直接文本匹配）",
-            routineNoComments.contains("indexOf(token)"),
+            "注册表例程不得删除条目（splice / pop / shift / delete list[i]）",
+            registryCode.contains(".splice(") || registryCode.contains(".pop()") ||
+                registryCode.contains(".shift()"),
         )
-        // XPath 字符串里的目标串必须是转义过的字面量，且目标仍动态取自 location.origin。
-        assertTrue(
-            "XPath 字面量必须对双引号做实体转义（否则地址含引号时 XPath 直接抛错）",
-            routine.contains("token.replace(/\"/g, \"&quot;\")"),
-        )
-    }
-
-    /**
-     * UX15-P2 · 首启空态缺陷的绊线：**有用户服务器才隐藏**。
-     *
-     * P1 把扫描换成 XPath 后性能修好了，却暴露出一个首启回归：全新安装
-     * （还没加过任何服务器）时 builtin 行被隐藏 ⇒ Home 无限期停在 Loading
-     * 骨架屏、没有"添加服务器"引导、入口只剩一个无文字的 `+`。
-     * 而首启时那条红点行恰恰是**唯一可操作的上下文**
-     * （P8 实证：Edit 它就能改成自己的服务器 = 官方自带 onboarding 路径）。
-     *
-     * ⇒ 闸门信号取注册表键 `opencode.global.dat:server` 的**存在性**：
-     * P5 实证该键**首次 Add 成功后才惰性创建** ⇒ 键存在 ⟺ 用户已有自己的服务器。
-     *
-     * 下面两条钉住：闸门引用了这个键；且键不存在时**一个节点都不动**。
-     */
-    @Test
-    fun hideIsGatedOnUserServerRegistryKeyPresence() {
-        assertTrue(
-            "隐藏闸门必须读服务器注册表键 opencode.global.dat:server（P5 实证：首次 Add " +
-                "成功才惰性创建 ⇒ 键存在 ⟺ 用户已添加过自己的服务器）",
-            routine.contains("opencode.global.dat:server"),
-        )
-        assertTrue(
-            "闸门必须通过惰性读取 localStorage.getItem(key) 的存在性判定（不能缓存成一次性结论， " +
-                "否则首启时判定为 false 之后加服务器就再也放行不了）",
-            routineNoComments.contains("localStorage.getItem(") &&
-                routineNoComments.contains("PHANTOM_REGISTRY_KEY"),
-        )
-        assertTrue(
-            "必须提供闸门判定函数 hasUserServerRegistry",
-            routine.contains("function hasUserServerRegistry"),
-        )
-        // localStorage 不可用（隐私模式/被拒）时按"没有用户服务器"处理 ⇒ 退回首启不隐藏。
-        // 这是更保守、也更不会误伤的一侧，必须钉住。
-        assertTrue(
-            "闸门读取必须被 try/catch 包裹且失败时返回 false（退回首启可见，绝不误隐藏）",
-            routineNoComments.contains("function hasUserServerRegistry") &&
-                Regex("function hasUserServerRegistry\\(\\)\\s*\\{[\\s\\S]{0,400}?catch\\s*\\([a-z]+\\)\\s*\\{\\s*return false;").containsMatchIn(
-                    routineNoComments
-                ),
-        )
-    }
-
-    @Test
-    fun doesNotHideWhenUserServerRegistryKeyAbsent() {
-        // 闸门必须**包在 hidePhantomRows 入口处**（返回 0，一个节点都不动），
-        // 而不是藏在循环里事后补救 —— 键不存在时连 XPath 扫描都不该启动。
-        val gateIdx = routineNoComments.indexOf("if (!hasUserServerRegistry()) return 0;")
-        val scanIdx = routineNoComments.indexOf("document.evaluate")
-        val hideFnIdx = routineNoComments.indexOf("function hidePhantomRows")
-        assertTrue(
-            "hidePhantomRows 入口必须有 hasUserServerRegistry 闸门：" +
-                "注册表键不存在（首启，未加过任何服务器）时必须**完全不动**，" +
-                "否则首启用户失去唯一可操作的 onboarding 入口（Edit 4173 行改地址）",
-            gateIdx >= 0,
-        )
-        assertTrue(
-            "闸门必须写在 hidePhantomRows 函数体内",
-            hideFnIdx >= 0 && gateIdx > hideFnIdx,
-        )
-        assertTrue(
-            "闸门必须早于候选扫描 document.evaluate（键不存在时连扫描都不启动）",
-            scanIdx >= 0 && gateIdx < scanIdx,
-        )
-        // 🔴 反向：不得把闸门写成"先扫后判"（例如循环内 continue）——
-        //    那样首启虽然没隐藏，但每轮仍付一次全文档 XPath 扫描的开销。
         assertFalse(
-            "闸门不得实现在循环体内（必须入口早退，否则首启每轮仍白付一次 XPath 扫描）",
-            gateIdx > routineNoComments.indexOf("for (var i = 0; i < m; i++)"),
-        )
-    }
-
-    /**
-     * UX15-P1 血泪坑之二（**同轮设备复验当场踩到**）的绊线。
-     *
-     * 改用 XPath 直接文本匹配后，候选只剩"直接文本节点含目标串"的元素。真实 DOM
-     * （设置 → Server 页）里那条链全是 `div`/`section`，**没有一个匹配
-     * `PHANTOM_ROW_SEL`**：
-     * ```
-     * bdi.settings-servers-name   ← XPath 命中
-     *   div.settings-servers-copy → div.settings-servers-lead
-     *     div.settings-servers-row → div
-     *       section.settings-section.settings-server-connection  ← 旧扫描在这里收口
-     * ```
-     * 于是 P6 原有的"回落标记命中元素自身"只把那个 `<bdi>` 藏了 ⇒ **行的红点与
-     * "…" 仍在**，设备上表现为"服务器行只剩红点和三个点、名字没了"。
-     *
-     * 旧的全量扫描能整块隐藏，是因为祖先自身的 `textContent` 同样含目标串，
-     * 所以 `section` 也是候选、并在"父级文本超上限"处收口被标记。
-     * ⇒ 例程必须保留同样的收口语义。
-     */
-    @Test
-    fun rowFallbackHidesOutermostCompactAncestorNotJustTheTextNode() {
-        assertTrue(
-            "有界上爬必须记住**最外层仍然紧凑**的祖先（XPath 只给直接文本命中，" +
-                "整块隐藏的收口点只能从这里来）",
-            routineNoComments.contains("lastCompact = node"),
-        )
-        assertTrue(
-            "找不到 PHANTOM_ROW_SEL 匹配时必须回落标记 lastCompact，而不是命中的 <bdi> 自身 —— " +
-                "只藏文本会留下行的红点与 \"…\"（设备实测到的形态）",
-            routineNoComments.contains("return lastCompact || el"),
-        )
-        // 收口点仍然受紧凑上界约束：不能爬成页面外壳/整页。
-        assertTrue(
-            "上爬仍必须受紧凑上界约束（父级文本超上限即停）",
-            routineNoComments.contains("trim().length > cap) break"),
-        )
-        assertTrue(
-            "上爬不得越过根节点/head",
-            routineNoComments.contains("node !== document.documentElement") &&
-                routineNoComments.contains("node === document.head) break"),
+            "注册表例程不得删键（removeItem 会把别人的服务器一起清掉）",
+            registryCode.contains("removeItem"),
         )
     }
 
     @Test
-    fun neverHidesHomeServerSwitcher() {
-        // UX17-v4 · 自锁修复（UX17-P3 实证）：Home 服务器切换器
-        // （[data-component=home-projects-dropdown]）的文本 = "当前服务器名"。
-        // 首加服务器后当前仍是 4173 ⇒ 藏了切换器 = 永远无法切走（死锁）。
-        // 必须排除；用户切到自己服务器后其标签自然不再含 4173。
+    fun originIsReadDynamicallyAndNeverHardcoded() {
         assertTrue(
-            "hidePhantomRows 必须排除 home-projects-dropdown（closest 语义，含自身与后代）",
-            routineNoComments.contains(
-                "row.closest('[data-component=\"home-projects-dropdown\"]')",
-            ),
+            "origin 必须动态取自 window.location.origin",
+            registryCode.contains("window.location.origin"),
+        )
+        assertFalse(
+            "注册表例程（可执行代码）不得硬编码 127.0.0.1:4173 —— 端口一变就全线失效",
+            registryCode.contains("127.0.0.1:4173"),
+        )
+    }
+
+    @Test
+    fun bootAppliesBeforeTheAppHydratesAndWatchesLaterWrites() {
+        // boot 路径：本文件由 addDocumentStartJavaScript 注入 ⇒ 顶层直调即"早于 hydration"，
+        // 当次启动生效、无需 reload（用户手机上"已经有服务器"的状态装上即好）。
+        val boot = dom.indexOf("syncOriginHidden();")
+        assertTrue("文件末尾必须有 boot 直调 syncOriginHidden();", boot >= 0)
+        // 运行期路径：应用自己写注册表（Add/Edit/Remove）时要补写。
+        val watch = dom.indexOf("watchRegistryWrites();")
+        assertTrue("文件末尾必须装 watchRegistryWrites()（运行期 Add/Remove 路径）", watch > boot)
+        assertTrue(
+            "观察器必须挂在 Storage.prototype.setItem 上（应用写注册表就走这条路）",
+            registryCode.contains("window.Storage && window.Storage.prototype"),
         )
         assertTrue(
-            "排除规则必须位于 row 判定之后、setAttribute 之前（否则形同虚设）",
-            run {
-                val excl = routineNoComments.indexOf("home-projects-dropdown")
-                val set = routineNoComments.indexOf("row.setAttribute(PHANTOM_ATTR")
-                excl >= 0 && set > excl
-            },
+            "观察器必须只认注册表这一个键（其它 localStorage 写入一律不管）",
+            registryCode.contains("if (key === PHANTOM_REGISTRY_KEY && !phantomWritingRegistry)"),
+        )
+        assertTrue(
+            "必须防递归：我们自己的写回不能再触发观察器",
+            registryCode.contains("phantomWritingRegistry = true"),
+        )
+    }
+
+    @Test
+    fun reloadIsBoundedAndOnlyHappensAfterTheAppMounted() {
+        // 应用内存里的 hidden 只有重新 hydration 才会跟上 ⇒ 运行期改状态要 reload 一次。
+        // 但必须防两类事故：启动期空转 reload、以及死循环 reload。
+        assertTrue("必须有 reload 防环常量", registryCode.contains("PHANTOM_RELOAD_MAX"))
+        assertTrue(
+            "防环计数必须落在 sessionStorage（跨 reload 存活）",
+            registryCode.contains("window.sessionStorage"),
+        )
+        assertTrue(
+            "只有应用挂载完成后才允许 reload（启动期由 boot 路径处理）",
+            registryCode.contains("document.querySelector(\"[data-opencode-mounted]\")"),
+        )
+        assertTrue(
+            "reload 必须延迟到当前写事务之后（同步 reload 会打断应用自己的写入）",
+            registryCode.contains("window.setTimeout(") && registryCode.contains("window.location.reload()"),
+        )
+        assertTrue(
+            "一次只排一次 reload（phantomReloadPending 守卫）",
+            registryCode.contains("phantomReloadPending"),
+        )
+    }
+
+    // ================= B. DOM 兜底（辅） =================
+
+    @Test
+    fun domFallbackIsGatedByTheRegistryHiddenMap() {
+        assertTrue(
+            "DOM 兜底层必须存在（上游没消费 hidden 的表面由它补齐）",
+            dom.contains("function hidePhantomRows"),
+        )
+        assertTrue(
+            "DOM 闸门必须读注册表的 hidden[origin] —— 单一事实来源",
+            domCode.contains("if (!isOriginHiddenInRegistry()) return 0;"),
+        )
+        assertTrue(
+            "必须提供 isOriginHiddenInRegistry()（直接读 hidden[origin]）",
+            registry.contains("function isOriginHiddenInRegistry"),
+        )
+        // 🔴 反向：旧的"注册表键存在性"闸门必须退役。
+        //    它把"键在但 list 为空"（用户删光了自己的服务器）也判成隐藏 ⇒ 界面无服务器可用。
+        assertFalse(
+            "不得再用 hasUserServerRegistry()（键存在性闸门：删光服务器时会隐藏出死界面）",
+            code(js).contains("hasUserServerRegistry"),
+        )
+    }
+
+    @Test
+    fun domFallbackHidesWithoutDeletingNodesAndProtectsRoots() {
+        assertTrue("必须用 data-oc-phantom 标记", domAll.contains("data-oc-phantom"))
+        assertTrue("必须靠 CSS 隐藏（display:none!important）", domAll.contains("display:none!important"))
+        assertTrue(
+            "必须声明受控的行容器选择器",
+            domConstants.contains("PHANTOM_ROW_SEL"),
+        )
+        assertTrue("必须显式跳过 <html>/<body>", dom.contains("el === document.documentElement") && dom.contains("el === document.body"))
+        assertTrue("必须跳过 <head>", dom.contains("el === document.head"))
+        assertTrue("上爬必须有文本量上界", dom.contains("candMax"))
+        assertTrue("必须排除 input/textarea（保护 Add server 对话框）", dom.contains("el.querySelector(\"input,textarea\")"))
+        assertTrue(
+            "候选取元素必须用 XPath 直接文本匹配（全页 textContent 扫描是掉帧源）",
+            dom.contains("document.evaluate"),
+        )
+        assertTrue(
+            "必须节流（PHANTOM_THROTTLE_MS + MutationObserver）",
+            domConstants.contains("PHANTOM_THROTTLE_MS") && dom.contains("new MutationObserver"),
+        )
+        assertFalse(
+            "DOM 层不得删除节点（只允许隐藏）",
+            code(dom).contains("removeChild") || code(dom).contains(".remove()"),
+        )
+    }
+
+    @Test
+    fun domFallbackNeverHidesTheHomeServerSwitcher() {
+        // Home 切换器文本 = 当前服务器名。首加服务器后当前仍是 origin 时藏了它 = 无法切走（自锁）。
+        assertTrue(
+            "DOM 层必须排除 [data-component=home-projects-dropdown]",
+            domCode.contains("row.closest('[data-component=\"home-projects-dropdown\"]')"),
+        )
+    }
+
+    @Test
+    fun deadPointerDefaultServerUrlIsNeverWritten() {
+        // UX18-P1 设备实测：`opencode.settings.dat:defaultServerUrl` 是**只写不读**的死指针
+        // （列表/切换器/事件流三方都不消费它）。写它只会制造"设了默认却没生效"的假象。
+        assertFalse(
+            "注入层不得再写 defaultServerUrl（死指针，写了也没用）",
+            code(js).contains("defaultServerUrl"),
         )
     }
 }
