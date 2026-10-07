@@ -1,0 +1,2 @@
+var bs=Array.prototype.slice.call(document.querySelectorAll('button')).filter(function(b){var r=b.getBoundingClientRect();return r.width>0&&r.height>0&&r.y>300;}).map(function(b){var r=b.getBoundingClientRect();return {txt:(b.innerText||b.getAttribute('aria-label')||'').replace(/\s+/g,' ').trim().slice(0,24),x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),w:Math.round(r.width),dis:getComputedStyle(b).disabled};});
+return {bs:bs.slice(0,12)};

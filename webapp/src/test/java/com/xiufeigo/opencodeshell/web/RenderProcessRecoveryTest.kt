@@ -113,24 +113,28 @@ class RenderProcessRecoveryTest {
         )
     }
 
-    /** 2. 窗口内第 1 次崩溃 ⇒ reload 自愈，且有 60 s 节流窗口。 */
+    /** 2. 窗口内第 1 次崩溃 ⇒ **重建**自愈（不再 reload），且有 60 s 节流窗口。 */
     @Test
-    fun firstCrashReloadsWithThrottle() {
+    fun firstCrashRebuildsWithThrottle() {
         val body = overrideBody()
+        // ⚠️ UX16-P2：本条原先断言 `body.contains("reload()")`。
+        // UX16-P1 真触发实证推翻了那条契约 —— reload() 之后渲染进程**必然再崩**
+        // （两次复现间隔 6.55s / 6.56s），端到端"恢复可用"从不成立，而节流每次都
+        // 把它接住 ⇒ 失败被伪装成"正常落诊断页"。故改为钉"重建"。
         assertTrue(
-            "🔴 UX14-P1：崩溃恢复路径里必须有 webView.reload() —— " +
-                "页面从本地 4173 重新加载，会话/服务器状态都在 localStorage，可直接自愈。",
-            body.contains("reload()"),
+            "🔴 UX16-P2：崩溃恢复路径里必须 **destroy() 旧实例 + 重建**，而不是 reload —— " +
+                "平台口径是渲染进程消失后该实例不应再被使用，且本镜像上 reload 后必然再崩。",
+            body.contains("destroy()") && body.contains("setupWebViewAndLoad()"),
         )
         assertTrue(
-            "🔴 UX14-P1：必须有节流窗口常量，否则 reload→崩→reload 会变成重启风暴，" +
+            "🔴 UX14-P1：必须有节流窗口常量，否则 重建→崩→重建 会变成重启风暴，" +
                 "每次都真起一个 Chromium 渲染进程，很快把内存/电量吃干。",
             Regex("RENDER_CRASH_RELOAD_WINDOW_MS\\s*=\\s*60_000L").containsMatchIn(source),
         )
         // 节流窗口必须真的被这个方法用上（常量存在但没读 = 无节流）。
         assertTrue(
             "🔴 UX14-P1：onRenderProcessGone 里必须真的读节流窗口，" +
-                "否则窗口只是摆设、崩溃循环仍会无限 reload。",
+                "否则窗口只是摆设、崩溃循环仍会无限重建。",
             body.contains("RENDER_CRASH_RELOAD_WINDOW_MS"),
         )
     }
@@ -172,5 +176,93 @@ class RenderProcessRecoveryTest {
                 "整个 Activity 的那条默认路径。消费语义要求完全接管、不调 super。",
             !body.contains("super.onRenderProcessGone"),
         )
+    }
+
+    // ---- UX16-P2 新增 3 条 ------------------------------------------------
+
+    /**
+     * 5. 崩溃恢复必须是**重建式**：`destroy()` + 走 [setupWebViewAndLoad]，
+     * 且首崩分支**不得**再出现 `reload()`。
+     *
+     * 与第 2 条的区别：第 2 条钉"重建发生过"，本条钉"`reload()` 已被彻底拿掉"——
+     * 少了后半句，有人把 `reload()` 加回来会伪装成"重建+刷新"，两条都会绿。
+     */
+    @Test
+    fun recoveryRecreatesWebViewInsteadOfReload() {
+        val body = overrideBody()
+        assertTrue(
+            "🔴 UX16-P2：onRenderProcessGone 的首崩分支必须先 destroy() 旧 WebView 实例 —— " +
+                "渲染进程已经没了，继续复用这个实例就是未定义行为。",
+            body.contains("destroy()"),
+        )
+        assertTrue(
+            "🔴 UX16-P2：必须调用 setupWebViewAndLoad() 走**完整**初始化链重建，" +
+                "否则新实例会漏掉 bridge 注入 / doc-start 脚本 / client / insets，" +
+                "页面会安静地半残（能显示但所有原生能力失效，比白屏更难查）。",
+            body.contains("setupWebViewAndLoad()"),
+        )
+        assertTrue(
+            "🔴 UX16-P2：首崩分支不得再调用 reload() —— UX16-P1 已实证 reload 之后渲染进程" +
+                "必然再崩（6.55s / 6.56s 两次复现），端到端自愈从来不成立。",
+            !body.contains("reload()"),
+        )
+        // 拆桥与出视图树也必须在这一条路径上，否则 destroy 得不干净。
+        assertTrue(
+            "🔴 UX16-P2：重建前必须 removeJavascriptInterface —— 旧实例上残留的桥引用" +
+                "会让 JS 侧拿到一个已死的宿主对象。",
+            body.contains("removeJavascriptInterface"),
+        )
+    }
+
+    /**
+     * 6. 诊断页字符集：`<meta charset>` 声明 + **文件本身是合法 UTF-8**。
+     *
+     * 为什么后半句才是本条的重点：UX16-P1 报的"中文全渲染成 `?`"，当时被归因为
+     * "缺 `<meta charset>`"。实测**声明本来就在第 4 行**；真因是文件里 156 处
+     * 三字节序列被塌成两字节 + `?`（GBK 往返的产物），整个文件不是合法 UTF-8。
+     * 只断言 charset 声明的话，这条绊线对该缺陷**完全瞎**。
+     */
+    @Test
+    fun diagnosticPageDeclaresUtf8() {
+        val f = File("src/main/assets/www/index.html")
+        assertTrue("找不到诊断页资产：${f.absolutePath}", f.exists())
+        val bytes = f.readBytes()
+        val text = String(bytes, Charsets.UTF_8)
+        assertTrue(
+            "🔴 UX16-P2：诊断页必须声明 <meta charset>（大小写不敏感）。",
+            Regex("""<meta[^>]+charset\s*=\s*["']?utf-8""", RegexOption.IGNORE_CASE).containsMatchIn(text),
+        )
+        // 真正的缺陷断言：文件必须是**严格合法**的 UTF-8。
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+        val decodeError = try {
+            decoder.decode(java.nio.ByteBuffer.wrap(bytes))
+            null
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            e.message
+        }
+        assertTrue(
+            "🔴 UX16-P2：诊断页必须是**严格合法**的 UTF-8。当前不是：$decodeError\n" +
+                "非法字节会让 Chromium 逐字把受影响的中文渲染成 `?`（UX16-P1 截图证据），" +
+                "而 <meta charset> 写得再对也救不了非法的字节序列。",
+            decodeError == null,
+        )
+    }
+
+    /** 7. 全部自带 HTML 资产都要声明 charset（含子目录）。 */
+    @Test
+    fun allBundledHtmlDeclareCharset() {
+        val root = File("src/main/assets/www")
+        assertTrue("找不到自带资源目录：${root.absolutePath}", root.isDirectory)
+        val pages = root.walkTopDown().filter { it.isFile && it.name.endsWith(".html") }.toList()
+        assertTrue("自带资源里一个 .html 都没有，绊线失去意义", pages.isNotEmpty())
+        for (page in pages) {
+            val text = page.readText(Charsets.UTF_8)
+            assertTrue(
+                "🔴 UX16-P2：自带 HTML 资产 ${page.path} 必须声明 <meta charset=\"utf-8\">。",
+                Regex("""<meta[^>]+charset\s*=\s*["']?utf-8""", RegexOption.IGNORE_CASE).containsMatchIn(text),
+            )
+        }
     }
 }

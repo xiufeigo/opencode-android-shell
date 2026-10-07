@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!-- initialScale=1 + 无固定宽度：保证 1 CSS px == 1 dp，宿主给的 inset 变量才准 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>OpenCode Web Host — W1 骨架自检</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        /* 宿主 JS 会写这些变量；这里给 0 作为"没收到注入"的可见信号 */
+        --oc-safe-top: 0px;
+        --oc-safe-bottom: 0px;
+        --oc-safe-left: 0px;
+        --oc-safe-right: 0px;
+        --oc-ime-bottom: 0px;
+        --oc-window-height: 0px;
+        --oc-scheme: light;
+        --fg: #16161a;
+        --bg: #fafafa;
+        --muted: #6b7280;
+        --ok: #15803d;
+        --bad: #b91c1c;
+        --line: #e5e7eb;
+      }
+      html[data-scheme="dark"] {
+        --fg: #f2f2f4;
+        --bg: #080808;
+        --muted: #9ca3af;
+        --ok: #4ade80;
+        --bad: #fca5a5;
+        --line: #2a2a2e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: var(--fg);
+        background: var(--bg);
+        /* 安全区全部来自宿主变量 */
+        padding: calc(var(--oc-safe-top) + 12px) calc(var(--oc-safe-right) + 12px)
+          calc(var(--oc-ime-bottom) + 12px) calc(var(--oc-safe-left) + 12px);
+        transition: padding-bottom 120ms ease;
+      }
+      h1 { font-size: 15px; margin: 0 0 4px; }
+      p.sub { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+      .row { border-top: 1px solid var(--line); padding: 8px 0; }
+      .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+      .v { word-break: break-all; margin-top: 2px; }
+      .ok { color: var(--ok); font-weight: 700; }
+      .bad { color: var(--bad); font-weight: 700; }
+      button {
+        font: inherit; margin-top: 6px; padding: 6px 10px; border-radius: 6px;
+        border: 1px solid var(--line); background: transparent; color: var(--fg);
+      }
+      /* 底部压条：证明 --oc-ime-bottom 真的在推内容 */
+      #probe {
+        position: fixed; left: 0; right: 0; bottom: 0;
+        background: color-mix(in srgb, var(--ok) 22%, transparent);
+        border-top: 2px solid var(--ok);
+        padding: 4px 8px; font-size: 11px; color: var(--fg);
+        transform: translateY(calc(-1 * var(--oc-ime-bottom)));
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OpenCode Web Host — W1 骨架自检</h1>
+    <p class="sub">
+      占位页。真正的上游产物（<code>@opencode-ai/app</code> dist）在后续轮次塞进
+      <code>assets/www/</code>，把本页换掉即可。
+    </p>
+
+    <div class="row"><div class="k">origin（应=https://appassets.androidplatform.net）</div><div class="v" id="origin">…</div></div>
+    <div class="row"><div class="k">WebViewAssetLoader 是否生效</div><div class="v" id="loader">…</div></div>
+    <div class="row"><div class="k">能否 fetch 本地资源（同源 fetch 测试）</div><div class="v" id="fetch">…</div></div>
+    <div class="row"><div class="k">user agent</div><div class="v" id="ua">…</div></div>
+    <div class="row"><div class="k">原生桥 window.__ocAndroid</div><div class="v" id="bridge">…</div></div>
+    <div class="row"><div class="k">hostInfo()</div><div class="v" id="hostinfo">…</div></div>
+    <div class="row"><div class="k">insets（来自宿主 CSS 变量 + oc:insets 事件）</div><div class="v" id="insets">…</div></div>
+    <div class="row"><div class="k">主题（prefers-color-scheme + oc:theme）</div><div class="v" id="theme">…</div></div>
+    <div class="row"><div class="k">返回键</div><div class="v" id="back">…</div>
+      <button id="backBtn">注册 back handler（点系统返回键测试）</button>
+    </div>
+    <div class="row"><div class="k">凭据（EncryptedSharedPreferences）</div><div class="v" id="secret">…</div>
+      <button id="secretBtn">写 1 个 secret 并读回</button>
+    </div>
+    <div class="row"><div class="k">通知</div><div class="v" id="notify">…</div>
+      <button id="notifyBtn">申请权限并发一条通知</button>
+    </div>
+    <div class="row"><div class="k">IME</div><div class="v" id="ime">…</div>
+      <button id="imeBtn">切 imeMode（vars ⇄ resize）</button>
+    </div>
+
+    <div id="probe">--oc-ime-bottom = 0px（IME 关闭）</div>
+
+    <script>
+      var $ = function (id) { return document.getElementById(id); };
+      function set(id, html) { $(id).innerHTML = html; }
+      function ok(t) { return '<span class="ok">' + t + '</span>'; }
+      function bad(t) { return '<span class="bad">' + t + '</span>'; }
+
+      // ---- origin / AssetLoader / fetch -----------------------------------
+      var origin = String(location.origin);
+      set("origin", origin === "https://appassets.androidplatform.net"
+        ? ok(origin) : bad(origin + "  ← 不是 asset origin！"));
+      // AssetLoader 生效的判据：https 源 + 本地路径能取到内容（file:// 做不到）
+      set("loader", location.protocol === "https:" && /^\/assets\/www\//.test(location.pathname)
+        ? ok("YES — https + /assets/www/ 路径")
+        : bad("NO — protocol=" + location.protocol + " path=" + location.pathname));
+
+      fetch("./oc-host.js", { cache: "no-store" })
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, len: t.length }; }); })
+        .then(function (r) {
+          set("fetch", r.ok
+            ? ok("YES — 同源 fetch ./oc-host.js = " + r.len + " bytes")
+            : bad("HTTP " + r.ok));
+        })
+        .catch(function (e) { set("fetch", bad("FAIL — " + e.message)); });
+
+      // EventSource 存在性（同源 SSE 的前提；真连接留给后续轮）
+      set("ua", navigator.userAgent + "<br>EventSource=" + (typeof EventSource !== "undefined"));
+
+      // ---- 桥 -------------------------------------------------------------
+      var oc = window.__ocAndroid;
+      set("bridge", oc
+        ? ok("已注入 v" + oc.version + " — " + Object.keys(oc).length + " 个方法")
+        : bad("未注入"));
+      if (oc) {
+        set("hostinfo", JSON.stringify(JSON.parse(oc.hostInfo()), null, 2));
+
+        // insets 事件（要求 §6：必须在 JS 侧暴露变化事件）
+        window.addEventListener("oc:insets", function (e) { renderInsets(e.detail); });
+        window.addEventListener("oc:theme", function (e) { renderTheme(e.detail); });
+        if (oc.getInsets()) renderInsets(oc.getInsets());
+        renderTheme({ dark: matchMedia("(prefers-color-scheme: dark)").matches });
+
+        $("backBtn").onclick = function () {
+          oc.setBackHandler(function () {
+            set("back", ok("页面已处理（alert 一次）"));
+            alert("back handler 触发了 → 宿主应**不** finish()");
+            return true;
+          });
+          set("back", "已注册。现在按系统返回键："
+            + "① 有 handler → 弹窗，不退出；② 再点一次把 handler 置空后 → 回落到 canGoBack/什么都不做。");
+        };
+
+        $("secretBtn").onclick = function () {
+          var k = "w1.demo." + Date.now();
+          var v = "hello-" + Math.random().toString(36).slice(2, 8);
+          var wrote = oc.setSecret(k, v);
+          var back = oc.getSecret(k);
+          set("secret", ok("set=" + wrote + " get=" + back
+            + (back === v ? "（回读一致）" : "（不一致！）")));
+        };
+
+        $("notifyBtn").onclick = function () {
+          oc.requestNotificationPermission();
+          setTimeout(function () {
+            var r = oc.postMessage("自检通知", "W1 骨架 postMessage 通路验证", "sess_demo_1");
+            set("notify", (r === 0 ? ok("已发出 (0)") : bad("返回 " + r))
+              + " 权限=" + oc.hasNotificationPermission());
+          }, 800);
+        };
+
+        $("imeBtn").onclick = function () {
+          var next = oc.getImeMode() === "vars" ? "resize" : "vars";
+          oc.setImeMode(next);
+          set("ime", "imeMode → " + next + "（再看下方 --oc-ime-bottom 与压条）");
+        };
+        set("ime", "imeMode = " + oc.getImeMode());
+      }
+
+      function renderInsets(d) {
+        if (!d) return;
+        set("insets",
+          "safeTop=" + d.safeTop + "  safeBottom=" + d.safeBottom +
+          "  safeLeft=" + d.safeLeft + "  safeRight=" + d.safeRight +
+          "  <b>imeBottom=" + d.imeBottom + "</b>" +
+          "  imeVisible=" + d.imeVisible +
+          "  windowHeight=" + d.windowHeight + "  imeMode=" + d.imeMode);
+        $("probe").textContent = "--oc-ime-bottom = " + d.imeBottom
+          + (d.imeVisible ? "（键盘可见，页面 bottom padding 已被顶高）" : "（IME 关闭）");
+      }
+      function renderTheme(t) {
+        if (!t) return;
+        document.documentElement.setAttribute("data-scheme", t.scheme);
+        set("theme", "scheme=" + t.scheme
+          + "  prefers-color-scheme=" + (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+          + "  <span style=\"color:var(--muted)\">（系统栏图标明暗由宿主跟随此值）</span>");
+        // 把页面自己的深浅色报给宿主，宿主据此切状态栏图标
+        if (window.__ocAndroid) window.__ocAndroid.reportTheme(!!t.dark);
+      }
+    </script>
+  </body>
+</html>

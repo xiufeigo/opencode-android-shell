@@ -1,0 +1,2 @@
+var pre=Array.prototype.slice.call(document.querySelectorAll('pre,[class*="terminal"],[class*="xterm"]')).filter(function(e){var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}).map(function(e){var r=e.getBoundingClientRect();return {cls:(e.className||'').toString().slice(0,50), txt:(e.innerText||'').replace(/\s+/g,' ').slice(-200), x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.width), h:Math.round(r.height)};});
+return {pres:pre.slice(0,6), body:(document.body.innerText||'').replace(/\s+/g,' ').slice(0,400)};

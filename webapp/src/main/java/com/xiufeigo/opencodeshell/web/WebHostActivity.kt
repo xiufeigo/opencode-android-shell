@@ -366,6 +366,41 @@ class WebHostActivity : AppCompatActivity() {
         localUiServer = LocalUiOriginServer(assets).also { it.start() }
         PerfMarks.mark("B2.localUiOrigin", "bound=${localUiServer.boundPort}")
 
+        pendingPageScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0) ?: 0
+        // UX6：冷启动 = 直接加载真实服务器地址（官方前端由后端自托管）。
+        // 恢复态的旧 URL 直接沿用（origin 现在是稳定的后端地址，不像代理端口每次必变）。
+        val restored = savedInstanceState?.getString(STATE_URL)
+        restoredUrlOrNull = restored
+
+        setupWebViewAndLoad()
+
+        installBackHandler()
+        consumeNotificationIntent(intent)
+        consumeDebugEval(intent)
+        PerfMarks.mark("G.onCreate.exit")
+    }
+
+    /**
+     * UX16-P2：**整个 WebView 初始化链**（建实例 → 配置 → 注入 → client → insets → 加载）。
+     *
+     * 纯搬运：与改前 `onCreate` 里的代码逐行相同，不改任何初始化语义。
+     *
+     * 为什么要抽出来：[onRenderProcessGone] 的崩溃自愈现在**不再** `reload()`，
+     * 而是按平台口径**销毁旧实例 + 新建一个**（见该 override 的注释）。
+     * 新实例必须走**完全相同**的初始化链 —— 否则 bridge 注入、doc-start 脚本、
+     * WebViewClient、insets 至少会漏掉一环，页面会安静地半残（能显示但所有
+     * 原生能力失效，比白屏更难查）。
+     *
+     * ⚠️ 这里**只**放「与 WebView 实例强绑定」的东西：
+     * - `bridge` / `fileChooser` / `localUiServer` 是 **Activity 级**依赖，建在
+     *   [onCreate] 早段，重建时**必须复用同一个实例** —— 所以它们不在本方法里。
+     *   这也保证了重建后 `window.__ocAndroid` 的桥名与注入通道与首次启动完全一致。
+     * - `installBackHandler()` 只在 [onCreate] 调一次：它注册的是
+     *   `onBackPressedDispatcher` 回调（注册两次会多挂一个 callback），而回调体
+     *   读的是 `webView` **字段**，重建后自动指向新实例。
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupWebViewAndLoad() {
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -407,19 +442,11 @@ class WebHostActivity : AppCompatActivity() {
             },
         )
 
+        // insets 绑在实例上（InsetsHost 持 WebView 引用），所以重建时必须重挂一个。
         insets = InsetsHost(window, webView) { payload -> pushInsets(payload) }
-        installBackHandler()
         PerfMarks.mark("F.insetsReady")
 
-        pendingPageScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0) ?: 0
-        // UX6：冷启动 = 直接加载真实服务器地址（官方前端由后端自托管）。
-        // 恢复态的旧 URL 直接沿用（origin 现在是稳定的后端地址，不像代理端口每次必变）。
-        val restored = savedInstanceState?.getString(STATE_URL)
-        restoredUrlOrNull = restored
         launch(bootUrl())
-        consumeNotificationIntent(intent)
-        consumeDebugEval(intent)
-        PerfMarks.mark("G.onCreate.exit")
     }
 
     /**
@@ -1129,20 +1156,23 @@ class WebHostActivity : AppCompatActivity() {
          * 这是功能一致性缺口。
          *
          * 行为（见 [RENDER_CRASH_RELOAD_WINDOW_MS] 与 [renderCrashCount]）：
-         * 1. 窗口内第 1 次崩溃 ⇒ `webView.reload()` 重新从 4173 本地源加载；会话与
-         *    服务器状态在 `localStorage`，恢复后与桌面端一致。
-         * 2. 窗口内再次崩溃 ⇒ 判定为**崩溃循环**（多半是页面自身把渲染进程打崩），
-         *    不再 reload，切 [showDiagnostic] 并传 [WebViewPreflight.Reason.RENDER_CRASH]
-         *    —— 这正好把那个"有枚举、没人用"的分支接上。
+         * 1. 窗口内第 1 次崩溃 ⇒ **销毁旧 WebView 实例并新建一个**（[setupWebViewAndLoad]），
+         *    重新从 4173 本地源加载；会话与服务器状态在 `localStorage`，恢复后与桌面端一致。
+         * 2. 窗口内再次崩溃 ⇒ 判定为**崩溃循环**（多半是页面自身把渲染进程打崩，或这台
+         *    设备的 WebView 本身有问题），不再重建，切 [showDiagnostic] 并传
+         *    [WebViewPreflight.Reason.RENDER_CRASH] —— 这正好把那个"有枚举、没人用"
+         *    的分支接上。
          * 3. `return true` = **消费**该事件：宿主已接管，WebView 不再按默认行为
          *    finish Activity。**这里刻意不调 super**（super 的实现就是 return false，
          *    即"不处理"⇒ 走默认销毁路径）。
          *
-         * ⚠️ 已知边界（诚实记录，未在本轮设备验证 —— 本轮不起模拟器）：
-         * 平台文档说渲染进程消失后该 WebView 实例**不应**再被使用（惯例是把旧实例
-         * 移出视图树并新建）。此处按产品口径先做**低成本 reload 自愈**：绝大多数
-         * "崩溃后 reload 又能起来"的情形 WebView 会自行拉起新渲染进程；真起不来时
-         * 第 2 次崩溃会被节流挡下并落到诊断页，**不会**无限重启。
+         * ⚠️ 为什么第 1 次崩溃**不能**只 `reload()`（UX16-P1 CDP 真触发实证，批 #9 已闭环）：
+         * 在本镜像上 `reload()` 之后渲染进程**必然再崩**，两次独立复现的间隔分别是
+         * 6.55s / 6.56s，页面根本没起来。**两次崩溃总会被节流接住**，所以从日志表面看
+         * "进了诊断页、一切正常"，实际用户拿到的是崩溃兜底页而非自动恢复的会话 ——
+         * **节流的成功掩盖了自愈的失败**。这与平台口径一致：渲染进程消失后该实例
+         * 不应再被使用。重建后若仍然崩溃，第 2 次崩溃会被节流挡下并落到诊断页，
+         * **不会**无限重启。
          */
         override fun onRenderProcessGone(
             view: WebView,
@@ -1182,10 +1212,22 @@ class WebHostActivity : AppCompatActivity() {
                         "windowMs=$RENDER_CRASH_RELOAD_WINDOW_MS",
                 )
             } else {
-                Log.i(TAG, "UX14 render crash; reloading once (window=${RENDER_CRASH_RELOAD_WINDOW_MS}ms)")
-                // 重载前重挂 12 s 看门狗（showDiagnostic 之外的路径才需要它兜底）。
-                armWatchdog()
-                webView.reload()
+                // UX16-P2：窗口内首崩 ⇒ **销毁旧实例 + 新建**，不再 `reload()`。
+                //
+                // 为什么不再 reload（UX16-P1 真触发实证，结论已闭环）：本镜像上
+                // `reload()` 之后渲染进程**必然再次崩溃**，稳定在 ~6.5s，
+                // 端到端"恢复可用"从来不成立 —— 节流只是把第二次崩溃接住、
+                // 落诊断页，把"自愈失败"伪装成了"一切正常"。
+                // 平台口径也正是如此：渲染进程消失后该 WebView 实例**不应再被使用**。
+                Log.i(TAG, "UX16 render crash; recreating WebView (window=${RENDER_CRASH_RELOAD_WINDOW_MS}ms)")
+                // 拆桥 → 出视图树 → 销毁，顺序与 [onDestroy] 一致。
+                // destroy() 之后这个实例的任何调用都是未定义行为，必须彻底摘干净。
+                webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
+                (webView.parent as? ViewGroup)?.removeView(webView)
+                webView.destroy()
+                // 新实例走**完整**初始化链（bridge 注入 / doc-start 脚本 / client /
+                // insets / loadUrl(bootUrl)），否则页面会安静地半残。
+                setupWebViewAndLoad()
             }
             // true = 消费：阻止 WebView 默认 finish 掉整个 Activity。不调 super。
             return true

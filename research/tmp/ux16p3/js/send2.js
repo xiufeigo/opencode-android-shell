@@ -1,0 +1,10 @@
+var ce=document.querySelector('[contenteditable="true"]');
+ce.focus();
+var sel=window.getSelection(), r=document.createRange();
+r.selectNodeContents(ce); sel.removeAllRanges(); sel.addRange(r);
+document.execCommand('delete');
+document.execCommand('insertText', false, 'reply with the single word OK');
+var sb=Array.prototype.slice.call(document.querySelectorAll('button')).filter(function(b){return (b.getAttribute('aria-label')||'')==='Send';})[0];
+if(!sb) return {ok:false};
+sb.click();
+return {ok:true};
