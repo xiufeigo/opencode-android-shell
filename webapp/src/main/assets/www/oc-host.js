@@ -1877,3 +1877,141 @@
     );
   } catch (e) {}
   installOverlayFocusGuard();
+
+  // ======================================================================
+  // OC-TERMINAL · 手机竖屏的终端列数太少（"显示太诡异"）—— 用**度量缩放**换列数
+  //
+  // ## 现象（2026-10-07 产品负责人报单 + 本机同机型实测）
+  //
+  // 竖屏终端里 PowerShell 的表格被压成"一列一个字符"（`L/e/n/g/t/h`），`PS …>ls`
+  // 也从中间折断。设备实测（411×914 CSS，dpr 2.625）：
+  //   · 终端面板 `[data-component=terminal]` clientWidth 394、左右各 14px padding ⇒ 内容 366
+  //   · 画布 CSS 宽 343.6px；字体 IBM Plex Mono 在 **14px** 下单元格 = **8.4px**
+  //   · ⇒ `cols = floor(343.6 / 8.4) = 41` **列**（PowerShell 于是把最后一列挤成 1 字符宽）
+  //
+  // 根因在上游：终端控件把字号**写死**成 `fontSize: 14`
+  //   （`panel-*.js`: `new Terminal({… fontSize:14, fontFamily: r.font('mono') …})`），
+  // 手机上 400px 宽就是 41 列。上游没有"终端字号"设置项（设置里只有字体族）。
+  //
+  // ## 为什么不用 CSS `zoom`（试过，会坏坐标）
+  //
+  // `zoom:0.75` 面板：列数确实 41→57，但控件内部所有**指针数学**都还按未缩放的
+  //   布局像素算（它用 `clientX - rect.left` 除以 `metrics.width`，而 `clientX/offsetX`
+  //   在缩放后仍是视觉像素）。设备实测：点在视觉 x=299.8 处，控件算出的格子是 33.4，
+  //   而真实格子是 44.6 —— 正好差 0.75 倍。链接点击/拖选/滚动条命中都会偏 25%。
+  //
+  // ## 修法：让控件**自己**量出更小的单元格（列数变多），并把字形等比缩小
+  //
+  // 两条都在 CSS 像素空间里，因此指针数学**天然自洽**：
+  //   ① 量字体：终端在**离屏**画布上 `measureText` 量 M/Mg 得到单元格宽高。
+  //      我们把"字体族 = 终端面板的字体栈"的量字结果按比例缩小 ⇒ 控件算出更小单元格
+  //      ⇒ `cols = floor(内容宽 / 单元格宽)` 自然变大，画布 CSS 尺寸仍铺满面板。
+  //   ② 画字形：终端面板内的 `ctx.font` 一律把 px 乘同一个比例 ⇒ 字形与单元格同步变小，
+  //      不会重叠；`metrics` 与 `getBoundingClientRect`/`offsetX` 全在同一坐标系。
+  //
+  // 只在**窄屏**生效（`matchMedia('(max-width: 767px)')`，与上游窄屏断点一致）；
+  // 桌面/平板不受影响。取值 0.75 ⇒ 41 → 57 列、字形 10.5px（≈ 手机终端常规观感）。
+  //
+  // 退化安全：上游若把 `measureText`/`ctx.font` 的用法换掉，这两处补丁**自然失效**，
+  // 结果就是今天的 41 列（不会画歪、不会崩）——由 `TerminalFontScaleTest` 钉住这条性质。
+  // ======================================================================
+  var OC_TERM_FONT_SCALE = 0.75;
+
+  /** 终端面板当前用的字体栈（= 上游"代码字体"设置；控件也用它）。 */
+  function ocTerminalFontFamily() {
+    try {
+      var panel = document.querySelector('[data-component="terminal"]');
+      if (!panel) return null;
+      var fam = window.getComputedStyle(panel).fontFamily;
+      return fam ? String(fam).trim() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * 字体栈的"通用尾巴"（去掉首选项，留 `ui-monospace, SFMono-Regular, … monospace`）。
+   *
+   * ⚠️ 为什么不能用整串比对（2026-10-07 设备实测踩到）：终端控件用的字体族来自
+   * **上游设置里的"代码字体"**（`appearance.mono`，默认 `JetBrainsMono Nerd Font Mono`），
+   * 而面板的 CSS `font-mono` 解析出来是 `"IBM Plex Mono", …` —— 首选项不同、**尾巴相同**。
+   * 拿整串比对 ⇒ 量字那半永远不命中的同时画字那半照缩 ⇒ 字形比格子小（字距拉开的坏样子）。
+   */
+  function ocTerminalFontTail() {
+    var fam = ocTerminalFontFamily();
+    if (!fam) return null;
+    var i = fam.indexOf(",");
+    return (i >= 0 ? fam.slice(i + 1) : fam).trim() || null;
+  }
+
+  /** 该 ctx 是不是"画在终端面板里"的那支笔（画字形用）。 */
+  function ocCtxInTerminal(ctx) {
+    try {
+      var c = ctx && ctx.canvas;
+      return !!(c && c.closest && c.closest('[data-component="terminal"]'));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** 把字体串里的 px 乘缩放（保留 italic/bold 前缀与字体栈原文）。 */
+  function ocScaleFontPx(font, scale) {
+    var m = /(\d+(?:\.\d+)?)px/.exec(font);
+    if (!m) return font;
+    var scaled = parseFloat(m[1]) * scale;
+    return font.slice(0, m.index) + scaled + "px" + font.slice(m.index + m[0].length);
+  }
+
+  function installTerminalFontScale() {
+    try {
+      var proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
+      if (!proto || proto.__ocTermScale) return;
+      proto.__ocTermScale = true;
+
+      // ① 画字形：终端面板内的 ctx.font 缩 px
+      var desc = Object.getOwnPropertyDescriptor(proto, "font");
+      if (desc && desc.get && desc.set) {
+        Object.defineProperty(proto, "font", {
+          configurable: true,
+          get: function () {
+            return desc.get.call(this);
+          },
+          set: function (value) {
+            var v = value;
+            try {
+              if (ocCtxInTerminal(this)) v = ocScaleFontPx(String(value), OC_TERM_FONT_SCALE);
+            } catch (e) {}
+            desc.set.call(this, v);
+          },
+        });
+      }
+
+      // ② 量字体：只认"字体栈尾巴与终端面板一致"的离屏量字（终端量单元格宽高就走这里）
+      var origMeasure = proto.measureText;
+      if (typeof origMeasure === "function") {
+        proto.measureText = function (text) {
+          var m = origMeasure.call(this, text);
+          try {
+            if (!window.matchMedia || !window.matchMedia("(max-width: 767px)").matches) return m;
+            var tail = ocTerminalFontTail();
+            if (!tail) return m;
+            var font = String(this.font || "");
+            if (!font || font.indexOf(tail) < 0) return m;
+            var z = OC_TERM_FONT_SCALE;
+            return {
+              width: m.width * z,
+              actualBoundingBoxAscent: (m.actualBoundingBoxAscent || 0) * z,
+              actualBoundingBoxDescent: (m.actualBoundingBoxDescent || 0) * z,
+              fontBoundingBoxAscent: (m.fontBoundingBoxAscent || 0) * z,
+              fontBoundingBoxDescent: (m.fontBoundingBoxDescent || 0) * z,
+            };
+          } catch (e) {
+            return m;
+          }
+        };
+      }
+    } catch (e) {}
+  }
+
+  // 文档开始就装（终端控件是懒加载的，装早了才有机会拦住它的第一次量字）。
+  installTerminalFontScale();

@@ -124,9 +124,9 @@ both the Actions artifact and the GitHub Release asset:
 | | |
 |---|---|
 | Steps | `:webapp:testDebugUnitTest` → `:webapp:assembleRelease` |
-| Release asset | `opencode-2.0.2.apk` (built from `webapp/build/outputs/apk/release/`) |
+| Release asset | `opencode-2.0.3.apk` (built from `webapp/build/outputs/apk/release/`) |
 | Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
-| Version | `versionCode 29` / `versionName 2.0.2` (`webapp/build.gradle.kts`) |
+| Version | `versionCode 30` / `versionName 2.0.3` (`webapp/build.gradle.kts`) |
 | Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
 
 `debug` and `releaseR8` are **local-only** variants: three APKs sharing one
