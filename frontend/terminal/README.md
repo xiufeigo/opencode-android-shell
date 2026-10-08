@@ -102,8 +102,10 @@ npm run build
 ```
 
 `build.mjs` 用 esbuild 打成单文件 ESM，输出到
-`webapp/src/main/assets/www/oc-terminal.js`，并应用上面的面板生命周期修正。
-这两个生成文件都是 APK 资产，需重新打包才会生效；CI 校验其与源码一致。
+`webapp/src/main/assets/www/oc-terminal.js`，并应用上面的面板生命周期修正与
+`frontend/embedded-ui` 的无内建服务器配置、共享分隔线 Pointer Events 修复。
+终端、面板、入口 JS 和入口 CSS 四个生成文件都是 APK 资产，需重新打包才会生效；
+CI 校验其与源码一致。
 
 ## 验证
 

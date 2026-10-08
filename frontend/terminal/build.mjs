@@ -1,6 +1,8 @@
 import { build } from "esbuild"
 import { fileURLToPath } from "node:url"
 import { patchPanelLifecycle } from "./panel-lifecycle.mjs"
+import { patchEmbeddedUi } from "../embedded-ui/patch.mjs"
+import { patchResizeAssets } from "../embedded-ui/resize-patch.mjs"
 
 // The shipped asset embeds runtime xterm code, so the MIT notices for the three
 // runtime packages travel inside the APK. esbuild's `legalComments: "eof"` only
@@ -71,3 +73,5 @@ await build({
   banner: { js: banner },
 })
 await patchPanelLifecycle()
+await patchEmbeddedUi()
+await patchResizeAssets()

@@ -491,6 +491,10 @@ function startBackend() {
       send([])
       return
     }
+    if (p === "/api/config/shell") {
+      send([{ path: "/bin/bash", name: "bash", acceptable: true }])
+      return
+    }
     if (p === "/api/provider" || p === "/provider") {
       send({ providers: [], default: {} })
       return
@@ -3812,7 +3816,7 @@ async function main() {
   process.exitCode = failed.length ? 1 : 0
 }
 
-export { startBackend, seedScript, base64url }
+export { startBackend, startUiServer, nativeBridgeSource, ocHostLoaderSource, seedScript, base64url }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((err) => {
   console.error(`FATAL: ${err && err.stack ? err.stack : err}`)

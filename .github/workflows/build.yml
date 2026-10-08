@@ -67,7 +67,7 @@ jobs:
 
       # Locked install (npm ci, never `npm install`) + build of the mobile
       # terminal bundle from source.
-      - name: Build mobile terminal bundle
+      - name: Build embedded UI assets
         working-directory: frontend/terminal
         run: |
           npm ci
@@ -78,11 +78,13 @@ jobs:
       # produces. A developer who edits terminal.js but forgets to rebuild
       # ships the old terminal, and the unit tests below would still pass
       # against the stale file.
-      - name: Verify committed terminal bundle matches the source
+      - name: Verify committed UI assets match the source
         run: |
           git ls-files --error-unmatch -- webapp/src/main/assets/www/oc-terminal.js
           git diff --exit-code -- webapp/src/main/assets/www/oc-terminal.js
           git diff --exit-code -- webapp/src/main/assets/www/ui/oa/panel-3c8jLlNq.js
+          git diff --exit-code -- webapp/src/main/assets/www/ui/oa/index-D2r3WEwY.js
+          git diff --exit-code -- webapp/src/main/assets/www/ui/oa/index-nVyEgSVI.css
 
       # The product is the web shell (:webapp). The legacy native shell
       # (:app) is intentionally NOT tested here: dozens of its tests depend
