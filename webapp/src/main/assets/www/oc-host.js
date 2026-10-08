@@ -1928,9 +1928,9 @@
   //   ② 画字形：终端面板内的 `ctx.font` 一律把 px 乘同一个比例 ⇒ 字形与单元格同步变小，
   //      不会重叠；`metrics` 与 `getBoundingClientRect`/`offsetX` 全在同一坐标系。
   //
-  // 只在**窄屏**生效（`matchMedia('(max-width: 767px)')`，与上游窄屏断点一致）；
-  // 桌面/平板不受影响。比例值由**设置页那一行**决定（见文件末尾 OC-SETTINGS 段）：
-  // 默认 0.65 ⇒ 41 → ≈63 列、字形 9.1px；可选 100% / 80% / 65% / 55%。
+  // 默认窄屏 0.65（约 63 列、字形 9.1px），宽屏 1；已保存的字号对手机/平板都生效。
+  // 绘制与度量共享首次创建终端时的比例，旋转和键盘 resize 只调整行列数。
+  // 可选 100% / 80% / 65% / 55%，见文件末尾 OC-SETTINGS 段。
   //
   // 退化安全：上游若把 `measureText`/`ctx.font` 的用法换掉，这两处补丁**自然失效**，
   // 结果就是今天的 41 列（不会画歪、不会崩）——由 `TerminalFontScaleTest` 钉住这条性质。
@@ -1943,11 +1943,22 @@
   function ocTerminalScale() {
     try {
       var v = parseFloat(window.localStorage.getItem(OC_TERM_SCALE_KEY) || "");
-      if (!v || !isFinite(v)) return OC_TERM_SCALE_DEFAULT;
+      if (!v || !isFinite(v)) {
+        return window.matchMedia && window.matchMedia("(max-width: 767px)").matches ? OC_TERM_SCALE_DEFAULT : 1;
+      }
       return Math.min(1, Math.max(0.5, v));
     } catch (e) {
-      return OC_TERM_SCALE_DEFAULT;
+      return window.matchMedia && window.matchMedia("(max-width: 767px)").matches ? OC_TERM_SCALE_DEFAULT : 1;
     }
+  }
+
+  // 控件会缓存字符格子的度量；旋转/键盘 resize 只能改变行列数，不能单独改变绘制字号。
+  // 设置变更会重载页面，因此度量与绘制在本页使用同一个固定比例。
+  var ocAppliedTerminalScale = null;
+  var ocRawMeasureText = null;
+  function ocTerminalRenderScale() {
+    if (ocAppliedTerminalScale === null) ocAppliedTerminalScale = ocTerminalScale();
+    return ocAppliedTerminalScale;
   }
 
   /** 终端面板当前用的字体栈（= 上游"代码字体"设置；控件也用它）。 */
@@ -2012,7 +2023,7 @@
           set: function (value) {
             var v = value;
             try {
-              if (ocCtxInTerminal(this)) v = ocScaleFontPx(String(value), ocTerminalScale());
+              if (ocCtxInTerminal(this)) v = ocScaleFontPx(String(value), ocTerminalRenderScale());
             } catch (e) {}
             desc.set.call(this, v);
           },
@@ -2026,12 +2037,14 @@
         proto.measureText = function (text) {
           var m = origMeasure.call(this, text);
           try {
-            if (!window.matchMedia || !window.matchMedia("(max-width: 767px)").matches) return m;
+            // 面板内的 font setter 已缩放；只有离屏量字需要补乘，避免二次缩放。
+            if (ocCtxInTerminal(this)) return m;
             var tail = ocTerminalFontTail();
             if (!tail) return m;
             var font = String(this.font || "");
             if (!font || font.indexOf(tail) < 0) return m;
-            var z = ocTerminalScale();
+            var z = ocTerminalRenderScale();
+            if (z === 1) return m;
             return {
               width: m.width * z,
               actualBoundingBoxAscent: (m.actualBoundingBoxAscent || 0) * z,
@@ -2066,8 +2079,6 @@
   //   · 只在 `/settings` 路径上做检查（会话流式输出时那次 DOM 抖动不参与）。
   // ======================================================================
   var OC_TERM_SIZE_ATTR = "data-oc-term-size-row";
-  /** 原始（未缩放）measureText —— "估算列数"要用真实格子宽，不能被自己的补丁缩放。 */
-  var ocRawMeasureText = null;
 
   /**
    * 上游的界面语言：`opencode.global.dat:language` 存的是**带 locale 字段的编码对象**
@@ -2311,6 +2322,8 @@
         deltaMode: WheelEvent.DOM_DELTA_PIXEL,
         bubbles: true,
         cancelable: true,
+        // Shift-wheel 是控件原有的本地滚动通道；触摸查看历史不伪装成 TUI 鼠标输入。
+        shiftKey: true,
         clientX: ev ? ev.clientX : 0,
         clientY: ev ? ev.clientY : 0,
       });
@@ -2342,6 +2355,14 @@
       pendingDy = 0;
       if (!dy || !lastTarget) return;
       ocDispatchTerminalWheel(lastTarget, dy, lastEv);
+    }
+
+    function cancelWheel() {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = 0;
+      pendingDy = 0;
+      lastTarget = null;
+      lastEv = null;
     }
 
     function queueWheel(target, dy, ev) {
@@ -2411,35 +2432,58 @@
       flingRaf = window.requestAnimationFrame(step);
     }
 
+    var touchPanel = null;
+    var touchBlockUntil = 0;
+    var clickBlockPanel = null;
+    var clickBlockUntil = 0;
+
     document.addEventListener(
       "pointerdown",
       function (e) {
         stopFling(); // 手一碰就停，符合列表直觉
+        cancelWheel();
         if (e.pointerType === "mouse") return;
         var t = e.target;
-        if (!t || !t.closest || !t.closest('[data-component="terminal"]')) return;
-        track = { id: e.pointerId, lastY: e.clientY, moved: 0, target: t, samples: [{ t: e.timeStamp, y: e.clientY }] };
+        var panel = t && t.closest && t.closest('[data-component="terminal"]');
+        if (!panel || t.closest('button,a,input,[data-component="resize-handle"]')) return;
+        var canvas = panel.querySelector("canvas");
+        if (!canvas) return;
+        // 上游 pointerdown 会立即 focus 并唤起 IME；延迟到确认是轻点的 pointerup。
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault(); // 也屏蔽触摸合成的 mousedown/文本选择
+        touchPanel = panel;
+        touchBlockUntil = Date.now() + 800;
+        if (e.isPrimary === false) {
+          track = null;
+          clickBlockPanel = panel;
+          clickBlockUntil = Date.now() + 800;
+          return;
+        }
+        clickBlockPanel = null;
+        track = { id: e.pointerId, lastY: e.clientY, startY: e.clientY, moved: 0, target: canvas, samples: [{ t: e.timeStamp, y: e.clientY }] };
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
       },
-      true,
+      { capture: true, passive: false },
     );
 
     document.addEventListener(
       "pointermove",
       function (e) {
         if (!track || e.pointerId !== track.id) return;
+        e.stopPropagation();
         var dy = track.lastY - e.clientY; // 手指上滑 = 正
         track.lastY = e.clientY;
         track.samples.push({ t: e.timeStamp, y: e.clientY });
-        // 只留惯性窗口内的样本（防止长按后那一段老样本把速度算小/算反）
         while (track.samples.length > 2 && e.timeStamp - track.samples[0].t > OC_TERM_FLING_WINDOW_MS) {
           track.samples.shift();
         }
-        if (!dy) return;
-        track.moved += Math.abs(dy);
-        // 还没超过轻点阈值：什么都不做，把事件留给控件（聚焦/选择/点链接）
-        if (track.moved < OC_TERM_TOUCH_SLOP) return;
-        // 控件只认 wheel：1px 位移 → 1px deltaY（它再按单元格高换算成行），每帧合并一次
-        queueWheel(e.target, dy, e);
+        if (track.moved < OC_TERM_TOUCH_SLOP) {
+          track.moved = Math.abs(track.startY - e.clientY);
+          if (track.moved < OC_TERM_TOUCH_SLOP) return;
+          dy = track.startY - e.clientY;
+        }
+        // 从起手的画布派发，离开画布或经过面板留白也不会丢滚动。
+        queueWheel(track.target, dy, e);
         if (e.cancelable) e.preventDefault();
       },
       { capture: true, passive: false },
@@ -2449,14 +2493,46 @@
       if (!track || (e && e.pointerId !== track.id)) return;
       var t = track;
       track = null;
-      // 只有"真的拖过"才可能甩：轻点不产生惯性（否则点一下就自己滚）。
-      if (!e || e.type !== "pointerup") return;
-      if (t.moved < OC_TERM_TOUCH_SLOP) return;
+      touchBlockUntil = Date.now() + 800;
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      try { if (t.target.hasPointerCapture(t.id)) t.target.releasePointerCapture(t.id); } catch (err) {}
+      if (!e || e.type !== "pointerup") {
+        cancelWheel();
+        clickBlockPanel = touchPanel;
+        clickBlockUntil = Date.now() + 800;
+        return;
+      }
+      // 结束帧先交付拖动位移，惯性随后开始；不会遗留上一手势的 rAF。
+      if (rafId) window.cancelAnimationFrame(rafId);
+      flushWheel();
+      if (t.moved < OC_TERM_TOUCH_SLOP) {
+        var input = touchPanel && touchPanel.querySelector("textarea");
+        if (input) input.focus({ preventScroll: true });
+        return;
+      }
+      clickBlockPanel = touchPanel;
+      clickBlockUntil = Date.now() + 800;
+      // 松手也必须采样：拖完停住再放手不会拿旧速度误起甩。
+      t.samples.push({ t: e.timeStamp, y: e.clientY });
       var v = flingVelocity(t.samples);
       if (Math.abs(v) >= OC_TERM_FLING_MIN) startFling(v, t.target, e);
     };
     document.addEventListener("pointerup", stop, true);
     document.addEventListener("pointercancel", stop, true);
+    document.addEventListener("lostpointercapture", stop, true);
+
+    // 控件自身的 touchend 也会 focus；轻点已在 pointerup 聚焦，拖动不应弹键盘。
+    document.addEventListener("touchend", function (e) {
+      if (!touchPanel || Date.now() > touchBlockUntil || !touchPanel.contains(e.target)) return;
+      if (e.cancelable) e.preventDefault();
+      e.stopImmediatePropagation();
+    }, { capture: true, passive: false });
+    document.addEventListener("click", function (e) {
+      if (!clickBlockPanel || Date.now() > clickBlockUntil || !clickBlockPanel.contains(e.target)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
   }
 
   installTerminalTouchScroll();

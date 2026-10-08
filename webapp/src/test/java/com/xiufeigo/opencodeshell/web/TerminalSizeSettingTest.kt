@@ -50,10 +50,12 @@ class TerminalSizeSettingTest {
             "越界值必须夹回 [0.5, 1]（用户手改 localStorage 也不能画出格）",
             settings.contains("Math.min(1, Math.max(0.5, v))"),
         )
-        assertTrue("读不到时必须回退默认值", settings.contains("return OC_TERM_SCALE_DEFAULT"))
+        assertTrue("读不到时手机使用缩小字号、宽屏使用原字号", settings.contains(".matches ? OC_TERM_SCALE_DEFAULT : 1"))
         assertTrue(
-            "度量补丁必须消费设置项（而不是写死的常量）",
-            js.contains("var z = ocTerminalScale();") && js.contains("ocScaleFontPx(String(value), ocTerminalScale())"),
+            "绘制与度量必须共同使用本页缓存的设置值",
+            js.contains("ocAppliedTerminalScale = ocTerminalScale()") &&
+                js.contains("var z = ocTerminalRenderScale();") &&
+                js.contains("ocScaleFontPx(String(value), ocTerminalRenderScale())"),
         )
     }
 

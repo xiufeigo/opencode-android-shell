@@ -70,16 +70,17 @@ class TerminalTouchScrollTest {
     }
 
     @Test
-    fun tapsAreLeftToTheWidgetAndDragsAreCoalescedPerFrame() {
-        // 轻点：不超过阈值就 return，绝不 preventDefault（否则点终端弹不出键盘）
-        val slopIdx = block.indexOf("track.moved < OC_TERM_TOUCH_SLOP")
-        assertTrue("必须先判阈值", slopIdx > 0)
-        val after = block.substring(slopIdx, minOf(block.length, slopIdx + 260))
-        assertTrue("未超阈值必须直接 return（把事件留给控件）", after.contains("return"))
-        // 合并：位移先攒，rAF 里一次发出去
+    fun tapsFocusOnReleaseAndDragsAreCoalescedPerFrame() {
+        assertTrue("轻点在 pointerup 聚焦", block.contains("input.focus({ preventScroll: true })"))
+        assertTrue("触摸从稳定的画布派发", block.contains("queueWheel(track.target, dy, e)"))
+        assertTrue("拖动接管 pointerdown 聚焦", block.contains("e.stopPropagation()"))
+        assertTrue("拖动屏蔽上游 touchend 再聚焦", block.contains("document.addEventListener(\"touchend\""))
+        assertTrue("本地查看历史不发送 TUI 鼠标事件", block.contains("shiftKey: true"))
+        assertTrue("取消必须清理待发送帧", block.contains("cancelWheel();"))
+        assertTrue("松手必须加入速度采样", block.contains("t.samples.push({ t: e.timeStamp, y: e.clientY })"))
         assertTrue("必须用 requestAnimationFrame 合并", block.contains("window.requestAnimationFrame(flushWheel)"))
         assertTrue("必须把这一帧的位移累加", block.contains("pendingDy += dy"))
-        assertTrue("flush 之后必须清零（否则下一帧重复发）", block.contains("pendingDy = 0"))
+        assertTrue("flush 之后必须清零", block.contains("pendingDy = 0"))
     }
 
     @Test
@@ -126,7 +127,7 @@ class TerminalTouchScrollTest {
 
     @Test
     fun flingOnlyStartsAfterARealDragAndStopsOnTouch() {
-        assertTrue("轻点/未超阈值不得起甩", block.contains("if (t.moved < OC_TERM_TOUCH_SLOP) return;"))
+        assertTrue("轻点/未超阈值不得起甩", block.contains("if (t.moved < OC_TERM_TOUCH_SLOP) {"))
         assertTrue("速度不够不得起甩", block.contains("if (Math.abs(v) >= OC_TERM_FLING_MIN) startFling(v, t.target, e)"))
         assertTrue("只认 pointerup 起甩（cancel 不起）", block.contains("e.type !== \"pointerup\""))
         assertTrue("手指一碰就停", block.contains("stopFling(); // 手一碰就停"))

@@ -53,25 +53,15 @@ class TerminalFontScaleTest {
     }
 
     @Test
-    fun scalesTerminalMetricsOnlyOnNarrowScreens() {
-        assertTrue("必须有默认比例 OC_TERM_SCALE_DEFAULT", code.contains("OC_TERM_SCALE_DEFAULT"))
-        assertTrue(
-            "默认比例必须是一个 (0,1) 的系数（否则列数不会变多 / 会画出格）",
-            Regex("""OC_TERM_SCALE_DEFAULT\s*=\s*0\.\d+""").containsMatchIn(code),
-        )
-        assertTrue(
-            "可选项必须是 (0,1] 的比例列表",
-            Regex("""OC_TERM_SCALE_CHOICES\s*=\s*\[[^\]]*0\.\d+[^\]]*\]""").containsMatchIn(code),
-        )
-        assertTrue(
-            "只在窄屏生效（与上游窄屏断点一致）",
-            code.contains("\"(max-width: 767px)\"") && code.contains(".matches"),
-        )
-        // 宽屏直接原样返回，一个像素都不动。
-        assertTrue(
-            "宽屏必须原样返回原始度量",
-            code.contains("if (!window.matchMedia || !window.matchMedia(\"(max-width: 767px)\").matches) return m"),
-        )
+    fun usesOneStableScaleForMeasurementAndDrawing() {
+        assertTrue("手机默认缩小字号", code.contains("OC_TERM_SCALE_DEFAULT = 0.65"))
+        assertTrue("默认字号随初次终端布局选择，平板保持原字号", code.contains(".matches ? OC_TERM_SCALE_DEFAULT : 1"))
+        assertTrue("绘制使用本页固定比例", code.contains("ocScaleFontPx(String(value), ocTerminalRenderScale())"))
+        assertTrue("离屏度量使用同一比例", code.contains("var z = ocTerminalRenderScale()"))
+        assertTrue("比例只初始化一次，旋转不会单独改变字形", code.contains("if (ocAppliedTerminalScale === null) ocAppliedTerminalScale = ocTerminalScale()"))
+        assertTrue("面板内已缩放的字体不能再次缩放度量", code.contains("if (ocCtxInTerminal(this)) return m"))
+        assertTrue("100% 直接返回原始度量", code.contains("if (z === 1) return m"))
+        assertFalse("禁止在安装后重置原始 measureText", block.substringAfter("installTerminalFontScale();").contains("var ocRawMeasureText = null"))
     }
 
     @Test
