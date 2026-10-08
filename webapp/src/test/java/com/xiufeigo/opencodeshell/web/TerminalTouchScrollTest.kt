@@ -6,28 +6,9 @@ import org.junit.Test
 import java.io.File
 
 /**
- * TERM2 绊线：**手机上拖动终端看历史**（产品负责人 2026-10-07 21:21 报单）。
- *
- * ## 根因（读控件产物得出，非猜测）
- *
- * 终端控件 ghostty-web 只监听 `wheel` / `mousedown` / `mousemove` / `click` ——
- * 它的产物里 `touchstart` / `touchmove` 出现 **0 次**。桌面靠滚轮、或拖右侧那条 8px 滚动条；
- * 手机上既没有滚轮、手指又落不到那条窄带上 ⇒ **屏幕中间怎么拖都不动**（设备实测：
- * 拖动前后终端内容完全一致，都是 50..80）。
- *
- * ## 修法（本类钉住的不变量）
- *
- * 宿主把"竖直拖动"翻译成控件认得的 `wheel`：
- * · 控件的 `handleWheel` 在 `deltaMode === DOM_DELTA_PIXEL` 时按
- *   `lines = deltaY / 单元格高`（实测 8 CSS px）换算 ⇒ 1px 位移 = 1px 滚动，跟手；
- * · **必须从触发点（画布）派发**：控件的监听挂在 `open(element)` 那个节点上，
- *   事件只向上冒泡 —— 派给它的祖先（面板）它收不到。这一条是本轮实际踩过的坑：
- *   计数器显示 wheel 到了面板，控件毫无反应。
- * · 位移小于 6px 一律当轻点，**不 preventDefault**，控件自己的聚焦/选择/点链接照旧
- *   （实测：轻点终端仍能弹出键盘 `mInputShown=true`）。
- * · **每帧只发一个** wheel：一次拖动几十个 pointermove 会让控件的 `smoothScrollTo`
- *   反复重启（实测画布出现"只重绘一部分"的残留）。
- * · 只加 `touch-action:none` 到终端面板，且不碰任何逐键事件（`InputPathHotspotTest` 的红线）。
+ * 保留的 Ghostty 宿主回退契约；生产 xterm 适配层会跳过该安装函数。
+ * 这些源码断言只检查历史回退实现，不代表 Android 设备验收结果。
+ * 当前终端的触摸行为由 scripts/verify-android-terminal-release.mjs 在完整 SPA 中验证。
  */
 class TerminalTouchScrollTest {
 

@@ -103,6 +103,16 @@ class LocalUiOriginServerTest {
     }
 
     @Test
+    fun terminalChunkUsesPackagedMobileAdapter() {
+        assertTrue(serverSrc.contains("normalized.startsWith(URL_BUNDLE_PREFIX + \"ghostty-web-\")"))
+        assertTrue(serverSrc.contains("assets.open(\"www/oc-terminal.js\")"))
+        assertTrue(File("src/main/assets/www/oc-terminal.js").length() > 100_000)
+        val adapter = moduleFile("../frontend/terminal/terminal.js")
+        assertTrue(adapter.contains("from \"@xterm/xterm\""))
+        assertTrue(adapter.contains("SerializeAddon"))
+    }
+
+    @Test
     fun endpointHasSpaFallback() {
         // 官方前端是 SPA：深链（/session/xxx、/settings）必须回落到 index.html。
         assertTrue(

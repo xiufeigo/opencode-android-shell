@@ -64,3 +64,11 @@ research/_scratch*/
 
 v36proj*/
 
+# Reproducible mobile terminal dependencies
+frontend/terminal/node_modules/
+research/tmp/android-terminal-deps/
+research/tmp/verify-android-terminal*/
+research/tmp/*-readable.js
+research/tmp/prepare-xterm6-verifier.mjs
+research/tmp/verify-android-terminal-xterm6.mjs
+

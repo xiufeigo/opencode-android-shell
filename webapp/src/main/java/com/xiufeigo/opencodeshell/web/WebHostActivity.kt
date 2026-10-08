@@ -398,6 +398,10 @@ class WebHostActivity : AppCompatActivity() {
      * - `installBackHandler()` 只在 [onCreate] 调一次：它注册的是
      *   `onBackPressedDispatcher` 回调（注册两次会多挂一个 callback），而回调体
      *   读的是 `webView` **字段**，重建后自动指向新实例。
+     * - 焦点/IME 接线（`isFocusable` / `isFocusableInTouchMode` + ACTION_DOWN 监听）
+     *   刻意写在 `apply {}` **实例块内**、而不是 `onCreate`：它与 WebView 实例强绑定，
+     *   放在这里才能保证 [onRenderProcessGone] 崩溃重建后的新实例**同样**带这套焦点配置
+     *   （放在方法外/字段上会在重建时漏挂，退化成"首启能用、崩一次就再也弹不出键盘"）。
      */
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebViewAndLoad() {
@@ -409,6 +413,51 @@ class WebHostActivity : AppCompatActivity() {
             setBackgroundColor(0xFF080808.toInt())
             isVerticalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
+
+            // ---- 原生焦点 / IME 接线（最小修正）---------------------------------
+            //
+            // 现象（Android 15 / emulator-5636，真实 SPA + xterm，调试 APK）：
+            // 原生 tap 后 DOM 侧 `textarea.inputFocused === true`，但 Gboard 不出；
+            // `dumpsys input_method` 读到
+            //   mServedView         = DecorView[WebHostActivity]  ← 服务视图是 DecorView，不是 WebView
+            //   mServedInputConnection = null                      ← 根本没有 InputConnection
+            // 且反复 `TYPE_SHOW STATUS_FAIL / SHOW_SOFT_INPUT / PHASE_CLIENT_VIEW_SERVED`。
+            //
+            // 判读：**DOM 焦点 ≠ native 焦点**。IME 由 ViewRootImpl 沿 `findFocus()`
+            // 找服务视图；触屏模式下没有 descendant 持有焦点时它回落到 DecorView，
+            // 而没有焦点就不会触发 `onCreateInputConnection` ⇒ `mServedInputConnection=null`
+            // ⇒ 随后的 SHOW 请求必然 STATUS_FAIL（正是观测到的 PHASE_CLIENT_VIEW_SERVED）。
+            // Chromium 侧 DOM 焦点是真的，但它下发给 WebView 的那次 native 焦点请求在
+            // 触屏模式下不一定落到视图树上 ⇒ 于是出现"DOM 说聚焦了、原生说没有"的分裂。
+            //
+            // `isFocusable` / `isFocusableInTouchMode` 是 `View.requestFocus()` 的**平台前置条件**
+            // （不满足则直接 return false、不做任何事），这里显式钉死，避免后续被任何
+            // 主题/样式或重建路径改掉；真正把焦点抢下来的是下面那个 ACTION_DOWN 监听。
+            isFocusable = true
+            isFocusableInTouchMode = true
+
+            // 触屏模式下框架不会因为 tap 自动转移焦点，所以必须由我们自己请求。
+            // 为什么落在 ACTION_DOWN：原生 down 一定**先于** WebView 内部派发的 DOM focus，
+            // 先在这里拿到 native focus，后面的 SHOW 才有一个正确的服务视图可挂 InputConnection。
+            //
+            // 返回 false（不消费）的理由：本监听**只**补一次焦点请求，不消费也不替换
+            // WebView 既有的手势判定 —— 终端拖动选区、滚动、点击全部照旧走 WebView 自己的
+            // onTouchEvent；也**不**因为"被点了"就自行弹键盘（键盘仍只由 DOM focus 决定）。
+            // 因此它不是一个 click 处理器，不存在需要 `performClick()` 的可达性缺口。
+            @SuppressLint("ClickableViewAccessibility")
+            setOnTouchListener { v, event ->
+                if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN && !v.isFocused) {
+                    val got = v.requestFocus()
+                    if (BuildConfig.DEBUG) {
+                        Log.d(
+                            TAG,
+                            "focus: ACTION_DOWN requestFocus=$got focusable=${v.isFocusable} " +
+                                "inTouchMode=${v.isFocusableInTouchMode}",
+                        )
+                    }
+                }
+                false
+            }
         }
         setContentView(webView)
         PerfMarks.mark("C.webviewCreated+setContentView")

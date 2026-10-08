@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The web app loads `assets/www/oc-terminal.js`, a bundle of
+      # frontend/terminal/terminal.js. Build it from the lockfile below and
+      # prove the committed bundle is in sync, so a source-only change can
+      # never ship a stale terminal.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/terminal/package-lock.json
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -54,6 +64,25 @@ jobs:
           # Self-check: must print 76:0D:C0:5F:B4:D1:A1:25 (public cert fingerprint).
           keytool -list -v -keystore .ci-debug.keystore \
             -storepass "$ANDROID_DEBUG_STORE_PASSWORD" 2>/dev/null | grep -E "Alias name|SHA256" || true
+
+      # Locked install (npm ci, never `npm install`) + build of the mobile
+      # terminal bundle from source.
+      - name: Build mobile terminal bundle
+        working-directory: frontend/terminal
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      # Guard: the committed bundle must be byte-identical to what the source
+      # produces. A developer who edits terminal.js but forgets to rebuild
+      # ships the old terminal, and the unit tests below would still pass
+      # against the stale file.
+      - name: Verify committed terminal bundle matches the source
+        run: |
+          git ls-files --error-unmatch -- webapp/src/main/assets/www/oc-terminal.js
+          git diff --exit-code -- webapp/src/main/assets/www/oc-terminal.js
+          git diff --exit-code -- webapp/src/main/assets/www/ui/oa/panel-3c8jLlNq.js
 
       # The product is the web shell (:webapp). The legacy native shell
       # (:app) is intentionally NOT tested here: dozens of its tests depend
@@ -99,6 +128,13 @@ jobs:
           NAME=$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" /tmp/badging.txt)
           echo "package=$PKG versionCode=$CODE versionName=$NAME"
           test "$PKG" = "com.xiufeigo.opencodeshell"
+          EXPECTED_CODE=$(sed -n 's/^[[:space:]]*versionCode = \([0-9]*\).*/\1/p' webapp/build.gradle.kts)
+          EXPECTED_NAME=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' webapp/build.gradle.kts)
+          test "$CODE" = "$EXPECTED_CODE"
+          test "$NAME" = "$EXPECTED_NAME"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            test "$GITHUB_REF_NAME" = "v$NAME"
+          fi
           apksigner verify --print-certs "$APK" | tee /tmp/certs.txt | grep -E "Signer #1|SHA-256"
           grep -q "760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6" /tmp/certs.txt
           echo "APK_NAME=opencode-${NAME}.apk" >> "$GITHUB_ENV"

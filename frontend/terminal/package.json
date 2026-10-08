@@ -1,0 +1,13 @@
+{
+  "name": "opencode-mobile-terminal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs", "test": "node --test panel-lifecycle.test.mjs" },
+  "dependencies": {
+    "@xterm/xterm": "6.0.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-serialize": "0.14.0"
+  },
+  "devDependencies": { "esbuild": "0.25.12" }
+}

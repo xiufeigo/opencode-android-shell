@@ -124,10 +124,11 @@ both the Actions artifact and the GitHub Release asset:
 | | |
 |---|---|
 | Steps | `:webapp:testDebugUnitTest` → `:webapp:assembleRelease` |
-| Release asset | `opencode-2.0.7.apk` (built from `webapp/build/outputs/apk/release/`) |
+| Release asset | `opencode-2.0.8.apk` (built from `webapp/build/outputs/apk/release/`) |
 | Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
 | App label | `OpenCode` (`webapp/src/main/res/values/strings.xml` → `app_name`) — what the launcher, notifications, Recents and Settings → Apps show. The APK *file* keeps the `opencode-<version>.apk` name |
-| Version | `versionCode 34` / `versionName 2.0.7` (`webapp/build.gradle.kts`) |
+| Version | `versionCode 36` / `versionName 2.0.8` (`webapp/build.gradle.kts`) |
+| Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
 
 ## Keyboard (IME) and the viewport
 
@@ -151,13 +152,12 @@ Settings → **Appearance** gets an injected **Terminal font size** row (cloned 
 own row markup, so it matches the real design): 100% / 80% / 65% / 55% ≈ 41 / 52 / 63 / 75
 columns. The choice is stored in `localStorage['oc.settings.terminalFontScale']` (default
 65%, clamped to 0.5-1) and the page reloads once so the change takes effect on the next
-terminal; `?tab=appearance` keeps you on the same panel. Wide screens are untouched.
+terminal; `?tab=appearance` keeps you on the same panel. Saved preferences also apply on wide screens; without one, wide screens use 100%.
 
-The terminal also gets **touch scrolling** the widget itself never had: a vertical drag is
-translated into the wheel events ghostty-web listens for (1:1 with the finger, one wheel per
-frame, `touch-action:none` scoped to the terminal) and a flick keeps gliding with a decaying
-velocity (150 px/s to start, ~700ms decay, 900ms fuse, stops the moment you touch the screen).
-| Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
+The web shell terminal now uses a pinned xterm adapter with touch scrolling,
+inertia, history-position preservation across keyboard and rotation changes,
+and bottom alignment for short output. Build and verification instructions:
+[`frontend/terminal/README.md`](frontend/terminal/README.md).
 
 `debug` and `releaseR8` are **local-only** variants: three APKs sharing one
 applicationId + versionCode can never coexist on a device, so shipping them all

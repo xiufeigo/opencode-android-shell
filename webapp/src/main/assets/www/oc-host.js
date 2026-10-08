@@ -17,6 +17,7 @@
 (function () {
   var N = window.__ocAndroidNative;
   if (!N) return;
+  window.__ocTerminalEngine = "xterm";
 
   var backHandler = null;
   var insetHandler = null;
@@ -2007,6 +2008,7 @@
   }
 
   function installTerminalFontScale() {
+    if (window.__ocTerminalEngine === "xterm") return;
     try {
       var proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
       if (!proto || proto.__ocTermScale) return;
@@ -2335,6 +2337,7 @@
   }
 
   function installTerminalTouchScroll() {
+    if (window.__ocTerminalEngine === "xterm") return;
     if (window.__ocTermTouch) return;
     window.__ocTermTouch = true;
     installTerminalTouchStyle();

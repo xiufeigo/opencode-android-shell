@@ -44,7 +44,7 @@ enum class ImeMode {
  * 不要除以 `density`（那是 px→dp，恰好反过来就对了：px / density = dp）。
  * 页面若声明 `<meta viewport>` 里的 `user-scalable`/固定宽度，这条 1:1 才成立。
  *
- * ### `ime.bottom` 会不会骗人
+ * ### `imeBottom` 会不会骗人
  * 会。`WindowInsetsCompat.Type.ime()` 是**平台每次交付的读数**，不是本进程缓存，
  * 但平台自己也可能报一个"僵死"的值：`wm size`/`wm density` 覆盖后显示长回去了、
  * IME 窗口没重新排版，平台按 `inset = 窗口底 − IME 窗顶` 上报，读数远大于屏幕上
@@ -155,7 +155,9 @@ class InsetsHost(
                 WindowInsetsCompat.Type.navigationBars() or
                 WindowInsetsCompat.Type.displayCutout()
         )
-        val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+        val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+        val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+        val imeBottom = if (imeVisible) imeInsets.bottom else 0
 
         val dark = systemIsDark()
         val payload = JSONObject().apply {
@@ -164,12 +166,12 @@ class InsetsHost(
             put("safeBottom", (bars.bottom / d).css())
             put("safeLeft", (bars.left / d).css())
             put("safeRight", (bars.right / d).css())
-            put("imeBottom", (ime.bottom / d).css())
+            put("imeBottom", (imeBottom / d).css())
             // 平台在"未被 resize 的窗口"上按 窗口底−IME窗顶 上报，ime 高度可能远大于
             // 屏幕上那块键盘（v77 实测 2195 vs 766）。给页面一个保守提示：
             // ime 盖到窗口一半以上时，height 只可能是"僵死读数"，不是键盘。
-            put("imeHeight", (ime.bottom / d).css())
-            put("imeVisible", ime.bottom > 0)
+            put("imeHeight", (imeBottom / d).css())
+            put("imeVisible", imeVisible)
             // **整窗**高（不是 WebView 当前内容高）：resize 模式下 WebView 本来就被压矮了，
             // 拿它当基准会让"僵死读数守卫"（占比 ≥85%）被二次触发、也会让页面算错
             // IME 上沿（屏幕坐标 = 整窗高 − ime）。所以取 decor（rootView）高。
@@ -179,7 +181,7 @@ class InsetsHost(
             put("scheme", if (dark) "dark" else "light")
         }
 
-        applyResize(ime.bottom, bars.bottom)
+        applyResize(imeBottom, bars.bottom)
 
         if (payload.toString() != last?.toString()) {
             last = payload
@@ -216,6 +218,11 @@ class InsetsHost(
         // 第一次（还没有已提交值）立即生效：启动时的 inset 就是静态读数，等 80ms 没意义。
         if (committedPadPx < 0) {
             commitResize(want, imeBottom, navBottom, "first")
+            return
+        }
+        if (imeBottom == 0) {
+            root.removeCallbacks(commitResizeRunnable)
+            commitResize(want, imeBottom, navBottom, "ime-hidden")
             return
         }
         if (want == committedPadPx) {

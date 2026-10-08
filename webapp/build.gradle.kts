@@ -29,10 +29,11 @@ android {
         targetSdk = 35
         // 27 原生壳版本线（1.4.0/26）续号；28 幻影 4173；29 弹层键盘；30 窄屏终端列数；
         // 31 终端字号设置项；32 IME 视口兜底；33 应用名；34 终端触摸滚动+resize 合并；
-        // 35 触摸防 IME 聚焦、稳定滚动目标及手机/平板统一字符度量。
-        versionCode = 35
-        // 跟 GitHub tag 走（v2.0.7 = 待发版本；产品负责人 2026-10-07 定规：**只有点名发版才打 tag**）。
-        versionName = "2.0.7"
+        // 35 触摸防 IME 聚焦、稳定滚动目标及手机/平板统一字符度量；
+        // 36 自有 xterm 终端、历史滚动及键盘隐藏时即时恢复布局。
+        versionCode = 36
+        // 保持正式包名和原 CI 签名，允许从 v2.0.7 原地升级。
+        versionName = "2.0.8"
     }
 
     signingConfigs {
@@ -149,6 +150,9 @@ dependencies {
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     listOf(
         "src/main/assets/www/oc-host.js",
+        "src/main/assets/www/oc-terminal.js",
+        "../frontend/terminal/terminal.js",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt",
         "src/main/assets/www/index.html",
         "build.gradle.kts",
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
