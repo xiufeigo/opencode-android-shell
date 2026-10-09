@@ -90,8 +90,8 @@ jobs:
       - name: Verify committed UI assets match the source
         run: |
           git ls-files --error-unmatch -- webapp/src/main/assets/www/oc-terminal.js
-          git diff --exit-code -- webapp/src/main/assets/www/oc-terminal.js
-          git diff --exit-code -- webapp/src/main/assets/www/ui
+          git diff --exit-code --stat -- webapp/src/main/assets/www/oc-terminal.js
+          git diff --exit-code --stat -- webapp/src/main/assets/www/ui
           test -z "$(git ls-files --others --exclude-standard -- webapp/src/main/assets/www/ui)"
 
       # The product is the web shell (:webapp). The legacy native shell

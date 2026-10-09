@@ -41,9 +41,11 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 
 最终浏览器引擎报告：`research/tmp/verify-android-browser/2026-10-09T08-18-07-715Z/report.json`；实际手机报告与截图：`research/tmp/verify-android-browser/2026-10-09T08-16-16-344Z-device/`。普通隐藏窗口的最小复现返回 `Current display surface not available for capture`，相同流程启用离屏渲染后连续两次重建与截图成功。
 
-本机构建 APK：`webapp/build/outputs/apk/release/webapp-release.apk`，57,608,016 字节；SHA-256 `CF278A61C2414BFF1B5E5EF8B6B08151AA9770DB231BFF61EAAB9BB99CB50C1E`。包名/版本/签名验证通过。此包使用本机 debug keystore 签名，与现有 GitHub CI 的签名不同，不能直接覆盖其已安装版本；CI 使用原有共享签名配置。设备浏览器验证运行在同源代码的 debug APK。
+本机构建 APK：`webapp/build/outputs/apk/release/webapp-release.apk`，57,607,944 字节；SHA-256 `3FFD58E336A2037BD9D0B51EA70879DBF15AE7FF3601ACB5E464B3BE20750930`。包名/版本/签名验证通过。此包使用本机 debug keystore 签名，与现有 GitHub CI 的签名不同，不能直接覆盖其已安装版本；CI 使用原有共享签名配置。设备浏览器验证运行在同源代码的 debug APK。
 
 发布前补充检查固定构建检出的 LF 行尾，并恢复旧 Windows 检出中被 CRLF 转换的源文件，避免同一 commit 在 Linux CI 生成不同资源。规范行尾后官方类型检查、APK 构建和导航 16 项回归再次通过；终端 51 项及拖动 10 项回归通过。
+
+CI 首次完整构建还发现 Workbox 按文件系统遍历顺序生成缓存清单。固定 URL 排序后，确认 Windows/Linux 的 1,616 个缓存条目内容与完整性校验相同、Service Worker 运行代码未变；两次源码构建逐字节一致，APK 中的缓存清单与源码构建一致。行尾检查仅扫描稀疏检出的源码，避免读取被排除的 blob 导致逐个网络下载。
 
 本轮具体报告保存在 `research/tmp/verify-android-*` 和 `_scratch_root/desktop-parity` 的本地测试目录。可复现入口：根 README、`browser-companion/smoke.mjs`、`scripts/verify-android-navigation.mjs`、`scripts/verify-android-resize.mjs`、`scripts/verify-android-terminal-release.mjs` 及设备验证脚本。CI 增加固定官方 UI 和 companion 的构建检查；PR/main 构建只读，tag 发布获得仓库写权限，两者复用同一构建工作流。签名包直接上传 GitHub Release，避免仓库已遇到的 Actions 产物存储配额限制；发布失败会明确失败。
 

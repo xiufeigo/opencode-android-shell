@@ -80,6 +80,18 @@ index 81347b4d..a3ba1824 100644
          <TabLayoutSetting />
  
          <WorkspaceDestinationSetting />
+diff --git a/packages/app/vite.pwa.ts b/packages/app/vite.pwa.ts
+--- a/packages/app/vite.pwa.ts
++++ b/packages/app/vite.pwa.ts
+@@ -44,6 +44,8 @@ export function serviceWorker(directory: string) {
+           manifest: await Promise.all(
+             entries
+               .filter((entry) => !onDemandAsset(entry.url))
++              // Filesystem traversal order differs between Windows and Linux.
++              .sort((a, b) => a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
+               .map(async (entry) => ({
+               ...entry,
+               // A revision labels a cache entry; integrity rejects mixed deployments
 diff --git a/packages/gui-extensions/src/browser/chromium.ts b/packages/gui-extensions/src/browser/chromium.ts
 index 4e665fa8..e240455d 100644
 --- a/packages/gui-extensions/src/browser/chromium.ts
