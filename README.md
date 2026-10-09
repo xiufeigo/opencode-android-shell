@@ -2,7 +2,7 @@
 
 Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.11 / 39**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
+官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.12 / 40**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
 ## 与 Desktop 对齐
 
@@ -57,6 +57,8 @@ HTTP/WS 会明文传输配对令牌和服务器认证信息，仅用于可信网
 
 ## 验证
 
+左上角复用官方应用菜单：文件、编辑、视图、转到、窗口、帮助。编辑接系统剪贴板，视图提供缩放、重载与 Android 全屏，窗口可最小化或关闭 Android 任务；新桌面窗口、最大化与 Electron 开发者工具明确禁用。右侧审查栏“＋”保留打开文件和浏览器菜单；未配对时打开原生浏览器服务配对框，连接后打开官方浏览器面板。
+
 ```sh
 node scripts/verify-android-navigation.mjs
 node scripts/verify-android-file-picker.mjs
@@ -71,6 +73,8 @@ node scripts/verify-android-terminal-release.mjs
 `scripts/verify-android-browser-device.mjs` 验证已配对的实际 APK：网页画面、ADB 点击/滑动、中文输入、页面重载恢复。需先在独立测试会话连接真实 OpenCode 和浏览器服务，将 WebView CDP 转发到 `DEVICE_CDP`，并设置 `ANDROID_SERIAL` 和可选 `ADB`。菜单准备使用 DOM 点击，中文输入使用 CDP InputEvent；这两项不代表实际软键盘端到端输入。
 
 构建说明：[frontend/android/README.md](frontend/android/README.md)；终端行为：[frontend/terminal/README.md](frontend/terminal/README.md)。CI 构建固定 UI，检查生成资产与提交内容一致，运行 Android 单测，只发布 `:webapp` 的 release APK。
+
+`verify-android-menus-device.mjs` 验证真实 APK 的应用菜单、原生剪贴板、全屏、宽屏加号菜单和首次浏览器配对。仅在独立模拟器上运行；设置 `MENU_TEST_PROFILE=phone` 或 `tablet` 并选择对应屏幕的 `ANDROID_SERIAL`，不在运行中改变设备尺寸。还需可选 `ADB`、`MENU_TEST_SERVER_CONFIG`（自己的测试 OpenCode `{url,password}` 文件）、`MENU_TEST_BROWSER_URL` 与 `MENU_TEST_BROWSER_TOKEN_FILE`。脚本不输出凭据，创建并清理自己的测试会话。
 
 ## 安全边界
 

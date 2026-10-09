@@ -82,8 +82,44 @@ index c4e72ad8..e6cf7734 100644
        return <EmbedView {...props} input={input} bridge={bridge} />
      },
      capture: (id) => input.bridge?.capture(id) ?? Promise.resolve(undefined),
+diff --git a/packages/app/src/runtime/extension/host-apis.tsx b/packages/app/src/runtime/extension/host-apis.tsx
+index b127a228..4515b39a 100644
+--- a/packages/app/src/runtime/extension/host-apis.tsx
++++ b/packages/app/src/runtime/extension/host-apis.tsx
+@@ -247,6 +247,7 @@ export function createHostApis() {
+             forceFocus: (enabled) => platform.setForceFocus?.(enabled) ?? Promise.resolve(),
+           }
+         : undefined,
++    browserConnection: () => platform.extensions?.browserConnection,
+     build: () => ({
+       version: platform.version ?? "",
+       // SAFETY: the build sets VITE_OPENCODE_CHANNEL to one of the release channels, or leaves it unset locally.
+diff --git a/packages/app/src/runtime/extension/side-region.tsx b/packages/app/src/runtime/extension/side-region.tsx
+index 7c80efa4..18a1e64a 100644
+--- a/packages/app/src/runtime/extension/side-region.tsx
++++ b/packages/app/src/runtime/extension/side-region.tsx
+@@ -315,7 +315,8 @@ function AddButton(props: { item: SessionPanelMenuItem }): JSX.Element {
+         icon={<Icon name="plus" />}
+         variant="ghost-muted"
+         size="large"
+-        onClick={() => props.item.run()}
++        disabled={props.item.enabled ? !props.item.enabled() : false}
++        onClick={() => { if (props.item.enabled?.() !== false) props.item.run() }}
+         aria-label={props.item.title}
+       />
+     </Tooltip>
+@@ -348,7 +349,8 @@ function AddMenu(props: { items: readonly SessionPanelMenuItem[] }): JSX.Element
+                 return (
+                   <Menu.Item
+                     class="!gap-6"
+-                    onSelect={() => item.run()}
++                    disabled={item.enabled ? !item.enabled() : false}
++                    onSelect={() => { if (item.enabled?.() !== false) item.run() }}
+                     shortcut={
+                       <Show when={keybind().length > 0}>
+                         <Keybind keys={keybind()} variant="neutral" />
 diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
-index 4caac345..bfa6e0ae 100644
+index 4caac345..b750252d 100644
 --- a/packages/app/src/runtime/platform/platform.tsx
 +++ b/packages/app/src/runtime/platform/platform.tsx
 @@ -19,7 +19,7 @@ type OpenAttachmentPickerOptions = {
@@ -113,7 +149,19 @@ index 4caac345..bfa6e0ae 100644
    saveFile?(opts: SaveFilePickerOptions, content: string): Promise<boolean>
  
    /** Storage mechanism, defaults to localStorage */
-@@ -113,13 +113,14 @@ type PlatformBase = {
+@@ -92,8 +92,10 @@ type PlatformBase = {
+   /** Allow native pinch/Ctrl-scroll zoom gestures (desktop only) */
+   setPinchZoomEnabled?(enabled: boolean): Promise<void> | void
+ 
+-  /** Run a desktop-only menu action from the app chrome */
++  /** Run a host menu action from the app chrome. */
+   runDesktopMenuAction?(action: DesktopMenuAction): Promise<void> | void
++  /** Android advertises only actions the host actually implements. */
++  androidMenuActionEnabled?(action: DesktopMenuAction): boolean
+ 
+   /** Check if an editor app exists (desktop only) */
+   checkAppExists?(appName: string): Promise<boolean>
+@@ -113,13 +115,14 @@ type PlatformBase = {
    /** Record a fatal renderer error in platform logs (desktop only) */
    recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
  
@@ -362,6 +410,27 @@ index b3cc58bc..ee364322 100644
      >
        <Tabs.Content value="general" class="settings-panel">
          <SettingsServerGeneral
+diff --git a/packages/app/src/shell/commands/desktop-menu.ts b/packages/app/src/shell/commands/desktop-menu.ts
+index b101c65b..416ebb25 100644
+--- a/packages/app/src/shell/commands/desktop-menu.ts
++++ b/packages/app/src/shell/commands/desktop-menu.ts
+@@ -1,6 +1,6 @@
+ import type { DesktopNativeKey } from "@/runtime/i18n/desktop-native"
+ 
+-export type DesktopMenuPlatform = "macos" | "windows"
++export type DesktopMenuPlatform = "macos" | "windows" | "android"
+ 
+ export type DesktopMenuAction =
+   | "app.installCli"
+@@ -111,7 +111,7 @@ export const DESKTOP_MENU: DesktopMenu[] = [
+         labelKey: "desktop.menu.settings",
+         command: "settings.open",
+         accelerator: { windows: "Ctrl+," },
+-        platforms: ["windows"],
++        platforms: ["windows", "android"],
+       },
+       {
+         type: "item",
 diff --git a/packages/app/src/shell/errors/error.tsx b/packages/app/src/shell/errors/error.tsx
 index f62712d8..1a3b5233 100644
 --- a/packages/app/src/shell/errors/error.tsx
@@ -376,7 +445,7 @@ index f62712d8..1a3b5233 100644
            <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
              <Button size="large" variant="ghost" onClick={exportDebugLogs}>
 diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index f3780f58..e1bfc41e 100644
+index f3780f58..1a40b321 100644
 --- a/packages/app/src/shell/titlebar/titlebar.tsx
 +++ b/packages/app/src/shell/titlebar/titlebar.tsx
 @@ -64,7 +64,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
@@ -397,7 +466,23 @@ index f3780f58..e1bfc41e 100644
              ? bottom()
                ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
                : mobileTop()
-@@ -798,7 +798,7 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
+@@ -537,8 +537,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                 <Show when={!mobile() && (!props.verticalTabs || windows())}>
+                   <ChannelIndicator horizontal />
+                 </Show>
+-                <Show when={windows() || linux()}>
+-                  <WindowsAppMenu command={command} platform={platform} />
++                <Show when={windows() || linux() || platform.platform === "android"}>
++                  <WindowsAppMenu
++                    command={command}
++                    platform={platform}
++                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
++                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
++                  />
+                 </Show>
+                 <Show when={!mobile() && !props.verticalTabs}>{homeButton()}</Show>
+ 
+@@ -798,7 +803,7 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
      <Tooltip
        placement={props.sidebar ? "right" : "bottom"}
        value={label()}
@@ -406,6 +491,99 @@ index f3780f58..e1bfc41e 100644
      >
        <Dynamic
          component={debug() ? "button" : "div"}
+diff --git a/packages/app/src/shell/titlebar/windows-menu.tsx b/packages/app/src/shell/titlebar/windows-menu.tsx
+index 6a4ee0be..ebd06abb 100644
+--- a/packages/app/src/shell/titlebar/windows-menu.tsx
++++ b/packages/app/src/shell/titlebar/windows-menu.tsx
+@@ -17,6 +17,7 @@ import {
+ import { usePlatform } from "@/runtime/platform/platform"
+ import { useLanguage } from "@/runtime/i18n/language"
+ import { useMenubarItems } from "@/runtime/extension/menubar-items"
++import { showToast } from "@/shell/notifications/toast"
+ 
+ const accelerators = DESKTOP_MENU.flatMap((menu) => menu.items ?? []).flatMap((entry) => {
+   if (entry.type === "separator" || !entry.action || !entry.accelerator?.windows) return []
+@@ -34,15 +35,19 @@ export function windowsMenuAccelerator(event: KeyboardEvent) {
+ export function WindowsAppMenu(props: {
+   command: ReturnType<typeof useCommand>
+   platform: ReturnType<typeof usePlatform>
++  menuPlatform?: "windows" | "android"
++  actionEnabled?: (action: DesktopMenuAction) => boolean
+ }) {
+   let lastFocused: HTMLElement | undefined
++  let lastRange: Range | undefined
++  let lastInputSelection: { start: number; end: number } | undefined
+   const language = useLanguage()
+   const menubar = useMenubarItems()
+ 
+   const entries = (menu: DesktopMenu) =>
+     desktopMenuWithExtensions(
+       (menu.items ?? [])
+-        .filter((entry) => desktopMenuVisible(entry, "windows"))
++        .filter((entry) => desktopMenuVisible(entry, props.menuPlatform ?? "windows"))
+         .map((entry) => ({ key: desktopMenuKey(entry), entry })),
+       menubar?.items().filter((item) => item.menu === menu.id) ?? [],
+     )
+@@ -50,6 +55,22 @@ export function WindowsAppMenu(props: {
+   const rememberFocus = () => {
+     const active = document.activeElement
+     lastFocused = active instanceof HTMLElement ? active : undefined
++    const selection = window.getSelection()
++    lastRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined
++    lastInputSelection = (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && active.selectionStart !== null
++      ? { start: active.selectionStart, end: active.selectionEnd ?? active.selectionStart } : undefined
++  }
++
++  const restoreFocus = () => {
++    if (!lastFocused?.isConnected) return
++    lastFocused.focus({ preventScroll: true })
++    if (lastInputSelection && (lastFocused instanceof HTMLInputElement || lastFocused instanceof HTMLTextAreaElement))
++      lastFocused.setSelectionRange(lastInputSelection.start, lastInputSelection.end)
++    if (lastRange?.commonAncestorContainer.isConnected) {
++      const selection = window.getSelection()
++      selection?.removeAllRanges()
++      selection?.addRange(lastRange)
++    }
+   }
+ 
+   const commandDisabled = (id: string) => {
+@@ -66,8 +87,16 @@ export function WindowsAppMenu(props: {
+   }
+ 
+   const runAction = (action: DesktopMenuAction) => {
+-    if (action.startsWith("edit.") && lastFocused?.isConnected) lastFocused.focus({ preventScroll: true })
+-    void props.platform.runDesktopMenuAction?.(action)
++    if (props.actionEnabled && !props.actionEnabled(action)) return
++    // Menus restore trigger focus when they close. Run after that restoration,
++    // so editing applies to the original field and its original selection.
++    requestAnimationFrame(() => {
++      if (action.startsWith("edit.")) restoreFocus()
++      void Promise.resolve(props.platform.runDesktopMenuAction?.(action)).catch((error) => {
++        console.error("Application menu action", action, error)
++        showToast({ title: language.t("common.requestFailed"), description: String(error) })
++      })
++    })
+   }
+ 
+   const runEntry = (entry: DesktopMenuEntry) => {
+@@ -125,7 +154,7 @@ export function WindowsAppMenu(props: {
+         <Menu.Content class="desktop-app-menu">
+           <Menu.Group>
+             <Menu.GroupLabel class="desktop-app-menu-heading">OpenCode</Menu.GroupLabel>
+-            <For each={DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "windows"))}>
++            <For each={DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, props.menuPlatform ?? "windows"))}>
+               {(menu) => (
+                 <DesktopMenuSubmenu label={language.t(menu.labelKey)}>
+                   <For each={entries(menu)}>
+@@ -157,7 +186,7 @@ export function WindowsAppMenu(props: {
+                         <DesktopMenuItem
+                           label={label()}
+                           keybind={keybind()}
+-                          disabled={disabled()}
++                          disabled={disabled() || (!!entry.action && !!props.actionEnabled && !props.actionEnabled(entry.action))}
+                           onSelect={() => runEntry(entry)}
+                         />
+                       )
 diff --git a/packages/app/vite.pwa.ts b/packages/app/vite.pwa.ts
 index 20661ce1..f7b06133 100644
 --- a/packages/app/vite.pwa.ts
@@ -512,10 +690,13 @@ index 8b1ddb18..a06a92e9 100644
        publish: (error) => {
          if (entry.pages.has(id)) publishState(entry, error)
 diff --git a/packages/gui-extensions/src/browser/renderer.tsx b/packages/gui-extensions/src/browser/renderer.tsx
-index 0304feec..3c94489c 100644
+index 0304feec..38429c88 100644
 --- a/packages/gui-extensions/src/browser/renderer.tsx
 +++ b/packages/gui-extensions/src/browser/renderer.tsx
-@@ -3,6 +3,7 @@ import { Command, createKeyed, LinkHandler, MenuItem, onIdle, Panel, Style, type
+@@ -1,8 +1,9 @@
+-import { createMemo, createSignal, getOwner, lazy, onCleanup, runWithOwner, Show, Suspense } from "solid-js"
++import { createEffect, createMemo, createSignal, getOwner, lazy, onCleanup, runWithOwner, Show, Suspense } from "solid-js"
+ import { Command, createKeyed, LinkHandler, MenuItem, onIdle, Panel, Style, type PanelTab, type Setup } from "../sdk"
  import { Browser } from "./contract"
  import type definition from "./index"
  import type { Model } from "./model"
@@ -523,7 +704,43 @@ index 0304feec..3c94489c 100644
  import { PageIcon } from "./page-icon"
  import barStyles from "./bar.css?inline"
  import commentStyles from "./comment.css?inline"
-@@ -28,8 +29,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -11,6 +12,28 @@ import tabStyles from "./tabs.css?inline"
+ const setup: Setup<typeof definition> = (ctx) => {
+   const sessions = ctx.sessions
+   const [model, setModel] = createSignal<Model>()
++  const [requested, setRequested] = createSignal<string>()
++  createEffect(() => {
++    const view = sessions.current()
++    const value = model()
++    if (!requested()) return
++    if (!view) { setRequested(undefined); return }
++    if (requested() !== view.key) { setRequested(undefined); return }
++    if (!value?.available(view)) return
++    setRequested(undefined)
++    value.open(view)
++  })
++  const open = async (view: NonNullable<ReturnType<typeof sessions.current>>) => {
++    const value = model()
++    if (value?.available(view)) { value.open(view); return }
++    if (!ctx.browserConnection) return
++    try {
++      if (await ctx.browserConnection.configure() && sessions.current()?.key === view.key) setRequested(view.key)
++    } catch (error) {
++      console.error("Browser pairing", error)
++      ctx.layout.settings("general")
++    }
++  }
+   // Settings > Shortcuts lists the command on every platform; it stays disabled until the pane can open.
+   ctx.add(Command, (): Command | undefined => {
+     const view = sessions.current()
+@@ -23,13 +46,12 @@ const setup: Setup<typeof definition> = (ctx) => {
+       title: ctx.t("command.open"),
+       group: ctx.t("command.category.view"),
+       bind: "mod+shift+b",
+-      enabled: !!value?.available(view),
+-      run: () => value?.open(view),
++      enabled: !!value?.available(view) || !!ctx.browserConnection,
++      run: () => open(view),
      }
    })
  
@@ -533,7 +750,28 @@ index 0304feec..3c94489c 100644
    // Tab trigger styles render with the strip, before the pane chunk loads.
    ctx.add(Style, tabStyles)
    ctx.add(Style, commentStyles)
-@@ -171,6 +171,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -106,8 +128,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+   ctx.add(MenuItem, (): MenuItem | undefined => {
+     const view = sessions.current()
+     const value = model()
++    const android = ctx.build.platform === "android"
+ 
+-    if (!view || !value?.available(view)) return undefined
++    if (!view || (!android && !value?.available(view))) return undefined
+ 
+     return {
+       menu: "session.panel",
+@@ -116,7 +139,8 @@ const setup: Setup<typeof definition> = (ctx) => {
+       icon: "globe",
+       keybind: "browser.open",
+       order: 20,
+-      run: () => value.open(view),
++      enabled: () => !!value?.available(view) || !!ctx.browserConnection,
++      run: () => void open(view),
+     }
+   })
+ 
+@@ -171,6 +195,7 @@ const setup: Setup<typeof definition> = (ctx) => {
    ctx.add(Panel, {
      id: "main",
      region: "side",
@@ -541,7 +779,7 @@ index 0304feec..3c94489c 100644
      list(input) {
        // While the model loads, the stored tabs hold the strip and its selection, as before the first inventory.
        const ids = model()?.tabs(input.session, input.open) ?? input.open
-@@ -193,7 +194,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -193,7 +218,9 @@ const setup: Setup<typeof definition> = (ctx) => {
          {(value) => (
            <Show when={!value().pending(props.session)}>
              <Suspense>
@@ -553,7 +791,7 @@ index 0304feec..3c94489c 100644
            </Show>
          )}
 diff --git a/packages/gui-extensions/src/sdk/bridge.ts b/packages/gui-extensions/src/sdk/bridge.ts
-index 38f73cd7..0a625604 100644
+index 38f73cd7..7780f25c 100644
 --- a/packages/gui-extensions/src/sdk/bridge.ts
 +++ b/packages/gui-extensions/src/sdk/bridge.ts
 @@ -5,6 +5,8 @@
@@ -571,10 +809,29 @@ index 38f73cd7..0a625604 100644
  export interface Bridge {
 +  /** DOM surface for hosts whose browser runs remotely. */
 +  readonly view?: (props: EmbedProps) => JSX.Element
-+  readonly browserConnection?: { status(): string; configure(): Promise<void> }
++  readonly browserConnection?: { status(): string; configure(): Promise<boolean> }
    /** The app runs packaged, as main's `Build.packaged` says; the window's `Build` reports the same. */
    readonly packaged: boolean
    /**
+diff --git a/packages/gui-extensions/src/sdk/context.ts b/packages/gui-extensions/src/sdk/context.ts
+index e4c93545..ae527c48 100644
+--- a/packages/gui-extensions/src/sdk/context.ts
++++ b/packages/gui-extensions/src/sdk/context.ts
+@@ -1,4 +1,5 @@
+ import type { Accessor } from "solid-js"
++import type { Bridge } from "./bridge"
+ import type {
+   BaseContext,
+   Build,
+@@ -125,6 +126,8 @@ export interface Context extends BaseContext {
+    * ```
+    */
+   readonly desktop: Desktop | undefined
++  /** Pair the built-in browser with a remote host; absent on hosts with a local browser. */
++  readonly browserConnection: Bridge["browserConnection"]
+   /**
+    * Dialogs that close with the owner that opened them, else when the extension goes away.
+    *
 diff --git a/packages/gui-extensions/src/sdk/core.ts b/packages/gui-extensions/src/sdk/core.ts
 index 3d6d6ba6..c0c35598 100644
 --- a/packages/gui-extensions/src/sdk/core.ts
@@ -592,6 +849,19 @@ index 3d6d6ba6..c0c35598 100644
    readonly packaged: boolean
  }
  
+diff --git a/packages/gui-extensions/src/sdk/registries.ts b/packages/gui-extensions/src/sdk/registries.ts
+index 68b3cbca..be29c3c6 100644
+--- a/packages/gui-extensions/src/sdk/registries.ts
++++ b/packages/gui-extensions/src/sdk/registries.ts
+@@ -81,6 +81,8 @@ export interface SessionPanelMenuItem extends MenuItemBase {
+   readonly icon?: IconName
+   /** Published command id whose shortcut the item shows. */
+   readonly keybind?: string
++  /** Whether the action can run in the current host state. Disabled items remain visible for discoverability. */
++  readonly enabled?: () => boolean
+   /** Runs the item. */
+   run(): void
+ }
 diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
 index 8ba5f356..3f054b6b 100644
 --- a/packages/gui-extensions/src/terminal/model.ts

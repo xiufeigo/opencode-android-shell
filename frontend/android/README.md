@@ -18,7 +18,9 @@ Bun 必须为 1.4.2；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 `platform.ts` 通过官方 Platform 接口调用 `rpc.mjs`，AndroidX WebMessageListener 仅接受本地 UI 主框架。原生失败拒绝 Promise，用户取消保存返回 false。系统平台方法不伪装成功。剪贴板图片读取预算为 `AndroidPlatformHost.MAX_CLIPBOARD_IMAGE_BYTES`，默认 20 MiB，超出返回错误。
 
-平台身份明确为 `android`；原生宿主提供的能力按接口接入，不声明 Electron 的 windowID、电脑目录选择或桌面菜单。`files.mjs` 使用 WebView 标准文件 input，由 Android SAF 回传 URI，再顺序读取 `File`；官方会话导入因此可用，取消不导入、读取和校验失败继续抛错。保持原存储 namespace，升级不迁移或重置真实服务器。
+平台身份明确为 `android`；原生宿主提供的能力按接口接入，不声明 Electron 的 windowID 或电脑目录选择。`menu.ts` 为官方应用菜单提供编辑、重载、缩放及原生全屏/窗口动作；不支持的桌面动作明确禁用。菜单保存输入框焦点和选区，异步剪贴板期间编辑内容变化则明确拒绝操作。`files.mjs` 使用 WebView 标准文件 input，由 Android SAF 回传 URI，再顺序读取 `File`；官方会话导入因此可用，取消不导入、读取和校验失败继续抛错。保持原存储 namespace，升级不迁移或重置真实服务器。
+
+浏览器扩展的菜单与快捷命令共用一个打开动作。Android 在服务未连接时保留 Browser 菜单项，通过 SDK 暴露的 `browserConnection` 打开原生配对；连接成功后使用官方注册握手打开面板，取消不创建面板。未创建标签时库存为空，不把它作为打开第一个标签的前置条件。并发配对共用同一请求；断开仍清除传输与原生配置，失败显示真实状态。
 
 多服务器时，旧根级服务器标签在路由解析层归入偏好设置，移除会抢写新增目标页的库存变化导航 effect。根级和嵌套页共用一个新增动作，移动顶部和宽屏侧栏均可持续添加；构建同时运行官方设置路由测试与新增回归用例。
 

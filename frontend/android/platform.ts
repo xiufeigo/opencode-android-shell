@@ -2,6 +2,7 @@ import type { Platform } from "./platform"
 import { createNativeRpc } from "./android-rpc.mjs"
 import { createAndroidBrowser } from "./android-browser"
 import { openAttachmentPickerDialog } from "./android-files.mjs"
+import { createAndroidMenu } from "./android-menu"
 
 type NativeChannel = {
   postMessage(message: string): void
@@ -23,6 +24,7 @@ export function createAndroidPlatform(web: Extract<Platform, { platform: "web" }
   return {
     ...web,
     platform: "android",
+    ...createAndroidMenu(request),
     openAttachmentPickerDialog,
     extensions: createAndroidBrowser(request),
     openExternal(url) {

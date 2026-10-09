@@ -172,19 +172,77 @@ async function runOfficialPlus(browser, ui, server) {
     const review = page.locator("#review-panel")
     await button(page, "Toggle review").waitFor()
     if (await button(page, "Toggle review").getAttribute("aria-expanded") !== "true") await button(page, "Toggle review").click()
-    await visible(review.getByRole("button", { name: "Open file", exact: true })).click()
+    await visible(review.getByRole("button", { name: "Add tab", exact: true })).click()
+    await page.getByRole("menuitem", { name: /^Browser\b/ }).waitFor()
+    await page.getByRole("menuitem", { name: /^Open file\b/ }).click()
     await review.getByRole("tab", { name: "Open file", exact: true }).waitFor()
     await visible(review.locator('input[type="search"][aria-label="Filter files"]')).waitFor()
     assert.equal(await page.evaluate(() => typeof window.__ocPlusChooser), "undefined")
     assert.equal(await page.evaluate(() => window.__ocHostError ?? null), null)
     assert.equal(await page.getByRole("menuitem", { name: "Open terminal", exact: true }).count(), 0)
     assert.deepEqual(errors, [])
-    record("tablet", "official-review-plus-opens-workspace-files", { customChooser: false, browserPane: false })
+    record("tablet", "official-review-plus-menu-opens-workspace-files", { customChooser: false })
+    await visible(review.getByRole("button", { name: "Add tab", exact: true })).click()
+    await page.getByRole("menuitem", { name: /^Browser\b/ }).click()
+    await page.waitForFunction(() => window.__ocNativeCalls.some(call => call.name === "configureBrowser"))
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    assert.equal(await page.locator('[data-android-browser-surface]').count(), 0)
+    record("tablet", "browser-menu-requests-pairing-and-cancel-does-not-open-a-fake-pane", { nativePairing: true })
     await page.screenshot({ path: path.join(output, "tablet-official-plus.png"), fullPage: true })
   } catch (error) {
     await page.screenshot({ path: path.join(output, "tablet-plus-failure.png"), fullPage: true })
     report.checks.push({ device: "tablet", name: "official-review-plus", status: "fail", error: error.stack, text: await page.locator("body").innerText(), buttons: await page.locator("#review-panel button").evaluateAll(nodes => nodes.map(node => ({ label: node.getAttribute("aria-label"), title: node.getAttribute("title"), html: node.outerHTML.slice(0,500) }))), pageErrors: errors })
     console.error("FAIL", "tablet official plus", error.message)
+  } finally { await context.close() }
+}
+
+async function runAppMenu(browser, profile, ui, server) {
+  const context = await browser.newContext({ viewport: { width: profile.width, height: profile.height }, locale: "en-US", isMobile: profile.name === "phone", hasTouch: true })
+  const page = await context.newPage()
+  const errors = []
+  page.on("pageerror", error => errors.push(error.stack))
+  await page.addInitScript({ content: seedScript({ serverOrigin: server.origin, workspace: server.workspace, sessionId: server.sessionId }) + ";" + nativeBridgeSource() + ";" + ocHostLoaderSource(fs.readFileSync(path.join(root, "webapp/src/main/assets/www/oc-host.js"), "utf8")) })
+  const item = name => visible(page.getByRole("menuitem").filter({ has: page.getByText(name, { exact: true }) })).first()
+  const open = async group => {
+    await button(page, "OpenCode menu").click()
+    await item(group).click()
+  }
+  const select = async (group, name) => { await open(group); await item(name).click() }
+  try {
+    await page.goto(`${ui}/server/${base64url(server.origin)}/session/${server.sessionId}`, { waitUntil: "domcontentloaded" })
+    await button(page, "OpenCode menu").click()
+    for (const name of ["File", "Edit", "View", "Go", "Window", "Help"]) await item(name).waitFor()
+    await page.screenshot({ path: path.join(output, profile.name + "-application-menu.png") })
+    await item("File").click()
+    assert.equal(await item("New Window").getAttribute("aria-disabled"), "true")
+    await item("Settings").click()
+    await button(page, "Back to app").waitFor()
+    record(profile.name, "official-application-menu-six-groups-and-settings-command", { unsupportedNewWindowDisabled: true })
+    await button(page, "Back to app").click()
+    await select("View", "Zoom In")
+    await page.waitForFunction(() => document.documentElement.style.zoom === "1.1")
+    await select("View", "Actual Size")
+    await page.waitForFunction(() => document.documentElement.style.zoom === "1")
+    await select("View", "Toggle Full Screen")
+    await page.waitForFunction(() => window.__ocNativeCalls.some(call => call.name === "menuAction" && call.args.action === "view.toggleFullscreen"))
+    record(profile.name, "application-view-actions-zoom-reset-and-native-fullscreen-request", { zoom: 1 })
+    // Use a real editor field so the menu must restore focus and selection.
+    const editor = visible(page.locator('[contenteditable="true"]')).first()
+    await editor.fill("menu editing proof")
+    await editor.press("Control+a")
+    await select("Edit", "Copy")
+    await page.waitForFunction(() => window.__ocNativeCalls.some(call => call.name === "writeClipboardText" && call.args.text === "menu editing proof"))
+    await select("Edit", "Delete")
+    await page.waitForFunction(() => [...document.querySelectorAll('[contenteditable="true"]')].some(node => node.getBoundingClientRect().height && node.textContent === ""))
+    record(profile.name, "application-edit-menu-preserves-editor-selection", { copied: "menu editing proof", deleted: true })
+    await select("Help", "OpenCode Documentation")
+    await page.waitForFunction(() => window.__ocNativeCalls.some(call => call.name === "openExternal" && call.args.url === "https://opencode.ai/docs"))
+    assert.deepEqual(errors, [])
+    record(profile.name, "application-help-opens-official-documentation", { pageErrors: 0 })
+  } catch (error) {
+    await page.screenshot({ path: path.join(output, profile.name + "-menu-failure.png"), fullPage: true })
+    report.checks.push({ device: profile.name, name: "application-menu", status: "fail", error: error.stack, text: await page.locator("body").innerText(), pageErrors: errors })
+    console.error("FAIL", profile.name, "application menu", error.message)
   } finally { await context.close() }
 }
 
@@ -267,6 +325,7 @@ try {
   if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") for (const profile of profiles) await runProfile(browser, profile, ui, servers)
   if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") for (const profile of profiles) await runImport(browser, profile, ui, servers[0])
   await runOfficialPlus(browser, ui, servers[0])
+  for (const profile of profiles) await runAppMenu(browser, profile, ui, servers[0])
   if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") await runUpgrade(browser, ui, servers.slice(0, 3))
 }
 finally {

@@ -16,6 +16,7 @@ export function createAndroidBrowser(native: NativeRequest): Bridge {
   let socket: WebSocket | undefined
   let configured = false
   let opening: Promise<void> | undefined
+  let configuration: Promise<boolean> | undefined
   let pairing: Pairing | null = null
   let retry: ReturnType<typeof setTimeout> | undefined
   let retries = 0
@@ -219,20 +220,30 @@ export function createAndroidBrowser(native: NativeRequest): Bridge {
     </div>
   }
   const unsupported = async (): Promise<never> => { throw new Error("This companion provides the built-in browser; external GUI extension management is unavailable") }
+  const configure = () => {
+    if (configuration) return configuration
+    const attempt = (async () => {
+      try {
+        const config = await native<Pairing | null | false>("configureBrowser")
+        if (config === false) return false
+        const token = ++lifecycle
+        const connection = connect(config, token)
+        opening = connection
+        try { await connection; return configured } finally { if (opening === connection) opening = undefined }
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error))
+        throw error
+      }
+    })()
+    configuration = attempt
+    void attempt.then(() => { if (configuration === attempt) configuration = undefined }, () => { if (configuration === attempt) configuration = undefined })
+    return attempt
+  }
   void boot()
   return {
     packaged: true,
     view: Surface,
-    browserConnection: { status, async configure() {
-      try {
-        const config = await native<Pairing | null | false>("configureBrowser")
-        if (config === false) return
-        const token = ++lifecycle
-        const attempt = connect(config, token)
-        opening = attempt
-        try { await attempt } finally { if (opening === attempt) opening = undefined }
-      } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); console.error(error) }
-    } },
+    browserConnection: { status, configure },
     async call(input, signal) {
       if (input.ipc === IPC && input.method === "close" && (stopped || socket?.readyState !== WebSocket.OPEN)) return undefined
       await boot()

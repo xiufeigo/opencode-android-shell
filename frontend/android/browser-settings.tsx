@@ -3,6 +3,7 @@ import { Button } from "@opencode/ui/button"
 import { SettingsRow } from "@/settings/row"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useLanguage } from "@/runtime/i18n/language"
+import { showToast } from "@/shell/notifications/toast"
 
 export function AndroidBrowserSettings() {
   const platform = usePlatform()
@@ -12,7 +13,10 @@ export function AndroidBrowserSettings() {
   return <Show when={bridge?.browserConnection}>
     <SettingsRow title={chinese() ? "内置浏览器" : "Built-in browser"}
       description={bridge?.browserConnection?.status()}>
-      <Button data-action="settings-android-browser" onClick={() => void bridge?.browserConnection?.configure()}>
+      <Button data-action="settings-android-browser" onClick={() => void bridge?.browserConnection?.configure().catch(error => {
+        console.error("Browser pairing", error)
+        showToast({ title: language.t("common.requestFailed"), description: String(error) })
+      })}>
         {chinese() ? "连接浏览器服务" : "Connect browser service"}
       </Button>
     </SettingsRow>

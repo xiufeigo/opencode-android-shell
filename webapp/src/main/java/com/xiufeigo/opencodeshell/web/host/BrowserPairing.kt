@@ -19,11 +19,13 @@ class BrowserPairing(private val context: Context) : AutoCloseable {
         check(dialog == null) { "Browser configuration is already open" }
         val saved = read()
         val url = EditText(context).apply {
+            contentDescription = "浏览器服务地址"
             hint = "浏览器服务地址，如 http://192.168.1.10:4100"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setText(saved?.optString("url"))
         }
         val token = EditText(context).apply {
+            contentDescription = "配对令牌"
             hint = "配对令牌（服务的 pairing-token 文件）"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(saved?.optString("token"))

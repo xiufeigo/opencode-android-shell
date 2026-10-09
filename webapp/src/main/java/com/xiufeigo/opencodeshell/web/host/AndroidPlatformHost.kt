@@ -9,6 +9,8 @@ import android.util.Base64
 import android.util.Log
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
@@ -23,6 +25,7 @@ class AndroidPlatformHost(
     private val pairing = BrowserPairing(activity)
     @Volatile
     private var closed = false
+    private var fullscreen = false
 
     companion object {
         // Matches the official composer's inline attachment budget; larger files use its file picker/upload flow.
@@ -62,6 +65,15 @@ class AndroidPlatformHost(
                         clipboard().setPrimaryClip(ClipData.newPlainText("OpenCode", payload.getString("text")))
                         respond(true)
                     }
+                    "readClipboardText" -> {
+                        val clip = clipboard().primaryClip
+                        val text = if (clip == null || clip.itemCount == 0) "" else clip.getItemAt(0).coerceToText(activity).toString()
+                        respond(text)
+                    }
+                    "menuAction" -> {
+                        runMenuAction(payload.getString("action"))
+                        respond(true)
+                    }
                     "readClipboardImage" -> {
                         // Clipboard access must happen while the Activity has focus.
                         val uri = clipboard().primaryClip?.let { clip ->
@@ -94,6 +106,21 @@ class AndroidPlatformHost(
         require(uri.scheme?.lowercase() in setOf("https", "http", "mailto")) { "Unsupported external URL scheme" }
         if (uri.scheme != "mailto") require(!uri.host.isNullOrBlank()) { "External URL has no host" }
         activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+    }
+
+    private fun runMenuAction(action: String) {
+        when (action) {
+            "view.toggleFullscreen" -> {
+                val controller = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
+                fullscreen = !fullscreen
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars())
+                else controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+            "window.minimize" -> check(activity.moveTaskToBack(true)) { "Cannot minimize this Android task" }
+            "window.close" -> activity.finish()
+            else -> throw IllegalArgumentException("Unsupported Android window action: $action")
+        }
     }
 
     private fun clipboard() = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
