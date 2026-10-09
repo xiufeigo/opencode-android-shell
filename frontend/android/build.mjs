@@ -57,6 +57,7 @@ const pkg = JSON.parse(await fs.readFile(path.join(checkout, "packages/app/packa
 if (pkg.version !== pin.version) throw new Error("Pinned OpenCode version does not match source")
 await applyAndroidSources(checkout, here)
 await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", "@opencode/app"])
+await run(bun, ["test", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts"], path.join(checkout, "packages/app"))
 await run(bun, ["run", "typecheck", "tsconfig.android.json"], path.join(checkout, "packages/app"))
 await run(bun, ["run", "typecheck", "tsconfig.android.json"], path.join(checkout, "packages/gui-extensions"))
 await run(bun, ["run", "build", "--base", "/", "--sourcemap", "false", "--logLevel", "warn"], path.join(checkout, "packages/app"), {

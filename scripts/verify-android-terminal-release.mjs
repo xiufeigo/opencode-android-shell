@@ -424,6 +424,7 @@ function startBackend() {
     marker: null,
     sse: new Set(),
     hits: [],
+    sessionImports: [],
     ptyPatches: [],
   }
 
@@ -531,7 +532,15 @@ function startBackend() {
 
     // --- sessions --------------------------------------------------------
     // SessionsResponse is { data: SessionInfo[], cursor: {previous?, next?} }.
-    else if (p === "/api/session" || p === "/session") {
+    else if (p === "/api/experimental/session/import" && method === "POST") {
+      const chunks = []
+      req.on("data", chunk => chunks.push(chunk))
+      req.on("end", () => {
+        const data = JSON.parse(Buffer.concat(chunks).toString("utf8"))
+        state.sessionImports.push(data)
+        send({ data: sessionInfo(state.sessionId, data.location.directory) })
+      })
+    } else if (p === "/api/session" || p === "/session") {
       if (method === "POST") {
         const id = state.sessionId || (state.sessionId = `ses_${crypto.randomUUID().slice(0, 12)}`)
         send({ data: sessionInfo(id, state.workspace), cursor: {} })

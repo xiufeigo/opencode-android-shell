@@ -1,6 +1,7 @@
 import type { Platform } from "./platform"
 import { createNativeRpc } from "./android-rpc.mjs"
 import { createAndroidBrowser } from "./android-browser"
+import { openAttachmentPickerDialog } from "./android-files.mjs"
 
 type NativeChannel = {
   postMessage(message: string): void
@@ -13,7 +14,7 @@ declare global {
   }
 }
 
-export function createAndroidPlatform(web: Platform): Platform {
+export function createAndroidPlatform(web: Extract<Platform, { platform: "web" }>): Platform {
   const native = window.__ocPlatform
   if (!native) throw new Error("Android platform message channel is unavailable")
   const events = new EventTarget()
@@ -21,6 +22,8 @@ export function createAndroidPlatform(web: Platform): Platform {
   const request = createNativeRpc(native, events)
   return {
     ...web,
+    platform: "android",
+    openAttachmentPickerDialog,
     extensions: createAndroidBrowser(request),
     openExternal(url) {
       void request("openExternal", { url }).catch(error => console.error("openExternal", error))

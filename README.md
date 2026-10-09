@@ -2,7 +2,7 @@
 
 Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.10 / 38**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
+官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.11 / 39**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
 ## 与 Desktop 对齐
 
@@ -28,11 +28,11 @@ node frontend/android/build.mjs
 
 Windows 使用 `gradlew.bat`。如果 PATH 中的 Bun 不是 1.4.2，通过 `BUN_BINARY` 指定对应可执行文件。源码构建在 `_scratch_root/desktop-parity/checkout` 的独立临时检出进行，不修改开发者的 `_upstream/`。补丁或类型检查失败会中止，只有构建成功才替换 APK 内嵌 UI。
 
-输出：`webapp/build/outputs/apk/release/webapp-release.apk`。调试设备使用 `:webapp:assembleDebug`。本机构建默认使用本机 debug keystore；要覆盖 CI 签名的已安装应用，需通过 `DEBUG_KEYSTORE_PATH` 等签名环境变量使用同一 keystore。
+输出：`webapp/build/outputs/apk/release/webapp-release.apk`。调试设备使用 `:webapp:assembleDebug`。本机按 [AGENTS.md](AGENTS.md) 使用用户提供、与 CI 相同的签名密钥；仅通过本次构建进程的 `DEBUG_KEYSTORE_PATH` 等环境变量传入凭据。
 
 ## 连接服务
 
-在电脑或服务器启动 OpenCode v2 服务，在 Android 官方连接页使用配对链接，或选择“使用密码”填写服务器 URL 和认证信息。服务器添加、编辑、切换及凭据由官方 UI 管理。
+在电脑或服务器启动 OpenCode v2 服务，在 Android 官方连接页使用配对链接，或选择“使用密码”填写服务器 URL 和认证信息。服务器添加、编辑、切换及凭据由官方 UI 管理。添加后进入该服务器设置，导航中的“＋”可继续添加；手机在设置顶部、平板在侧栏。服务器数量没有两台上限，UI 层级随单台/多台改变。
 
 模拟器可用 `adb reverse tcp:4096 tcp:4096` 访问电脑本机的 4096 服务，再填写 `http://127.0.0.1:4096`。实体手机应使用手机能访问的电脑或服务器地址。
 
@@ -59,11 +59,14 @@ HTTP/WS 会明文传输配对令牌和服务器认证信息，仅用于可信网
 
 ```sh
 node scripts/verify-android-navigation.mjs
+node scripts/verify-android-file-picker.mjs
 node scripts/verify-android-resize.mjs
 node scripts/verify-android-terminal-release.mjs
 ```
 
-这些脚本运行完整打包 SPA，使用测试后端和 Chromium 的可信触摸输入，属于浏览器模拟测试。`verify-android-terminal-device.mjs` 和 `verify-android-resize-device.mjs` 使用实际 APK、Android WebView、系统 IME 和 ADB 输入；需配置 `ANDROID_SERIAL`，只在自己的测试设备上运行。
+导航、拖动与终端脚本运行完整打包 SPA，使用测试后端和 Chromium 的可信触摸输入，属于浏览器模拟测试。文件选择脚本覆盖顺序读取、超过 1 MiB 的文件、取消和回调失败。`verify-android-terminal-device.mjs` 和 `verify-android-resize-device.mjs` 使用实际 APK、Android WebView、系统 IME 和 ADB 输入；需配置 `ANDROID_SERIAL`，只在自己的测试设备上运行。
+
+`verify-android-navigation-device.mjs` 在明确选定的独立测试设备、全新 debug APK 数据上验证连续添加五台服务器与强制停止/重启恢复，直接操作打包 WebView 的真实 UI，使用五个测试后端。设置 `ANDROID_SERIAL` 和可选 `ADB`；脚本不清除应用数据。逐项 UI 对照见 [UI-AUDIT.md](research/desktop-parity/UI-AUDIT.md)。
 
 `scripts/verify-android-browser-device.mjs` 验证已配对的实际 APK：网页画面、ADB 点击/滑动、中文输入、页面重载恢复。需先在独立测试会话连接真实 OpenCode 和浏览器服务，将 WebView CDP 转发到 `DEVICE_CDP`，并设置 `ANDROID_SERIAL` 和可选 `ADB`。菜单准备使用 DOM 点击，中文输入使用 CDP InputEvent；这两项不代表实际软键盘端到端输入。
 

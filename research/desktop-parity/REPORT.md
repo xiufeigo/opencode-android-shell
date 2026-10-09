@@ -1,6 +1,6 @@
 # OpenCode Desktop 与 Android 差异及实现记录
 
-基准：官方 v2 的 OpenCode **2.0.26**，commit `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。Android **2.0.10 / versionCode 38**。用户选择 Android 连接电脑或服务器的 OpenCode，并要求内置浏览器自动化。
+基准：官方 v2 的 OpenCode **2.0.26**，commit `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。Android **2.0.11 / versionCode 39**。用户选择 Android 连接电脑或服务器的 OpenCode，并要求内置浏览器自动化。
 
 Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工作区和设置来自 `packages/app`；浏览器与终端来自 `packages/gui-extensions`。Android 应复用这些模块，并补足平台接口。直接仿写桌面页面或持续修改压缩后的 JS 会产生第二套状态和升级负担，因此本轮选择官方源码构建。
 
@@ -27,7 +27,23 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 
 桌面窗口逻辑适配远程宿主可见性、离屏渲染和命令 AbortSignal。不会把远程服务器错误标记为本地 sidecar，也不会授予电脑本地 `file://` 访问。服务的令牌只从文件或环境变量加载；服务端凭据来自官方服务器配置。
 
-## 验证与证据
+## 2.0.11 UI 修正与验证
+
+完整逐项核对见 [UI-AUDIT.md](UI-AUDIT.md)。多服务器没有两台数据上限；问题在于新增后进入的服务器详情页缺少新增入口，同时根设置的数量变化 effect 抢写目标路由。现在在路由解析层处理旧根标签，根页与详情页共用新增动作；手机顶部与平板侧栏均可继续添加。侧栏原样式只在悬停时显示“＋”，触屏设备改为常显。
+
+Android 平台身份从 `web` 改为明确的 `android`，接入会话列表的目录/分支显示和文件导入接口，同时保留移动标题栏安全区和扫码条件。真实 WebView 124 还暴露出官方连接代码直接调用缺失的 `URL.parse`，密码连接在发请求前失败；使用已有 core-js 依赖在入口兼容层补齐，没有替换配对校验或健康检查。
+
+- 官方设置路由与缺失 URL.parse 的启动回归 **9/9**；app/GUI 类型检查及 UI 构建通过。
+- 完整打包页面的手机与触屏平板导航、服务器管理、导入及 Review 回归 **32/32**；覆盖连续添加五台、逐台切换、修改、删除、刷新恢复、删除到一台再增至三台，及非法文件不发请求、超过 2 MiB 的文件按官方 schema 导入。
+- 文件选择器的顺序读取、取消、异常拒绝及清理 **4/4**；终端完整发布回归 **51/51**。这些使用 Chromium，原生路径另列。
+- 实际 API 35 / WebView **124.0.6367.219**，viewport **412×891**：五台连续添加、强停重启后恢复五台和所选第四台、无页面异常 **3/3**。服务为五个独立测试端点，页面通过 CDP 驱动，不冒充实体手机网络验证。
+- 实际 Android SAF 选择中文 JSON 文件后，`File.text()` 完整读回 **2,097,175 字节**；保持 `allowContentAccess=false`。该最小原生检查通过注入当前文件选择器函数验证系统选择与读取路径，官方菜单、schema 与导入 API 的完整组合由上述 Chromium 导入回归覆盖，不表述为整条原生导入 UI 已端到端实测。
+
+本轮页面报告：`research/tmp/verify-android-navigation/2026-10-09T11-54-49-908Z/report.json`；设备报告：`research/tmp/verify-android-navigation/2026-10-09T11-57-48-544Z-device/report.json`；终端报告：`research/tmp/verify-android-terminal-release-ready/2026-10-09T11-00-51-071Z-63d896/report.json`。重启测试先确认 WebView localStorage 已写入磁盘，再强停；此前只看 JavaScript 中的值就立即杀进程，会把异步写盘误判为恢复错误，没有为此增加第二套配置或初始化补丁。
+
+本轮本地 debug/release 使用用户指定密钥，证书与 CI 保持一致。release 包为 **57,618,328 字节**、SHA-256 `BA009381DA0A80D5869EF13D4AC304AC10EAFC4376C5BE2F9571662787A5D5C7`；包名、2.0.11/39 版本、签名核验通过，包内 **1,688 个 UI 文件**与源码构建资产逐字节相同。CI 构建还会独立检查冻结依赖及提交资源一致性。
+
+## 2.0.10 已有能力的验证与证据
 
 自动化检查按单元测试、类型检查、构建、冒烟顺序执行：
 
@@ -41,7 +57,9 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 
 最终浏览器引擎报告：`research/tmp/verify-android-browser/2026-10-09T08-18-07-715Z/report.json`；实际手机报告与截图：`research/tmp/verify-android-browser/2026-10-09T08-16-16-344Z-device/`。普通隐藏窗口的最小复现返回 `Current display surface not available for capture`，相同流程启用离屏渲染后连续两次重建与截图成功。
 
-本机构建 APK：`webapp/build/outputs/apk/release/webapp-release.apk`，57,607,944 字节；SHA-256 `3FFD58E336A2037BD9D0B51EA70879DBF15AE7FF3601ACB5E464B3BE20750930`。包名/版本/签名验证通过。此包使用本机 debug keystore 签名，与现有 GitHub CI 的签名不同，不能直接覆盖其已安装版本；CI 使用原有共享签名配置。设备浏览器验证运行在同源代码的 debug APK。
+初次验收的本机构建 APK：`webapp/build/outputs/apk/release/webapp-release.apk`，57,607,944 字节；SHA-256 `3FFD58E336A2037BD9D0B51EA70879DBF15AE7FF3601ACB5E464B3BE20750930`。包名/版本/签名验证通过。该次构建使用本机默认 debug keystore 签名，与 GitHub CI 的签名不同。设备浏览器验证运行在同源代码的 debug APK。
+
+用户随后提供 `C:/sensorsdata/main/packages/debug.keystore` 及其 ZIP 备份；二者内容一致，实际证书为 CI 使用的 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6`。使用该密钥重新构建 release 并核验 APK 签名通过，后续本地包可覆盖升级 GitHub Release 版本。具体打包约定见根目录 `AGENTS.md`；密钥留在仓库外，凭据仅传入本次 Gradle 进程。
 
 发布前补充检查固定构建检出的 LF 行尾，并恢复旧 Windows 检出中被 CRLF 转换的源文件，避免同一 commit 在 Linux CI 生成不同资源。规范行尾后官方类型检查、APK 构建和导航 16 项回归再次通过；终端 51 项及拖动 10 项回归通过。
 

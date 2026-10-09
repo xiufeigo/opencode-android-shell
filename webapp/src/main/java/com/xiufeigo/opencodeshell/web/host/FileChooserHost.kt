@@ -25,10 +25,8 @@ import java.util.concurrent.Executors
  * 为什么不自己造 `file://`：宿主 origin 是 https，页面拿不到 `file://` 读权限，
  * SAF 的 `content://` 才是跨进程正确的句柄。
  *
- * 已知限制（本轮不做，记录在报告 §6）：`onShowFileChooser` 只能回 `Uri[]`，页面要拿
- * 真正的字节得再调桥读一遍；这里按 [MAX_INLINE_BYTES] 上限把内容 inline 成 base64
- * 回给页面。超过上限的内容本轮不传（下一轮应改走 OkHttp + 一次性本地 token 的
- * 「原生代理」，与 `:app` 的 LocalGateway 同一思路）。
+ * 标准 file input 接收选中的 URI 后，由 WebView 暴露为 File，页面直接读取字节。
+ * [MAX_INLINE_BYTES] 只限制旧桥的 readInline 路径，不限制标准 File 导入。
  */
 class FileChooserHost(private val activity: AppCompatActivity) {
     private val writer = Executors.newSingleThreadExecutor()

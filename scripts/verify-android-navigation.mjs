@@ -21,6 +21,9 @@ async function registry(page) {
 async function openSettings(page) {
   await page.keyboard.press("Control+,")
   await visible(page.locator(".settings")).waitFor()
+  const back = button(page, "Back to settings")
+  if (await back.isVisible()) await back.click()
+  await button(page, "Back to app").waitFor()
 }
 
 async function selectSettingsEntry(page, phone, name) {
@@ -44,6 +47,10 @@ async function addServer(page, url, name) {
     const store = JSON.parse(localStorage.getItem("opencode.global.dat:server"))
     return store?.list?.some(server => server.http.url === url)
   }, url)
+  // Wait for the actual destination, rather than clicking the outgoing root
+  // action during its transition and accidentally bypassing the regression.
+  await button(page, "Back to settings").waitFor()
+  await page.locator(".settings-tab-title").filter({ hasText: name }).waitFor()
 }
 
 async function runProfile(browser, profile, ui, servers) {
@@ -67,17 +74,24 @@ async function runProfile(browser, profile, ui, servers) {
     record(profile.name, "first-add-keeps-server-settings", { registry: await registry(page) })
     await rootEntry.click()
     await addServer(page, servers[1].origin, "Server B")
+    assert.equal(await button(page, "Add server").evaluate(node => getComputedStyle(node).opacity), "1")
+    // Continue on the page opened after saving B; reopening root settings hid
+    // the missing add action when the server inventory changes to multiple.
+    for (const [index, name] of [[2, "Server C"], [3, "Server D"], [4, "Server E"]]) {
+      await addServer(page, servers[index].origin, name)
+      await button(page, "Add server").waitFor()
+    }
     await openSettings(page)
     await button(page, "Add server").waitFor()
     const stored = await registry(page)
-    assert.equal(stored.list.length, 2)
+    assert.equal(stored.list.length, 5)
     assert.deepEqual(stored.list.map(server => server.http.url).sort(), servers.map(server => server.origin).sort())
-    record(profile.name, "two-servers-and-add-entry", stored)
+    record(profile.name, "five-servers-added-without-reopening-settings", stored)
     await page.reload({ waitUntil: "domcontentloaded" })
     await openSettings(page)
     await button(page, "Add server").waitFor()
-    assert.equal((await registry(page)).list.length, 2)
-    record(profile.name, "two-servers-persist-after-reload", await registry(page))
+    assert.equal((await registry(page)).list.length, 5)
+    record(profile.name, "five-servers-persist-after-reload", await registry(page))
     await selectSettingsEntry(page, profile.name === "phone", "Server B")
     const row = page.locator(".settings-servers-row").filter({ hasText: "Server B" })
     await row.getByRole("button", { name: "More options", exact: true }).click()
@@ -91,7 +105,7 @@ async function runProfile(browser, profile, ui, servers) {
     await button(page, "Back to settings").click()
     await button(page, "Add server").waitFor()
     await button(page, "Back to app").click()
-    for (const name of ["Server B edited", new URL(servers[0].origin).host]) {
+    for (const name of [new URL(servers[0].origin).host, "Server C", "Server D", "Server E", "Server B edited"]) {
       if (profile.name === "phone") await page.locator('[data-component="home-projects-dropdown"]').click()
       const homeRow = visible(page.locator("[data-home-row]")).filter({ hasText: name })
       await homeRow.getByRole("button").first().click()
@@ -100,11 +114,41 @@ async function runProfile(browser, profile, ui, servers) {
       record(profile.name, "switch-server", { selected: name })
       if (profile.name === "phone") await page.keyboard.press("Escape")
     }
+    await page.waitForFunction(url => JSON.parse(localStorage.getItem("opencode.global.dat:layout"))?.home?.selection?.server === url, servers[1].origin)
     await page.reload({ waitUntil: "domcontentloaded" })
+    if (profile.name === "phone") await page.locator('[data-component="home-projects-dropdown"]').click()
+    await visible(page.locator("[data-home-row]")).filter({ hasText: "Server B edited" }).locator(":scope[data-selected]").waitFor()
+    if (profile.name === "phone") await page.keyboard.press("Escape")
+    record(profile.name, "selected-server-persists-after-reload", { selected: "Server B edited" })
     await openSettings(page)
     await button(page, "Add server").waitFor()
     assert.equal((await registry(page)).list.find(server => server.http.url === servers[1].origin).displayName, "Server B edited")
     record(profile.name, "edited-servers-persist-after-reload", await registry(page))
+    await selectSettingsEntry(page, profile.name === "phone", "Server C")
+    await page.locator(".settings-servers-row").getByRole("button", { name: "More options", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Remove", exact: true }).click()
+    await page.waitForFunction(url => !JSON.parse(localStorage.getItem("opencode.global.dat:server")).list.some(server => server.http.url === url), servers[2].origin)
+    await button(page, "Add server").waitFor()
+    assert.equal((await registry(page)).list.length, 4)
+    await page.reload({ waitUntil: "domcontentloaded" })
+    assert.equal((await registry(page)).list.length, 4)
+    await openSettings(page)
+    await button(page, "Add server").waitFor()
+    record(profile.name, "remove-server-and-persist-four-remaining", await registry(page))
+    for (const [name, index] of [["Server E", 4], ["Server D", 3], ["Server B edited", 1]]) {
+      await selectSettingsEntry(page, profile.name === "phone", name)
+      await page.locator(".settings-servers-row").filter({ hasText: name }).getByRole("button", { name: "More options", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Remove", exact: true }).click()
+      await page.waitForFunction(url => !JSON.parse(localStorage.getItem("opencode.global.dat:server")).list.some(server => server.http.url === url), servers[index].origin)
+      await button(page, "Back to app").waitFor()
+    }
+    assert.equal((await registry(page)).list.length, 1)
+    await selectSettingsEntry(page, profile.name === "phone", "Server")
+    await addServer(page, servers[1].origin, "Server B restored")
+    await addServer(page, servers[2].origin, "Server C restored")
+    await button(page, "Add server").waitFor()
+    assert.equal((await registry(page)).list.length, 3)
+    record(profile.name, "shrink-to-one-and-expand-to-three-without-losing-add", await registry(page))
     assert.equal(await page.evaluate(() => window.__ocHostError ?? null), null)
     assert.deepEqual(errors, [])
     await page.screenshot({ path: path.join(output, profile.name + "-servers.png"), fullPage: true })
@@ -144,6 +188,44 @@ async function runOfficialPlus(browser, ui, server) {
   } finally { await context.close() }
 }
 
+async function runImport(browser, profile, ui, server) {
+  const context = await browser.newContext({ viewport: { width: profile.width, height: profile.height }, locale: "en-US", isMobile: profile.name === "phone", hasTouch: true })
+  const page = await context.newPage()
+  const errors = []
+  page.on("pageerror", error => errors.push(error.stack))
+  server.sessionId = "ses_navigation_import"
+  await page.addInitScript({ content: seedScript({ serverOrigin: server.origin, workspace: server.workspace, sessionId: server.sessionId }) + ";" + nativeBridgeSource() + ";" + ocHostLoaderSource(fs.readFileSync(path.join(root, "webapp/src/main/assets/www/oc-host.js"), "utf8")) })
+  const importFile = async content => {
+    if (profile.name === "phone" && !await visible(page.locator('[data-action="home-project-menu"]')).first().isVisible())
+      await page.locator('[data-component="home-projects-dropdown"]').click()
+    await visible(page.locator('[data-action="home-project-menu"]')).first().click()
+    const chooser = page.waitForEvent("filechooser")
+    await page.getByRole("menuitem", { name: "Import session", exact: true }).click()
+    await (await chooser).setFiles({ name: "session.json", mimeType: "application/json", buffer: Buffer.from(content) })
+  }
+  try {
+    await page.goto(ui, { waitUntil: "domcontentloaded" })
+    const before = server.sessionImports.length
+    await importFile('{"invalid":true}')
+    await page.getByText("Request failed", { exact: true }).waitFor()
+    assert.equal(server.sessionImports.length, before)
+    assert.equal(await page.locator('input[type="file"]').count(), 0)
+    record(profile.name, "invalid-session-file-fails-before-api", { imports: 0 })
+    const info = await fetch(`${server.origin}/api/session/${server.sessionId}`).then(response => response.json()).then(value => value.data)
+    const data = { info, messages: [] }
+    await importFile(JSON.stringify(data) + " ".repeat(2 * 1024 * 1024))
+    await page.waitForURL(url => url.pathname.endsWith(`/session/${server.sessionId}`))
+    assert.equal(server.sessionImports.length, before + 1)
+    assert.deepEqual(server.sessionImports.at(-1), { ...data, location: { directory: server.workspace } })
+    assert.deepEqual(errors, [])
+    record(profile.name, "official-import-reads-large-file-and-opens-remote-session", { bytes: 2 * 1024 * 1024, directory: server.workspace })
+  } catch (error) {
+    await page.screenshot({ path: path.join(output, profile.name + "-import-failure.png"), fullPage: true })
+    report.checks.push({ device: profile.name, name: "import", status: "fail", error: error.stack, text: await page.locator("body").innerText(), pageErrors: errors })
+    console.error("FAIL", profile.name, "import", error.message)
+  } finally { await context.close() }
+}
+
 async function runUpgrade(browser, ui, servers) {
   const context = await browser.newContext({ viewport: { width: 411, height: 914 }, locale: "en-US", isMobile: true, hasTouch: true })
   const page = await context.newPage()
@@ -167,8 +249,8 @@ async function runUpgrade(browser, ui, servers) {
     await openSettings(page)
     await button(page, "Add server").waitFor()
     await page.locator(".settings-mobile-menu-trigger").click()
-    for (const name of ["Saved 1", "Saved 2"]) await page.getByRole("menuitemradio", { name, exact: true }).waitFor()
-    record("phone", "upgrade-keeps-two-real-servers-and-settings", await registry(page))
+    for (const name of servers.map((_, index) => `Saved ${index + 1}`)) await page.getByRole("menuitemradio", { name, exact: true }).waitFor()
+    record("phone", "upgrade-keeps-three-real-servers-and-settings", await registry(page))
     await page.screenshot({ path: path.join(output, "phone-upgrade.png"), fullPage: true })
   } catch (error) {
     report.checks.push({ device: "phone", name: "upgrade", status: "fail", error: error.stack, registry: await registry(page) })
@@ -178,13 +260,14 @@ async function runUpgrade(browser, ui, servers) {
 
 const uiServer = await startUiServer()
 const ui = `http://127.0.0.1:${uiServer.address().port}`
-const servers = await Promise.all([startBackend(), startBackend()])
+const servers = await Promise.all(Array.from({ length: 5 }, () => startBackend()))
 servers.forEach((server, i) => { server.workspace = "C:\\workspace\\navigation-" + i })
 const browser = await chromium.launch({ executablePath: process.env.VERIFY_TERMINAL_CHROMIUM || "C:/Users/xiufe/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe", headless: true })
 try {
   if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") for (const profile of profiles) await runProfile(browser, profile, ui, servers)
+  if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") for (const profile of profiles) await runImport(browser, profile, ui, servers[0])
   await runOfficialPlus(browser, ui, servers[0])
-  if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") await runUpgrade(browser, ui, servers)
+  if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") await runUpgrade(browser, ui, servers.slice(0, 3))
 }
 finally {
   await browser.close()

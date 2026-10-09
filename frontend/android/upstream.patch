@@ -41,8 +41,30 @@ index b9760dd8..6bba3740 100644
            <AppBaseProviders locale={locale}>
              <AppInterface
                canonicalLocalServer={server ? ServerConnection.key(server) : undefined}
+diff --git a/packages/app/src/home/sessions/controller.tsx b/packages/app/src/home/sessions/controller.tsx
+index ea010619..c4081735 100644
+--- a/packages/app/src/home/sessions/controller.tsx
++++ b/packages/app/src/home/sessions/controller.tsx
+@@ -111,7 +111,7 @@ export function createHomeSessionsController(home: HomeController) {
+   }
+ 
+   const syncLocations = (record?: HomeSessionRecord) => {
+-    if (platform.platform !== "desktop") return
++    if (platform.platform === "web") return
+     const ctx = home.server.focusedContext()
+ 
+     if (!ctx) return
+@@ -308,7 +308,7 @@ export function createHomeSessionsController(home: HomeController) {
+       searchRecords: allRecords,
+     },
+     platform: {
+-      desktop: platform.platform === "desktop",
++      desktop: platform.platform !== "web",
+     },
+     location: {
+       value: location,
 diff --git a/packages/app/src/runtime/extension/embeds.tsx b/packages/app/src/runtime/extension/embeds.tsx
-index c4e72ad8..841ec14e 100644
+index c4e72ad8..e6cf7734 100644
 --- a/packages/app/src/runtime/extension/embeds.tsx
 +++ b/packages/app/src/runtime/extension/embeds.tsx
 @@ -1,4 +1,4 @@
@@ -60,6 +82,126 @@ index c4e72ad8..841ec14e 100644
        return <EmbedView {...props} input={input} bridge={bridge} />
      },
      capture: (id) => input.bridge?.capture(id) ?? Promise.resolve(undefined),
+diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
+index 4caac345..bfa6e0ae 100644
+--- a/packages/app/src/runtime/platform/platform.tsx
++++ b/packages/app/src/runtime/platform/platform.tsx
+@@ -19,7 +19,7 @@ type OpenAttachmentPickerOptions = {
+ 
+ type SaveFilePickerOptions = { title?: string; defaultPath?: string }
+ 
+-type PlatformName = "web" | "desktop"
++type PlatformName = "web" | "desktop" | "android"
+ 
+ type DesktopOS = "macos" | "windows" | "linux"
+ 
+@@ -56,7 +56,7 @@ type PlatformBase = {
+   /** Send a system notification */
+   notify(title: string, description?: string, onClick?: () => void): Promise<void>
+ 
+-  /** Open a native attachment picker and read selected files sequentially (desktop only) */
++  /** Open the host's attachment picker and read selected files sequentially. */
+   openAttachmentPickerDialog?<Value>(
+     opts: OpenAttachmentPickerOptions,
+     onFile: (file: File) => Promise<Value>,
+@@ -68,7 +68,7 @@ type PlatformBase = {
+   /** Observe native drag cancellation that does not reach the renderer event loop. */
+   onDragCancel?(callback: () => void): () => void
+ 
+-  /** Open a native save file dialog and write content to the selected path (desktop only) */
++  /** Open the host's save file dialog and write content to the selected path. */
+   saveFile?(opts: SaveFilePickerOptions, content: string): Promise<boolean>
+ 
+   /** Storage mechanism, defaults to localStorage */
+@@ -113,13 +113,14 @@ type PlatformBase = {
+   /** Record a fatal renderer error in platform logs (desktop only) */
+   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
+ 
+-  /** GUI extension bridge to the main-process extension host (desktop only). */
++  /** GUI extension bridge to a native or remote extension host. */
+   extensions?: Bridge
+ }
+ 
+ export type Platform = PlatformBase &
+   (
+     | { platform: "web"; os?: never; windowID?: never }
++    | { platform: "android"; os?: never; windowID?: never }
+     | {
+         platform: "desktop"
+         os?: DesktopOS
+diff --git a/packages/app/src/runtime/polyfills.test.ts b/packages/app/src/runtime/polyfills.test.ts
+new file mode 100644
+index 00000000..06954f8d
+--- /dev/null
++++ b/packages/app/src/runtime/polyfills.test.ts
+@@ -0,0 +1,18 @@
++import { expect, test } from "bun:test"
++import { pairingLink } from "../servers/connect/pairing"
++
++test("bootstrap supports server pairing without native URL.parse", async () => {
++  const descriptor = Object.getOwnPropertyDescriptor(URL, "parse")
++  Object.defineProperty(URL, "parse", { value: undefined, configurable: true, writable: true })
++  try {
++    await import("./polyfills")
++    expect(URL.parse("not a URL")).toBeNull()
++    expect(URL.parse("/auth/connect/abc", "http://host:4096")?.href).toBe("http://host:4096/auth/connect/abc")
++    expect(() => URL.parse()).toThrow(TypeError)
++    expect(pairingLink("http://host:4096/auth/connect/abc")).toEqual({ urls: ["http://host:4096"], code: "abc" })
++    expect(pairingLink("http://host:4096")).toBeUndefined()
++  } finally {
++    if (descriptor) Object.defineProperty(URL, "parse", descriptor)
++    else Reflect.deleteProperty(URL, "parse")
++  }
++})
+diff --git a/packages/app/src/runtime/polyfills.ts b/packages/app/src/runtime/polyfills.ts
+index cf609290..1759a2f8 100644
+--- a/packages/app/src/runtime/polyfills.ts
++++ b/packages/app/src/runtime/polyfills.ts
+@@ -2,3 +2,5 @@
+ import "core-js/es/map/group-by"
+ import "core-js/es/promise/with-resolvers"
+ import "core-js/es/promise/try"
++// Android WebView before Chromium 126 lacks URL.parse, used by server pairing.
++import "core-js/stable/url/parse"
+diff --git a/packages/app/src/servers/connect/camera.ts b/packages/app/src/servers/connect/camera.ts
+index 1f3adf17..ae37c2f6 100644
+--- a/packages/app/src/servers/connect/camera.ts
++++ b/packages/app/src/servers/connect/camera.ts
+@@ -3,7 +3,7 @@ import { usePlatform } from "@/runtime/platform/platform"
+ 
+ export function createCameraAvailability() {
+   const platform = usePlatform()
+-  const supported = platform.platform === "web" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
++  const supported = platform.platform !== "desktop" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
+ 
+   const [available, actions] = createResource(
+     async () => {
+diff --git a/packages/app/src/servers/connect/dialog.tsx b/packages/app/src/servers/connect/dialog.tsx
+index b4573f41..d37cef2a 100644
+--- a/packages/app/src/servers/connect/dialog.tsx
++++ b/packages/app/src/servers/connect/dialog.tsx
+@@ -218,7 +218,7 @@ export const DialogServer: Component<{
+                 </span>
+               </div>
+             </Show>
+-            <Show when={form.state.method() === "link" && platform.platform === "web"}>
++            <Show when={form.state.method() === "link" && platform.platform !== "desktop"}>
+               <Show
+                 when={camera.available.latest || camera.available.loading}
+                 fallback={<span class="settings-server-dialog-hint">{language.t(cameraHint())}</span>}
+diff --git a/packages/app/src/servers/connect/screen.tsx b/packages/app/src/servers/connect/screen.tsx
+index 21f54fb2..9a66afdb 100644
+--- a/packages/app/src/servers/connect/screen.tsx
++++ b/packages/app/src/servers/connect/screen.tsx
+@@ -223,7 +223,7 @@ export function ConnectServerScreen(props: { url?: string } = {}) {
+               {language.t(request.isPending ? "dialog.server.add.checking" : "server.connect.button")}
+             </Button>
+           </form>
+-          <Show when={state.method === "link" && platform.platform === "web"}>
++          <Show when={state.method === "link" && platform.platform !== "desktop"}>
+             <Show
+               when={camera.available.latest || camera.available.loading}
+               fallback={<p>{language.t(cameraHint())}</p>}
 diff --git a/packages/app/src/settings/general/general.tsx b/packages/app/src/settings/general/general.tsx
 index 81347b4d..a3ba1824 100644
 --- a/packages/app/src/settings/general/general.tsx
@@ -80,10 +222,195 @@ index 81347b4d..a3ba1824 100644
          <TabLayoutSetting />
  
          <WorkspaceDestinationSetting />
+diff --git a/packages/app/src/settings/route.test.ts b/packages/app/src/settings/route.test.ts
+index 3802fab3..447579c2 100644
+--- a/packages/app/src/settings/route.test.ts
++++ b/packages/app/src/settings/route.test.ts
+@@ -2,6 +2,15 @@ import { describe, expect, test } from "bun:test"
+ import { parseSettingsView, settingsViewRedirect, settingsViewUrl, type SettingsView } from "./route"
+ 
+ describe("settings route", () => {
++  test("inventory growth resolves obsolete root tabs without overwriting the saved server route", () => {
++    expect(parseSettingsView("?tab=servers", false)).toEqual({ type: "root", tab: "servers", subtab: undefined })
++    expect(parseSettingsView("?tab=servers", true)).toEqual({ type: "root", tab: "general" })
++    expect(parseSettingsView("?tab=models", true)).toEqual({ type: "root", tab: "general" })
++    expect(parseSettingsView("?server=http%3A%2F%2Fhost%3A4096", true)).toEqual({
++      type: "server", server: "http://host:4096", tab: "general", subtab: undefined,
++    })
++    expect(parseSettingsView("?tab=appearance", true)).toEqual({ type: "root", tab: "appearance", subtab: undefined })
++  })
+   test("keeps root preferences at the canonical route", () => {
+     expect(settingsViewUrl({ type: "root", tab: "general" })).toBe("/settings")
+     expect(parseSettingsView("", false)).toEqual({ type: "root", tab: "general", subtab: undefined })
+diff --git a/packages/app/src/settings/route.ts b/packages/app/src/settings/route.ts
+index e4b0f115..f3f438bf 100644
+--- a/packages/app/src/settings/route.ts
++++ b/packages/app/src/settings/route.ts
+@@ -112,8 +112,14 @@ export function parseSettingsView(
+   if (!project && server && isServerTab(tab))
+     return { type: "server", server, tab, subtab: nested === "lsps" ? undefined : nested, ...transient }
+ 
+-  if (!project && !server && isRootTab(tab))
++  if (!project && !server && isRootTab(tab)) {
++    // Server tabs move into their server scope when the inventory grows.
++    // Resolve the displayed view here: an effect that navigates on growth can
++    // overwrite the add dialog's navigation to the newly saved server.
++    const scoped = tab === "servers" || (tab !== "general" && isServerTab(tab))
++    if (multipleServers && scoped) return { type: "root", tab: "general" }
+     return { type: "root", tab, subtab: nested === "lsps" ? undefined : nested, ...transient }
++  }
+ 
+   if (!project && !server && extensionTabs && isExtensionTab(tab, extensionTabs))
+     return { type: "root", tab, subtab: undefined, ...transient }
+diff --git a/packages/app/src/settings/settings.css b/packages/app/src/settings/settings.css
+index 794c53f2..a258b956 100644
+--- a/packages/app/src/settings/settings.css
++++ b/packages/app/src/settings/settings.css
+@@ -155,6 +155,12 @@
+   background: var(--v2-background-bg-layer-03);
+ }
+ 
++@media (hover: none) {
++  .settings-nav-group-header [data-component="icon-button-v2"] {
++    opacity: 1;
++  }
++}
++
+ @media (hover: hover) {
+   .settings-nav-group-header:hover {
+     background: var(--v2-background-bg-layer-03);
+diff --git a/packages/app/src/settings/shell.tsx b/packages/app/src/settings/shell.tsx
+index b3cc58bc..ee364322 100644
+--- a/packages/app/src/settings/shell.tsx
++++ b/packages/app/src/settings/shell.tsx
+@@ -223,15 +223,23 @@ export function SettingsScreen() {
+   )
+ }
+ 
++function useAddSettingsServer() {
++  const dialog = useDialog()
++  const surface = useSettingsSurface()
++  return () =>
++    void dialog.push(() => (
++      <DialogServer mode="add" onSave={(server) => surface.openServer(ServerConnection.key(server))} />
++    ))
++}
++
+ function RootSettings() {
+   const language = useLanguage()
+-  const dialog = useDialog()
++  const addServer = useAddSettingsServer()
+   const surface = useSettingsSurface()
+   const layout = useLayout()
+   const tabs = useTabs()
+   const servers = useServerCollectionController()
+   const inventory = useSettingsServers()
+-  const loaded = useSettingsServersLoaded()
+   const platform = usePlatform()
+ 
+   const [state, setState] = createStore<{ worktreeFilterReset: number; modelProvider: string | undefined }>({
+@@ -278,11 +286,6 @@ function RootSettings() {
+     if (view.tab === "gui-extensions" && !guiExtensions) surface.open("general")
+   })
+ 
+-  const addServer = () =>
+-    void dialog.push(() => (
+-      <DialogServer mode="add" onSave={(server) => surface.openServer(ServerConnection.key(server))} />
+-    ))
+-
+   const groups = createMemo<SettingsNavGroup[]>(() => [
+     {
+       items: [
+@@ -326,15 +329,6 @@ function RootSettings() {
+     { items: aboutTab.map((item) => ({ ...item, label: language.t(item.label) })) },
+   ])
+ 
+-  createEffect(() => {
+-    const view = surface.view()
+-
+-    if (view.type !== "root" || !loaded() || !multiple()) return
+-
+-    if (["projects", "workspaces", "providers", "models", "extensions", "servers"].includes(view.tab))
+-      surface.open("general")
+-  })
+-
+   const change = (value: string) => {
+     if (value.startsWith("server:")) {
+       surface.openServer(value.slice("server:".length))
+@@ -438,6 +432,7 @@ function RootSettings() {
+ function ServerSettings(props: { entry: SettingsServer }) {
+   const language = useLanguage()
+   const surface = useSettingsSurface()
++  const addServer = useAddSettingsServer()
+   const activeDirectory = useSettingsDirectory(() => props.entry.connection)
+   const prefetchWorkspaces = useWorkspacesPrefetch(() => props.entry.connection)
+ 
+@@ -448,6 +443,8 @@ function ServerSettings(props: { entry: SettingsServer }) {
+ 
+   const groups = createMemo<SettingsNavGroup[]>(() => [
+     {
++      label: language.t("settings.tab.servers"),
++      action: <AddServerMenu compact onAddServer={addServer} />,
+       items: nestedServerTabs.map((item) => ({
+         ...item,
+         label: item.value === "general" ? props.entry.name : language.t(item.label),
+@@ -473,6 +470,7 @@ function ServerSettings(props: { entry: SettingsServer }) {
+       backLabel={language.t("settings.backToSettings")}
+       onBack={() => surface.back()}
+       onChange={change}
++      mobileAction={<AddServerMenu compact onAddServer={addServer} />}
+     >
+       <Tabs.Content value="general" class="settings-panel">
+         <SettingsServerGeneral
+diff --git a/packages/app/src/shell/errors/error.tsx b/packages/app/src/shell/errors/error.tsx
+index f62712d8..1a3b5233 100644
+--- a/packages/app/src/shell/errors/error.tsx
++++ b/packages/app/src/shell/errors/error.tsx
+@@ -355,7 +355,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
+         />
+         <div class="flex flex-row items-center justify-center gap-3 flex-wrap max-w-64">
+           <Button size="large" onClick={platform.restart}>
+-            {language.t(platform.platform === "web" ? "error.page.action.reload" : "error.page.action.restart")}
++            {language.t(platform.platform === "desktop" ? "error.page.action.restart" : "error.page.action.reload")}
+           </Button>
+           <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
+             <Button size="large" variant="ghost" onClick={exportDebugLogs}>
+diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
+index f3780f58..e1bfc41e 100644
+--- a/packages/app/src/shell/titlebar/titlebar.tsx
++++ b/packages/app/src/shell/titlebar/titlebar.tsx
+@@ -64,7 +64,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+   const location = useLocation()
+   const mobile = createMediaQuery("(max-width: 767px)")
+   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
+-  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
++  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
+ 
+   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
+   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
+@@ -153,7 +153,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       }}
+       style={{
+         height:
+-          platform.platform === "web"
++          platform.platform !== "desktop"
+             ? bottom()
+               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
+               : mobileTop()
+@@ -798,7 +798,7 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
+     <Tooltip
+       placement={props.sidebar ? "right" : "bottom"}
+       value={label()}
+-      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform === "web" ? "ps-2.5" : ""}`}
++      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform !== "desktop" ? "ps-2.5" : ""}`}
+     >
+       <Dynamic
+         component={debug() ? "button" : "div"}
 diff --git a/packages/app/vite.pwa.ts b/packages/app/vite.pwa.ts
+index 20661ce1..f7b06133 100644
 --- a/packages/app/vite.pwa.ts
 +++ b/packages/app/vite.pwa.ts
-@@ -44,6 +44,8 @@ export function serviceWorker(directory: string) {
+@@ -39,6 +39,8 @@ export function serviceWorker(directory: string) {
            manifest: await Promise.all(
              entries
                .filter((entry) => !onDemandAsset(entry.url))
@@ -93,7 +420,7 @@ diff --git a/packages/app/vite.pwa.ts b/packages/app/vite.pwa.ts
                ...entry,
                // A revision labels a cache entry; integrity rejects mixed deployments
 diff --git a/packages/gui-extensions/src/browser/chromium.ts b/packages/gui-extensions/src/browser/chromium.ts
-index 4e665fa8..e240455d 100644
+index 4e665fa8..b3c87cab 100644
 --- a/packages/gui-extensions/src/browser/chromium.ts
 +++ b/packages/gui-extensions/src/browser/chromium.ts
 @@ -146,6 +146,9 @@ export function createBrowserPage(
@@ -106,14 +433,14 @@ index 4e665fa8..e240455d 100644
    },
  ) {
    const policy: Policy = {
-@@ -162,6 +165,7 @@ export function createBrowserPage(
+@@ -158,6 +161,7 @@ export function createBrowserPage(
+     ...options.popupOptions,
+     webPreferences: {
        partition: options.partition,
 +      offscreen: options.offscreen,
        nodeIntegration: false,
        contextIsolation: true,
        sandbox: true,
-       webSecurity: true,
-       webviewTag: false,
 @@ -931,7 +935,7 @@ export function createBrowserPage(
            throw new Error(
              "Choose either ref for an element screenshot or fullPage:true for the whole page. Remove the other argument before retrying.",
@@ -145,7 +472,7 @@ index ffde316e..ec235152 100644
       * Tab IDs to list in the side panel: the desktop's inventory, limited to tabs stored in the strip. Until the first
       * inventory arrives, the stored tabs, so a restored selection holds; that inventory then prunes the ones it lacks.
 diff --git a/packages/gui-extensions/src/browser/pane.ts b/packages/gui-extensions/src/browser/pane.ts
-index 8b1ddb18..74ef487e 100644
+index 8b1ddb18..a06a92e9 100644
 --- a/packages/gui-extensions/src/browser/pane.ts
 +++ b/packages/gui-extensions/src/browser/pane.ts
 @@ -48,6 +48,9 @@ export function createBrowserPane(input: {
@@ -248,6 +575,23 @@ index 38f73cd7..0a625604 100644
    /** The app runs packaged, as main's `Build.packaged` says; the window's `Build` reports the same. */
    readonly packaged: boolean
    /**
+diff --git a/packages/gui-extensions/src/sdk/core.ts b/packages/gui-extensions/src/sdk/core.ts
+index 3d6d6ba6..c0c35598 100644
+--- a/packages/gui-extensions/src/sdk/core.ts
++++ b/packages/gui-extensions/src/sdk/core.ts
+@@ -68,9 +68,10 @@ export interface Build {
+    * Where the code runs. Main is always `desktop`.
+    * - `web`: a browser tab.
+    * - `desktop`: the Electron app.
++   * - `android`: the Android native host.
+    */
+-  readonly platform: "web" | "desktop"
+-  /** A packaged desktop app, not a development run. Always false on the web. */
++  readonly platform: "web" | "desktop" | "android"
++  /** A packaged native app, not a development run. Always false on the web. */
+   readonly packaged: boolean
+ }
+ 
 diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
 index 8ba5f356..3f054b6b 100644
 --- a/packages/gui-extensions/src/terminal/model.ts
