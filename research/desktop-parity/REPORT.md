@@ -37,7 +37,7 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 - 完整打包 SPA 的手机、触屏平板导航/导入/菜单回归 **41/41**，包括六组菜单、设置命令、缩放复原、编辑选区与帮助链接，及实际展开侧栏“＋”、打开文件、请求浏览器配对和取消。
 - Android 单测 **249/249**，debug/release 构建通过；使用用户指定密钥，签名证书 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6`。
 
-导航模拟报告：`research/tmp/verify-android-navigation/2026-10-09T14-13-45-901Z/report.json`。实际手机 **4/4**（540×1176）：菜单打开设置、原生复制粘贴保留选区、系统全屏隐藏/恢复系统栏、无 WebView 异常；报告为 `research/tmp/verify-android-menus/2026-10-09T15-22-22-554Z-device/report.json`。实际平板菜单 **3/3**：展开“＋”打开远程文件选择器、从未配对状态打开原生配对框并打开官方浏览器面板、无 WebView 异常；报告为 `research/tmp/verify-android-menus/2026-10-09T15-31-52-353Z-device/report.json`。
+导航模拟报告：`research/tmp/verify-android-navigation/2026-10-09T14-13-45-901Z/report.json`。实际手机 **4/4**（540×1176）：菜单打开设置、原生复制粘贴保留选区、系统全屏隐藏/恢复系统栏、无 WebView 异常；报告为 `research/tmp/verify-android-menus/2026-10-09T15-22-22-554Z-device/report.json`。实际平板菜单 **3/3**：展开“＋”打开远程文件选择器、从未配对状态打开原生配对框并打开官方浏览器面板、无 WebView 异常；报告为 `research/tmp/verify-android-menus/2026-10-09T15-38-54-167Z-device/report.json`。
 
 原生菜单验证入口为 `scripts/verify-android-menus-device.mjs`，使用独立 API 35 模拟器、真实 WebView、系统剪贴板/系统栏/配对框、真实 OpenCode v2 和生产 Electron companion；不将模拟桥调用记录表述为原生能力实测。两个原生配对字段具备无障碍标签；设备脚本按标签定位，不使用 AndroidSelector 不支持的字段索引，也不把不支持的等待选项当作弹窗关闭证据。
 

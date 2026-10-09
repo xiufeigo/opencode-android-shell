@@ -181,6 +181,9 @@ try {
     // Android owns this WebView; Browser.close is not a supported host command.
     // Stop our test Activity before detaching the device transport.
     native(["shell", "am", "force-stop", app])
+    // Playwright 1.59.1 marks a device closed before reading its driver,
+    // leaving the instrumentation socket alive. Stop only our test driver.
+    if (profile === "tablet") native(["shell", "am", "force-stop", "com.microsoft.playwright.androiddriver"])
     console.log("CLEANUP test Activity stopped")
     // Enumeration opens polling transports for every device, including those
     // not selected by this test. Release all of our connections.
