@@ -45,7 +45,7 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 
 发布前补充检查固定构建检出的 LF 行尾，并恢复旧 Windows 检出中被 CRLF 转换的源文件，避免同一 commit 在 Linux CI 生成不同资源。规范行尾后官方类型检查、APK 构建和导航 16 项回归再次通过；终端 51 项及拖动 10 项回归通过。
 
-本轮具体报告保存在 `research/tmp/verify-android-*` 和 `_scratch_root/desktop-parity` 的本地测试目录。可复现入口：根 README、`browser-companion/smoke.mjs`、`scripts/verify-android-navigation.mjs`、`scripts/verify-android-resize.mjs`、`scripts/verify-android-terminal-release.mjs` 及设备验证脚本。CI 增加固定官方 UI 和 companion 的构建检查；构建只读权限，独立 tag 发布 job 获得仓库写权限，产物上传失败会明确失败。
+本轮具体报告保存在 `research/tmp/verify-android-*` 和 `_scratch_root/desktop-parity` 的本地测试目录。可复现入口：根 README、`browser-companion/smoke.mjs`、`scripts/verify-android-navigation.mjs`、`scripts/verify-android-resize.mjs`、`scripts/verify-android-terminal-release.mjs` 及设备验证脚本。CI 增加固定官方 UI 和 companion 的构建检查；PR/main 构建只读，tag 发布获得仓库写权限，两者复用同一构建工作流。签名包直接上传 GitHub Release，避免仓库已遇到的 Actions 产物存储配额限制；发布失败会明确失败。
 
 ## 仍存在的差异
 
