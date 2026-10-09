@@ -10,7 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { startBackend, seedScript, base64url } from './verify-android-terminal.mjs'
+import { startBackend, seedScript, base64url } from './verify-android-terminal-release.mjs'
 
 const exec = promisify(execFile)
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')

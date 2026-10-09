@@ -1,7 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { prepareEmbeddedServerStorage } from "./server-state.mjs"
-import { patchWebPlatform } from "./patch.mjs"
 
 const origin = "http://127.0.0.1:4173"
 const key = "opencode.global.dat:server"
@@ -41,12 +40,6 @@ test("legacy state is migrated and real defaults are retained; malformed state f
   assert.throws(() => prepareEmbeddedServerStorage(storage([[key, "{}"]]), origin), /Invalid server registry/)
 })
 
-test("generated entry is idempotent and upstream anchor changes require review", () => {
-  const source = "function ZI(){return location.origin}"
-  const patched = patchWebPlatform(source)
-  assert.equal(patchWebPlatform(patched), patched)
-  assert.throws(() => patchWebPlatform("function renamed(){return location.origin}"), /anchor changed/)
-})
 
 test("a malformed second registry fails before either registry or its default is changed", () => {
   const state = JSON.stringify({ list: [origin], hidden: { [origin]: true } })

@@ -267,4 +267,3 @@ var e=`
   pointer-events: none;
 }
 `,t=!1;function n(){if(t||typeof document>`u`)return;let n=`opencode-line-comment-styles`;if(document.getElementById(n)){t=!0;return}let r=document.createElement(`style`);r.id=n,r.textContent=e,document.head.appendChild(r),t=!0}export{e as n,n as t};
-//# sourceMappingURL=line-comment-styles-BAgHaP6J.js.map

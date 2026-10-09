@@ -13,7 +13,7 @@
  *     real `/_assets/*` chunks come from `www/ui/oa/*` — byte-for-byte the files
  *     that ship in the APK. Nothing in the vendored build is rewritten.
  *   · The Ghostty module slot is swapped **at the HTTP route only**:
- *       `/_assets/ghostty-web-*.js`  ->  `www/oc-terminal.js`
+ *       `/oc-terminal.js`  ->  `www/oc-terminal.js`
  *       `/oc-terminal/{file}`        ->  `www/terminal/{file}`
  *     The production `index-*.js` lazy-imports that same URL, so it asks for the
  *     replacement module by itself. A request log proves it did.
@@ -88,7 +88,7 @@ const CHROMIUM =
 // verdict at research/tmp/verify-android-terminal-release-final/ is preserved
 // byte-for-byte as a negative/neutral record and can never be overwritten by
 // this run. PREVIOUS_OUT_DIR points at it so the delta stays auditable.
-const OUT_DIR = path.join(REPO, "research/tmp/verify-android-terminal-release-ready", new Date().toISOString().replace(/[:.]/g, "-"))
+const OUT_DIR = path.join(REPO, "research/tmp/verify-android-terminal-release-ready", new Date().toISOString().replace(/[:.]/g, "-") + "-" + crypto.randomBytes(3).toString("hex"))
 const PREVIOUS_OUT_DIR = path.join(REPO, "research/tmp/verify-android-terminal-release-final")
 const REPORT_PATH = path.join(OUT_DIR, "report.json")
 
@@ -188,7 +188,7 @@ function startUiServer() {
 
     // 1. Ghostty replacement slot. Matched before the /_assets/ bundle mapping
     //    because this is a real chunk name that also exists on disk.
-    if (/^\/_assets\/ghostty-web-[^/]+\.js$/.test(pathname)) {
+    if (pathname === "/oc-terminal.js") {
       if (serve(TERMINAL_MODULE_SERVED, "terminal:oc-terminal.mjs")) return
       record({ path: pathname, status: 404, via: "terminal-module-missing" })
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" })
@@ -762,6 +762,15 @@ function nativeBridgeSource() {
   return `(() => {
   const calls = []
   window.__ocNativeCalls = calls
+  window.__ocPlatform = {
+    onmessage: null,
+    postMessage(raw) {
+      const request = JSON.parse(raw)
+      calls.push({ name: request.method, args: request.payload })
+      const value = ["readClipboardImage", "browserConfig"].includes(request.method) ? null : request.method === "configureBrowser" ? false : true
+      queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id: request.id, value }) }))
+    },
+  }
   const record = (name, args) => { try { calls.push({ name, args }) } catch {} }
   const secret = new Map()
   window.__ocAndroidNative = {
@@ -1810,7 +1819,7 @@ async function closeTerminalPanel(page, client) {
 
 async function verifyAdapterLifecycle(page) {
   return page.evaluate(async () => {
-    const url = performance.getEntriesByType("resource").find((entry) => /ghostty-web-.*\.js/.test(entry.name))?.name
+    const url = performance.getEntriesByType("resource").find((entry) => new URL(entry.name).pathname === "/oc-terminal.js")?.name
     if (!url) throw new Error("The production terminal module was not loaded")
     const { Terminal } = await import(url)
     const container = document.createElement("div")
@@ -2099,10 +2108,10 @@ async function runDevice(browser, { chromium }, device, state) {
 
   // ── the replacement module must be requested by the production chunk ──
   if (shouldRun("module-route")) {
-    const ghosttyHits = requestLog
+    const terminalHits = requestLog
       .slice(baseline)
-      .filter((r) => /^\/_assets\/ghostty-web-[^/]+\.js$/.test(r.path))
-    const served = ghosttyHits.find((r) => r.via === "terminal:oc-terminal.mjs")
+      .filter((r) => r.path === "/oc-terminal.js")
+    const served = terminalHits.find((r) => r.via === "terminal:oc-terminal.mjs")
     if (served) {
       recordResult(
         "module-route",
@@ -2110,19 +2119,19 @@ async function runDevice(browser, { chromium }, device, state) {
         "pass",
         `production chunk requested ${served.path} and the HTTP route served the replacement module (${served.bytes} bytes) from ${TERMINAL_MODULE_SERVED}`,
       )
-    } else if (ghosttyHits.length) {
+    } else if (terminalHits.length) {
       recordResult(
         "module-route",
         device.name,
         "fail",
-        `ghostty chunk requested (${ghosttyHits[0].path}) but served via ${ghosttyHits[0].via} — replacement not wired`,
+        `terminal module requested (${terminalHits[0].path}) but served via ${terminalHits[0].via} — adapter not wired`,
       )
     } else {
       recordResult(
         "module-route",
         device.name,
         "fail",
-        "production page never requested a ghostty-web chunk, so the replacement slot was never exercised",
+        "production page never requested /oc-terminal.js, so the adapter was never exercised",
       )
     }
   }
@@ -3782,7 +3791,7 @@ async function main() {
     // A run against an override is a harness self-test, never a verdict on the lead's module.
     verdictScope: TERMINAL_MODULE_OVERRIDE
       ? "HARNESS SELF-TEST against a scratch stub module — NOT verification of the lead's module"
-      : "the packaged www/oc-terminal.js served at the /_assets/ghostty-web-*.js route",
+      : "the packaged www/oc-terminal.js served at /oc-terminal.js",
     totals: { pass: passed.length, fail: failed.length, skip: skipped.length, info: results.filter((r) => r.status === "info").length },
     checks: results,
     artifacts,

@@ -13,4 +13,3 @@ import{n as e}from"./chunk-Y2CYZVJY-DsF7k-Jl.js";var t=e(()=>`
     stroke-width: revert;
   }
 `,`getIconStyles`);export{t};
-//# sourceMappingURL=chunk-5VM5RSS4-ZNzvKenW.js.map

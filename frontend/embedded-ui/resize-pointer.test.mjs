@@ -1,8 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import fs from "node:fs"
 import { createResizePointerHandler } from "./resize-pointer.mjs"
-import { patchResizeHandle, patchResizeCss } from "./resize-patch.mjs"
 
 function fixture(props = {}, rtl = false) {
   const element = new EventTarget()
@@ -82,14 +80,4 @@ test("pointerup commits collapse once; right buttons and repeated mouse clicks d
   f.send("pointerup")
   f.send("lostpointercapture")
   assert.equal(f.collapses(), 1)
-})
-
-test("generated resize assets are idempotent; incomplete and changed upstream anchors fail", () => {
-  const source = fs.readFileSync(new URL("../../webapp/src/main/assets/www/ui/oa/index-D2r3WEwY.js", import.meta.url), "utf8")
-  const css = fs.readFileSync(new URL("../../webapp/src/main/assets/www/ui/oa/index-nVyEgSVI.css", import.meta.url), "utf8")
-  assert.equal(patchResizeHandle(source), source)
-  assert.equal(patchResizeCss(css), css)
-  assert.throws(() => patchResizeHandle(source.replace("r=ocResizePointerHandler(t,D)", "r=missingHandler(t)")), /Incomplete/)
-  assert.throws(() => patchResizeHandle("function ak(e){changed()}var ok=0"), /upstream implementation changed/)
-  assert.throws(() => patchResizeCss("changed"), /anchor changed/)
 })

@@ -35,8 +35,9 @@ async function selectSettingsEntry(page, phone, name) {
 async function addServer(page, url, name) {
   await button(page, "Add server").click()
   const dialog = page.getByRole("dialog")
-  await dialog.locator("input").nth(0).fill(url)
-  await dialog.locator("input").nth(1).fill(name)
+  await dialog.getByRole("button", { name: "Use password", exact: true }).click()
+  await dialog.locator("#dialog-server-url").fill(url)
+  await dialog.locator("#dialog-server-name").fill(name)
   await dialog.getByRole("button", { name: "Add server", exact: true }).click()
   await dialog.waitFor({ state: "hidden" })
   await page.waitForFunction(url => {
@@ -53,6 +54,7 @@ async function runProfile(browser, profile, ui, servers) {
   await page.addInitScript({ content: nativeBridgeSource() + ";" + ocHostLoaderSource(fs.readFileSync(path.join(root, "webapp/src/main/assets/www/oc-host.js"), "utf8")) })
   try {
     await page.goto(ui, { waitUntil: "domcontentloaded" })
+    await button(page, "Use password").click()
     await page.locator("#server-connect-url").fill(servers[0].origin)
     await button(page, "Connect").click()
     await page.locator('[data-component="connect-server"]').waitFor({ state: "hidden" })
@@ -137,7 +139,7 @@ async function runOfficialPlus(browser, ui, server) {
     await page.screenshot({ path: path.join(output, "tablet-official-plus.png"), fullPage: true })
   } catch (error) {
     await page.screenshot({ path: path.join(output, "tablet-plus-failure.png"), fullPage: true })
-    report.checks.push({ device: "tablet", name: "official-review-plus", status: "fail", error: error.stack, text: await page.locator("body").innerText(), pageErrors: errors })
+    report.checks.push({ device: "tablet", name: "official-review-plus", status: "fail", error: error.stack, text: await page.locator("body").innerText(), buttons: await page.locator("#review-panel button").evaluateAll(nodes => nodes.map(node => ({ label: node.getAttribute("aria-label"), title: node.getAttribute("title"), html: node.outerHTML.slice(0,500) }))), pageErrors: errors })
     console.error("FAIL", "tablet official plus", error.message)
   } finally { await context.close() }
 }
@@ -152,7 +154,7 @@ async function runUpgrade(browser, ui, servers) {
   }
   try {
     await page.goto(ui, { waitUntil: "domcontentloaded" })
-    await page.locator("#server-connect-url").waitFor()
+    await button(page, "Use password").waitFor()
     await page.evaluate(({ saved, ui }) => {
       const previous = { ...saved, list: [{ type: "http", http: { url: ui } }, ...saved.list], hidden: { [ui]: true } }
       localStorage.setItem("opencode.global.dat:server", JSON.stringify(previous))
@@ -180,9 +182,9 @@ const servers = await Promise.all([startBackend(), startBackend()])
 servers.forEach((server, i) => { server.workspace = "C:\\workspace\\navigation-" + i })
 const browser = await chromium.launch({ executablePath: process.env.VERIFY_TERMINAL_CHROMIUM || "C:/Users/xiufe/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe", headless: true })
 try {
-  for (const profile of profiles) await runProfile(browser, profile, ui, servers)
+  if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") for (const profile of profiles) await runProfile(browser, profile, ui, servers)
   await runOfficialPlus(browser, ui, servers[0])
-  await runUpgrade(browser, ui, servers)
+  if (process.env.VERIFY_NAVIGATION_FILTER !== "plus") await runUpgrade(browser, ui, servers)
 }
 finally {
   await browser.close()

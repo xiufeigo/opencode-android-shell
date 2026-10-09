@@ -1,48 +1,11 @@
-# Android embedded web platform
+# Android 共享 UI 适配
 
-The APK's HTTP origin serves static UI assets, never an OpenCode API. The web
-entry uses the upstream `VITE_OPENCODE_SERVER_MODE=none` behavior: it does not
-register that origin as a builtin server. Server inventory, adding, editing and
-switching remain controlled by the upstream registry and settings components.
+APK 使用与 Desktop 相同的官方 UI。`frontend/android/build.mjs` 从固定提交构建源码，应用 `upstream.patch`，并接入本目录的纯逻辑；不再按生成 chunk 文件名或压缩符号修改产物。
 
-`patch.mjs` applies this build option to the pinned entry chunk. It fails on
-unknown upstream anchors. The existing frontend build invokes it, and CI checks
-the generated entry alongside the terminal assets.
+`server-state.mjs` 在初始化前移除旧本地资产 origin 的服务器记录、默认服务器和可见性标记，保留真正的远程服务器、名称、凭据和工作区信息。两个历史 registry 都先完成验证再更新，迁移幂等。构建使用官方 `VITE_OPENCODE_SERVER_MODE=none`，避免将只提供静态资源的本地端点注册成 OpenCode 服务。
 
-Before hydration, `server-state.mjs` removes only legacy asset-origin records,
-visibility flags and defaults. It retains real server records and credentials,
-projects, names and user visibility preferences. This is an idempotent upgrade
-migration; there are no storage observers, forced reloads or DOM hiding rules.
-The origin is the Android host's own loopback socket, which serves static assets
-and rejects `/api/*`; a backend cannot share that socket. A remote backend using
-the same port remains a distinct URL and is retained. Both registry generations
-are parsed and validated before either one is updated.
+`resize-pointer.mjs` 管理官方 ResizeHandle 的 Pointer Events 生命周期，支持鼠标、触摸和笔，忽略第二指针，在释放、取消、丢失捕获、窗口失焦和组件卸载时清理。尺寸约束、RTL、折叠和持久化仍由官方组件负责。源码 CSS 将触屏目标扩大到 24px。
 
-The review-panel `+` belongs entirely to the official UI. The web platform opens
-the workspace file browser directly. The official browser menu is conditional
-on a platform `browserPane` implementation and its experimental setting; Android
-currently uses the web platform and does not supply that desktop capability.
+运行 `frontend/terminal` 的 `npm test` 验证纯逻辑，再执行 `node frontend/android/build.mjs`。整页验证分别使用 `scripts/verify-android-navigation.mjs` 和 `scripts/verify-android-resize.mjs`；它们使用完整打包 UI、模拟原生桥和测试服务，不能冒充实际 Android 设备验证。
 
-Run `npm test` and `npm run build` in `frontend/terminal`, then run
-`node scripts/verify-android-navigation.mjs` from the repository root. The latter
-uses the full packaged SPA on phone and tablet viewports, with emulated Android
-bridge and mock backends; it is not Android device validation.
-
-`resize-pointer.mjs` replaces the mouse-only drag lifetime of the same pinned
-shared `ResizeHandle`. Pointer capture handles mouse, touch and pen, ignores
-secondary pointers, and cleans up on release, cancellation, lost capture, window
-blur and unmount. Size limits, RTL/edge calculation and official persistence stay
-with the component. Cancellation clears collapse feedback without closing a pane.
-The stylesheet disables browser panning only on handles and enlarges their
-invisible hit target to 24px for coarse pointers. Visual gaps remain unchanged.
-`resize-patch.mjs` checks the exact upstream component hash before transforming
-it; the frontend build and CI also verify the generated stylesheet.
-
-Run `node scripts/verify-android-resize.mjs` for the full SPA with trusted CDP
-touch/mouse input, both axes, multiple pointers, cancellation, pane limits,
-collapse/reopen and reload persistence. Reports retain the original failed run.
-`node scripts/verify-android-resize-device.mjs` verifies both directions on the
-actual debug APK WebView using ADB swipes, then restores the emulator's display
-settings. It shares the existing device CDP transport with the terminal runner
-and does not replace the native bridge or any served asset. This remains emulator
-validation, not a physical tablet test.
+`scripts/verify-android-resize-device.mjs` 在实际 APK WebView 中通过 ADB 滑动验证分隔线，结束后恢复模拟器显示设置。内置浏览器通过 `browser-companion` 复用官方 Electron 引擎；普通工作区文件入口采用官方 Web 行为。

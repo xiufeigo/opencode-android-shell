@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
 
 /**
  * 文件选择 / 保存（SAF）。最小可用版。
@@ -30,6 +31,8 @@ import java.io.ByteArrayOutputStream
  * 「原生代理」，与 `:app` 的 LocalGateway 同一思路）。
  */
 class FileChooserHost(private val activity: AppCompatActivity) {
+    private val writer = Executors.newSingleThreadExecutor()
+    private var closed = false
 
     companion object {
         private const val TAG = "OcWebHost/FileChooser"
@@ -75,6 +78,7 @@ class FileChooserHost(private val activity: AppCompatActivity) {
 
     val openLauncher: ActivityResultLauncher<Intent> =
         activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+            if (closed) return@registerForActivityResult
             val cb = onPickResult
             onPickResult = null
             if (res.resultCode != Activity.RESULT_OK) {
@@ -92,6 +96,7 @@ class FileChooserHost(private val activity: AppCompatActivity) {
 
     val saveLauncher: ActivityResultLauncher<Intent> =
         activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+            if (closed) return@registerForActivityResult
             val b64 = pendingSaveBase64
             val mime = pendingSaveMime
             pendingSaveBase64 = null
@@ -109,17 +114,19 @@ class FileChooserHost(private val activity: AppCompatActivity) {
                 cb?.invoke(out)
                 return@registerForActivityResult
             }
-            try {
-                val bytes = Base64.decode(b64, Base64.DEFAULT)
-                activity.contentResolver.openOutputStream(target)?.use { it.write(bytes) }
-                    ?: throw IllegalStateException("openOutputStream returned null")
-                out.put("ok", true).put("uri", target.toString()).put("bytes", bytes.size)
-                    .put("mime", mime)
-            } catch (t: Throwable) {
-                Log.w(TAG, "save failed", t)
-                out.put("ok", false).put("error", t.javaClass.simpleName + ": " + (t.message ?: ""))
+            writer.execute {
+                try {
+                    val bytes = Base64.decode(b64, Base64.DEFAULT)
+                    activity.contentResolver.openOutputStream(target, "wt")?.use { it.write(bytes) }
+                        ?: throw IllegalStateException("openOutputStream returned null")
+                    out.put("ok", true).put("uri", target.toString()).put("bytes", bytes.size)
+                        .put("mime", mime)
+                } catch (error: Exception) {
+                    Log.w(TAG, "save failed", error)
+                    out.put("ok", false).put("error", error.javaClass.simpleName + ": " + error.message)
+                }
+                activity.runOnUiThread { if (!closed) cb?.invoke(out) }
             }
-            cb?.invoke(out)
         }
 
     /** 供 `WebChromeClient.onShowFileChooser` 调用。 */
@@ -127,6 +134,7 @@ class FileChooserHost(private val activity: AppCompatActivity) {
         intent: Intent,
         callback: (List<Uri>) -> Unit,
     ) {
+        check(!closed) { "File chooser is closed" }
         onPickResult = callback
         runCatching { openLauncher.launch(intent) }.onFailure { t ->
             Log.w(TAG, "open launch failed", t)
@@ -136,6 +144,11 @@ class FileChooserHost(private val activity: AppCompatActivity) {
     }
 
     fun launchSave(suggestedName: String, mime: String, base64: String?, callback: (JSONObject) -> Unit) {
+        check(!closed) { "File chooser is closed" }
+        if (onSaved != null) {
+            callback(JSONObject().put("ok", false).put("error", "Another save dialog is already open"))
+            return
+        }
         pendingSaveBase64 = base64
         pendingSaveMime = mime
         onSaved = callback
@@ -150,6 +163,14 @@ class FileChooserHost(private val activity: AppCompatActivity) {
             onSaved = null
             callback(JSONObject().put("ok", false).put("error", t.javaClass.simpleName))
         }
+    }
+
+    fun close() {
+        closed = true
+        onPickResult = null
+        onSaved = null
+        pendingSaveBase64 = null
+        writer.shutdown()
     }
 
     /**

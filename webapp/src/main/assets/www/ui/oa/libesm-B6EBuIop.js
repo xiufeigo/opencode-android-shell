@@ -11,4 +11,3 @@ var e=`diffs-container`,t=/(?=^From [a-f0-9]+ .+$)/m,n=/(?=^diff --git)/gm,r=/(?
 `),n=e.split(`
 `).map(e=>e+`
 `);return t?n.pop():n.push(n.pop().slice(0,-1)),n}export{a as C,f as E,o as S,d as T,y as _,x as a,s as b,l as c,u as d,h as f,e as g,p as h,S as i,_ as l,m,H as n,b as o,g as p,T as r,t as s,$ as t,v as u,i as v,r as w,c as x,n as y};
-//# sourceMappingURL=libesm-B6EBuIop.js.map

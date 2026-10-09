@@ -1,7 +1,7 @@
 # frontend/terminal — 独立 xterm adapter
 
-一个独立的 ESM 模块，替换 opencode 打包产物里的 Ghostty 模块槽位
-（`/_assets/ghostty-web-*.js` → 本目录构建出的 `oc-terminal.js`）。
+一个独立的 ESM 模块，官方 Terminal 从固定入口 `/oc-terminal.js` 加载，
+本目录构建产物通过本地 UI 静态服务器提供。
 渲染、VT 解析、IME 组字、序列化全部由**固定版本**的 xterm 实现，上游业务代码
 只看到原来的导出形状。
 
@@ -21,7 +21,7 @@
 adapter **不实现** PTY。它只导出应用已经 import 的那组符号
 （`Terminal`、`FitAddon`、`Ghostty`、`init`），所以：
 
-- 上游 `index-*.js` 仍然自己 lazy-import 这个 URL，模块替换只发生在 HTTP 路由层；
+- 官方 Terminal 仍然自己 lazy-import 模块，源码适配只改变导入入口；
 - PTY 创建与 `/api/pty/{id}/connect` WebSocket 仍由上游 helper 负责，socket 归属不变；
 - `Ghostty.load()` / `init()` 保持原签名（当前返回空实现，因为 xterm 不需要它们）；
 - `loadAddon()` 兼容旧的 serialize addon 形状，但 serializer 的 dispose 权仍归应用。
@@ -39,11 +39,11 @@ Ghostty 的 scrollback 位置是**从最新输出往回数**的；xterm buffer �
 xterm 6 的 `scrollToLine()` 在 resize 后会用尚未同步的像素视口计算相对位移，因此
 adapter 用两次同步的公共 `scrollLines()` 完成绝对定位；中间位置不会绘制。
 
-手机旋转跨越 768px 断点会重建面板。`panel-lifecycle.mjs` 在构建时修正固定的上游
-`panel-3c8jLlNq.js`：等旧实例 flush、将快照写入原 store 后，再读取最新快照；先在原
+手机旋转跨越 768px 断点会重建面板。`frontend/android/upstream.patch` 在官方源码中
+接入 `panel-lifecycle.mjs`：等旧实例 flush、将快照写入原 store 后，再读取最新快照；先在原
 行列下恢复滚动位置，再 fit。交接 Map 只存等待中的 Promise，不保存另一份历史。
 同一 PTY 的连续交接会串联等待，较早的 cleanup 不会覆盖或删除较新的交接。
-上游 chunk 或代码锚点变化会明确报错，必须审核后更新变换；不修改 `_upstream/`。
+上游源码变化导致补丁不能应用时明确报错；不修改开发者的 `_upstream/`。
 
 ## 字号比例 scale()
 
@@ -102,10 +102,9 @@ npm run build
 ```
 
 `build.mjs` 用 esbuild 打成单文件 ESM，输出到
-`webapp/src/main/assets/www/oc-terminal.js`，并应用上面的面板生命周期修正与
-`frontend/embedded-ui` 的无内建服务器配置、共享分隔线 Pointer Events 修复。
-终端、面板、入口 JS 和入口 CSS 四个生成文件都是 APK 资产，需重新打包才会生效；
-CI 校验其与源码一致。
+`webapp/src/main/assets/www/oc-terminal.js`。官方 UI 的构建独立运行
+`node frontend/android/build.mjs`，接入面板生命周期、无内建服务器和触屏分隔线适配。
+生成文件都是 APK 资产，需重新打包才会生效；CI 校验其与源码一致。
 
 ## 验证
 
@@ -118,8 +117,8 @@ VERIFY_TERMINAL_NO_SHOTS=1   node scripts/verify-android-terminal-release.mjs
 VERIFY_TERMINAL_MODE=boot    node scripts/verify-android-terminal-release.mjs
 ```
 
-真实托管 `ui/index.html` 与其 `/_assets/*` chunk，仅在 HTTP 路由层把 Ghostty 槽位换成
-`oc-terminal.js`，完整注入 oc-host.js，触摸经 CDP `Input.dispatchTouchEvent` 以可信输入下发。
+真实托管 `ui/index.html` 与其 `/_assets/*` chunk，并提供 `/oc-terminal.js`，
+完整注入 oc-host.js，触摸经 CDP `Input.dispatchTouchEvent` 以可信输入下发。
 退出码：`0` 全通过 / `1` 有检查失败 / `2` 替换模块缺失。
 **结果标注为 `chromium-emulated`** —— 它没有真机、没有 Android System WebView、没有真 IME。
 
@@ -129,12 +128,10 @@ tab 列表并存，只按旧选择器点击会点到被 `transform` 移出屏幕
 `opened via mobile-view-tab` 而截图仍是 session composer；runner 现在只接受
 `getBoundingClientRect()` 真正在视口内、且点击前后 tab/engine 状态可观测的候选）。
 
-`scripts/verify-android-terminal.mjs` **不要删**：设备脚本
-`verify-android-terminal-device.mjs` 仍从它 import `startBackend` / `seedScript` /
-`base64url`，它是依赖而不是遗留副本。两个 runner 的环境变量同名同义
-（`VERIFY_TERMINAL_FILTER` / `_NO_SHOTS` / `_MODE` / `_TRACE` / `_MODULE` / `_PLAYWRIGHT` /
-`_CHROMIUM` / `_DEVICE`），只有默认输出目录不同（release 版写
-`research/tmp/verify-android-terminal-release-ready/<UTC时间戳>/`）。每次保留独立报告，
+设备脚本 `verify-android-terminal-device.mjs` 与分隔线脚本共用 release runner 的
+`startBackend` / `seedScript` / `base64url`。旧 `verify-android-terminal.mjs` 是历史验证入口，
+不用于当前版本验收。release 版写
+`research/tmp/verify-android-terminal-release-ready/<UTC时间戳>-<随机标识>/`。每次保留独立报告，
 不覆盖旧失败证据。`history-restore` 分别验证页签切换、折叠/重开保留实例，以及整页
 刷新后新 realm、新实例和后端实际 PTY marker 重放；`adapter-lifecycle` 单独验证
 序列化、销毁、重建后的文本、ANSI 属性、光标和滚动位置，不冒充 SPA 或原生验收。

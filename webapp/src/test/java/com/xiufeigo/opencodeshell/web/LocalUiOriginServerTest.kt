@@ -104,7 +104,7 @@ class LocalUiOriginServerTest {
 
     @Test
     fun terminalChunkUsesPackagedMobileAdapter() {
-        assertTrue(serverSrc.contains("normalized.startsWith(URL_BUNDLE_PREFIX + \"ghostty-web-\")"))
+        assertTrue(serverSrc.contains("normalized == \"/oc-terminal.js\""))
         assertTrue(serverSrc.contains("assets.open(\"www/oc-terminal.js\")"))
         assertTrue(File("src/main/assets/www/oc-terminal.js").length() > 100_000)
         val adapter = moduleFile("../frontend/terminal/terminal.js")

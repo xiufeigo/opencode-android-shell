@@ -246,9 +246,8 @@ class LocalUiOriginServer(
      */
     private fun readAsset(path: String): Hit? {
         val normalized = normalize(path)
-        // Replace only the terminal module; upstream assets stay reproducible.
-        // Resolve by chunk prefix so an upstream hash change keeps the adapter.
-        if (normalized.startsWith(URL_BUNDLE_PREFIX + "ghostty-web-") && normalized.endsWith(".js")) {
+        // The pinned source imports the Android terminal by this stable URL.
+        if (normalized == "/oc-terminal.js") {
             val bytes = assets.open("www/oc-terminal.js").use { it.readBytes() }
             return Hit("/oc-terminal.js", bytes)
         }

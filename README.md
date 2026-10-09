@@ -1,224 +1,88 @@
-# OpenCode (Android)
+# OpenCode Android
 
-Native **Jetpack Compose** reimplementation of the official OpenCode web frontend
-(`@opencode/app`, `v2` branch of `github.com/anomalyco/opencode`), aiming for
-**1:1 UI / feature / interaction parity**. Baseline: **2.0.11**
-(see `_upstream/packages/app/package.json`).
+Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-Installed name: **OpenCode**  
-Package id: `com.xiufeigo.opencodeshell` (unchanged)  
-Min SDK: 26 (Android 8.0) · target/compile SDK: 35
+官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.10 / 38**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
-> History note: before 1.4.0 this app embedded the official frontend in a
-> WebView; that shell is retired. The launcher is now the native Compose
-> `OcActivity`; the old `MainActivity` WebView stays only as a non-launcher
-> fallback until the WebView is fully removed (with it, `LocalGateway`,
-> `frontend/patches`, and the vendored bundle under
-> `app/src/main/assets/opencode-app/`). The retired shell's own documentation
-> lives in [`README-webview-legacy.md`](README-webview-legacy.md).
+## 与 Desktop 对齐
 
-## Features
+会话、流式消息、权限与表单、模型及代理选择、附件、工作区文件、差异审查、设置、主题、语言和扩展的前端直接来自同一官方源码。Android 适配提供系统文件选择与 Markdown 保存、外链、剪贴板、通知、二维码相机、触屏面板和终端输入。
 
-- **Sessions**: list with Today/Yesterday/Older groups + search, new session,
-  rename, delete, fork, revert, session tabs, back-stack restores last page.
-- **Streaming chat**: SSE-driven timeline, paced reveal, stop button,
-  tool cards (icon-tinted, no side bar), grouped context tools, error cards,
-  true hunk diffs.
-- **Markdown**: Markwon rendering with tables (`TableLayout`), Prism4j syntax
-  highlighting in the `OcTheme` dual-scheme palette, code-block chrome.
-- **Docks**: permission + question docks (v1), **v2 form dock** (all six field
-  types, `when` linkage, external-link pages).
-- **Composer**: inbox **queue + steer** (`delivery`), structured **@mentions**
-  (file/agent/skill/command), attachments, model/agent pickers, shell `!` and
-  command `/` prefixes.
-- **Command palette** (Ctrl+K style entry points), **Settings** (General /
-  Shortcuts / Servers / Providers / Models), **terminal** (vendored Termux VT
-  kernel driving the remote PTY protocol — font/colors/grid parity, no
-  Ghostty-only features).
-- **i18n**: English + 简体中文 + 繁體中文 (re-collected from v2,
-  `research/_i18n_v2/`). **Theme**: dark + light (`OcTheme`, OC-2 tokens).
+内置浏览器复用官方 Electron/CDP 执行引擎，通过电脑上的 `browser-companion` 向 Android 传输画面和输入。手机提供官方地址栏、标签、检查器与评论；自动化继续使用官方 browser 工具和服务端网络隧道。它需要单独连接浏览器服务，不能只安装 APK 就独立执行。完整对比、验证范围和剩余差异见 [research/desktop-parity/REPORT.md](research/desktop-parity/REPORT.md)。
 
-## Server support: dual protocol (v1 serve vs v2 serve)
+电脑本地引擎启动、WSL、桌面更新器和电脑文件系统不在 Android 宿主内运行；工作区和终端由连接的 OpenCode 服务提供。当前 UI 使用 v2 服务协议。
 
-Each server is **hard either/or** — one generation drives the store. The
-generation is probed on connect and persisted per server key
-(`generation:<url>`); unknown results keep existing behavior and re-probe next
-time. Normative table: `V2Capability.COVERAGE` in code; human mirror:
-[`research/v2_coverage.md`](research/v2_coverage.md); transport notes:
-[`research/v2_audit/wave1-notes.md`](research/v2_audit/wave1-notes.md).
+## 构建
 
-| | v1 serve (1.x, e.g. 1.18.31) | v2 serve (2.x, e.g. 2.0.11) |
-|---|---|---|
-| Probe | `GET /global/health` → JSON with `version` | `GET /api/info` → JSON `version` starting `"2."` (+ `GET /api/location` confirms directory) |
-| Auth | none required | Basic auth supported |
-| Transport | `V1Transport` over `OpenCodeClient` | `V2Transport` over `V2Api` + `V2EventAdapter` + `V2SeqTracker` |
-| Streams | v1 `/event` SSE | `GET /api/event` + per-session experimental log (`?after=&follow=true`) |
-| Only here | question dock, share/unshare/archive, todo, legacy `prompt_async`/shell/command bodies, abort | inbox queue/steer, form dock (replaces questions), fork `{before}`, `DELETE …/revert`, `POST …/interrupt` flag |
+需要 Node.js 22+、Bun **1.4.2**、Android SDK 35，以及 Gradle 支持的 JDK 17 或 21。Windows 建议使用 Android Studio 的 JBR。
 
-Probe order is always `/api/info` first, then `/global/health` — a v1 server
-answers the info probe with SPA HTML (never selected as v2) and vice versa.
-
-## Build a debug APK
-
-### Android Studio
-
-1. JDK 17+ and Android SDK 35.
-2. **File → Open** this repo root (`settings.gradle.kts`).
-3. **Build → Build APK(s)**.
-4. Output: `app/build/outputs/apk/debug/app-debug.apk`
-
-### Gradle CLI
-
-```properties
-# local.properties
-sdk.dir=/path/to/Android/sdk
+```sh
+cd frontend/terminal
+npm ci
+npm test
+npm run build
+cd ../..
+node frontend/android/build.mjs
+./gradlew :webapp:testDebugUnitTest :webapp:assembleRelease
 ```
 
-```bash
-./gradlew assembleDebug
+Windows 使用 `gradlew.bat`。如果 PATH 中的 Bun 不是 1.4.2，通过 `BUN_BINARY` 指定对应可执行文件。源码构建在 `_scratch_root/desktop-parity/checkout` 的独立临时检出进行，不修改开发者的 `_upstream/`。补丁或类型检查失败会中止，只有构建成功才替换 APK 内嵌 UI。
+
+输出：`webapp/build/outputs/apk/release/webapp-release.apk`。调试设备使用 `:webapp:assembleDebug`。本机构建默认使用本机 debug keystore；要覆盖 CI 签名的已安装应用，需通过 `DEBUG_KEYSTORE_PATH` 等签名环境变量使用同一 keystore。
+
+## 连接服务
+
+在电脑或服务器启动 OpenCode v2 服务，在 Android 官方连接页使用配对链接，或选择“使用密码”填写服务器 URL 和认证信息。服务器添加、编辑、切换及凭据由官方 UI 管理。
+
+模拟器可用 `adb reverse tcp:4096 tcp:4096` 访问电脑本机的 4096 服务，再填写 `http://127.0.0.1:4096`。实体手机应使用手机能访问的电脑或服务器地址。
+
+APK 自带 UI 由 `http://127.0.0.1:4173` 提供；该端点只服务静态文件，拒绝 `/api/*`，API 和 PTY 由页面直连所选服务。端口绑定失败显示明确诊断，禁止加载其他进程提供的页面。
+
+## 连接内置浏览器
+
+先完成上述官方 UI 源码构建，再在有图形环境的电脑上执行：
+
+```sh
+cd browser-companion
+npm ci
+npm run build
+npm start
 ```
 
-Windows: `gradlew.bat assembleDebug`.
+服务默认监听电脑本机 4100。实体手机连接时设置 `OPENCODE_BROWSER_HOST=0.0.0.0`，在 Android「设置 → 常规 → 内置浏览器」填电脑地址和启动日志提示路径中的 `pairing-token` 内容。服务依赖 Electron 图形环境；没有显示服务的服务器需要先配置显示环境。配对令牌保存在 Android 加密偏好中。
 
-`JAVA_HOME` note: use Android Studio's JBR (e.g. `/c/Program Files/Android/Android
-Studio/jbr`) — a newer system JDK can crash the Kotlin daemon
-(see `research/v2_audit/PROGRESS.md`, environment note).
+HTTP/WS 会明文传输配对令牌和服务器认证信息，仅用于可信网络；公网或不可信网络请通过 HTTPS/WSS 反向代理连接。
 
-## Point the app at the backend
+模拟器可执行 `adb reverse tcp:4100 tcp:4100` 并填 `http://127.0.0.1:4100`。浏览器配置与 OpenCode 服务器配置分开；网页中的 localhost 指向所连 OpenCode 服务器。详见 [browser-companion/README.md](browser-companion/README.md)。
 
-1. Start a server on a machine the phone can reach:
-   ```bash
-   opencode serve --hostname 0.0.0.0 --port 4096        # v1
-   OPENCODE_SERVER_USERNAME=opencode OPENCODE_SERVER_PASSWORD=secret \
-     opencode serve --hostname 0.0.0.0 --port 4095      # v2, Basic auth
-   ```
-2. In the app, open server settings and add the server URL plus the Basic-auth
-   username/password when the server requires it.
-3. Emulator reaching a host-loopback server: forward the port, then add
-   `http://127.0.0.1:<port>` in the app:
-   ```bash
-   adb reverse tcp:4095 tcp:4095   # and/or: adb reverse tcp:4096 tcp:4096
-   ```
+## 验证
 
-## Testing
-
-```bash
-./gradlew :app:testDebugUnitTest      # legacy native shell
-./gradlew :webapp:testDebugUnitTest   # web shell (what CI runs)
+```sh
+node scripts/verify-android-navigation.mjs
+node scripts/verify-android-resize.mjs
+node scripts/verify-android-terminal-release.mjs
 ```
 
-JVM unit suite (native shell ≈1,250 tests; the web shell adds ≈246 — see
-`research/v2_audit/wave2.4a-notes.md` / `wave2.4b-notes.md`).
+这些脚本运行完整打包 SPA，使用测试后端和 Chromium 的可信触摸输入，属于浏览器模拟测试。`verify-android-terminal-device.mjs` 和 `verify-android-resize-device.mjs` 使用实际 APK、Android WebView、系统 IME 和 ADB 输入；需配置 `ANDROID_SERIAL`，只在自己的测试设备上运行。
 
-Device verification is not claimed here: Wave 4 E2E is still in flight — see
-`research/wave4_*_report.md` as the acceptance evidence location.
+`scripts/verify-android-browser-device.mjs` 验证已配对的实际 APK：网页画面、ADB 点击/滑动、中文输入、页面重载恢复。需先在独立测试会话连接真实 OpenCode 和浏览器服务，将 WebView CDP 转发到 `DEVICE_CDP`，并设置 `ANDROID_SERIAL` 和可选 `ADB`。菜单准备使用 DOM 点击，中文输入使用 CDP InputEvent；这两项不代表实际软键盘端到端输入。
 
-## CI: what the GitHub Release contains
+构建说明：[frontend/android/README.md](frontend/android/README.md)；终端行为：[frontend/terminal/README.md](frontend/terminal/README.md)。CI 构建固定 UI，检查生成资产与提交内容一致，运行 Android 单测，只发布 `:webapp` 的 release APK。
 
-`.github/workflows/build.yml` builds the **web shell only** (`:webapp`; the
-legacy native `:app` is not built in CI because dozens of its tests depend on
-gitignored device-capture fixtures under `research/v97_verify/**`). It runs the
-web-shell unit tests, assembles **one** APK and publishes exactly that file as
-both the Actions artifact and the GitHub Release asset:
+## 安全边界
 
-| | |
-|---|---|
-| Steps | `:webapp:testDebugUnitTest` → `:webapp:assembleRelease` |
-| Release asset | `opencode-2.0.9.apk` (built from `webapp/build/outputs/apk/release/`) |
-| Package id | `com.xiufeigo.opencodeshell` — **every** variant carries this one id (no `.debug` suffix anywhere); guard step: `aapt2 dump badging` must report exactly this id, else CI fails |
-| App label | `OpenCode` (`webapp/src/main/res/values/strings.xml` → `app_name`) — what the launcher, notifications, Recents and Settings → Apps show. The APK *file* keeps the `opencode-<version>.apk` name |
-| Version | `versionCode 37` / `versionName 2.0.9` (`webapp/build.gradle.kts`) |
-| Signature | the shared keystore from CI secrets (`760dc05f…`) — the same key every previous GitHub release used, so this APK **updates an installed GitHub build in place** |
+原生平台消息仅允许成功启动的本地 UI 主文档；远程后端和页面子框架不能调用平台桥或申请客户端相机。相机和通知使用 Android 运行时权限。HTTPS 使用系统 CA，HTTP 连接沿用项目已确认的全局明文策略。服务端凭据由官方 UI 保存和发送，不经过本地静态服务器。
 
-## Keyboard (IME) and the viewport
+剪贴板图片内联限制为 20 MiB，与官方输入框的内联附件预算一致；超限明确失败，可改用文件选择器上传。普通附件选择不受旧桥的 1 MiB 内联读取限制。
 
-The window is edge-to-edge (`setDecorFitsSystemWindows(false)`), so `adjustResize` does nothing and
-the layout viewport never shrank for the keyboard: the terminal canvas stayed 915 CSS px tall while
-the keyboard covered its last ~310 px. The host now pads the content layer by `max(ime, nav)` so the
-viewport really shrinks - every surface that sizes itself from the viewport follows automatically.
-Guards: reports >= 85% of the window are treated as stale IME readings (a v77 incident reported
-2195px for a 766px keyboard) and ignored; the page-side composer lift only runs in `vars` mode
-(`html:not([data-oc-ime-mode="resize"])`) so it never double-pads.
+## 目录
 
-## Terminal font size (phone)
+- `webapp/`：发布的 Android 宿主与打包 UI。
+- `frontend/android/`：官方源码版本、源码补丁、平台接口和构建工具。
+- `frontend/terminal/`：固定 xterm 终端适配及测试。
+- `browser-companion/`：官方浏览器执行引擎、配对和远程画面传输。
+- `frontend/embedded-ui/`：服务器迁移和触屏拖动的共享逻辑。
+- `app/`、`frontend/patches/`、`frontend/OPENCODE_APP_VERSION`：旧原生/旧 WebView 方案，不驱动当前发布。
+- `research/desktop-parity/`：本轮对比、实现范围和验证记录。
 
-Upstream hardcodes the terminal font at 14px and exposes no size setting, so on a
-411px-wide phone the terminal only fits 41 columns and PowerShell tables collapse to one
-character per column. The host layer scales the terminal's font *metrics* on narrow screens
-(`max-width: 767px`) instead of using CSS zoom - zoom would desynchronise the widget's
-pointer math from the unscaled layout pixels.
-
-Settings → **Appearance** gets an injected **Terminal font size** row (cloned from upstream's
-own row markup, so it matches the real design): 100% / 80% / 65% / 55% ≈ 41 / 52 / 63 / 75
-columns. The choice is stored in `localStorage['oc.settings.terminalFontScale']` (default
-65%, clamped to 0.5-1) and the page reloads once so the change takes effect on the next
-terminal; `?tab=appearance` keeps you on the same panel. Saved preferences also apply on wide screens; without one, wide screens use 100%.
-
-The web shell terminal now uses a pinned xterm adapter with touch scrolling,
-inertia, history-position preservation across keyboard and rotation changes,
-and bottom alignment for short output. Build and verification instructions:
-[`frontend/terminal/README.md`](frontend/terminal/README.md).
-
-`debug` and `releaseR8` are **local-only** variants: three APKs sharing one
-applicationId + versionCode can never coexist on a device, so shipping them all
-only made the download page ambiguous. A `debug` APK is produced only when the
-build itself is debug (`./gradlew :webapp:assembleDebug`), never by CI.
-
-> ⚠️ Locally built APKs are signed with this machine's `~/.android/debug.keystore`
-> (`220657df…`), which is *not* the CI key (`760dc05f…`): installing a local
-> debug build over a CI-signed install fails with
-> `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. That is a keystore mismatch, not a
-> package-name problem — point `DEBUG_KEYSTORE_PATH` at a copy of the CI
-> keystore if you need the two to be interchangeable.
-
-## Repo layout
-
-- `app/` — the native app (Kotlin + Compose). Top level: `ChatViewModel`,
-  `ChatStore`, `OpenCodeClient`, `EventStream`, `ServerConfigStore`,
-  `BasicAuth`, `OcActivity` (launcher) / `MainActivity` (legacy fallback).
-  `app/.../ui/` holds `theme/`, `components/`, `session/`, `home/`, `nav/`,
-  `settings/`, `palette/`, `terminal/`, `markdown/`, `overlay/`, `servers/`;
-  `app/.../v2/` holds the dual-protocol layer (`SessionTransport`,
-  `V1Transport`, `V2Transport`, `V2Api`, `V2Capability`, `V2EventAdapter`,
-  `V2SeqTracker`). Termux VT sources are vendored under
-  `app/src/thirdparty/termux/` (`:terminal-view`, `:terminal-emulator`).
-- `_upstream/` — **read-only** sparse checkout of `anomalyco/opencode` (`v2`
-  branch) used as the UI/behavior reference. Do not edit; its own `AGENTS.md`
-  applies inside.
-- `research/` — audits and verification docs: `research/v2_audit/` (waves
-  A0–A5 + `wave1-notes.md`, `wave2.*-notes.md`, `PROGRESS.md`),
-  `research/v2_coverage.md`, `research/wave4_*.md` + `research/wave4_shots/`.
-- `scripts/` — still relevant: `generate-launcher-icons.py`,
-  `check-apk-launcher-icon.py`. WebView-era (`sync-opencode-app.sh`,
-  `extract-i18n.mjs`, `selftest-embedded-ui.mjs`) no longer drives the build.
-- `frontend/` — `OPENCODE_APP_VERSION` (legacy bundle pin), `branding/`
-  (icon provenance), `patches/` (legacy WebView patches).
-
-## Launcher icon / branding
-
-Official OpenCode mark (favicon-v3) drawn full-bleed opaque on `#131010`;
-**legacy-only** bitmaps (no adaptive XML) because HyperOS composed the adaptive
-layers into a white plate with a tiny glyph. Source and regeneration — see
-[`frontend/branding/SOURCE.md`](frontend/branding/SOURCE.md):
-
-```bash
-python3 scripts/generate-launcher-icons.py
-python3 scripts/check-apk-launcher-icon.py app/build/outputs/apk/debug/app-debug.apk
-```
-
-If a previous build left a white square on Xiaomi/HyperOS, **uninstall +
-reinstall** (the launcher caches icons by package).
-
-## Security
-
-- Server URLs and Basic Auth live in the app's `ServerConfigStore`, never in a
-  WebView.
-- HTTPS backends use the **system** certificate store plus **user**-installed
-  CAs. Cleartext HTTP stays enabled for LAN (`network_security_config.xml`).
-- Do not commit keystores or real passwords. Prefer a trusted LAN or HTTPS +
-  Basic Auth.
-
-## License
-
-MIT. The `_upstream/` reference copy of OpenCode remains under OpenCode's own
-license.
+MIT。复用的 OpenCode 源码遵循其仓库许可证。

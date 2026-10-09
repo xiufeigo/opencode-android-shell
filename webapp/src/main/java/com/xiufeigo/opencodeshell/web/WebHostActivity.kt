@@ -23,6 +23,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -31,6 +32,8 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
+import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
+import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
@@ -45,26 +48,12 @@ import org.json.JSONObject
 import java.util.Base64
 
 /**
- * W1：WebView 宿主 Activity。
- *
- * - 静态资源用 [WebViewAssetLoader] 托管在 `https://appassets.androidplatform.net/assets/www/`
- *   —— **不用 `file://`**。`file://` 的 origin 是 `null`（opaque），fetch 带不上
- *   同源凭据、`localStorage` 在部分版本直接抛 SecurityError、SSE/EventSource 也废；
- *   而 asset origin 是真实 https origin，页面能正常 fetch 自己的资源、读同源存储。
+ * APK 内的官方 UI 由 [LocalUiOriginServer] 提供，API 和终端直连用户选择的 OpenCode。
+ * [WebViewAssetLoader] 仅提供启动失败时的诊断页。
  * - 边到边 + insets 交给 [InsetsHost] → CSS 变量 / JS 事件。
  * - 返回：`canGoBack()` 优先，否则问页面 `window.__ocAndroid.onBack()`，
  *   **两条都不成立时什么都不做**（不 finish）。
- *
- * UX6（当前架构）：**直连真实服务器，无回环代理**。
- * 启动链 = `bootUrl()`（SecretStore 里的后端地址，默认 `http://127.0.0.1:4095`，
- * 靠 `adb reverse tcp:4095 tcp:4095` 打通）→ G1 前置检查 → `loadUrl(后端地址)`。
- * 官方前端由后端自托管（`packages/cli/src/services/web-ui.ts` 的 SPA 回落），
- * 页面 origin == API origin，CORS 不参与；**未配置服务器时官方 UI 自己呈现
- * ConnectServerScreen**（`packages/app/src/shell/routes/routes.tsx:79`），
- * 服务器/凭据配置全部在官方「设置 → 服务器」里完成（`servers/connect/dialog.tsx`
- * 支持密码字段，Basic `opencode:<password>`，见 `runtime/server/api.ts:5-7`）。
- * 宿主不再持有、注入、转发任何口令 —— F21 在新形态下由「宿主侧无凭据」这一
- * 结构事实保障（见 `research/web/UX6_OFFICIAL_ENTRY.md` §1.2）。
+ * 服务器凭据由官方 UI 管理。浏览器服务的配对令牌通过独立平台消息保存在加密偏好中。
  */
 class WebHostActivity : AppCompatActivity() {
 
@@ -99,7 +88,7 @@ class WebHostActivity : AppCompatActivity() {
          * UX14-P1：渲染进程崩溃后允许多少时间内的**第二次**崩溃还算"同一场事故"。
          *
          * 60 s 取的是"用户还来不及反应、也来不及手动重进"的长度：窗口内只放行
-         * 第一次 [android.webkit.WebView.reload]，再崩就切诊断页（防重启风暴，
+         * 第一次销毁并重建 WebView，再崩就用新实例呈现诊断页（防重启风暴，
          * 理由见 [renderCrashCount]）。出了窗口则计数清零，把新的崩溃当成独立事件
          * 再给一次自愈机会。
          */
@@ -133,6 +122,8 @@ class WebHostActivity : AppCompatActivity() {
     private lateinit var localUiServer: LocalUiOriginServer
 
     private var pickedUri: Uri? = null
+    private lateinit var platformHost: AndroidPlatformHost
+    private lateinit var legacyChannel: LegacyBridgeChannel
     private var pendingPageScrollY: Int = 0
     private var pageReportedDark: Boolean? = null
 
@@ -404,7 +395,7 @@ class WebHostActivity : AppCompatActivity() {
      *   （放在方法外/字段上会在重建时漏挂，退化成"首启能用、崩一次就再也弹不出键盘"）。
      */
     @SuppressLint("SetJavaScriptEnabled")
-    private fun setupWebViewAndLoad() {
+    private fun setupWebViewAndLoad(diagnostic: Pair<WebViewPreflight.Reason, String>? = null) {
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -463,7 +454,14 @@ class WebHostActivity : AppCompatActivity() {
         PerfMarks.mark("C.webviewCreated+setContentView")
 
         configureSettings(webView.settings)
-        webView.addJavascriptInterface(bridge, WebHostBridge.INJECT_NAME)
+        if (::legacyChannel.isInitialized) legacyChannel.close()
+        legacyChannel = LegacyBridgeChannel(bridge)
+        webView.addJavascriptInterface(legacyChannel, WebHostBridge.INJECT_NAME)
+        if (::platformHost.isInitialized) platformHost.close()
+        platformHost = AndroidPlatformHost(this, fileChooser)
+        if (localUiServer.boundPort != null && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            platformHost.install(webView)
+        }
         PerfMarks.mark("D.settingsConfigured")
         installFacade(webView)
         installPerfProbe(webView)
@@ -473,10 +471,7 @@ class WebHostActivity : AppCompatActivity() {
         readWebViewVersion()
         webView.webViewClient = HostWebViewClient()
         webView.webChromeClient = HostWebChromeClient()
-        webView.setDownloadListener { url, ua, _, _, _ ->
-            // 本轮不下载文件：外链交给系统，asset 域名直接忽略。
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        }
+        webView.setDownloadListener { url, _, _, _, _ -> openExternalLink(url) }
 
         // WebView 第一次真正把内容画进窗口的时刻（"首帧白屏"的终点）。
         webView.viewTreeObserver.addOnDrawListener(
@@ -495,7 +490,7 @@ class WebHostActivity : AppCompatActivity() {
         insets = InsetsHost(window, webView) { payload -> pushInsets(payload) }
         PerfMarks.mark("F.insetsReady")
 
-        launch(bootUrl())
+        if (diagnostic == null) launch(bootUrl()) else showDiagnostic(diagnostic.first, diagnostic.second)
     }
 
     /**
@@ -521,6 +516,15 @@ class WebHostActivity : AppCompatActivity() {
      */
     private fun launch(backend: String) {
         PerfMarks.mark("H.launch.enter", "backend=$backend")
+        if (localUiServer.boundPort == null) {
+            showDiagnostic(WebViewPreflight.Reason.LOAD_ERROR, "本地 UI 服务无法绑定端口 ${localUiServer.port}，请检查端口占用后重启应用")
+            return
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            showDiagnostic(WebViewPreflight.Reason.WEBVIEW_TOO_OLD, "当前 WebView 不支持平台消息和文档开始注入，请更新 Android System WebView")
+            return
+        }
         val restored = restoredUrlOrNull
         val url = if (restored != null && restored.startsWith(backend)) restored else "$backend/"
 
@@ -587,22 +591,17 @@ class WebHostActivity : AppCompatActivity() {
      * （对真正的上游 SPA 可能错过首屏，但 G1 前置检查已把过旧的 WebView 拦住）。
      */
     private fun installFacade(wv: WebView) {
-        val script = runCatching { assets.open("www/oc-host.js").bufferedReader().use { it.readText() } }
+        val origins = setOf(LocalUiOriginServer.origin())
+        val script = legacyChannel.script(origins) + runCatching { assets.open("www/oc-host.js").bufferedReader().use { it.readText() } }
             .getOrElse {
                 Log.e(TAG, "cannot read www/oc-host.js", it)
                 return
             }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(wv, script, origins)
+            val diagnosticOrigins = setOf("https://$ASSET_DOMAIN")
+            WebViewCompat.addDocumentStartJavaScript(wv, legacyChannel.script(diagnosticOrigins, diagnostic = true), diagnosticOrigins)
             Log.i(TAG, "facade registered as document-start script")
-        } else {
-            wv.webViewClient = object : HostWebViewClient() {
-                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                    super.onPageStarted(view, url, favicon)
-                    view?.evaluateJavascript(script, null)
-                }
-            }
-            Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported -> falling back to onPageStarted")
         }
     }
 
@@ -1130,18 +1129,28 @@ class WebHostActivity : AppCompatActivity() {
         webView.postDelayed(keepScreenOnBackstop, minOf(holdMs, remainMs))
     }
 
+    private fun disposeWebView() {
+        pendingCameraPermission?.deny()
+        pendingCameraPermission = null
+        if (::legacyChannel.isInitialized) legacyChannel.close()
+        if (::platformHost.isInitialized) platformHost.close()
+        if (!::webView.isInitialized) return
+        webView.removeCallbacks(watchdog)
+        webView.removeCallbacks(keepScreenOnBackstop)
+        webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        webView.destroy()
+    }
+
     override fun onDestroy() {
+        if (::fileChooser.isInitialized) fileChooser.close()
         // P6：销毁时也清一次（窗口虽马上就没了，但 flag 泄漏会在 `onSaveInstanceState`
         // 重建路径上被观察到；清掉是零成本的）。
         clearKeepScreenOnOnBackground()
         if (::localUiServer.isInitialized) {
             localUiServer.stop()
         }
-        if (::webView.isInitialized) {
-            webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
-            (webView.parent as? ViewGroup)?.removeView(webView)
-            webView.destroy()
-        }
+        disposeWebView()
         super.onDestroy()
     }
 
@@ -1149,6 +1158,14 @@ class WebHostActivity : AppCompatActivity() {
     // G1：必须是 `inner` —— 运行期兜底要读 Activity 的 `watchdogArmed` 并调 `showDiagnostic`。
     private inner open class HostWebViewClient : WebViewClient() {
         private var assetLoader: WebViewAssetLoader? = null
+
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (!request.isForMainFrame) return false
+            val url = request.url.toString()
+            if (sameOrigin(url, LocalUiOriginServer.origin())) return false
+            openExternalLink(url)
+            return true
+        }
 
         fun loader(ctx: android.content.Context): WebViewAssetLoader =
             assetLoader ?: WebViewAssetLoader.Builder()
@@ -1227,6 +1244,7 @@ class WebHostActivity : AppCompatActivity() {
             view: WebView,
             detail: RenderProcessGoneDetail,
         ): Boolean {
+            if (!::webView.isInitialized || view !== webView) return true
             val now = SystemClock.elapsedRealtime()
             // 崩溃链的第一个观测点：先落日志再决策，日志要能独立判断"崩了还是被杀"。
             Log.w(
@@ -1255,11 +1273,9 @@ class WebHostActivity : AppCompatActivity() {
             if (crashesInWindow >= 2) {
                 // 崩溃循环：认输，转诊断页，不再 reload（防重启风暴）。
                 Log.w(TAG, "UX14 render crash loop count=$crashesInWindow within=${RENDER_CRASH_RELOAD_WINDOW_MS}ms")
-                showDiagnostic(
-                    WebViewPreflight.Reason.RENDER_CRASH,
-                    "didCrash=${detail.didCrash()} crashes=$crashesInWindow " +
-                        "windowMs=$RENDER_CRASH_RELOAD_WINDOW_MS",
-                )
+                disposeWebView()
+                setupWebViewAndLoad(WebViewPreflight.Reason.RENDER_CRASH to
+                    "didCrash=${detail.didCrash()} crashes=$crashesInWindow windowMs=$RENDER_CRASH_RELOAD_WINDOW_MS")
             } else {
                 // UX16-P2：窗口内首崩 ⇒ **销毁旧实例 + 新建**，不再 `reload()`。
                 //
@@ -1271,9 +1287,7 @@ class WebHostActivity : AppCompatActivity() {
                 Log.i(TAG, "UX16 render crash; recreating WebView (window=${RENDER_CRASH_RELOAD_WINDOW_MS}ms)")
                 // 拆桥 → 出视图树 → 销毁，顺序与 [onDestroy] 一致。
                 // destroy() 之后这个实例的任何调用都是未定义行为，必须彻底摘干净。
-                webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
-                (webView.parent as? ViewGroup)?.removeView(webView)
-                webView.destroy()
+                disposeWebView()
                 // 新实例走**完整**初始化链（bridge 注入 / doc-start 脚本 / client /
                 // insets / loadUrl(bootUrl)），否则页面会安静地半残。
                 setupWebViewAndLoad()
@@ -1377,8 +1391,18 @@ class WebHostActivity : AppCompatActivity() {
             // denied, and screen.tsx:140,148-154 then disables the scan button and
             // shows its own "camera unavailable" copy. We add no self-made UI text.
             Log.i(TAG, "camera permission REQUEST origin=$origin (runtime grant pending)")
+            if (cameraPermissionInFlight) {
+                Log.w(TAG, "camera permission request already pending")
+                request.deny()
+                return
+            }
             pendingCameraPermission = request
+            cameraPermissionInFlight = true
             cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            if (pendingCameraPermission === request) pendingCameraPermission = null
         }
 
         override fun onConsoleMessage(m: ConsoleMessage): Boolean {
@@ -1390,10 +1414,12 @@ class WebHostActivity : AppCompatActivity() {
     // ---- F3 / N-2: camera runtime permission for the pairing scanner -------
 
     private var pendingCameraPermission: PermissionRequest? = null
+    private var cameraPermissionInFlight = false
 
     private val cameraPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        cameraPermissionInFlight = false
         val request = pendingCameraPermission
         pendingCameraPermission = null
         if (request == null) {
@@ -1412,29 +1438,22 @@ class WebHostActivity : AppCompatActivity() {
         }
     }
 
+    private fun openExternalLink(url: String) {
+        try {
+            platformHost.openExternal(url)
+        } catch (error: Exception) {
+            Log.e(TAG, "Cannot open external link", error)
+            Toast.makeText(this, "无法打开链接：${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /**
      * F3: 该 origin 是否是本宿主**自己**加载的页面。
      *
-     * 可信来源：配置的后端 origin（SecretStore.KEY_BACKEND_URL，默认
-     * `http://127.0.0.1:4095`）—— 页面直连后端，origin 就是它；
-     * 以及**自带官方前端的页面来源** `LocalUiOriginServer.origin()`
-     * （UX13/P1 实测：方案 A 之后页面 origin 是 `http://127.0.0.1:4173`，
-     * 不在名单会让扫码被宿主误拒；该端点只服务 App 自带 assets，与本应用同一信任级）。
-     *
-     * 刻意**不做**的：不按域名/正则泛化、不允许任意站点。
-     * 一个 origin 拿到摄像头 = 用户不知道自己正被谁看着。
+     * 仅信任成功绑定的 APK 静态服务器；后端网页与浏览器内的页面不能申请宿主相机。
      */
     private fun isTrustedWebOrigin(origin: String): Boolean {
-        val candidates = buildList {
-            runCatching {
-                SecretStore.getSecret(this@WebHostActivity, SecretStore.KEY_BACKEND_URL)
-            }.getOrNull()?.let { add(it) }
-            add(SecretStore.DEFAULT_BACKEND_URL)
-            add(LocalUiOriginServer.origin())
-        }
-        return candidates.any { trusted ->
-            trusted.isNotBlank() && sameOrigin(trusted, origin)
-        }
+        return localUiServer.boundPort != null && sameOrigin(LocalUiOriginServer.origin(), origin)
     }
 
     /** 只比 scheme://host:port，路径与末尾斜杠无关。 */

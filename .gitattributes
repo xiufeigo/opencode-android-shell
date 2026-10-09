@@ -1,0 +1,11 @@
+# Keep Android source adapters portable across Windows and Linux checkouts.
+frontend/android/** text eol=lf
+browser-companion/** text eol=lf
+research/desktop-parity/** text eol=lf
+scripts/verify-android-browser-device.mjs text eol=lf
+
+# A unified diff needs a single-space prefix on empty context lines.
+frontend/android/upstream.patch whitespace=-blank-at-eol
+
+# Packaged UI must preserve the exact bytes produced by the pinned build.
+webapp/src/main/assets/www/ui/** -text

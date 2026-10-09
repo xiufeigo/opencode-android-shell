@@ -124,7 +124,7 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX16-P2：崩溃恢复路径里必须 **destroy() 旧实例 + 重建**，而不是 reload —— " +
                 "平台口径是渲染进程消失后该实例不应再被使用，且本镜像上 reload 后必然再崩。",
-            body.contains("destroy()") && body.contains("setupWebViewAndLoad()"),
+            body.contains("disposeWebView()") && body.contains("setupWebViewAndLoad()"),
         )
         assertTrue(
             "🔴 UX14-P1：必须有节流窗口常量，否则 重建→崩→重建 会变成重启风暴，" +
@@ -146,7 +146,7 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX14-P1：崩溃循环必须落到 showDiagnostic（认输并展示可读信息），" +
                 "不能继续无限 reload。",
-            body.contains("showDiagnostic("),
+            body.contains("setupWebViewAndLoad(WebViewPreflight.Reason.RENDER_CRASH"),
         )
         assertTrue(
             "🔴 UX14-P1：诊断页必须收 WebViewPreflight.Reason.RENDER_CRASH —— " +
@@ -193,7 +193,7 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX16-P2：onRenderProcessGone 的首崩分支必须先 destroy() 旧 WebView 实例 —— " +
                 "渲染进程已经没了，继续复用这个实例就是未定义行为。",
-            body.contains("destroy()"),
+            body.contains("disposeWebView()"),
         )
         assertTrue(
             "🔴 UX16-P2：必须调用 setupWebViewAndLoad() 走**完整**初始化链重建，" +
@@ -210,7 +210,7 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX16-P2：重建前必须 removeJavascriptInterface —— 旧实例上残留的桥引用" +
                 "会让 JS 侧拿到一个已死的宿主对象。",
-            body.contains("removeJavascriptInterface"),
+            stripComments(source).contains("webView.removeJavascriptInterface"),
         )
     }
 

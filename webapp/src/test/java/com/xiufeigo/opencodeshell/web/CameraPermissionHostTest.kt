@@ -152,14 +152,8 @@ class CameraPermissionHostTest {
             "必须校验 request.origin，只对本宿主加载的可信 origin 授予",
             activity.contains("isTrustedWebOrigin(origin)"),
         )
-        assertTrue(
-            "可信来源必须包含配置的后端 origin（页面直连后端，origin 就是它）",
-            activity.contains("SecretStore.KEY_BACKEND_URL"),
-        )
-        assertTrue(
-            "可信来源必须包含默认后端 origin（未配置时的启动地址）",
-            activity.contains("SecretStore.DEFAULT_BACKEND_URL"),
-        )
+        assertFalse("远程后端提供 API，不应被授予客户端相机权限", isTrustedWebOriginSource().contains("SecretStore"))
+        assertTrue("只信任成功绑定的本地 UI 服务", isTrustedWebOriginSource().contains("localUiServer.boundPort != null"))
         assertTrue(
             "可信来源必须包含自带官方前端的页面来源 LocalUiOriginServer.origin()——" +
                 "方案 A 之后页面 origin 是 http://127.0.0.1:4173，不在名单会让扫码被宿主误拒",

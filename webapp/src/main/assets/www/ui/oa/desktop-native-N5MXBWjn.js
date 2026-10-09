@@ -5,4 +5,3 @@ URL: {{url}}
 Error: {{code}} {{description}}`,"desktop.recovery.terminated.detail":`Window: {{window}}
 Reason: {{reason}}
 Code: {{code}}`,"desktop.recovery.unknown":`<unknown>`,"desktop.dialog.chooseFolder":`Choose a folder`,"desktop.dialog.chooseFile":`Choose a file`,"desktop.dialog.saveFile":`Save file`,"desktop.dialog.files":`Files`,"desktop.server.local":`Local Server`,"desktop.onboarding.defaultProject":`Default Project`,"desktop.picker.error.notSelected":`File was not selected by the picker`,"desktop.picker.error.sizeLimit":`Selected attachments exceed the {{limit}} MB limit`},s=Object.keys(o);function c(e,t){return{locale:e,messages:Object.fromEntries(s.map(e=>[e,t(e)]))}}export{n as a,e as i,s as n,c as o,t as r,r as s,o as t};
-//# sourceMappingURL=desktop-native-N5MXBWjn.js.map

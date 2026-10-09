@@ -1,2 +1,1 @@
 import{Q as e,q as t}from"./store-CWFQZoRe.js";import{w as n}from"./5WXHJDCZ-DzQnNlIi.js";function r(n,r){let[a,o]=e(i(r?.()));return t(()=>{o(n()?.tagName.toLowerCase()||i(r?.()))}),a}function i(e){return n(e)?e:void 0}export{r as t};
-//# sourceMappingURL=OYES4GOP-D6tkQiE6.js.map
