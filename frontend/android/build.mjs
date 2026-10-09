@@ -15,6 +15,7 @@ const assets = path.join(root, "webapp/src/main/assets/www/ui")
 const workspaces = ["app", "gui-extensions", "ui", "client", "schema", "util", "session-ui", "plugin-browser", "protocol", "plugin", "script", "httpapi-codegen", "theme", "ai", "http-recorder"]
 
 async function run(command, args, cwd = checkout, env = {}) {
+  console.log(`[android-ui] ${command} ${args.join(" ")}`)
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, stdio: "inherit", env: { ...process.env, ...env } })
     child.on("error", reject)
@@ -38,9 +39,13 @@ try { await fs.access(path.join(checkout, ".git")) } catch {
 await run("git", ["config", "--local", "core.autocrlf", "false"])
 await run("git", ["fetch", "--filter=blob:none", "--depth", "1", "origin", pin.commit])
 await run("git", ["checkout", "--force", "--detach", pin.commit])
+await run("git", ["restore", "--source=HEAD", "--worktree", "--ignore-skip-worktree-bits", "packages/desktop/icons"])
 // An older checkout can retain CRLF files in Git's stat cache. Remove only
 // files whose LF blobs were converted, then restore their original bytes.
-const converted = execFileSync("git", ["ls-files", "--eol", "-z"], { cwd: checkout, encoding: "utf8" })
+// --eol reads blobs: scanning excluded workspaces would defeat partial clone.
+const sourcePaths = [":(top,glob)*", "patches", ...workspaces.map(name => `packages/${name}`), "packages/desktop/icons"]
+console.log("[android-ui] Verify checked-out source line endings")
+const converted = execFileSync("git", ["ls-files", "--eol", "-z", "--", ...sourcePaths], { cwd: checkout, encoding: "utf8" })
   .split("\0").filter(row => /^i\/lf\s+w\/(crlf|mixed)\s/.test(row)).map(row => row.split("\t")[1])
 for (const name of converted) {
   const filename = path.resolve(checkout, name)
@@ -48,7 +53,6 @@ for (const name of converted) {
   await fs.unlink(filename)
 }
 await run("git", ["checkout-index", "--force", "--all"])
-await run("git", ["restore", "--source=HEAD", "--worktree", "--ignore-skip-worktree-bits", "packages/desktop/icons"])
 const pkg = JSON.parse(await fs.readFile(path.join(checkout, "packages/app/package.json"), "utf8"))
 if (pkg.version !== pin.version) throw new Error("Pinned OpenCode version does not match source")
 await applyAndroidSources(checkout, here)
