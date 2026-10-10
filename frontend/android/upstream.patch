@@ -547,39 +547,6 @@ index 3d6d6ba6..c0c35598 100644
    readonly packaged: boolean
  }
  
-diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
-index 8ba5f356..3f054b6b 100644
---- a/packages/gui-extensions/src/terminal/model.ts
-+++ b/packages/gui-extensions/src/terminal/model.ts
-@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
- import { createKeyed, type Mutable, type Storage, type ServerRef, type MountedSession, type Sessions } from "../sdk"
- import { MAX_TERMINAL_SESSIONS, numberFromTitle, TerminalState, type LocalPTY } from "./state"
- import { defaultTitle } from "./title"
-+import { createTerminalHandoffs } from "./android-handoffs.mjs"
- 
- const STORE = "terminals"
- 
-@@ -22,7 +23,11 @@ type CacheEntry = {
- 
- type FocusRequest = { request: number; id?: string; pending: boolean }
- 
--const importGhostty = () => import("ghostty-web").then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
-+const importGhostty = async () => {
-+  const url = "/oc-terminal.js"
-+  const mod: typeof import("ghostty-web") = await import(/* @vite-ignore */ url)
-+  return { mod, ghostty: await mod.Ghostty.load() }
-+}
- 
- /** The one ghostty-web load the window's terminals share; a failed load is retried by the next terminal. */
- type Ghostty = { shared?: ReturnType<typeof importGhostty> }
-@@ -57,6 +62,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
-   }
- 
-   return {
-+    handoffs: createTerminalHandoffs(),
-     load(session: Pick<MountedSession, "server" | "directory">) {
-       // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
-       const key = workspaceKey(session.server.id, session.directory)
 diff --git a/packages/gui-extensions/src/terminal/panel.tsx b/packages/gui-extensions/src/terminal/panel.tsx
 index a39906e7..6fd5232b 100644
 --- a/packages/gui-extensions/src/terminal/panel.tsx
@@ -901,3 +868,216 @@ index f5f1754f..6b7343b8 100644
    { ...pairing, renderer: eager(pairingRenderer) },
    { ...updater, renderer: eager(updaterRenderer) },
    { ...ssh, renderer: eager(sshRenderer) },
+diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
+index 8ba5f356..fbff294a 100644
+--- a/packages/gui-extensions/src/terminal/model.ts
++++ b/packages/gui-extensions/src/terminal/model.ts
+@@ -1,8 +1,9 @@
+-import { batch, createMemo, createRoot, getOwner, onCleanup, untrack } from "solid-js"
++import { batch, createMemo, createRoot, getOwner, onCleanup, runWithOwner, untrack } from "solid-js"
+ import { createStore } from "solid-js/store"
+-import { createKeyed, type Mutable, type Storage, type ServerRef, type MountedSession, type Sessions } from "../sdk"
+-import { MAX_TERMINAL_SESSIONS, numberFromTitle, TerminalState, type LocalPTY } from "./state"
++import { createKeyed, type Mutable, type Persisted, type Storage, type ServerRef, type MountedSession, type Sessions } from "../sdk"
++import { MAX_TERMINAL_SESSIONS, numberFromTitle, TerminalState, WorkspaceTerminalState, type LocalPTY } from "./state"
+ import { defaultTitle } from "./title"
++import { createTerminalHandoffs } from "./android-handoffs.mjs"
+ 
+ const STORE = "terminals"
+ 
+@@ -13,16 +14,20 @@ const HANDOFF_MAX = 40
+ 
+ export type TerminalModel = ReturnType<typeof createTerminalModel>
+ 
+-export type TerminalWorkspace = ReturnType<typeof createWorkspace>
++export type TerminalWorkspace = ReturnType<typeof createSession>
+ 
+ type CacheEntry = {
+-  value: TerminalWorkspace
++  value: ReturnType<typeof createWorkspace>
+   dispose: VoidFunction
+ }
+ 
+ type FocusRequest = { request: number; id?: string; pending: boolean }
+ 
+-const importGhostty = () => import("ghostty-web").then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
++const importGhostty = async () => {
++  const url = "/oc-terminal.js"
++  const mod: typeof import("ghostty-web") = await import(/* @vite-ignore */ url)
++  return { mod, ghostty: await mod.Ghostty.load() }
++}
+ 
+ /** The one ghostty-web load the window's terminals share; a failed load is retried by the next terminal. */
+ type Ghostty = { shared?: ReturnType<typeof importGhostty> }
+@@ -57,8 +62,9 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+   }
+ 
+   return {
+-    load(session: Pick<MountedSession, "server" | "directory">) {
+-      // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
++    handoffs: createTerminalHandoffs(),
++    load(session: Pick<MountedSession, "id" | "server" | "directory">) {
++      // Keep durable PTY ownership separate from the host's prunable layout cache.
+       const key = workspaceKey(session.server.id, session.directory)
+       const existing = cache.get(key)
+ 
+@@ -66,7 +72,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+         cache.delete(key)
+         cache.set(key, existing)
+ 
+-        return existing.value
++        return existing.value.session(session.id)
+       }
+ 
+       // A cached workspace keeps talking to its own server after the route moves on.
+@@ -84,7 +90,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+       cache.set(key, entry)
+       prune()
+ 
+-      return entry.value
++      return entry.value.session(session.id)
+     },
+     ghostty() {
+       if (ghostty.shared) return ghostty.shared
+@@ -129,14 +135,59 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+ }
+ 
+ function createWorkspace(input: { storage: Storage; server: ServerRef; directory: string; key: string }) {
+-  const location = { directory: input.directory }
+-
+   const stored = input.storage.store(STORE, {
+-    schema: TerminalState,
+-    initial: { all: [] },
++    schema: WorkspaceTerminalState,
++    initial: { sessions: {} },
+     scope: { server: input.server.id, directory: input.directory },
+     from: LEGACY,
+   })
++  const owner = getOwner()
++  const sessions = new Map<string, TerminalWorkspace>()
++
++  return {
++    clear: () => stored.set({ sessions: Object.fromEntries([...sessions.keys()].map((id) => [id, { all: [] }])) }),
++    session(id: string) {
++      const existing = sessions.get(id)
++      if (existing) return existing
++
++      const value = runWithOwner(owner, () => createSession({ ...input, id, stored }))!
++      sessions.set(id, value)
++      return value
++    },
++  }
++}
++
++function createSession(input: {
++  server: ServerRef
++  directory: string
++  key: string
++  id: string
++  stored: Persisted<typeof WorkspaceTerminalState.Type>
++}) {
++  const location = { directory: input.directory }
++  const workspace = input.stored
++
++  createKeyed(workspace.ready, () => {
++    workspace.update((draft) => {
++      if (draft.sessions[input.id]) return
++      // The first opened session claims the old shared tabs once; other sessions start independently.
++      draft.sessions[input.id] = draft.unassigned ?? { all: [] }
++      draft.unassigned = undefined
++    })
++  })
++
++  const stored = {
++    get value() { return workspace.value?.sessions[input.id] },
++    ready: () => workspace.ready() && !!workspace.value?.sessions[input.id],
++    update(mutate: (draft: Mutable<typeof TerminalState.Type>) => void) {
++      workspace.update((draft) => {
++        mutate(draft.sessions[input.id] ??= { all: [] })
++      })
++    },
++    set(next: typeof TerminalState.Type) {
++      workspace.update((draft) => { draft.sessions[input.id] = { ...next, all: next.all.map((pty) => ({ ...pty })) } })
++    },
++  }
+ 
+   // Empty until the stored terminals load; changes made before then apply over them in order.
+   const all = createMemo(() => stored.value?.all ?? [])
+@@ -299,7 +350,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
+   }
+ 
+   return {
+-    key: input.key,
++    key: `${input.key}\0${input.id}`,
+     // An accessor, so storing the workspace in a Solid store never unwraps the host's server data.
+     server: () => input.server,
+     directory: input.directory,
+@@ -361,11 +412,6 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
+         trimTerminal(draft.all[index])
+       })
+     },
+-    trimAll() {
+-      stored.update((draft) => {
+-        draft.all.forEach(trimTerminal)
+-      })
+-    },
+     clone,
+     open(id: string) {
+       stored.update((draft) => {
+diff --git a/packages/gui-extensions/src/terminal/renderer.tsx b/packages/gui-extensions/src/terminal/renderer.tsx
+index c2261112..119f9557 100644
+--- a/packages/gui-extensions/src/terminal/renderer.tsx
++++ b/packages/gui-extensions/src/terminal/renderer.tsx
+@@ -1,7 +1,7 @@
+-import { createMemo, lazy, on, onCleanup, Suspense } from "solid-js"
++import { createMemo, lazy, onCleanup, Suspense } from "solid-js"
+ import { Command, createKeyed, onIdle, Panel, type Setup } from "../sdk"
+ import type Terminal from "./index"
+-import { createTerminalModel, type TerminalWorkspace } from "./model"
++import { createTerminalModel } from "./model"
+ 
+ const DOCK = "terminal:main"
+ 
+@@ -14,21 +14,6 @@ const setup: Setup<typeof Terminal> = (ctx) => {
+   // The host withdraws the listener with the extension.
+   ctx.workspaces.on("remove", model.remove)
+ 
+-  // The routed session's workspace stays loaded while no panel renders it, like the session route did.
+-  const workspace = createMemo<TerminalWorkspace | undefined>((previous) => {
+-    const session = sessions.current()
+-
+-    return session ? model.load(session) : previous
+-  })
+-
+-  // The workspace each later route change leaves.
+-  const left = createMemo(
+-    on(workspace, (next, previous) => (previous && next !== previous ? previous : undefined), { defer: true }),
+-  )
+-
+-  // A workspace the route leaves drops its restore buffers.
+-  createKeyed(left, (previous) => previous.trimAll())
+-
+   const routed = createMemo(() => !!sessions.current())
+ 
+   const current = () => {
+diff --git a/packages/gui-extensions/src/terminal/state.ts b/packages/gui-extensions/src/terminal/state.ts
+index fa50d397..1cb21824 100644
+--- a/packages/gui-extensions/src/terminal/state.ts
++++ b/packages/gui-extensions/src/terminal/state.ts
+@@ -74,3 +74,16 @@ export const TerminalState = State.pipe(
+     encode: SchemaGetter.transform((value) => value),
+   }),
+ )
++
++const Workspace = Schema.Struct({
++  sessions: Schema.Record(Schema.String, TerminalState),
++  unassigned: optional(TerminalState),
++})
++
++// Existing workspace state cannot identify its original chat; preserve it until one session claims it.
++export const WorkspaceTerminalState = Schema.Union([Workspace, TerminalState]).pipe(
++  Schema.decodeTo(Schema.toType(Workspace), {
++    decode: SchemaGetter.transform((value) => "sessions" in value ? value : { sessions: {}, unassigned: value }),
++    encode: SchemaGetter.transform((value) => value),
++  }),
++)

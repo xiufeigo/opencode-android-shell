@@ -18,6 +18,12 @@
 
 ## 保留上游 PTY / connect helper
 
+Android 2.0.15 起，终端标签、顺序和 active PTY 按服务器＋目录＋会话记忆。这是按用户要求对 Desktop「同目录共享终端」行为的调整。每个目录仍只有一份官方持久化存储，内部按会话分组；运行进程的归属不依赖会被裁剪的布局缓存。旧状态解码为待分配标签，由第一个打开终端的会话一次性接收，不复制给其他会话。
+
+切换会话、折叠面板或 App 被系统强杀，只断开客户端连接；重新打开该会话的终端会连接相同 PTY，恢复已选标签并接收断线期间的输出，不重新执行命令。OpenCode 服务重启会丢失其内存中的 PTY，无法继续旧进程；点击标签关闭按钮也会终止对应 PTY。服务端仅保留最近 2 MiB 输出，恢复当前进度不等于无限历史归档。
+
+实际 APK 的冷启动验收：`ANDROID_SERIAL` 指定独立模拟器，`TERMINAL_TEST_SERVER_CONFIG` 指向包含 `url` 和 `password` 的本地测试配置，然后运行 `node scripts/verify-android-terminal-session-recovery.mjs`。该脚本连接普通 OpenCode 服务，创建同目录两个会话与三个真实 PTY，执行递增输出命令，再强杀 App 6 秒；核对新 App PID、原 PTY ID/PID、进度增长和命令只启动一次。不会替换原生桥或 UI，结束时删除自身会话和 PTY，报告不保存凭据。
+
 adapter **不实现** PTY。它只导出应用已经 import 的那组符号
 （`Terminal`、`FitAddon`、`Ghostty`、`init`），所以：
 

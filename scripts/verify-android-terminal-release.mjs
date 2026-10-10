@@ -3615,8 +3615,9 @@ function anchorProbe(anchorText) {
          */
         const restored = !!after.found
         const serverReplayedMarker = restored && mechanism.markerCameOverTheWire
+        const ptyAfterReload = (await page.evaluate(ENGINE_VISIBLE).catch(() => null))?.visiblePtyId ?? null
         scenario.afterReload = {
-          ok: newRealm && restored && serverReplayedMarker,
+          ok: newRealm && restored && serverReplayedMarker && ptyAfterReload === restorePty,
           probe: after,
           realmBefore,
           newRealm,
@@ -3626,7 +3627,7 @@ function anchorProbe(anchorText) {
           replays,
           mechanism,
           serverReplayedMarker,
-          ptyAfterReload: (await page.evaluate(ENGINE_VISIBLE).catch(() => null))?.visiblePtyId ?? null,
+          ptyAfterReload,
         }
       } catch (err) {
         scenario.afterReload = { ok: false, error: err.message }
