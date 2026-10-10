@@ -73,6 +73,15 @@ jobs:
           npm test
           npm run build
 
+      - name: Test and build the server browser plugin
+        working-directory: plugins/server-browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test
+          npm run typecheck
+          npm run build
+
       - name: Build pinned official OpenCode UI
         run: |
           node --test frontend/android/*.test.mjs
@@ -89,6 +98,15 @@ jobs:
           git diff --exit-code --stat -- webapp/src/main/assets/www/ui
           test -z "$(git ls-files --others --exclude-standard -- webapp/src/main/assets/www/ui)"
 
+      - name: Build shared Web client and stage plugin distributions
+        run: |
+          node frontend/android/build.mjs --web
+          node scripts/stage-distribution.mjs
+          for folder in dist/stage/*; do
+            archive="$GITHUB_WORKSPACE/dist/$(basename "$folder").zip"
+            (cd "$folder" && zip -rq "$archive" .)
+          done
+
       # The product is the web shell (:webapp). The legacy native shell
       # (:app) is intentionally NOT tested here: dozens of its tests depend
       # on gitignored device-capture fixtures (research/v97_verify/**) that
@@ -102,7 +120,7 @@ jobs:
           DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
         run: ./gradlew :webapp:testDebugUnitTest --no-daemon
 
-      # ONE shipping artifact: the `release` variant. Every variant carries the
+      # ONE shipping APK variant: release. Every variant carries the
       # same product package id `com.xiufeigo.opencodeshell` (no `.debug`
       # suffix anywhere), which is also what every previous GitHub release
       # shipped — so this APK updates an installed GitHub build in place.
@@ -148,15 +166,25 @@ jobs:
         run: |
           mkdir -p dist
           cp webapp/build/outputs/apk/release/webapp-release.apk "dist/${APK_NAME}"
-          sha256sum "dist/${APK_NAME}"
+          (cd dist && sha256sum *.apk *.zip | tee SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-distribution
+          path: |
+            dist/*.apk
+            dist/*.zip
+            dist/SHA256SUMS
 
       # Release assets use separate storage from Actions artifacts.
-      - name: Publish signed APK to GitHub Release
+      - name: Publish APK, server plugin and Web client to GitHub Release
         if: inputs.publish
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.apk
+            dist/*.zip
+            dist/SHA256SUMS
           name: OpenCode ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false

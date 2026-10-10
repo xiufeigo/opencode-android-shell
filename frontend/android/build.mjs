@@ -11,7 +11,8 @@ const bun = process.env.BUN_BINARY ?? "bun"
 const bunVersion = execFileSync(bun, ["--version"], { encoding: "utf8" }).trim()
 if (bunVersion !== pin.bun) throw new Error(`Bun ${pin.bun} is required; found ${bunVersion}. Set BUN_BINARY to the pinned executable.`)
 const checkout = path.join(root, "_scratch_root/desktop-parity/checkout")
-const assets = path.join(root, "webapp/src/main/assets/www/ui")
+const target = process.argv.includes("--web") ? "web" : "android"
+const assets = path.join(root, target === "android" ? "webapp/src/main/assets/www/ui" : "frontend/web/dist")
 const workspaces = ["app", "gui-extensions", "ui", "client", "schema", "util", "session-ui", "plugin-browser", "protocol", "plugin", "script", "httpapi-codegen", "theme", "ai", "http-recorder"]
 
 async function run(command, args, cwd = checkout, env = {}) {
@@ -64,12 +65,14 @@ await run(bun, ["run", "typecheck", "tsconfig.android.json"], path.join(checkout
 await run(bun, ["run", "typecheck", "tsconfig.android.json"], path.join(checkout, "packages/gui-extensions"))
 await run(bun, ["run", "build", "--base", "/", "--sourcemap", "false", "--logLevel", "warn"], path.join(checkout, "packages/app"), {
   VITE_OPENCODE_SERVER_MODE: "none",
+  VITE_OPENCODE_PLATFORM: target,
   OPENCODE_CHANNEL: "prod",
 })
 const dist = path.join(checkout, "packages/app/dist")
 // Only replace packaged assets after the complete source build succeeds.
 await fs.rm(assets, { recursive: true, force: true })
 await fs.cp(dist, assets, { recursive: true })
-await fs.rename(path.join(assets, "_assets"), path.join(assets, "oa"))
-await fs.writeFile(path.join(assets, "opencode-build.json"), JSON.stringify({ ...pin, platform: "android" }, null, 2) + "\n")
-console.log(`Android UI built from OpenCode ${pin.version} (${pin.commit})`)
+if (target === "android") await fs.rename(path.join(assets, "_assets"), path.join(assets, "oa"))
+else await fs.copyFile(path.join(root, "webapp/src/main/assets/www/oc-terminal.js"), path.join(assets, "oc-terminal.js"))
+await fs.writeFile(path.join(assets, "opencode-build.json"), JSON.stringify({ ...pin, platform: target }, null, 2) + "\n")
+console.log(`${target} UI built from OpenCode ${pin.version} (${pin.commit})`)

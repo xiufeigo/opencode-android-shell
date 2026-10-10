@@ -172,24 +172,27 @@ async function runOfficialPlus(browser, ui, server) {
     const review = page.locator("#review-panel")
     await button(page, "Toggle review").waitFor()
     if (await button(page, "Toggle review").getAttribute("aria-expanded") !== "true") await button(page, "Toggle review").click()
-    await visible(review.getByRole("button", { name: "Open file", exact: true })).click()
+    await visible(review.getByRole("button", { name: "Add tab", exact: true })).click()
+    await page.getByRole("menuitem", { name: /^Browser\b/ }).waitFor()
+    await page.getByRole("menuitem", { name: /^Open file\b/ }).click()
     await review.getByRole("tab", { name: "Open file", exact: true }).waitFor()
     await visible(review.locator('input[type="search"][aria-label="Filter files"]')).waitFor()
     assert.equal(await page.evaluate(() => typeof window.__ocPlusChooser), "undefined")
     assert.equal(await page.evaluate(() => window.__ocHostError ?? null), null)
     assert.equal(await page.getByRole("menuitem", { name: "Open terminal", exact: true }).count(), 0)
     assert.deepEqual(errors, [])
-    record("tablet", "official-review-plus-opens-workspace-files-without-browser", { customChooser: false })
+    record("tablet", "official-review-plus-menu-opens-workspace-files", { customChooser: false, browserEntry: true })
     const consumed = await page.evaluate(() => {
       const event = new KeyboardEvent("keydown", { key: "b", code: "KeyB", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })
       document.dispatchEvent(event)
       return event.defaultPrevented
     })
-    assert.equal(consumed, false)
+    assert.equal(consumed, true)
+    await visible(page.locator('[data-component="server-browser"]')).waitFor()
+    await visible(page.locator('[data-component="server-browser"] [role="alert"]')).waitFor()
     assert.equal(await page.evaluate(() => window.__ocNativeCalls.some(call => ["browserConfig", "configureBrowser"].includes(call.name))), false)
     assert.equal(await page.locator('[data-android-browser-surface]').count(), 0)
-    assert.equal(await page.getByRole("menuitem", { name: /^Browser\b/ }).count(), 0)
-    record("tablet", "removed-browser-has-no-menu-shortcut-native-rpc-or-pane", { shortcutConsumed: false })
+    record("tablet", "server-browser-shortcut-shows-explicit-missing-plugin-without-native-pairing", { shortcutConsumed: true })
     await page.screenshot({ path: path.join(output, "tablet-official-plus.png"), fullPage: true })
   } catch (error) {
     await page.screenshot({ path: path.join(output, "tablet-plus-failure.png"), fullPage: true })
@@ -227,12 +230,12 @@ async function runAppMenu(browser, profile, ui, server) {
       const more = visible(page.getByText("More...", { exact: true }))
       if (await more.count()) {
         await more.click()
-        assert.equal(await visible(page.getByText("Browser", { exact: true })).count(), 0)
+        await visible(page.getByText("Browser", { exact: true })).waitFor()
         await page.locator('[data-slot="mobile-drawer-overlay"][data-open]').click({ position: { x: 10, y: 10 } })
         await page.locator('[data-slot="mobile-drawer-overlay"][data-open]').waitFor({ state: "hidden" })
       }
     }
-    record(profile.name, "settings-and-mobile-view-switcher-have-no-built-in-browser", {})
+    record(profile.name, "server-browser-mobile-entry-without-legacy-pairing-settings", {})
     await select("View", "Zoom In")
     await page.waitForFunction(() => document.documentElement.style.zoom === "1.2")
     const unsupported = await page.evaluate(() => {

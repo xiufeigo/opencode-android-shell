@@ -66,6 +66,12 @@ v36proj*/
 
 # Reproducible mobile terminal dependencies
 frontend/terminal/node_modules/
+plugins/server-browser/node_modules/
+plugins/server-browser/dist/
+plugins/server-browser/*.tgz
+frontend/web/dist/
+dist/
+research/tmp/verify-server-browser*/
 browser-companion/node_modules/
 browser-companion/dist/
 research/tmp/verify-android-browser/

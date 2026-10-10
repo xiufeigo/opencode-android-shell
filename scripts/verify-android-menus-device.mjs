@@ -77,7 +77,7 @@ try {
   const value = await response.json()
   session = (value.data ?? value).id
   await page.evaluate(({ config, session }) => {
-    localStorage.setItem("opencode-language", "en")
+    localStorage.setItem("opencode.global.dat:language", JSON.stringify({ locale: "en" }))
     localStorage.setItem("opencode.global.dat:server", JSON.stringify({ list: [{ type: "http", http: { url: config.url, username: "opencode", password: config.password } }], hidden: {}, projects: {}, lastProject: {}, recentlyClosed: {} }))
     const server = btoa(config.url).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
     location.href = `/server/${server}/session/${session}`
@@ -86,7 +86,7 @@ try {
   await select("File", "Settings")
   assert.equal(await page.locator('[data-action="settings-android-browser"]').count(), 0)
   assert.equal(await button(page, "Legacy browser connection").count(), 0)
-  pass(`${profile} settings has no built-in browser or legacy pairing`)
+  pass(`${profile} settings has no legacy browser pairing`)
   await button(page, "Back to app").click()
   await page.evaluate(installTrace)
   if (profile === "phone") {
@@ -128,7 +128,9 @@ try {
     assert.ok(await page.evaluate(() => innerWidth) >= 768, "Tablet profile needs a wide emulator")
     await button(page, "Toggle review").waitFor()
     if (await button(page, "Toggle review").getAttribute("aria-expanded") !== "true") await button(page, "Toggle review").click()
-    await visible(page.locator("#review-panel").getByRole("button", { name: "Open file", exact: true })).click()
+    await visible(page.locator("#review-panel").getByRole("button", { name: "Add tab", exact: true })).click()
+    await page.getByRole("menuitem", { name: /^Browser\b/ }).waitFor()
+    await page.getByRole("menuitem", { name: /^Open file\b/ }).click()
     await visible(page.locator('#review-panel input[aria-label="Filter files"]')).waitFor()
     pass("tablet plus opens the official remote workspace file picker")
   }
@@ -136,7 +138,7 @@ try {
     const more = visible(page.getByText("More...", { exact: true }))
     if (await more.count()) {
       await more.click()
-      assert.equal(await visible(page.getByText("Browser", { exact: true })).count(), 0)
+      await visible(page.getByText("Browser", { exact: true })).waitFor()
       await page.locator('[data-slot="mobile-drawer-overlay"][data-open]').click({ position: { x: 10, y: 10 } })
       await page.locator('[data-slot="mobile-drawer-overlay"][data-open]').waitFor({ state: "hidden" })
     }
@@ -146,11 +148,12 @@ try {
     document.dispatchEvent(event)
     return event.defaultPrevented
   })
-  assert.equal(consumed, false)
+  assert.equal(consumed, true)
+  await visible(page.locator('[data-component="server-browser"]')).waitFor()
   assert.equal(await page.locator('[data-android-browser-surface]').count(), 0)
   assert.equal(await page.evaluate(() => window.__menuNativeTrace.some(entry => ["browserConfig", "configureBrowser"].includes(entry.method))), false)
-  pass(`${profile} browser removal leaves no panel, native request or shortcut handler`)
-  await page.screenshot({ path: path.join(output, `${profile}-without-browser.png`) })
+  pass(`${profile} browser opens without legacy native pairing requests`)
+  await page.screenshot({ path: path.join(output, `${profile}-server-browser.png`) })
   if (profile === "tablet") {
     await button(page, "OpenCode menu").click()
     await page.screenshot({ path: path.join(output, "tablet-application-menu.png") })
@@ -158,7 +161,7 @@ try {
   }
   assert.deepEqual(errors, [])
   pass("no actual WebView page exceptions")
-  fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ scope: "actual debug product APK, Android WebView, system clipboard/bars and plain OpenCode v2; DOM menu actions and browser removal checks", serial, profile, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), checks, errors }, null, 2))
+  fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ scope: "actual debug product APK, Android WebView, system clipboard/bars and OpenCode v2; DOM menu actions and server browser entry checks", serial, profile, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), checks, errors }, null, 2))
   console.log("REPORT", output)
 } catch (error) {
   if (page && !page.isClosed()) await page.screenshot({ path: path.join(output, "failure.png") })

@@ -1,5 +1,7 @@
 # Keep Android source adapters portable across Windows and Linux checkouts.
 frontend/android/** text eol=lf
+frontend/remote-browser/** text eol=lf
+plugins/server-browser/src/** text eol=lf
 research/desktop-parity/** text eol=lf
 scripts/verify-android-menus-device.mjs text eol=lf
 

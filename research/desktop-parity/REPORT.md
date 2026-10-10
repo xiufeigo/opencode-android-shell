@@ -1,16 +1,24 @@
 # OpenCode Desktop 与 Android 差异记录
 
-核对日期：2026-10-10。Android **2.0.14 / versionCode 42**；官方 **2.0.26 / ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4**。本次读取了同一提交的完整 Desktop renderer/main/native 源码、共享 app、GUI 扩展及 Android 宿主，不以不同版本的参考 checkout 代替固定基准。
+核对日期：2026-10-10。当前 Android **2.0.16 / versionCode 44**；官方 **2.0.26 / ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4**。对比读取了同一提交的完整 Desktop renderer/main/native 源码、共享 app、GUI 扩展及 Android 宿主，不以不同版本的参考 checkout 代替固定基准。
 
 当前产品是 `:webapp`，用户选择连接电脑或服务器上的 OpenCode。历史 `:app` Compose 模块不参与产品发布。共享官方前端不等于完整移植 Desktop 平台能力，也不等于所有业务已经逐项实测。
 
-## 本次浏览器移除
+## 2.0.16 服务端浏览器
+
+按最新需求新增独立 OpenCode v2 服务端插件与 Android/Web 共享面板。Chromium 由原 OpenCode 服务持有，继续使用其 URL、认证和端口，不恢复旧 gateway、Electron companion 或配对。宽屏“＋”恢复“打开文件／浏览器”菜单，手机使用“更多 → 浏览器”，外接键盘支持 Ctrl+Shift+B。
+
+不同会话隔离标签及 cookies，同会话客户端共享状态。客户端强杀和重连不关闭或重载远端页面；关闭标签会清理截图和下载文件。服务端重启或插件重载不恢复浏览器进程。模型自动化需要明确配置 `automation: true`；公开 SDK 没有逐次执行审批入口，不能把工具目录 permission 过滤声称为逐次授权。
+
+实现与本轮验收：[SERVER-BROWSER.md](SERVER-BROWSER.md)；安装、范围及限制：[插件 README](../../plugins/server-browser/README.md)。官方未改造的 Web/Desktop 不会仅因安装插件自动新增可视面板。
+
+## 历史：2.0.14 浏览器移除
 
 按用户要求删除远端 **v2.0.13 tag 和 Release**；远端查询均返回 404。移除内置 browser 扩展的 renderer 注册、浏览器菜单/快捷键/移动面板、Android 远程传输、原生配对以及 browser-companion/gateway 项目和发布步骤。旧配对凭据在加密偏好初始化时同步删除；旧构建缓存中的浏览器适配文件也会清理。
 
 Android 直接连接普通 OpenCode 服务，例如 `http://电脑地址:4096`，使用原密码。已有服务器记录保留；此前填了 4100 的用户需自行编辑为原服务地址，不能假设任意服务器的 4100 都对应同一主机的 4096。外部网页继续由系统浏览器打开。
 
-右侧“＋”现在只贡献官方文件动作，按官方组件的单项逻辑直接打开文件选择器。手机“更多”、设置和 Ctrl+Shift+B 不再提供内置浏览器动作。文件、Review、终端和应用菜单继续使用共享模块。
+2.0.14 的右侧“＋”只贡献官方文件动作；这项历史状态已被 2.0.16 的服务端浏览器面板更新。旧 gateway 的设置、原生配对和凭据仍然移除。
 
 ## 当前能力与差异
 
@@ -30,11 +38,11 @@ Android 直接连接普通 OpenCode 服务，例如 `http://电脑地址:4096`�
 | SSH/WSL | 不提供 Android 客户端管理和启动 | Desktop SSH 认证/隧道、Windows WSL 发行版与服务生命周期属于原生 main 能力；已暴露的 HTTP 服务仍可连接 |
 | 第三方 GUI 扩展宿主 | 不提供 Desktop main-process 扩展安装/启停/重载 | 官方 GUI Extensions 诊断设置本来只在开发 Desktop 显示，不应当作普通生产 UI 缺失 |
 | 桌面系统能力 | 未移植多窗口恢复、通用 opencode:// 外部深链接、Electron 更新、桌面调试日志导出、CLI 安装 | Android 单任务、系统外链和通知内部跳转不能替代这些能力；CLI 安装入口仅适用于官方 macOS |
-| 内置浏览器 | 本次按用户要求移除 | 无 Android browser 自动化宿主；不影响服务器或其他 Desktop 客户端自行提供的工具 |
+| 浏览器 | 服务端 Chromium 插件 + Android/Web 共用可视面板、29 个可选模型操作 | 浏览器由服务器执行；有真实输入、快照、截图、弹窗和网络/控制台记录。Desktop 标注、检查浮层、性能/堆/Lighthouse 面板未移植；不是音视频串流 |
 
 逐区域、触发方式和源码出处见 [UI-AUDIT.md](UI-AUDIT.md)。手机窄屏使用官方响应式布局，是有意适配；不是桌面截图的等比例缩小。悬停/Alt 展示目录、鼠标菜单及拖放不能等同触屏长按，尚无完整触控等价操作。
 
-## 本次验证
+## 历史：2.0.14 验证
 
 - Native RPC 回归 **3/3**；固定上游设置路由/URL.parse 兼容 **9/9**；app/GUI 生产类型检查与源码构建通过。
 - Android 单测 **249/249**，失败/错误/跳过均为 0；debug 和 release 构建通过。Release 包名 `com.xiufeigo.opencodeshell`、版本 **2.0.14/42**，使用用户指定密钥；证书 SHA-256 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6` 已核验。
@@ -44,7 +52,7 @@ Android 直接连接普通 OpenCode 服务，例如 `http://电脑地址:4096`�
 - Release APK **57,551,637 字节**，SHA-256 `c420469c765c1b6d4c86902875fd6415fd0eedf8ebff81af9a55f6d9b6f9ed72`；包内 **1,621** 个 UI 文件与已验证的源码构建产物逐字节一致，DEX 不再包含 BrowserPairing 类。
 - 修复构建缓存范围污染：每次构建重新固定 sparse 工作区和 Desktop 图标目录，避免审计时扩展的 Desktop 源码进入 Tailwind 扫描。修复后的 Windows 构建与独立 Linux 新构建 **1,621 个文件库存和字节完全一致**。
 
-上述 SPA 和终端脚本使用 Chromium、测试后端及模拟平台桥，不能当作 Android 设备或所有功能的端到端验收。实际 WebView 检查使用模拟器，也不能替代实体相机或各厂商后台行为验收；历史 v2.0.10–2.0.13 浏览器验证见 Git 历史，不再代表当前产品能力。
+上述历史 SPA 和终端脚本使用 Chromium、测试后端及模拟平台桥，不能当作 Android 设备或所有功能的端到端验收。实际 WebView 检查使用模拟器，也不能替代实体相机或各厂商后台行为验收；当前版本的浏览器证据单独记在 SERVER-BROWSER.md，不复用旧 gateway 的验证。
 
 ## 官方来源
 

@@ -1,46 +1,3 @@
-diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
-index b9760dd8..6bba3740 100644
---- a/packages/app/src/entry.tsx
-+++ b/packages/app/src/entry.tsx
-@@ -7,6 +7,8 @@ import { AppBaseProviders, AppInterface } from "@/app"
- import { loadInitialLocale } from "@/runtime/i18n/language"
- import { PlatformProvider } from "@/runtime/platform/platform"
- import { createWebPlatform } from "@/runtime/platform/web"
-+import { createAndroidPlatform } from "@/runtime/platform/android"
-+import { prepareEmbeddedServerStorage } from "@/runtime/platform/android-server-state.mjs"
- import { isStandalone, PwaRoutePersistence, restorePwaRoute } from "@/runtime/platform/pwa"
- import { KeyboardInsets } from "@/runtime/platform/keyboard"
- import en from "@/runtime/i18n/en"
-@@ -50,8 +52,10 @@ const clearAuthToken = () => {
- }
- 
- const web = createWebPlatform(pkg.version)
-+prepareEmbeddedServerStorage(localStorage, location.origin)
-+const platform = createAndroidPlatform(web.platform)
- 
--if (import.meta.env.PROD && "serviceWorker" in navigator) {
-+if (import.meta.env.PROD && !window.__ocPlatform && "serviceWorker" in navigator) {
-   window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
- }
- 
-@@ -80,7 +84,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
-   void loadInitialLocale().then((locale) => {
-     const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
-     clearAuthToken()
--    const standalone = isStandalone()
-+    const standalone = !!window.__ocPlatform || isStandalone()
-     root.dataset.standalone = String(standalone)
- 
-     if (standalone) restorePwaRoute()
-@@ -98,7 +102,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
- 
-     render(
-       () => (
--        <PlatformProvider value={web.platform}>
-+        <PlatformProvider value={platform}>
-           <AppBaseProviders locale={locale}>
-             <AppInterface
-               canonicalLocalServer={server ? ServerConnection.key(server) : undefined}
 diff --git a/packages/app/src/home/sessions/controller.tsx b/packages/app/src/home/sessions/controller.tsx
 index ea010619..c4081735 100644
 --- a/packages/app/src/home/sessions/controller.tsx
@@ -847,27 +804,6 @@ index b1d448a1..2bc5a488 100644
  const Orphan = Ipc.define({ id: "fixture.orphan", methods: {} })
  
  // A renderer that uses an Ipc nothing in main provides.
-diff --git a/packages/gui-extensions/src/renderer.ts b/packages/gui-extensions/src/renderer.ts
-index f5f1754f..6b7343b8 100644
---- a/packages/gui-extensions/src/renderer.ts
-+++ b/packages/gui-extensions/src/renderer.ts
-@@ -13,8 +13,6 @@ import review from "./review"
- import reviewRenderer from "./review/renderer"
- import details from "./details"
- import detailsRenderer from "./details/renderer"
--import browser from "./browser"
--import browserRenderer from "./browser/renderer"
- import pairing from "./pairing"
- import pairingRenderer from "./pairing/renderer"
- import updater from "./updater"
-@@ -43,7 +41,6 @@ export const builtins = Extension.compose(
-   { ...file, renderer: eager(fileRenderer) },
-   { ...review, renderer: eager(reviewRenderer) },
-   { ...details, renderer: eager(detailsRenderer) },
--  { ...browser, renderer: eager(browserRenderer) },
-   { ...pairing, renderer: eager(pairingRenderer) },
-   { ...updater, renderer: eager(updaterRenderer) },
-   { ...ssh, renderer: eager(sshRenderer) },
 diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
 index 8ba5f356..fbff294a 100644
 --- a/packages/gui-extensions/src/terminal/model.ts
@@ -1081,3 +1017,81 @@ index fa50d397..1cb21824 100644
 +    encode: SchemaGetter.transform((value) => value),
 +  }),
 +)
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+index b9760dd8..33119b5d 100644
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -7,6 +7,8 @@ import { AppBaseProviders, AppInterface } from "@/app"
+ import { loadInitialLocale } from "@/runtime/i18n/language"
+ import { PlatformProvider } from "@/runtime/platform/platform"
+ import { createWebPlatform } from "@/runtime/platform/web"
++import { createAndroidPlatform } from "@/runtime/platform/android"
++import { prepareEmbeddedServerStorage } from "@/runtime/platform/android-server-state.mjs"
+ import { isStandalone, PwaRoutePersistence, restorePwaRoute } from "@/runtime/platform/pwa"
+ import { KeyboardInsets } from "@/runtime/platform/keyboard"
+ import en from "@/runtime/i18n/en"
+@@ -50,8 +52,11 @@ const clearAuthToken = () => {
+ }
+ 
+ const web = createWebPlatform(pkg.version)
++const android = import.meta.env.VITE_OPENCODE_PLATFORM === "android"
++if (android) prepareEmbeddedServerStorage(localStorage, location.origin)
++const platform = android ? createAndroidPlatform(web.platform) : web.platform
+ 
+-if (import.meta.env.PROD && "serviceWorker" in navigator) {
++if (import.meta.env.PROD && !window.__ocPlatform && "serviceWorker" in navigator) {
+   window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
+ }
+ 
+@@ -80,7 +85,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+   void loadInitialLocale().then((locale) => {
+     const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
+     clearAuthToken()
+-    const standalone = isStandalone()
++    const standalone = !!window.__ocPlatform || isStandalone()
+     root.dataset.standalone = String(standalone)
+ 
+     if (standalone) restorePwaRoute()
+@@ -98,7 +103,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+ 
+     render(
+       () => (
+-        <PlatformProvider value={web.platform}>
++        <PlatformProvider value={platform}>
+           <AppBaseProviders locale={locale}>
+             <AppInterface
+               canonicalLocalServer={server ? ServerConnection.key(server) : undefined}
+diff --git a/packages/gui-extensions/src/renderer.ts b/packages/gui-extensions/src/renderer.ts
+index f5f1754f..ec18971f 100644
+--- a/packages/gui-extensions/src/renderer.ts
++++ b/packages/gui-extensions/src/renderer.ts
+@@ -13,8 +13,6 @@ import review from "./review"
+ import reviewRenderer from "./review/renderer"
+ import details from "./details"
+ import detailsRenderer from "./details/renderer"
+-import browser from "./browser"
+-import browserRenderer from "./browser/renderer"
+ import pairing from "./pairing"
+ import pairingRenderer from "./pairing/renderer"
+ import updater from "./updater"
+@@ -25,6 +23,8 @@ import wsl from "./wsl"
+ import wslRenderer from "./wsl/renderer"
+ import microsoftOffice from "./microsoft-office"
+ import microsoftOfficeRenderer from "./microsoft-office/renderer"
++import serverBrowser from "./remote-browser"
++import serverBrowserRenderer from "./remote-browser/renderer"
+ 
+ // The window renders once every built-in is active, so the small renderer entries load with the app, like the
+ // features they replaced. Heavy UI stays behind `lazy()` inside them.
+@@ -43,10 +43,10 @@ export const builtins = Extension.compose(
+   { ...file, renderer: eager(fileRenderer) },
+   { ...review, renderer: eager(reviewRenderer) },
+   { ...details, renderer: eager(detailsRenderer) },
+-  { ...browser, renderer: eager(browserRenderer) },
+   { ...pairing, renderer: eager(pairingRenderer) },
+   { ...updater, renderer: eager(updaterRenderer) },
+   { ...ssh, renderer: eager(sshRenderer) },
+   { ...wsl, renderer: eager(wslRenderer) },
+   { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
++  { ...serverBrowser, renderer: eager(serverBrowserRenderer) },
+ )
