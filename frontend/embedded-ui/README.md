@@ -8,4 +8,4 @@ APK 使用与 Desktop 相同的官方 UI。`frontend/android/build.mjs` 从固�
 
 运行 `frontend/terminal` 的 `npm test` 验证纯逻辑，再执行 `node frontend/android/build.mjs`。整页验证分别使用 `scripts/verify-android-navigation.mjs` 和 `scripts/verify-android-resize.mjs`；它们使用完整打包 UI、模拟原生桥和测试服务，不能冒充实际 Android 设备验证。
 
-`scripts/verify-android-resize-device.mjs` 在实际 APK WebView 中通过 ADB 滑动验证分隔线，结束后恢复模拟器显示设置。内置浏览器通过 `browser-companion` 复用官方 Electron 引擎；普通工作区文件入口采用官方 Web 行为。
+`scripts/verify-android-resize-device.mjs` 在实际 APK WebView 中通过 ADB 滑动验证分隔线，结束后恢复模拟器显示设置。普通工作区文件入口采用官方共享 UI；2.0.14 已移除内置浏览器，外部 URL 交给系统浏览器。

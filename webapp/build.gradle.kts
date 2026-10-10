@@ -32,9 +32,9 @@ android {
         // 35 触摸防 IME 聚焦、稳定滚动目标及手机/平板统一字符度量；
         // 36 自有 xterm 终端、历史滚动及键盘隐藏时即时恢复布局。
         // 37 多服务器管理、官方右侧栏入口及平板触摸分隔线修复。
-        versionCode = 41
+        versionCode = 42
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.13"
+        versionName = "2.0.14"
     }
 
     signingConfigs {

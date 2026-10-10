@@ -78,14 +78,6 @@ jobs:
           node --test frontend/android/*.test.mjs
           node frontend/android/build.mjs
 
-      - name: Check and build browser companion
-        working-directory: browser-companion
-        run: |
-          npm ci
-          npm test
-          npm run build
-          npm run package
-
       # Guard: the committed bundle must be byte-identical to what the source
       # produces. A developer who edits terminal.js but forgets to rebuild
       # ships the old terminal, and the unit tests below would still pass
@@ -156,7 +148,6 @@ jobs:
         run: |
           mkdir -p dist
           cp webapp/build/outputs/apk/release/webapp-release.apk "dist/${APK_NAME}"
-          cp browser-companion/dist/opencode-browser-gateway-*.tar.gz dist/
           sha256sum "dist/${APK_NAME}"
 
       # Release assets use separate storage from Actions artifacts.
@@ -166,7 +157,6 @@ jobs:
         with:
           files: |
             dist/*.apk
-            dist/*.tar.gz
           name: OpenCode ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false

@@ -1,117 +1,53 @@
-# OpenCode Desktop 与 Android 差异及实现记录
+# OpenCode Desktop 与 Android 差异记录
 
-基准：官方 v2 的 OpenCode **2.0.26**，commit `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。Android **2.0.13 / versionCode 41**。用户选择 Android 连接电脑或服务器的 OpenCode，并要求内置浏览器自动化。
+核对日期：2026-10-10。Android **2.0.14 / versionCode 42**；官方 **2.0.26 / ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4**。本次读取了同一提交的完整 Desktop renderer/main/native 源码、共享 app、GUI 扩展及 Android 宿主，不以不同版本的参考 checkout 代替固定基准。
 
-Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工作区和设置来自 `packages/app`；浏览器与终端来自 `packages/gui-extensions`。Android 应复用这些模块，并补足平台接口。直接仿写桌面页面或持续修改压缩后的 JS 会产生第二套状态和升级负担，因此本轮选择官方源码构建。
+当前产品是 `:webapp`，用户选择连接电脑或服务器上的 OpenCode。历史 `:app` Compose 模块不参与产品发布。共享官方前端不等于完整移植 Desktop 平台能力，也不等于所有业务已经逐项实测。
 
-## 差异与处理
+## 本次浏览器移除
 
-| 能力 | 改造前的问题 | 当前结果 |
+按用户要求删除远端 **v2.0.13 tag 和 Release**；远端查询均返回 404。移除内置 browser 扩展的 renderer 注册、浏览器菜单/快捷键/移动面板、Android 远程传输、原生配对以及 browser-companion/gateway 项目和发布步骤。旧配对凭据在加密偏好初始化时同步删除；旧构建缓存中的浏览器适配文件也会清理。
+
+Android 直接连接普通 OpenCode 服务，例如 `http://电脑地址:4096`，使用原密码。已有服务器记录保留；此前填了 4100 的用户需自行编辑为原服务地址，不能假设任意服务器的 4100 都对应同一主机的 4096。外部网页继续由系统浏览器打开。
+
+右侧“＋”现在只贡献官方文件动作，按官方组件的单项逻辑直接打开文件选择器。手机“更多”、设置和 Ctrl+Shift+B 不再提供内置浏览器动作。文件、Review、终端和应用菜单继续使用共享模块。
+
+## 当前能力与差异
+
+| 能力 | Android 当前结果 | 与 Desktop 的差异／验证边界 |
 | --- | --- | --- |
-| 官方前端 | 资产 2.0.22、参考源码及旧版本标记互不一致；依赖生成 chunk 名打补丁 | 唯一 commit pin、冻结依赖、官方 app/GUI 生产源码类型检查、源码补丁与打包元数据 |
-| 会话与消息 | 壳层适配没有完整接入官方平台接口 | 直接保留官方会话、流式消息、权限表单、模型、代理与命令实现；未重新实现业务 API |
-| 服务器与恢复 | 占位服务器迁移、默认选择和路由恢复容易相互干扰 | 迁移只删除资产占位，保留真实服务器及认证；官方持久化恢复路由 |
-| 文件、差异、设置 | 自定义 UI/产物补丁容易偏离 Desktop | 直接使用官方工作区、文件、Review、设置、主题与语言组件 |
-| Android 平台 | 官方 PlatformProvider 未调用原生文件保存和剪贴板接口 | 安全主文档消息通道、SAF 保存、系统外链、剪贴板文本/图片；取消与失败明确返回 |
-| 终端与触屏 | 编译产物适配、旧实例恢复竞态、桌面拖动范围不适合触屏 | 保留验证过的 xterm 移动输入；源码对接官方终端；按 PTY 等待旧实例快照；触屏面板拖动 |
-| 内置浏览器 | 没有 Electron 执行引擎，手机上的官方入口被平台和窄屏条件关闭 | 官方 browser pane/toolbar/model + Android 移动入口 + 认证 companion；官方 CDP 引擎、网络隧道和工具协议 |
-| 浏览器截图 | 官方截图检查电脑窗口可见，后台服务窗口不可见 | 用 Android 面板的实际可见性注入宿主条件，仍要求目标 tab 可见 |
-| 浏览器重载 | 隐藏的普通 Electron 窗口重建后没有可截图的显示表面 | 固定官方 Electron 44.4.5；远程宿主及 WebContentsView 显式使用离屏渲染，重载恢复设备实测通过 |
-| 生命周期与安全 | 旧 Java 接口可达子框架、加密失败会退回明文、崩溃实例复用 | 主文档 capability + 独立加密平台通道；诊断页仅有重试能力；销毁旧实例并完整重建；显式失败 |
+| HTTP 多服务器管理 | 官方注册表及连接页；持续新增、编辑、切换、删除和恢复 | 已验证五台连续添加及一台/多台过渡；不支持客户端建立 SSH 隧道 |
+| 会话、流式消息、权限请求、模型/代理选择 | 官方共享 app 和连接服务器的 API | 不是另一套仿写业务；没有逐个调用所有模型、付费提供商或代理验收 |
+| MCP、OpenCode 插件、Skills | 官方服务端设置，通过所选服务器 API 读取 | 与客户端 GUI 扩展安装是不同功能；不能把 GUI 宿主缺失说成服务器插件不可用 |
+| 文件、Review、Office 文档 | 官方文件/差异组件；包含 Word/Excel/PowerPoint 只读预览 renderer | 系统编辑器打开/文件管理器定位电脑工作区文件未移植；Office 本轮仅核实接线和资产，未逐格式设备验收 |
+| 附件、导入、保存、剪贴板 | Android SAF/WebView 文件选择、Markdown 保存、原生文本/图片剪贴板 | 上传文件字节，不提供 Electron 本地路径映射；Android 系统拖放未完整实测 |
+| 终端 | 官方 PTY/面板 + 已验证的 xterm Android 适配 | Desktop 使用 ghostty-web；字体度量、触摸滚动、IME 和手势是 Android 实现，不是同一终端引擎 |
+| 系统通知 | 官方成功/失败触发器经 Notification shim 和 WebHostBridge 转为 Android 通知；遵守官方偏好和前后台策略 | 不是“未接入”；Android 13+ 使用系统通知权限。跨会话通知点击、厂商后台限制仍需设备验收 |
+| 相机扫码 | 连接页共享扫码 UI + Android 摄像头权限 | Desktop 不使用同一手机相机流程；实体相机扫码尚未自动实测 |
+| 草稿、状态存储 | 官方 Web IndexedDB/localStorage 持久化 + 宿主加密偏好 | Desktop 使用本地 SQLite/draft API；存储实现不同，不能声称 Android 采用 Desktop 数据库 |
+| 应用菜单 | 官方六组菜单；编辑、缩放、重载、Android 全屏、最小化/关闭接原生动作 | 新窗口、最大化、Electron DevTools 明确禁用；外接键盘支持快捷键，软键盘不提供全部键组合 |
+| 本机 OpenCode 引擎 | 不提供；连接现有服务 | Desktop sidecar 的安装、启动、重启和本地服务生命周期未移植；符合当前远程客户端范围 |
+| SSH/WSL | 不提供 Android 客户端管理和启动 | Desktop SSH 认证/隧道、Windows WSL 发行版与服务生命周期属于原生 main 能力；已暴露的 HTTP 服务仍可连接 |
+| 第三方 GUI 扩展宿主 | 不提供 Desktop main-process 扩展安装/启停/重载 | 官方 GUI Extensions 诊断设置本来只在开发 Desktop 显示，不应当作普通生产 UI 缺失 |
+| 桌面系统能力 | 未移植多窗口恢复、通用 opencode:// 外部深链接、Electron 更新、桌面调试日志导出、CLI 安装 | Android 单任务、系统外链和通知内部跳转不能替代这些能力；CLI 安装入口仅适用于官方 macOS |
+| 内置浏览器 | 本次按用户要求移除 | 无 Android browser 自动化宿主；不影响服务器或其他 Desktop 客户端自行提供的工具 |
 
-## 浏览器架构
+逐区域、触发方式和源码出处见 [UI-AUDIT.md](UI-AUDIT.md)。手机窄屏使用官方响应式布局，是有意适配；不是桌面截图的等比例缩小。悬停/Alt 展示目录、鼠标菜单及拖放不能等同触屏长按，尚无完整触控等价操作。
 
-`Android 官方面板 → Bridge WebSocket → Electron createBrowserPane → OpenCode browser RPC/网络隧道 → 网站`。
+## 本次验证
 
-手机显示客户端画面、提供触屏与 IME；浏览器服务执行官方 action schema。使用真实 OpenCode 2.0.25 后端与固定 2.0.26 客户端完成验证。浏览器服务必须可达，不能声称 APK 在 Android 本地运行了 Electron 或 OpenCode 引擎。
+- Native RPC 回归 **3/3**；固定上游设置路由/URL.parse 兼容 **9/9**；app/GUI 生产类型检查与源码构建通过。
+- Android 单测 **249/249**，失败/错误/跳过均为 0；debug 和 release 构建通过。Release 包名 `com.xiufeigo.opencodeshell`、版本 **2.0.14/42**，使用用户指定密钥；证书 SHA-256 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6` 已核验。
+- 完整打包 SPA **43/43**：五服务器连续管理、导入超过 2 MiB 的会话文件、旧真实服务器恢复、应用菜单、文件入口、浏览器菜单/设置/RPC/快捷键移除。报告 `research/tmp/verify-android-navigation/2026-10-10T02-29-26-077Z/report.json`。
+- 完整终端发布回归 **51/51**：触摸滚动、输出期间锚定、IME、旋转、历史恢复和 PTY 输入。报告 `research/tmp/verify-android-terminal-release-ready/2026-10-10T02-22-34-462Z-cd032d/report.json`。
+- 实际 Android API 35 WebView：手机 **6/6**（412×891），覆盖原生剪贴板、系统栏全屏、应用菜单和浏览器入口/RPC/快捷键移除；平板 **4/4**（1200×768），覆盖设置、文件“＋”和浏览器移除。两者无页面异常。报告分别为 `research/tmp/verify-android-menus/2026-10-10T02-37-22-226Z-device/report.json`、`research/tmp/verify-android-menus/2026-10-10T02-34-00-209Z-device/report.json`；使用签名 debug APK 和普通 OpenCode 测试服务。
+- Release APK **57,551,805 字节**，SHA-256 `b39f6c908988696347e516793597d96b7d7234f576b25c7a024272927426e5e2`；包内 **1,621** 个 UI 文件与已验证的源码构建产物逐字节一致，DEX 不再包含 BrowserPairing 类。
 
-桌面窗口逻辑适配远程宿主可见性、离屏渲染和命令 AbortSignal。不会把远程服务器错误标记为本地 sidecar，也不会授予电脑本地 `file://` 访问。2.0.13 统一模式复用 OpenCode 认证并签发单次票据，旧版配对令牌仅在兼容模式加载；服务端凭据来自官方服务器配置。
+上述 SPA 和终端脚本使用 Chromium、测试后端及模拟平台桥，不能当作 Android 设备或所有功能的端到端验收。实际 WebView 检查使用模拟器，也不能替代实体相机或各厂商后台行为验收；历史 v2.0.10–2.0.13 浏览器验证见 Git 历史，不再代表当前产品能力。
 
-## 2.0.13 浏览器打开流程与再次核对
+## 官方来源
 
-根因是 Android 将浏览器传输当成另一份全局配对设置，导致打开方式偏离 Desktop，也无法按 OpenCode 服务器隔离连接。统一网关把 API、SSE、PTY 和浏览器放在同一地址，以原服务认证验证能力和单次票据；Android 只管理官方服务器注册表，每台服务器各有连接，绑定与画面始终归属其服务器。配置移除、页面隐藏会中止连接握手和能力发现，未完成 RPC 明确失败。
-
-宽屏“＋ → 浏览器”和 Ctrl+Shift+B 先自动连接，再打开官方 New tab、地址栏与 Open a page 首页；手机“更多 → 浏览器”显示同一个 pane，首标签只创建一次。每个移动标签可独立关闭，文案复用官方翻译。没有部署网关的服务报明确错误；旧配对仅保留为设置中的兼容选项。
-
-再次核对并修复：应用 UI 缩放步长与 Desktop 一致为 20%；不支持的菜单快捷键不吞输入；鼠标中键保持中键；触摸由模拟鼠标/滚轮改为真实 CDP 多指事件。Electron 默认禁用视觉缩放，现显式启用，真实引擎 pinch 改变 visualViewport.scale。
-
-- Android RPC/传输、网关和输入回归 **13/13**；覆盖原认证、二进制 HTTP 流、PTY Upgrade、票据单次/超时、错误 JSON/超限、服务器隔离、握手和发现中止。
-- 官方设置与兼容入口单测 **9/9**，官方浏览器连接单测 **14/14**；app/GUI 生产类型检查和源码构建通过。
-- 完整打包 SPA 导航、五服务器管理、导入和菜单 **41/41**：`research/tmp/verify-android-navigation/2026-10-10T00-38-22-292Z/report.json`。
-- 真实 OpenCode + 生产 Electron 网关 **16/16**，包含真实 touch/pinch、官方自动化、网络隧道、截图、取消、CPU、Lighthouse 和堆快照：`research/tmp/verify-android-browser/2026-10-10T00-30-56-531Z/report.json`。
-- 实际 API 35 Android WebView：手机 **8/8**（540×1168），平板 **6/6**（1200×768），验证直接打开 New tab、官方地址栏与前进后退、ADB 网页点击/滑动；手机验证未选中标签关闭、原生剪贴板和系统全屏，平板验证“＋”文件菜单与 Ctrl+Shift+B。报告：`research/tmp/verify-android-menus/2026-10-10T00-49-14-114Z-device/report.json`、`research/tmp/verify-android-menus/2026-10-10T00-55-59-660Z-device/report.json`。菜单及地址输入由 DOM 驱动，网页点击/滑动由 ADB 驱动；不表述为实体手机或全部软键盘输入验证。
-- 解压最终分发包、独立 npm ci/启动后再次完成真实引擎 **16/16**：`research/tmp/verify-android-browser/2026-10-10T00-56-36-080Z/report.json`。同机多个网关的数据目录现在同时隔离标签、Chromium Cookie 与缓存。
-- Android 单测 **249/249**；debug/release 构建与指定签名核验通过。本机 release APK **57,621,412 字节**、SHA-256 `1558b6c036edd22bf21134e290e6f3d37087e34fe8ab3865faf52ac78ae500e5`；包内 **1,688 个 UI 文件**与源码资产逐字节一致。重复构建时仅清除补丁声明的新文件，避免残留测试文件阻止补丁应用。
-- main 与 v2.0.13 的 GitHub CI 均成功；发布提交 `170565b47b223b046b5a4d9307a2ee8e510a5b80`。下载实际 Release 后核验版本 **2.0.13/41**、指定签名及 **1,688 个 UI 文件**通过，网关分发文件与本机实测结果逐字节相同。发布 APK SHA-256 为 `73a158fcf5d5c66bc11c6025b9f909e86b7e4c95f4a56cf6575e06a13103e8fa`，下载地址为 [v2.0.13](https://github.com/xiufeigo/opencode-android-shell/releases/tag/v2.0.13)。
-
-服务分发包包含已构建官方引擎及锁定依赖，解压后 npm ci/npm start 即可运行；Release 同时提供 APK 与网关。仍需有 Electron 图形环境，不能把 APK 描述为 Android 原生运行 Chromium/Electron 引擎。
-
-## 2.0.12 应用菜单与侧栏加号菜单
-
-左上角以前只在 Windows/Linux 渲染官方应用菜单；Android 现在复用相同六组分类、翻译、命令和帮助链接。平台适配提供原生剪贴板、重载、UI 缩放、系统全屏、任务最小化及关闭；电脑新窗口、最大化、Electron 开发者工具明确禁用。编辑会恢复原字段焦点及选区，异步剪贴板读取期间内容改变则拒绝修改。
-
-右侧“＋”过去在浏览器不可用时只剩文件项，官方组件因此退化为直接按钮。Android 浏览器扩展现在保持菜单项，菜单与快捷命令共用打开动作；未连接服务时调起真实原生配对框，成功后沿用官方注册握手打开面板。取消不产生面板，并发配置共用同一 Promise，失败显示真实状态；“断开”仍清除原生配对和传输。原生检查发现不能等待已有标签库存才打开首个标签，已移除这个多余门槛，由官方 connection 等待注册完成再发送命令。
-
-- 官方设置/兼容入口单测 **9/9**；app/GUI 类型检查、固定 UI 构建通过。
-- 完整打包 SPA 的手机、触屏平板导航/导入/菜单回归 **41/41**，包括六组菜单、设置命令、缩放复原、编辑选区与帮助链接，及实际展开侧栏“＋”、打开文件、请求浏览器配对和取消。
-- Android 单测 **249/249**，debug/release 构建通过；使用用户指定密钥，签名证书 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6`。
-
-导航模拟报告：`research/tmp/verify-android-navigation/2026-10-09T14-13-45-901Z/report.json`。实际手机 **4/4**（540×1176）：菜单打开设置、原生复制粘贴保留选区、系统全屏隐藏/恢复系统栏、无 WebView 异常；报告为 `research/tmp/verify-android-menus/2026-10-09T15-22-22-554Z-device/report.json`。实际平板菜单 **3/3**：展开“＋”打开远程文件选择器、从未配对状态打开原生配对框并打开官方浏览器面板、无 WebView 异常；报告为 `research/tmp/verify-android-menus/2026-10-09T15-38-54-167Z-device/report.json`。
-
-原生菜单验证入口为 `scripts/verify-android-menus-device.mjs`，使用独立 API 35 模拟器、真实 WebView、系统剪贴板/系统栏/配对框、真实 OpenCode v2 和生产 Electron companion；不将模拟桥调用记录表述为原生能力实测。两个原生配对字段具备无障碍标签；设备脚本按标签定位，不使用 AndroidSelector 不支持的字段索引，也不把不支持的等待选项当作弹窗关闭证据。
-
-本轮 release 包 **57,620,384 字节**、SHA-256 `CFCA72ECFB5943629294E6611F2F1116234591B9BA372E83008616C120D5C0B6`，包名、2.0.12/40 版本及用户指定证书核验通过，包内 **1,688 个 UI 文件**与源码构建资产逐字节一致。
-
-## 2.0.11 UI 修正与验证
-
-完整逐项核对见 [UI-AUDIT.md](UI-AUDIT.md)。多服务器没有两台数据上限；问题在于新增后进入的服务器详情页缺少新增入口，同时根设置的数量变化 effect 抢写目标路由。现在在路由解析层处理旧根标签，根页与详情页共用新增动作；手机顶部与平板侧栏均可继续添加。侧栏原样式只在悬停时显示“＋”，触屏设备改为常显。
-
-Android 平台身份从 `web` 改为明确的 `android`，接入会话列表的目录/分支显示和文件导入接口，同时保留移动标题栏安全区和扫码条件。真实 WebView 124 还暴露出官方连接代码直接调用缺失的 `URL.parse`，密码连接在发请求前失败；使用已有 core-js 依赖在入口兼容层补齐，没有替换配对校验或健康检查。
-
-- 官方设置路由与缺失 URL.parse 的启动回归 **9/9**；app/GUI 类型检查及 UI 构建通过。
-- 完整打包页面的手机与触屏平板导航、服务器管理、导入及 Review 回归 **32/32**；覆盖连续添加五台、逐台切换、修改、删除、刷新恢复、删除到一台再增至三台，及非法文件不发请求、超过 2 MiB 的文件按官方 schema 导入。
-- 文件选择器的顺序读取、取消、异常拒绝及清理 **4/4**；终端完整发布回归 **51/51**。这些使用 Chromium，原生路径另列。
-- 实际 API 35 / WebView **124.0.6367.219**，viewport **412×891**：五台连续添加、强停重启后恢复五台和所选第四台、无页面异常 **3/3**。服务为五个独立测试端点，页面通过 CDP 驱动，不冒充实体手机网络验证。
-- 实际 Android SAF 选择中文 JSON 文件后，`File.text()` 完整读回 **2,097,175 字节**；保持 `allowContentAccess=false`。该最小原生检查通过注入当前文件选择器函数验证系统选择与读取路径，官方菜单、schema 与导入 API 的完整组合由上述 Chromium 导入回归覆盖，不表述为整条原生导入 UI 已端到端实测。
-
-本轮页面报告：`research/tmp/verify-android-navigation/2026-10-09T11-54-49-908Z/report.json`；设备报告：`research/tmp/verify-android-navigation/2026-10-09T11-57-48-544Z-device/report.json`；终端报告：`research/tmp/verify-android-terminal-release-ready/2026-10-09T11-00-51-071Z-63d896/report.json`。重启测试先确认 WebView localStorage 已写入磁盘，再强停；此前只看 JavaScript 中的值就立即杀进程，会把异步写盘误判为恢复错误，没有为此增加第二套配置或初始化补丁。
-
-本轮本地 debug/release 使用用户指定密钥，证书与 CI 保持一致。release 包为 **57,618,328 字节**、SHA-256 `BA009381DA0A80D5869EF13D4AC304AC10EAFC4376C5BE2F9571662787A5D5C7`；包名、2.0.11/39 版本、签名核验通过，包内 **1,688 个 UI 文件**与源码构建资产逐字节相同。CI 构建还会独立检查冻结依赖及提交资源一致性。
-
-## 2.0.10 已有能力的验证与证据
-
-自动化检查按单元测试、类型检查、构建、冒烟顺序执行：
-
-- Android 宿主单测 **249 项通过**；官方 app/GUI 生产源码类型检查通过；debug/release APK 构建通过。
-- Android RPC、服务器迁移、触屏与终端生命周期 JS 单测 **16 项通过**；companion 认证、远程端点和帧协议单测 **3 项通过**。
-- 官方浏览器连接、文件状态和导航权限单测 **19 项通过**。
-- 完整打包 SPA 导航 **16/16**、面板拖动 **10/10**、终端发布回归 **51/51**。这些使用 Chromium 与模拟桥，不冒充设备测试。
-- 实际 API 35 Android WebView：终端 **22/22**；平板面板拖动 **7/7**；原生文件保存、剪贴板与子框架隔离已验证。
-- 真实 OpenCode + 生产启动器的浏览器回归 **15/15**：注册、网络隧道、JPEG、evaluate、snapshot、frames、console、network、点击、中文输入、截图传回服务器、权限边界、取消、CPU、Lighthouse 与堆快照。
-- 实际 API 35 手机浏览器 **6/6**：网页画面、ADB 点击、中文输入事件、ADB 滑动、页面重载恢复、无页面异常。菜单准备使用 DOM 点击，中文插入使用 CDP InputEvent；不冒充实际软键盘的端到端输入，也不声称覆盖所有网站或全部工具分支。
-
-最终浏览器引擎报告：`research/tmp/verify-android-browser/2026-10-09T08-18-07-715Z/report.json`；实际手机报告与截图：`research/tmp/verify-android-browser/2026-10-09T08-16-16-344Z-device/`。普通隐藏窗口的最小复现返回 `Current display surface not available for capture`，相同流程启用离屏渲染后连续两次重建与截图成功。
-
-初次验收的本机构建 APK：`webapp/build/outputs/apk/release/webapp-release.apk`，57,607,944 字节；SHA-256 `3FFD58E336A2037BD9D0B51EA70879DBF15AE7FF3601ACB5E464B3BE20750930`。包名/版本/签名验证通过。该次构建使用本机默认 debug keystore 签名，与 GitHub CI 的签名不同。设备浏览器验证运行在同源代码的 debug APK。
-
-用户随后提供 `C:/sensorsdata/main/packages/debug.keystore` 及其 ZIP 备份；二者内容一致，实际证书为 CI 使用的 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6`。使用该密钥重新构建 release 并核验 APK 签名通过，后续本地包可覆盖升级 GitHub Release 版本。具体打包约定见根目录 `AGENTS.md`；密钥留在仓库外，凭据仅传入本次 Gradle 进程。
-
-发布前补充检查固定构建检出的 LF 行尾，并恢复旧 Windows 检出中被 CRLF 转换的源文件，避免同一 commit 在 Linux CI 生成不同资源。规范行尾后官方类型检查、APK 构建和导航 16 项回归再次通过；终端 51 项及拖动 10 项回归通过。
-
-CI 首次完整构建还发现 Workbox 按文件系统遍历顺序生成缓存清单。固定 URL 排序后，确认 Windows/Linux 的 1,616 个缓存条目内容与完整性校验相同、Service Worker 运行代码未变；两次源码构建逐字节一致，APK 中的缓存清单与源码构建一致。行尾检查仅扫描稀疏检出的源码，避免读取被排除的 blob 导致逐个网络下载。
-
-本轮具体报告保存在 `research/tmp/verify-android-*` 和 `_scratch_root/desktop-parity` 的本地测试目录。可复现入口：根 README、`browser-companion/smoke.mjs`、`scripts/verify-android-navigation.mjs`、`scripts/verify-android-resize.mjs`、`scripts/verify-android-terminal-release.mjs` 及设备验证脚本。CI 增加固定官方 UI 和 companion 的构建检查；PR/main 构建只读，tag 发布获得仓库写权限，两者复用同一构建工作流。签名包直接上传 GitHub Release，避免仓库已遇到的 Actions 产物存储配额限制；发布失败会明确失败。
-
-## 仍存在的差异
-
-当前不是所有 Desktop 平台能力的 100% 移植。第三方 GUI 扩展的本地安装/启停管理、SSH/WSL sidecar 生命周期、电脑本地文件应用、多窗口与 Electron 更新器未移植；应用菜单已复用官方组件并接入 Android 动作，Android 平台替代系统文件选择、通知与外链。浏览器触摸已传递真实多指事件，网页自己的手势交互由 Chromium 处理；电脑 Chromium 的原生右键菜单尚没有 Android 展示层。浏览器服务需运行在有图形环境的电脑。
-
-模型生成与付费提供商调用没有作为自动测试执行，因此“复用官方业务代码”不能等同于“逐一实测所有模型/代理/插件”。硬件相机扫码、系统通知投递、实体手机网络和不同厂商 WebView 仍需目标设备验收。这些边界不能用假成功或普通外部浏览器掩盖。
-
-## 来源
-
-- [官方 Desktop 入口](https://github.com/anomalyco/opencode/tree/v2/packages/desktop)
-- [固定版本共享 app](https://github.com/anomalyco/opencode/tree/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/app)
-- [固定版本 GUI 扩展](https://github.com/anomalyco/opencode/tree/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/gui-extensions)
-- [官方浏览器工具合同](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/plugin-browser/src/rpc.ts)
-- [Electron 离屏渲染](https://www.electronjs.org/docs/latest/tutorial/offscreen-rendering)
+- [Desktop 平台与原生能力](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/desktop/src/renderer/platform/index.ts)
+- [Desktop 启动与 sidecar](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/desktop/src/renderer/desktop-app.tsx)
+- [官方共享 app](https://github.com/anomalyco/opencode/tree/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/app)
+- [官方 GUI 扩展](https://github.com/anomalyco/opencode/tree/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/gui-extensions)

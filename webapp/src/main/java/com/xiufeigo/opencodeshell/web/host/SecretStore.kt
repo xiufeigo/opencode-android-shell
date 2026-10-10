@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 /** Encrypted host preferences. Keystore failures are explicit; credentials never fall back to plaintext. */
 object SecretStore {
     private const val FILE = "oc_webhost_secrets"
+    private const val REMOVED_BROWSER_PAIRING = "browserPairing"
 
     /**
      * 启动入口地址键。**不是秘密**：默认 `http://127.0.0.1:4095`，
@@ -39,20 +40,26 @@ object SecretStore {
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
+        ).also { preferences ->
+            if (preferences.contains(REMOVED_BROWSER_PAIRING)) {
+                check(preferences.edit().remove(REMOVED_BROWSER_PAIRING).commit()) {
+                    "Cannot remove obsolete browser credentials"
+                }
+            }
+        }
     }
 
     /** @return null 表示没有这个键。空串视为"没有"，避免把空值当成有效配置。 */
     fun getSecret(context: Context, key: String): String? {
         if (key.isBlank()) return null
-        require(key != "browserPairing") { "Browser pairing uses the dedicated platform API" }
+        require(key != REMOVED_BROWSER_PAIRING) { "Built-in browser support has been removed" }
         return get(context).getString(key, null)?.takeIf { it.isNotEmpty() }
     }
 
     /** 传 null 或空串 = 删键。 */
     fun setSecret(context: Context, key: String, value: String?) {
         if (key.isBlank()) return
-        require(key != "browserPairing") { "Browser pairing uses the dedicated platform API" }
+        require(key != REMOVED_BROWSER_PAIRING) { "Built-in browser support has been removed" }
         val editor = get(context).edit()
         if (value.isNullOrEmpty()) editor.remove(key) else editor.putString(key, value)
         check(editor.commit()) { "Cannot persist host preference" }

@@ -777,7 +777,8 @@ function nativeBridgeSource() {
     postMessage(raw) {
       const request = JSON.parse(raw)
       calls.push({ name: request.method, args: request.payload })
-      const value = ["readClipboardImage", "browserConfig"].includes(request.method) ? null : request.method === "configureBrowser" ? false : true
+      if (["browserConfig", "configureBrowser"].includes(request.method)) throw new Error("Built-in browser platform methods have been removed")
+      const value = request.method === "readClipboardImage" ? null : true
       queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id: request.id, value }) }))
     },
   }

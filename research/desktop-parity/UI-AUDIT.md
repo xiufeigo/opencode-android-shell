@@ -1,26 +1,28 @@
-# Android 与 Desktop UI 核对（2.0.13）
+# Android 与 Desktop UI 核对（2.0.14）
 
-基准为官方 **2.0.26 / ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4**，不是随时变化的 `v2` 分支。核对产品模块 `webapp/`，不使用已经退出发布的 `app/` Compose UI 代表当前产品。
+基准：官方 **2.0.26 / ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4**。核对的是发布模块 `webapp`；Desktop renderer 本身使用共享 `packages/app`，并注入 Electron 平台与扩展宿主。
 
-Desktop 的 renderer 从 `packages/app` 加载界面，并注入 Electron 平台、sidecar 和扩展服务器。因此复用 `packages/app` 是官方 Desktop 的实现路径；界面差异需要区分响应式布局、平台能力条件和未移植能力。
-
-| 区域 | 官方 Desktop 的来源与行为 | Android 本轮核对结果 |
+| 区域／触发 | Desktop 行为及官方出处 | Android 结果与不一致 |
 | --- | --- | --- |
-| 首页与会话列表 | `home/projects/view.tsx`、`home/sessions/view.tsx`；宽屏侧栏、窄屏项目菜单；Desktop 可在悬停/Alt 时显示工作目录和分支 | 保留官方响应式布局；原 Android 被当作 Web，目录信息及 Desktop 列表样式被关闭，本轮改为明确 Android 平台并启用这套列表显示。目录来自远程服务，不调用电脑文件管理器 |
-| 服务器设置 | `settings/shell.tsx`；单台显示合并设置，多台显示服务器分组，新增后进入单独服务器设置 | 原本嵌套页没有新增入口，且数量增长 effect 会覆盖新增目标路由。移除导航竞态，在嵌套页补官方 AddServerMenu：手机顶部“＋”、宽屏侧栏“＋”；与根级共用新增动作；无悬停能力的触屏设备常显侧栏按钮 |
-| 多服务器数据 | `runtime/server/registry.tsx`；按规范 URL 去重并持久化，无两台上限 | 没有新增第二份服务器配置；验证五台连续添加、编辑、切换、删除、刷新和只剩一台后再增至三台 |
-| 会话导入 | `home/projects/controller.tsx` 依据 `openAttachmentPickerDialog` 显示菜单；按官方 SessionTransfer schema 校验，再发往选中项目所属服务 | 原接口缺失导致菜单隐藏。接入 Android SAF/WebView File，验证非法文件不发请求、超过 2 MiB 的有效文件导入后进入对应远程会话 |
-| 连接页与二维码 | `servers/connect/screen.tsx`、`dialog.tsx`；平台与相机能力决定扫码入口 | 保留配对链接、密码与原生相机接入。改为 Android 身份时同时调整扫码入口条件，避免相机可用但按钮被隐藏；在入口兼容层补 WebView 124 缺失的 URL.parse，实际密码连接和新增通过；实体相机扫码仍未自动实测 |
-| 消息、输入框、权限、模型、代理 | `session/`、`providers/` 的官方共享组件与业务状态 | 无另一套仿写页面；本轮没有改其业务逻辑。沿用官方实现不代表所有模型和代理都逐一调用验证 |
-| 文件、Review 和终端 | 官方工作区文件及差异面板；GUI 扩展提供终端 | 保留官方文件选择入口和布局；移动终端/触屏使用已有 Android 适配，本轮执行终端回归确认平台身份变化没有破坏输入和恢复 |
-| 内置浏览器 | 官方 GUI browser 扩展及 Electron/CDP；打开 New tab、地址栏和空白首页，网页网络通过所选服务器 | Android 使用相同 pane/model/toolbar 和执行引擎；2.0.13 的统一网关复用所选服务器地址与认证，点击直接打开 New tab，首次打开不再弹配对框。手机标签独立关闭、首标签去重、按钮复用官方翻译；真实 touch 支持网页点击、滚动、拖动与 pinch |
-| 左上应用菜单 | `titlebar/windows-menu.tsx` 与 `shell/commands/desktop-menu.ts`；六组分类，调用统一 command、平台 action 或帮助链接 | 2.0.12 直接复用官方菜单和翻译，手机与平板均显示；命令沿用同一注册表，编辑接原生剪贴板并恢复选区，支持重载、缩放、系统全屏、最小化/关闭；桌面新窗口、最大化和开发者工具禁用 |
-| 右侧“＋”菜单 | `runtime/extension/side-region.tsx` 根据扩展 `session.panel` 项构建；文件和浏览器各贡献动作 | 保留官方打开文件/浏览器两项与快捷键；2.0.13 菜单和 Ctrl+Shift+B 共用服务器自动连接动作，错误明确提示，不调用原生配对。手机从“更多 → 浏览器”显示同一个官方面板 |
-| 设置、主题、语言 | `settings/` 和官方 UI 组件；部分条目由扩展贡献 | 共享组件、主题与语言；UI 缩放每步 20%，与 Desktop native/menu-actions 一致；不支持的菜单快捷键不吞输入。GUI 扩展管理尚未移植 |
-| SSH/WSL、多窗口与更新 | Desktop 原生宿主与扩展服务器 | 尚未移植。HTTP 多服务器可以完整管理；应用菜单已接入 Android 宿主动作，不能把它表述为全部 Desktop 平台能力已对齐 |
+| 顶部与导航 | `app/src/shell/titlebar/titlebar.tsx`：宽屏标签/主页，窄屏 MobileDrawer | 官方响应式布局；手机不会照搬宽屏多栏截图。Android 额外启用同一应用菜单，并使用系统安全区和软键盘空间 |
+| 左上应用菜单 | `app/src/shell/commands/desktop-menu.ts`、`titlebar/windows-menu.tsx`：文件、编辑、视图、转到、窗口、帮助 | 同一分类、翻译和命令；复制/剪切/粘贴恢复原焦点/选区。新桌面窗口、最大化和 DevTools 可见但禁用；全屏隐藏系统栏，最小化进入后台，关闭结束 Android 任务 |
+| 快捷键 | `app/src/shell/commands/command.tsx` 与菜单 capture keydown | 外接键盘使用官方快捷键；软键盘不能提供全部 Ctrl/Alt 组合。已移除 Ctrl+Shift+B 浏览器命令，不吞该输入 |
+| 首页会话目录/分支 | `app/src/home/sessions/controller.tsx`、`view.tsx`：Desktop 悬停/Alt 展示位置 | 启用官方 Desktop 列表样式和远程目录/分支信息；没有完整的触屏悬停/Alt 等价操作 |
+| 服务器设置与持续添加 | `app/src/settings/shell.tsx`、`runtime/server/registry.tsx`：单台合并，多台分组 | 修复新增导航竞态；根页和详情页均能继续添加，触屏“＋”常显；五台增删切换恢复已测。SSH/WSL 管理未接入 |
+| 会话与输入框 | `app/src/session/`、`composer/`：流式消息、权限表单、模型/代理/附件 | 共享业务状态与组件；软键盘和手机布局不同。复用代码不代表全部模型和代理逐项验收 |
+| 右侧审查栏“＋” | `app/src/runtime/extension/side-region.tsx` 根据扩展贡献构造单动作或菜单 | 浏览器已移除，只剩文件时按官方规则直接打开工作区文件选择器；这是本次有意变化 |
+| 手机“更多” | GUI panel registry 与官方 MobileDrawer | 保留终端、文件等支持的共享面板，删除浏览器标签及入口 |
+| 文件和 Review | GUI `file/renderer.tsx`、`file/list.tsx`、`file/tree-v2.tsx`、Review renderer | 共享远程文件与差异 UI；Desktop 的 Open in app、文件管理器定位依赖 `ctx.desktop`，Android 隐藏这些入口，不会显示伪造成功 |
+| 导入／附件／保存 | Desktop `renderer/platform/files.ts`、共享项目菜单/附件 controller | Android 使用 SAF 文件选择及 Markdown 保存；不具备 Desktop 原生目录选择、附件本地路径映射和拖放取消通知。文件字节导入已测，系统拖放待设备验收 |
+| Word/Excel/PowerPoint | GUI `microsoft-office/renderer.tsx`：三种文件只读预览 | renderer 和预览资产已包含，不列为缺失；本轮没有逐格式做实际文件验收 |
+| 终端 | GUI terminal 面板与官方 ghostty-web | UI/PTY 同源；Android 使用 xterm 适配，触摸滚动、IME、字体及历史行为有专门实现和测试，不能说引擎完全相同 |
+| MCP／插件／Skills 设置 | `app/src/settings/providers/extensions.tsx` 查询所选服务器 API | 保留；第三方 GUI 扩展本机托管未移植，二者不要混淆。GUI Extensions 诊断页本来是开发 Desktop 专用 |
+| 设置／主题／语言 | 官方共享设置和 UI 组件 | 同源；缩放每步 20%。桌面窗口缩放与 Android CSS 缩放实现不同，多指缩放手势和手机字号不是桌面窗口能力的完整替代 |
+| 系统通知 | `app/src/shell/notifications/notification.tsx`、Desktop `renderer/platform/notifications.ts` | 成功/失败通知经 `oc-host.js` 的 Notification shim → `WebHostBridge` → `NotifierHost`，Android 系统权限决定投递；本轮源码核验，跨会话点击和厂商后台限制尚未完整设备验收 |
+| 草稿与恢复 | Desktop `renderer/platform/storage.ts`、`main/storage/index.ts` | Android 采用共享 Web IndexedDB/localStorage，Desktop 用 SQLite；存储机制不同，升级保留服务器和草稿数据 |
+| 本机服务／系统能力 | Desktop sidecar、GUI SSH/WSL/updater、窗口 registry、deep-link 和 CLI | Android 未实现本机引擎生命周期、SSH/WSL 管理、多窗口、通用 opencode:// 链接、Electron 更新器、桌面调试日志导出及 CLI 安装；普通远程 HTTP 服务器仍可连接 |
+| 内置浏览器 | Desktop browser pane、Electron/CDP 与网络隧道 | 用户明确取消。Android 删除面板、快捷键、配对、传输和 gateway；网页链接交给系统浏览器 |
 
-手机小于 768 CSS px 时出现官方移动布局，属于共享组件的响应式行为。强制缩放整张桌面页面会牺牲点击尺寸和键盘空间，不能解决平台入口缺失；本轮沿用布局并修复功能路径。
+“没有实现”“交互有意适配”“已接线但未完整实测”是三种不同结论。当前无法宣称与 Desktop 的全部功能和交互 100% 一致。具体验证与版本范围见 [REPORT.md](REPORT.md)。
 
-之前“导航 16 项通过”的验收重新打开总设置，漏掉连续添加时的目标页面和过渡状态。新脚本先等待新增目标服务器页稳定，再使用该页的新增入口；同时覆盖单台和多台间切换。浏览器测试、实际 WebView 测试及发布 APK 签名分别记录，详细结果见 [REPORT.md](REPORT.md)。
-
-官方出处：[Desktop renderer](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/desktop/src/renderer/desktop-app.tsx)、[设置层级](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/app/src/settings/shell.tsx)、[平台接口](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/app/src/runtime/platform/platform.tsx)、[服务器注册表](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/app/src/runtime/server/registry.tsx)。
+官方代码：[Desktop 平台](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/desktop/src/renderer/platform/index.ts)、[共享设置](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/app/src/settings/shell.tsx)、[GUI renderer composition](https://github.com/anomalyco/opencode/blob/ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4/packages/gui-extensions/src/renderer.ts)。

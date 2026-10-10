@@ -22,7 +22,6 @@ class AndroidPlatformHost(
     private val files: FileChooserHost,
 ) : AutoCloseable {
     private val worker = Executors.newSingleThreadExecutor()
-    private val pairing = BrowserPairing(activity)
     @Volatile
     private var closed = false
     private var fullscreen = false
@@ -55,8 +54,6 @@ class AndroidPlatformHost(
             try {
                 val payload = request.getJSONObject("payload")
                 when (request.getString("method")) {
-                    "browserConfig" -> respond(pairing.read())
-                    "configureBrowser" -> pairing.configure { value, error -> respond(value, error) }
                     "openExternal" -> {
                         openExternal(payload.getString("url"))
                         respond(true)
@@ -138,7 +135,6 @@ class AndroidPlatformHost(
 
     override fun close() {
         closed = true
-        pairing.close()
         worker.shutdown()
     }
 }

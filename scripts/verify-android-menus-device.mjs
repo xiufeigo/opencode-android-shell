@@ -3,10 +3,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
-import http from "node:http"
 
 // Only an explicitly selected, isolated emulator and debug product APK.
-// Real Android platform bridge and same-address browser gateway;
+// Real Android platform bridge and a plain OpenCode server;
 // no bridge mocks. Credentials are read locally and never written to the report.
 const serial = process.env.ANDROID_SERIAL
 if (!serial) throw new Error("Set ANDROID_SERIAL to an isolated test emulator")
@@ -24,15 +23,6 @@ const component = `${app}/${app}.web.WebHostActivity`
 const native = args => execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8" })
 const checks = []
 const errors = []
-const proof = []
-const fixture = http.createServer((req, res) => {
-  if (req.url.startsWith("/proof")) { proof.push(req.url); res.end("ok"); return }
-  res.setHeader("content-type", "text/html; charset=utf-8")
-  res.end(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5"><title>Android gateway ${req.url}</title>
-    <style>body{margin:16px;font:18px sans-serif}button{position:absolute;left:16px;top:100px;width:180px;height:40px}</style>
-    <h2>Android gateway ${req.url}</h2><button onclick="fetch('/proof?click=1')">Tap test</button><div style="height:1800px">Scroll test</div>
-    <script>fetch('/proof?ready='+location.pathname);onscroll=()=>fetch('/proof?scroll='+scrollY)</script>`)
-})
 const pass = name => { checks.push(name); console.log("PASS actual Android", name) }
 const visible = locator => locator.filter({ visible: true })
 const button = (page, name) => visible(page.getByRole("button", { name, exact: true })).first()
@@ -60,8 +50,6 @@ async function select(group, name) {
 }
 const ports = [new URL(config.url).port]
 try {
-  await new Promise((resolve, reject) => { fixture.once("error", reject); fixture.listen(0, "127.0.0.1", resolve) })
-  const address = `http://127.0.0.1:${fixture.address().port}`
   for (const port of ports) native(["reverse", `tcp:${port}`, `tcp:${port}`])
   native(["shell", "settings", "put", "system", "screen_off_timeout", "1800000"])
   native(["shell", "input", "keyevent", "224"])
@@ -69,35 +57,19 @@ try {
   native(["shell", "am", "start", "-W", "-n", component])
   await attach()
   const installTrace = () => {
-    window.__menuBrowserTrace = []
+    window.__menuNativeTrace = []
     const native = window.__ocPlatform
     const post = native.postMessage.bind(native)
     const receive = native.onmessage
     native.postMessage = data => {
       const value = JSON.parse(data)
-      window.__menuBrowserTrace.push({ direction: "native-send", method: value.method, id: value.id })
+      window.__menuNativeTrace.push({ direction: "native-send", method: value.method, id: value.id })
       post(data)
     }
     native.onmessage = event => {
       const value = JSON.parse(event.data)
-      window.__menuBrowserTrace.push({ direction: "native-receive", id: value.id, kind: value.value === null ? "null" : typeof value.value, error: !!value.error })
+      window.__menuNativeTrace.push({ direction: "native-receive", id: value.id, kind: value.value === null ? "null" : typeof value.value, error: !!value.error })
       receive(event)
-    }
-    const send = WebSocket.prototype.send
-    WebSocket.prototype.send = function (data) {
-      if (!this.__menuObserved) {
-        this.__menuObserved = true
-        this.addEventListener("message", event => {
-          if (typeof event.data !== "string") return
-          const value = JSON.parse(event.data)
-          window.__menuBrowserTrace.push({ direction: "receive", type: value.type, ipc: value.ipc, name: value.name, error: !!value.error, reply: value.id })
-        })
-      }
-      if (typeof data === "string") {
-        const value = JSON.parse(data)
-        window.__menuBrowserTrace.push({ direction: "send", method: value.method, ipc: value.input?.ipc, action: value.input?.method, command: value.input?.input?.command?.type })
-      }
-      return send.call(this, data)
     }
   }
   const response = await fetch(`${config.url}/api/session`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ title: "Android menu device verification" }) })
@@ -111,12 +83,10 @@ try {
     location.href = `/server/${server}/session/${session}`
   }, { config, session })
   await button(page, "OpenCode menu").waitFor()
-  // The isolated emulator may retain a previous release's explicit pairing.
-  // Clear that preference through its real compatibility setting, then observe
-  // the fresh default path. This does not reset the server registry or app data.
   await select("File", "Settings")
-  await button(page, "Legacy browser connection").click()
-  await device.tap({ text: "断开", clazz: "android.widget.Button" })
+  assert.equal(await page.locator('[data-action="settings-android-browser"]').count(), 0)
+  assert.equal(await button(page, "Legacy browser connection").count(), 0)
+  pass(`${profile} settings has no built-in browser or legacy pairing`)
   await button(page, "Back to app").click()
   await page.evaluate(installTrace)
   if (profile === "phone") {
@@ -145,89 +115,42 @@ try {
         await new Promise(resolve => setTimeout(resolve, 100))
       }
       throw new Error(`Android status bars did not become visible=${visible}`)
-  }
-  await waitBars(true)
-  await select("View", "Toggle Full Screen")
-  await waitBars(false)
-  await page.screenshot({ path: path.join(output, "phone-fullscreen.png") })
-  await select("View", "Toggle Full Screen")
-  await waitBars(true)
-  pass("phone native fullscreen hides and restores system bars")
+    }
+    await waitBars(true)
+    await select("View", "Toggle Full Screen")
+    await waitBars(false)
+    await page.screenshot({ path: path.join(output, "phone-fullscreen.png") })
+    await select("View", "Toggle Full Screen")
+    await waitBars(true)
+    pass("phone native fullscreen hides and restores system bars")
   }
   if (profile === "tablet") {
     assert.ok(await page.evaluate(() => innerWidth) >= 768, "Tablet profile needs a wide emulator")
     await button(page, "Toggle review").waitFor()
     if (await button(page, "Toggle review").getAttribute("aria-expanded") !== "true") await button(page, "Toggle review").click()
-    const plus = visible(page.locator("#review-panel").getByRole("button", { name: "Add tab", exact: true }))
-    await plus.click()
-    await item("Open file").click()
+    await visible(page.locator("#review-panel").getByRole("button", { name: "Open file", exact: true })).click()
     await visible(page.locator('#review-panel input[aria-label="Filter files"]')).waitFor()
-    pass("tablet official plus menu opens remote workspace file picker")
-    await plus.click()
-    await item("Browser").waitFor()
-    await page.screenshot({ path: path.join(output, "tablet-plus-menu.png") })
-    await item("Browser").click()
+    pass("tablet plus opens the official remote workspace file picker")
   }
   if (profile === "phone") {
-    await visible(page.getByText("More...", { exact: true })).click()
-    await visible(page.getByText("Browser", { exact: true })).click()
+    const more = visible(page.getByText("More...", { exact: true }))
+    if (await more.count()) {
+      await more.click()
+      assert.equal(await visible(page.getByText("Browser", { exact: true })).count(), 0)
+      await page.locator('[data-slot="mobile-drawer-overlay"][data-open]').click({ position: { x: 10, y: 10 } })
+      await page.locator('[data-slot="mobile-drawer-overlay"][data-open]').waitFor({ state: "hidden" })
+    }
   }
-  const addressField = visible(page.locator('[data-slot="browser-address-input"]'))
-  await addressField.waitFor({ timeout: 60_000 })
-  await page.getByText("Open a page", { exact: true }).waitFor()
-  await page.waitForFunction(() => window.__menuBrowserTrace.filter(entry => entry.command === "tabs.open").length === 1)
-  assert.equal(await page.evaluate(() => window.__menuBrowserTrace.some(entry => entry.method === "configureBrowser")), false)
-  pass(`${profile} Browser opens official New tab directly without native pairing or duplicate tabs`)
-  await page.screenshot({ path: path.join(output, `${profile}-browser-new-tab.png`) })
-  for (const pathname of ["/first", "/second"]) {
-    await addressField.fill(address + pathname)
-    await addressField.press("Enter")
-    await page.waitForFunction(value => document.querySelector('[data-slot="browser-address-input"]')?.value === value, address + pathname)
-    const deadline = Date.now() + 30_000
-    while (!proof.includes(`/proof?ready=${pathname}`) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100))
-    assert.ok(proof.includes(`/proof?ready=${pathname}`))
-    await page.waitForFunction(() => !!document.querySelector('[data-android-browser-surface] img')?.naturalWidth)
-  }
-  await visible(page.locator("#browser-panel").getByRole("button", { name: "Navigate back", exact: true })).click()
-  await page.waitForFunction(value => document.querySelector('[data-slot="browser-address-input"]')?.value === value, address + "/first")
-  await visible(page.locator("#browser-panel").getByRole("button", { name: "Navigate forward", exact: true })).click()
-  await page.waitForFunction(value => document.querySelector('[data-slot="browser-address-input"]')?.value === value, address + "/second")
-  pass(`${profile} official address bar navigates, goes back and forward through the server network`)
-  native(["shell", "input", "keyevent", "111"])
-  await page.waitForFunction(() => {
-    const surface = document.querySelector('[data-android-browser-surface]')
-    const rect = surface?.getBoundingClientRect()
-    const image = surface?.querySelector('img')
-    return image?.naturalHeight && Math.abs(image.naturalWidth / image.naturalHeight - rect.width / rect.height) < 0.005
+  const consumed = await page.evaluate(() => {
+    const event = new KeyboardEvent("keydown", { key: "b", code: "KeyB", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })
+    document.dispatchEvent(event)
+    return event.defaultPrevented
   })
-  const rect = await page.locator('[data-android-browser-surface]').evaluate(node => {
-    const rect = node.getBoundingClientRect()
-    return { x: rect.x, y: rect.y, dpr: devicePixelRatio }
-  })
-  const point = (x, y) => [String(Math.round((rect.x + x) * rect.dpr)), String(Math.round((rect.y + y) * rect.dpr))]
-  native(["shell", "input", "tap", ...point(80, 120)])
-  let deadline = Date.now() + 20_000
-  while (!proof.includes("/proof?click=1") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100))
-  assert.ok(proof.includes("/proof?click=1"))
-  native(["shell", "input", "swipe", ...point(200, 500), ...point(200, 250), "500"])
-  deadline = Date.now() + 20_000
-  while (!proof.some(value => value.startsWith("/proof?scroll=") && Number(value.split("=")[1]) > 100) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100))
-  assert.ok(proof.some(value => value.startsWith("/proof?scroll=") && Number(value.split("=")[1]) > 100))
-  pass(`${profile} ADB tap and swipe reach the real browser webpage`)
-  if (profile === "phone") {
-    await button(page, "New tab").click()
-    await page.getByText("Open a page", { exact: true }).waitFor()
-    await visible(page.getByRole("button", { name: "Close tab: Android gateway /second", exact: true })).click()
-    await page.waitForFunction(() => document.querySelector('[role="tablist"][aria-label="Browser"]')?.querySelectorAll('[role="tab"]').length === 1)
-    pass("phone can close an unselected browser tab")
-  }
-  const before = await page.evaluate(() => window.__menuBrowserTrace.filter(entry => entry.command === "tabs.open").length)
-  await page.keyboard.press("Control+Shift+b")
-  await page.waitForFunction(count => window.__menuBrowserTrace.filter(entry => entry.command === "tabs.open").length === count + 1, before)
-  await page.getByText("Open a page", { exact: true }).waitFor()
-  assert.equal(await page.evaluate(() => window.__menuBrowserTrace.some(entry => entry.method === "configureBrowser")), false)
-  pass(`${profile} Ctrl+Shift+B opens a new official browser tab without pairing`)
-  await page.screenshot({ path: path.join(output, `${profile}-browser-menu.png`) })
+  assert.equal(consumed, false)
+  assert.equal(await page.locator('[data-android-browser-surface]').count(), 0)
+  assert.equal(await page.evaluate(() => window.__menuNativeTrace.some(entry => ["browserConfig", "configureBrowser"].includes(entry.method))), false)
+  pass(`${profile} browser removal leaves no panel, native request or shortcut handler`)
+  await page.screenshot({ path: path.join(output, `${profile}-without-browser.png`) })
   if (profile === "tablet") {
     await button(page, "OpenCode menu").click()
     await page.screenshot({ path: path.join(output, "tablet-application-menu.png") })
@@ -235,14 +158,13 @@ try {
   }
   assert.deepEqual(errors, [])
   pass("no actual WebView page exceptions")
-  fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ scope: "actual debug product APK, Android WebView, system clipboard/bars, real OpenCode v2 and same-address Electron browser gateway; DOM menu/address actions and ADB webpage input", serial, profile, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), checks, errors }, null, 2))
+  fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ scope: "actual debug product APK, Android WebView, system clipboard/bars and plain OpenCode v2; DOM menu actions and browser removal checks", serial, profile, viewport: await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), checks, errors }, null, 2))
   console.log("REPORT", output)
 } catch (error) {
   if (page && !page.isClosed()) await page.screenshot({ path: path.join(output, "failure.png") })
-  fs.writeFileSync(path.join(output, "failure.json"), JSON.stringify({ checks, error: error.stack, errors, trace: page && !page.isClosed() ? await page.evaluate(() => window.__menuBrowserTrace) : undefined, text: page && !page.isClosed() ? await page.locator("body").innerText() : undefined }, null, 2))
+  fs.writeFileSync(path.join(output, "failure.json"), JSON.stringify({ checks, error: error.stack, errors, trace: page && !page.isClosed() ? await page.evaluate(() => window.__menuNativeTrace) : undefined, text: page && !page.isClosed() ? await page.locator("body").innerText() : undefined }, null, 2))
   throw error
 } finally {
-  fixture.close()
   try {
     // Android owns this WebView; Browser.close is not a supported host command.
     // Stop our test Activity before detaching the device transport.

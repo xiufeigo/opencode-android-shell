@@ -63,61 +63,6 @@ index ea010619..c4081735 100644
      },
      location: {
        value: location,
-diff --git a/packages/app/src/runtime/extension/embeds.tsx b/packages/app/src/runtime/extension/embeds.tsx
-index c4e72ad8..e6cf7734 100644
---- a/packages/app/src/runtime/extension/embeds.tsx
-+++ b/packages/app/src/runtime/extension/embeds.tsx
-@@ -1,4 +1,4 @@
--import { createEffect, on, onCleanup, Show } from "solid-js"
-+import { createComponent, createEffect, mergeProps, on, onCleanup, Show } from "solid-js"
- import { createStore } from "solid-js/store"
- import { createEventListener } from "@solid-primitives/event-listener"
- import { createResizeObserver } from "@solid-primitives/resize-observer"
-@@ -23,6 +23,8 @@ export function createEmbeds(input: Input): Embeds {
-       // Without the desktop bridge there is no embed; the box still renders its children.
-       if (!bridge) return <div class={props.class}>{props.children}</div>
- 
-+      if (bridge.view) return createComponent(bridge.view, mergeProps(props, { get frozen() { return props.frozen || input.dialog() } }))
-+
-       return <EmbedView {...props} input={input} bridge={bridge} />
-     },
-     capture: (id) => input.bridge?.capture(id) ?? Promise.resolve(undefined),
-diff --git a/packages/app/src/runtime/extension/host-apis.tsx b/packages/app/src/runtime/extension/host-apis.tsx
-index b127a228..4515b39a 100644
---- a/packages/app/src/runtime/extension/host-apis.tsx
-+++ b/packages/app/src/runtime/extension/host-apis.tsx
-@@ -247,6 +247,7 @@ export function createHostApis() {
-             forceFocus: (enabled) => platform.setForceFocus?.(enabled) ?? Promise.resolve(),
-           }
-         : undefined,
-+    browserConnection: () => platform.extensions?.browserConnection,
-     build: () => ({
-       version: platform.version ?? "",
-       // SAFETY: the build sets VITE_OPENCODE_CHANNEL to one of the release channels, or leaves it unset locally.
-diff --git a/packages/app/src/runtime/extension/side-region.tsx b/packages/app/src/runtime/extension/side-region.tsx
-index 7c80efa4..18a1e64a 100644
---- a/packages/app/src/runtime/extension/side-region.tsx
-+++ b/packages/app/src/runtime/extension/side-region.tsx
-@@ -315,7 +315,8 @@ function AddButton(props: { item: SessionPanelMenuItem }): JSX.Element {
-         icon={<Icon name="plus" />}
-         variant="ghost-muted"
-         size="large"
--        onClick={() => props.item.run()}
-+        disabled={props.item.enabled ? !props.item.enabled() : false}
-+        onClick={() => { if (props.item.enabled?.() !== false) props.item.run() }}
-         aria-label={props.item.title}
-       />
-     </Tooltip>
-@@ -348,7 +349,8 @@ function AddMenu(props: { items: readonly SessionPanelMenuItem[] }): JSX.Element
-                 return (
-                   <Menu.Item
-                     class="!gap-6"
--                    onSelect={() => item.run()}
-+                    disabled={item.enabled ? !item.enabled() : false}
-+                    onSelect={() => { if (item.enabled?.() !== false) item.run() }}
-                     shortcut={
-                       <Show when={keybind().length > 0}>
-                         <Keybind keys={keybind()} variant="neutral" />
 diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
 index 4caac345..b750252d 100644
 --- a/packages/app/src/runtime/platform/platform.tsx
@@ -165,8 +110,7 @@ index 4caac345..b750252d 100644
    /** Record a fatal renderer error in platform logs (desktop only) */
    recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
  
--  /** GUI extension bridge to the main-process extension host (desktop only). */
-+  /** GUI extension bridge to a native or remote extension host. */
+   /** GUI extension bridge to the main-process extension host (desktop only). */
    extensions?: Bridge
  }
  
@@ -250,26 +194,6 @@ index 21f54fb2..9a66afdb 100644
              <Show
                when={camera.available.latest || camera.available.loading}
                fallback={<p>{language.t(cameraHint())}</p>}
-diff --git a/packages/app/src/settings/general/general.tsx b/packages/app/src/settings/general/general.tsx
-index 81347b4d..a3ba1824 100644
---- a/packages/app/src/settings/general/general.tsx
-+++ b/packages/app/src/settings/general/general.tsx
-@@ -17,6 +17,7 @@ import { SettingsList } from "@/settings/list"
- import { SettingsRow } from "@/settings/row"
- import { createShellOptions, type ShellSettingsController } from "./controllers"
- import "@/settings/settings.css"
-+import { AndroidBrowserSettings } from "./android-browser"
- 
- const tabLayoutOptions: ("horizontal" | "vertical")[] = ["horizontal", "vertical"]
- 
-@@ -243,6 +244,7 @@ export const SettingsGeneral: Component = () => {
-       <h3 class="settings-section-title">{language.t("settings.general.section.general")}</h3>
-       <SettingsList>
-         <LanguageSetting />
-+        <AndroidBrowserSettings />
-         <TabLayoutSetting />
- 
-         <WorkspaceDestinationSetting />
 diff --git a/packages/app/src/settings/route.test.ts b/packages/app/src/settings/route.test.ts
 index 3802fab3..447579c2 100644
 --- a/packages/app/src/settings/route.test.ts
@@ -606,262 +530,6 @@ index 20661ce1..f7b06133 100644
                .map(async (entry) => ({
                ...entry,
                // A revision labels a cache entry; integrity rejects mixed deployments
-diff --git a/packages/gui-extensions/src/browser/chromium.ts b/packages/gui-extensions/src/browser/chromium.ts
-index 4e665fa8..b3c87cab 100644
---- a/packages/gui-extensions/src/browser/chromium.ts
-+++ b/packages/gui-extensions/src/browser/chromium.ts
-@@ -146,6 +146,9 @@ export function createBrowserPage(
-     fileRoots?: () => ReadonlyArray<string>
-     shared: Shared
-     embeds: Embeds
-+    /** A remote host reports its actual client visibility instead of the carrier window's. */
-+    hostVisible?: () => boolean
-+    offscreen?: boolean
-   },
- ) {
-   const policy: Policy = {
-@@ -158,6 +161,7 @@ export function createBrowserPage(
-     ...options.popupOptions,
-     webPreferences: {
-       partition: options.partition,
-+      offscreen: options.offscreen,
-       nodeIntegration: false,
-       contextIsolation: true,
-       sandbox: true,
-@@ -931,7 +935,7 @@ export function createBrowserPage(
-           throw new Error(
-             "Choose either ref for an element screenshot or fullPage:true for the whole page. Remove the other argument before retrying.",
-           )
--        await waitFor(() => view.getVisible() && win.isVisible() && !win.isMinimized(), signal, 3_000).catch(
-+        await waitFor(() => view.getVisible() && (options.hostVisible?.() ?? (win.isVisible() && !win.isMinimized())), signal, 3_000).catch(
-           (error) => {
-             if (signal.aborted) throw error
-             throw new Error(
-diff --git a/packages/gui-extensions/src/browser/connection.ts b/packages/gui-extensions/src/browser/connection.ts
-index 21185374..c3b37697 100644
---- a/packages/gui-extensions/src/browser/connection.ts
-+++ b/packages/gui-extensions/src/browser/connection.ts
-@@ -117,13 +117,13 @@ export function createConnection(input: {
- 
-   // Main closed the binding, or never took it (an SSH server's endpoint is missing while it reconnects).
-   // Keep the tabs and register again with backoff; commands sent through it already failed and are not replayed.
--  const reopen = (registration: Registration) => {
-+  const reopen = (registration: Registration, error?: string) => {
-     if (disposed || state.registration !== registration) return
-     registration.close()
-     state.registration = undefined
-     state.embeds = {}
-     state.suspended = false
--    state.error = undefined
-+    state.error = error
-     publish()
-     retry = setTimeout(register, Math.min(30_000, 1_000 * 2 ** attempts++))
-   }
-@@ -202,7 +202,7 @@ export function createConnection(input: {
- 
-         // Main closed a binding it took; its closed-state event decides, whichever of the two arrives first.
-         if (error instanceof Error && error.message === "browser.pane.registration.closed") return
--        reopen(registration)
-+        reopen(registration, error instanceof Error ? error.message : String(error))
-       },
-     )
- 
-diff --git a/packages/gui-extensions/src/browser/model.ts b/packages/gui-extensions/src/browser/model.ts
-index ffde316e..5f237598 100644
---- a/packages/gui-extensions/src/browser/model.ts
-+++ b/packages/gui-extensions/src/browser/model.ts
-@@ -359,7 +359,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
-   }
- 
-   const available = (session: SessionRef) =>
--    !state.unsupported[session.server.id] && !!session.id && session.server.compatible && !layout.narrow()
-+    !!client() && !state.unsupported[session.server.id] && !!session.id && session.server.compatible
- 
-   const tab = (session: Session, tabID: string) => attachment(session)?.browser?.tabs.find((item) => item.id === tabID)
- 
-@@ -455,6 +455,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
-       opening.add(session.key)
-       command(session, { type: "tabs.open" })
-     },
-+    opening: (session: Session) => opening.has(session.key),
-     /** Whether the user just opened a tab in this session; true once, for the pane that focuses its address. */
-     opened: (session: Session) => opening.delete(session.key),
-     /** A page's icon and zoom, once this desktop reported them. */
-@@ -485,6 +486,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
-       }
-     },
-     pending,
-+    inventory: (session: SessionRef) => attachment(session)?.browser,
-     /**
-      * Tab IDs to list in the side panel: the desktop's inventory, limited to tabs stored in the strip. Until the first
-      * inventory arrives, the stored tabs, so a restored selection holds; that inventory then prunes the ones it lacks.
-diff --git a/packages/gui-extensions/src/browser/pane.ts b/packages/gui-extensions/src/browser/pane.ts
-index 8b1ddb18..a06a92e9 100644
---- a/packages/gui-extensions/src/browser/pane.ts
-+++ b/packages/gui-extensions/src/browser/pane.ts
-@@ -48,6 +48,9 @@ export function createBrowserPane(input: {
-   /** The declared store of reserved element refs. */
-   readonly refs: Persisted<number, number>
-   readonly embeds: Embeds
-+  /** Whether the remote client is displaying a browser surface. Omitted by native desktop hosts. */
-+  readonly visible?: (window: number) => boolean
-+  readonly offscreen?: boolean
-   readonly emit: (window: number, value: { readonly binding: string; readonly event: PaneEvent }) => void
- }) {
-   const entries = new Map<string, Entry>()
-@@ -334,14 +337,14 @@ export function createBrowserPane(input: {
-     async clearSite(window: number, binding: string, tabID: Browser.TabID) {
-       await owned(window, binding).pages.get(tabID)?.clearSite()
-     },
--    async command(window: number, binding: string, command: Browser.Action) {
-+    async command(window: number, binding: string, command: Browser.Action, signal = new AbortController().signal) {
-       const entry = owned(window, binding)
-       const url = command.type === "navigate" || command.type === "tabs.open" ? command.url : undefined
-       // The window explains a refused address by its code; the agent's commands get main's own message instead.
-       const reason = url === undefined ? undefined : refusal(url, { fileRoots: entry.fileRoots })
- 
-       if (reason) throw new Error(reason)
--      await execute(entry, { action: command, files: [] }, new AbortController().signal)
-+      await execute(entry, { action: command, files: [] }, signal)
-     },
-     async close(window: number, binding: string) {
-       const entry = owned(window, binding)
-@@ -487,6 +490,8 @@ export function createBrowserPane(input: {
-       fileRoots: () => entry.fileRoots,
-       shared,
-       embeds: input.embeds,
-+      hostVisible: input.visible ? () => input.visible!(entry.window) : undefined,
-+      offscreen: input.offscreen,
-       fail,
-       publish: (error) => {
-         if (entry.pages.has(id)) publishState(entry, error)
-diff --git a/packages/gui-extensions/src/browser/renderer.tsx b/packages/gui-extensions/src/browser/renderer.tsx
-index 0304feec..7494f0ff 100644
---- a/packages/gui-extensions/src/browser/renderer.tsx
-+++ b/packages/gui-extensions/src/browser/renderer.tsx
-@@ -3,6 +3,7 @@ import { Command, createKeyed, LinkHandler, MenuItem, onIdle, Panel, Style, type
- import { Browser } from "./contract"
- import type definition from "./index"
- import type { Model } from "./model"
-+import { AndroidMobileBrowser } from "./android-mobile"
- import { PageIcon } from "./page-icon"
- import barStyles from "./bar.css?inline"
- import commentStyles from "./comment.css?inline"
-@@ -11,6 +12,15 @@ import tabStyles from "./tabs.css?inline"
- const setup: Setup<typeof definition> = (ctx) => {
-   const sessions = ctx.sessions
-   const [model, setModel] = createSignal<Model>()
-+  const open = async (view: NonNullable<ReturnType<typeof sessions.current>>) => {
-+    try {
-+      await ctx.browserConnection?.connect(view.server.id)
-+      if (sessions.current()?.key === view.key) model()?.open(view)
-+    } catch (error) {
-+      console.error("Browser connection", error)
-+      ctx.browserConnection?.report(error instanceof Error ? error.message : String(error))
-+    }
-+  }
-   // Settings > Shortcuts lists the command on every platform; it stays disabled until the pane can open.
-   ctx.add(Command, (): Command | undefined => {
-     const view = sessions.current()
-@@ -23,13 +33,12 @@ const setup: Setup<typeof definition> = (ctx) => {
-       title: ctx.t("command.open"),
-       group: ctx.t("command.category.view"),
-       bind: "mod+shift+b",
--      enabled: !!value?.available(view),
--      run: () => value?.open(view),
-+      enabled: !!value?.available(view) || !!ctx.browserConnection,
-+      run: () => open(view),
-     }
-   })
- 
--  // The native pane is a desktop feature.
--  if (ctx.build.platform !== "desktop") return
-+  // The pane model gates availability through BrowserPane IPC on every host.
-   // Tab trigger styles render with the strip, before the pane chunk loads.
-   ctx.add(Style, tabStyles)
-   ctx.add(Style, commentStyles)
-@@ -106,8 +115,9 @@ const setup: Setup<typeof definition> = (ctx) => {
-   ctx.add(MenuItem, (): MenuItem | undefined => {
-     const view = sessions.current()
-     const value = model()
-+    const android = ctx.build.platform === "android"
- 
--    if (!view || !value?.available(view)) return undefined
-+    if (!view || (!android && !value?.available(view))) return undefined
- 
-     return {
-       menu: "session.panel",
-@@ -116,7 +126,8 @@ const setup: Setup<typeof definition> = (ctx) => {
-       icon: "globe",
-       keybind: "browser.open",
-       order: 20,
--      run: () => value.open(view),
-+      enabled: () => !!value?.available(view) || !!ctx.browserConnection,
-+      run: () => void open(view),
-     }
-   })
- 
-@@ -171,6 +182,7 @@ const setup: Setup<typeof definition> = (ctx) => {
-   ctx.add(Panel, {
-     id: "main",
-     region: "side",
-+    mobile: { get title() { return ctx.t("tab.title") }, order: 35, kind: "menu", icon: "globe" },
-     list(input) {
-       // While the model loads, the stored tabs hold the strip and its selection, as before the first inventory.
-       const ids = model()?.tabs(input.session, input.open) ?? input.open
-@@ -193,7 +205,9 @@ const setup: Setup<typeof definition> = (ctx) => {
-         {(value) => (
-           <Show when={!value().pending(props.session)}>
-             <Suspense>
--              <SessionBrowserPane tab={() => props.tab} session={props.session} screen={props.screen} model={value()} />
-+              <Show when={props.tab.id !== "main"} fallback={<AndroidMobileBrowser model={value()} session={props.session} screen={props.screen} />}>
-+                <SessionBrowserPane tab={() => props.tab} session={props.session} screen={props.screen} model={value()} />
-+              </Show>
-             </Suspense>
-           </Show>
-         )}
-diff --git a/packages/gui-extensions/src/sdk/bridge.ts b/packages/gui-extensions/src/sdk/bridge.ts
-index 38f73cd7..94b2d161 100644
---- a/packages/gui-extensions/src/sdk/bridge.ts
-+++ b/packages/gui-extensions/src/sdk/bridge.ts
-@@ -5,6 +5,8 @@
-  */
- 
- import type { Definition } from "./core"
-+import type { JSX } from "solid-js"
-+import type { EmbedProps } from "./host-apis"
- 
- /** One explicit desktop enable-state row. An absent row means there is no setting under that id. */
- export interface EnableState {
-@@ -147,6 +149,9 @@ export interface BridgeMenubarItem {
- 
- /** What the desktop preload exposes to the renderer host; undefined on the web. */
- export interface Bridge {
-+  /** DOM surface for hosts whose browser runs remotely. */
-+  readonly view?: (props: EmbedProps) => JSX.Element
-+  readonly browserConnection?: { status(): string; configure(): Promise<boolean>; connect(server: string): Promise<void>; report(message: string): void }
-   /** The app runs packaged, as main's `Build.packaged` says; the window's `Build` reports the same. */
-   readonly packaged: boolean
-   /**
-diff --git a/packages/gui-extensions/src/sdk/context.ts b/packages/gui-extensions/src/sdk/context.ts
-index e4c93545..ae527c48 100644
---- a/packages/gui-extensions/src/sdk/context.ts
-+++ b/packages/gui-extensions/src/sdk/context.ts
-@@ -1,4 +1,5 @@
- import type { Accessor } from "solid-js"
-+import type { Bridge } from "./bridge"
- import type {
-   BaseContext,
-   Build,
-@@ -125,6 +126,8 @@ export interface Context extends BaseContext {
-    * ```
-    */
-   readonly desktop: Desktop | undefined
-+  /** Pair the built-in browser with a remote host; absent on hosts with a local browser. */
-+  readonly browserConnection: Bridge["browserConnection"]
-   /**
-    * Dialogs that close with the owner that opened them, else when the extension goes away.
-    *
 diff --git a/packages/gui-extensions/src/sdk/core.ts b/packages/gui-extensions/src/sdk/core.ts
 index 3d6d6ba6..c0c35598 100644
 --- a/packages/gui-extensions/src/sdk/core.ts
@@ -879,19 +547,6 @@ index 3d6d6ba6..c0c35598 100644
    readonly packaged: boolean
  }
  
-diff --git a/packages/gui-extensions/src/sdk/registries.ts b/packages/gui-extensions/src/sdk/registries.ts
-index 68b3cbca..be29c3c6 100644
---- a/packages/gui-extensions/src/sdk/registries.ts
-+++ b/packages/gui-extensions/src/sdk/registries.ts
-@@ -81,6 +81,8 @@ export interface SessionPanelMenuItem extends MenuItemBase {
-   readonly icon?: IconName
-   /** Published command id whose shortcut the item shows. */
-   readonly keybind?: string
-+  /** Whether the action can run in the current host state. Disabled items remain visible for discoverability. */
-+  readonly enabled?: () => boolean
-   /** Runs the item. */
-   run(): void
- }
 diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
 index 8ba5f356..3f054b6b 100644
 --- a/packages/gui-extensions/src/terminal/model.ts
@@ -1193,3 +848,56 @@ index f63f83af..e6ae7291 100644
      />
    )
  }
+diff --git a/packages/gui-extensions/src/builtins.typecheck.ts b/packages/gui-extensions/src/builtins.typecheck.ts
+index b1d448a1..2bc5a488 100644
+--- a/packages/gui-extensions/src/builtins.typecheck.ts
++++ b/packages/gui-extensions/src/builtins.typecheck.ts
+@@ -2,26 +2,12 @@
+ // renderer entry declares in `provides`, `uses` or `requires` needs a main entry that provides it: an unprovided Ipc in
+ // `ctx.uses` stays pending forever, and an unprovided `requires` would also hold the window's startup gate. Each
+ // `@ts-expect-error` fails the typecheck if its line stops being an error.
+-import { Extension, Ipc, type MissingMain, type IpcsProvided } from "./sdk"
++import { Extension, Ipc, type IpcsProvided } from "./sdk"
+ import type { builtins } from "./renderer"
+ // Both compositions export `builtins`, and this file names the two together.
+ import type { builtins as mainBuiltins } from "./main"
+-import type browser from "./browser"
+-
+-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+-
+-const equal = <A, B>(value: Equal<A, B>) => value
+-
+ export const ipcs: IpcsProvided<typeof builtins, typeof mainBuiltins> = true
+ 
+-// The main composition with the browser's definition but not its main entry, which provides the pane.
+-type Mainless = readonly (Exclude<(typeof mainBuiltins)[number], { readonly id: "browser" }> | typeof browser)[]
+-
+-// @ts-expect-error no main entry provides browser.pane, which the browser's renderer reads through `provides`
+-export const mainless: IpcsProvided<typeof builtins, Mainless> = true
+-
+-equal<IpcsProvided<typeof builtins, Mainless>, MissingMain<"browser.pane">>(true)
+-
+ const Orphan = Ipc.define({ id: "fixture.orphan", methods: {} })
+ 
+ // A renderer that uses an Ipc nothing in main provides.
+diff --git a/packages/gui-extensions/src/renderer.ts b/packages/gui-extensions/src/renderer.ts
+index f5f1754f..6b7343b8 100644
+--- a/packages/gui-extensions/src/renderer.ts
++++ b/packages/gui-extensions/src/renderer.ts
+@@ -13,8 +13,6 @@ import review from "./review"
+ import reviewRenderer from "./review/renderer"
+ import details from "./details"
+ import detailsRenderer from "./details/renderer"
+-import browser from "./browser"
+-import browserRenderer from "./browser/renderer"
+ import pairing from "./pairing"
+ import pairingRenderer from "./pairing/renderer"
+ import updater from "./updater"
+@@ -43,7 +41,6 @@ export const builtins = Extension.compose(
+   { ...file, renderer: eager(fileRenderer) },
+   { ...review, renderer: eager(reviewRenderer) },
+   { ...details, renderer: eager(detailsRenderer) },
+-  { ...browser, renderer: eager(browserRenderer) },
+   { ...pairing, renderer: eager(pairingRenderer) },
+   { ...updater, renderer: eager(updaterRenderer) },
+   { ...ssh, renderer: eager(sshRenderer) },
