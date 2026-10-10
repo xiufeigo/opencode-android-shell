@@ -41,7 +41,8 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 - 真实 OpenCode + 生产 Electron 网关 **16/16**，包含真实 touch/pinch、官方自动化、网络隧道、截图、取消、CPU、Lighthouse 和堆快照：`research/tmp/verify-android-browser/2026-10-10T00-30-56-531Z/report.json`。
 - 实际 API 35 Android WebView：手机 **8/8**（540×1168），平板 **6/6**（1200×768），验证直接打开 New tab、官方地址栏与前进后退、ADB 网页点击/滑动；手机验证未选中标签关闭、原生剪贴板和系统全屏，平板验证“＋”文件菜单与 Ctrl+Shift+B。报告：`research/tmp/verify-android-menus/2026-10-10T00-49-14-114Z-device/report.json`、`research/tmp/verify-android-menus/2026-10-10T00-55-59-660Z-device/report.json`。菜单及地址输入由 DOM 驱动，网页点击/滑动由 ADB 驱动；不表述为实体手机或全部软键盘输入验证。
 - 解压最终分发包、独立 npm ci/启动后再次完成真实引擎 **16/16**：`research/tmp/verify-android-browser/2026-10-10T00-56-36-080Z/report.json`。同机多个网关的数据目录现在同时隔离标签、Chromium Cookie 与缓存。
-- Android 单测 **249/249**；debug/release 构建与指定签名核验通过。release APK **57,621,412 字节**、SHA-256 `1558b6c036edd22bf21134e290e6f3d37087e34fe8ab3865faf52ac78ae500e5`；包内 **1,688 个 UI 文件**与源码资产逐字节一致。重复构建时仅清除补丁声明的新文件，避免残留测试文件阻止补丁应用。
+- Android 单测 **249/249**；debug/release 构建与指定签名核验通过。本机 release APK **57,621,412 字节**、SHA-256 `1558b6c036edd22bf21134e290e6f3d37087e34fe8ab3865faf52ac78ae500e5`；包内 **1,688 个 UI 文件**与源码资产逐字节一致。重复构建时仅清除补丁声明的新文件，避免残留测试文件阻止补丁应用。
+- main 与 v2.0.13 的 GitHub CI 均成功；发布提交 `170565b47b223b046b5a4d9307a2ee8e510a5b80`。下载实际 Release 后核验版本 **2.0.13/41**、指定签名及 **1,688 个 UI 文件**通过，网关分发文件与本机实测结果逐字节相同。发布 APK SHA-256 为 `73a158fcf5d5c66bc11c6025b9f909e86b7e4c95f4a56cf6575e06a13103e8fa`，下载地址为 [v2.0.13](https://github.com/xiufeigo/opencode-android-shell/releases/tag/v2.0.13)。
 
 服务分发包包含已构建官方引擎及锁定依赖，解压后 npm ci/npm start 即可运行；Release 同时提供 APK 与网关。仍需有 Electron 图形环境，不能把 APK 描述为 Android 原生运行 Chromium/Electron 引擎。
 
