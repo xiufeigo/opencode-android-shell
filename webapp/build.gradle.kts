@@ -32,9 +32,9 @@ android {
         // 35 触摸防 IME 聚焦、稳定滚动目标及手机/平板统一字符度量；
         // 36 自有 xterm 终端、历史滚动及键盘隐藏时即时恢复布局。
         // 37 多服务器管理、官方右侧栏入口及平板触摸分隔线修复。
-        versionCode = 44
+        versionCode = 45
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.16"
+        versionName = "2.0.17"
     }
 
     signingConfigs {
@@ -157,6 +157,7 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         "src/main/assets/www/index.html",
         "build.gradle.kts",
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt",
         // F18 绊线：`PhoneFormDefectTest` 的「资产契约层」要读 InsetsHost.kt
         // （断言 replay() 存在）与新纯函数件本身。撤回任一处修法都必须能反向变红。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",

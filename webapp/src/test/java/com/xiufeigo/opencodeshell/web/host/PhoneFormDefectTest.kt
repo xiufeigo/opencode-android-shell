@@ -10,7 +10,7 @@ import java.io.File
  * F18 绊线：两条手机专属缺陷的可断言判据。
  *
  * ### 两层
- * 1. **几何层**（[PhoneFormDefect] 纯函数）：顶部遮挡量 / BACK 路由决策。
+ * 1. **几何层**（[PhoneFormDefect] 纯函数）：顶部遮挡量。
  * 2. **资产契约层**（读 `oc-host.js` + `WebHostActivity.kt` + `InsetsHost.kt`）：
  *    断言修法**真的在**源码里。这一层是**可反向验证**的关键 ——
  *    撤回修法 ⇒ 必红（`webapp/build.gradle.kts:126-137` 已把这三个文件声明为
@@ -59,53 +59,6 @@ class PhoneFormDefectTest {
         val moved = PhoneFormDefect.shiftedByTopInset(headerBefore, 0.0)
         assertEquals("safeTop=0 时位移必须为 0", headerBefore.top, moved.top, 0.0)
         assertEquals(0.0, PhoneFormDefect.topOverlapPx(moved, 0.0), 0.0)
-    }
-
-    // ---- 2. 几何：BACK 路由（缺陷 B 的判据） -------------------------------
-
-    @Test
-    fun `改前语义 面板打开且有历史时仍会退历史 这就是误退`() {
-        // 改前逻辑 = canGoBack 优先 ⇒ 面板开着也 goBack() ⇒ 退到列表（缺陷 D4）。
-        val canGoBack = true      // SPA 用 History API，进会话已压了一条历史
-        val panelOpen = true
-        val wouldGoBack = canGoBack // 改前行为
-        assertTrue(
-            "改前：canGoBack=true 时无视面板直接退历史 ⇒ 误退",
-            wouldGoBack,
-        )
-        // 这正是 V13 步骤 8/10 观察到的：面板开 + BACK ⇒ 整会话退回列表。
-        assertEquals(0, PhoneFormDefect.levelAfterBack(from = 2, panelOpen = false, canGoBack = true))
-    }
-
-    @Test
-    fun `改后面板打开时 BACK 被消费 不退历史`() {
-        assertFalse(
-            "面板打开时宿主绝不能退历史（页面已消费去关面板）",
-            PhoneFormDefect.shouldGoBack(panelOpen = true, canGoBack = true),
-        )
-        assertEquals(
-            "按一次 BACK 后必须仍停在会话视图(1)，不能回列表(0)",
-            1, PhoneFormDefect.levelAfterBack(from = 2, panelOpen = true, canGoBack = true),
-        )
-    }
-
-    @Test
-    fun `改后面板关掉后再按一次才回会话列表`() {
-        assertTrue(
-            "无面板且有历史 ⇒ 第二次 BACK 才退列表",
-            PhoneFormDefect.shouldGoBack(panelOpen = false, canGoBack = true),
-        )
-        assertEquals(
-            0, PhoneFormDefect.levelAfterBack(from = 2, panelOpen = false, canGoBack = true),
-        )
-    }
-
-    @Test
-    fun `两者都不成立时不退也不 finish`() {
-        assertFalse(
-            "无面板且无历史 ⇒ 什么都不做",
-            PhoneFormDefect.shouldGoBack(panelOpen = false, canGoBack = false),
-        )
     }
 
     // ---- 3. 资产契约层：**可反向验证**的那几条 ------------------------------
@@ -161,33 +114,17 @@ class PhoneFormDefectTest {
     }
 
     @Test
-    fun `facade 注册默认 BACK 处理器 用 Escape 关浮层`() {
-        val src = code("src/main/assets/www/oc-host.js")
-        assertTrue(
-            "撤回修法 ⇒ 不再注册默认 back 处理器",
-            src.contains("""oc.setBackHandler(function () {"""),
-        )
-        assertTrue(
-            "关浮层必须派发 Escape（精确匹配 key: \"Escape\"，不是注释里的 Escape）",
-            src.contains("""key: "Escape","""),
-        )
-        val calls = Regex("""^\s*installDefaultBackHandler\(\);""", RegexOption.MULTILINE)
-            .findAll(src).count()
-        assertTrue("installDefaultBackHandler() 应在两条 readyState 分支各调一次（实测 $calls 次）", calls >= 2)
-    }
-
-    @Test
-    fun `宿主 BACK 顺序是 先问页面 再退历史`() {
-        val src = activity()
-        val onBack = src.indexOf("window.__ocAndroid.onBack")
-        val canGoBack = src.indexOf("webView.canGoBack()", onBack)
-        val goBack = src.indexOf("webView.goBack()", onBack)
-        assertTrue("installBackHandler 里必须问页面 onBack", onBack > 0)
-        assertTrue(
-            "canGoBack 判断必须排在页面 onBack **之后**（F18 改前是之前 ⇒ 误退）",
-            canGoBack > onBack,
-        )
-        assertTrue("goBack() 必须在 canGoBack 判断之后", goBack > canGoBack)
+    fun `系统返回由当前界面消费并在首页交还 Android 不回放关闭会话的历史`() {
+        val js = code("src/main/assets/www/oc-host.js")
+        assertTrue(js.contains("if (closeTopOverlayOnBack()) return true;"))
+        assertTrue(js.contains("backHandler();"))
+        assertFalse(js.contains("installDefaultBackHandler"))
+        val src = code("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        assertTrue(src.contains("window.__ocAndroid.onBack"))
+        assertTrue(src.contains("onBackPressedDispatcher.onBackPressed()"))
+        assertTrue(src.contains("isEnabled = false"))
+        assertFalse(src.contains("webView.goBack()"))
+        assertFalse(src.contains("webView.canGoBack()"))
     }
 
     @Test

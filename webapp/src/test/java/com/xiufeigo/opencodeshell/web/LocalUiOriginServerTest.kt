@@ -4,8 +4,11 @@ import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.File
+import java.io.IOException
+import java.net.Socket
 
 /**
  * UX11 · **本机 http 静态来源端点**（官方前端自带 + 本机 http 加载）绊线。
@@ -159,6 +162,34 @@ class LocalUiOriginServerTest {
         )
     }
 
+    @Test
+    fun localOriginCanRebindAfterServingAConnection() {
+        val first = LocalUiOriginServer.bindLoopbackSocket(0)
+        val port = first.localPort
+        first.use {
+            assertTrue(first.inetAddress.isLoopbackAddress)
+            assertTrue(first.reuseAddress)
+            Socket("127.0.0.1", port).use { client ->
+                first.accept().use { connection ->
+                    connection.getOutputStream().write(7)
+                }
+                assertEquals(7, client.getInputStream().read())
+                assertEquals(-1, client.getInputStream().read())
+            }
+        }
+        LocalUiOriginServer.bindLoopbackSocket(port).use { second ->
+            assertEquals(port, second.localPort)
+            // Address reuse must never hide a real port conflict.
+            assertThrows(IOException::class.java) { LocalUiOriginServer.bindLoopbackSocket(port) }
+            Socket("127.0.0.1", port).use { client ->
+                second.accept().use { connection ->
+                    connection.getOutputStream().write(9)
+                }
+                assertEquals(9, client.getInputStream().read())
+            }
+        }
+    }
+
     // ---- 4) 页面确实从本机来源加载 -------------------------------------------
 
     @Test
@@ -168,13 +199,16 @@ class LocalUiOriginServerTest {
             activitySrc.contains("LocalUiOriginServer.origin()"),
         )
         assertTrue(
-            "onCreate 必须先起本机静态来源再加载页面",
-            activitySrc.contains("LocalUiOriginServer(assets).also { it.start() }"),
+            "Activity 必须使用进程统一持有的本机静态来源",
+            activitySrc.contains("localUiServer = (application as WebHostApp).localUiServer.also { it.start() }"),
         )
+        val app = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt")
         assertTrue(
-            "onDestroy 必须停掉端点（不泄漏监听）",
-            activitySrc.contains("localUiServer.stop()"),
+            "本机 UI 来源只按进程创建一次，Activity 重叠时不能争抢端口",
+            app.contains("val localUiServer: LocalUiOriginServer by lazy") &&
+                app.contains("LocalUiOriginServer(assets)"),
         )
+        assertFalse("旧 Activity 销毁不能停掉新 Activity 正在使用的来源", activitySrc.contains("localUiServer.stop()"))
     }
 
     // ---- 5) 路径归一化的边界（穿越防护） -------------------------------------

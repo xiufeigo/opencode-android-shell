@@ -51,9 +51,8 @@ import java.util.Base64
  * APK 内的官方 UI 由 [LocalUiOriginServer] 提供，API 和终端直连用户选择的 OpenCode。
  * [WebViewAssetLoader] 仅提供启动失败时的诊断页。
  * - 边到边 + insets 交给 [InsetsHost] → CSS 变量 / JS 事件。
- * - 返回：`canGoBack()` 优先，否则问页面 `window.__ocAndroid.onBack()`，
- *   **两条都不成立时什么都不做**（不 finish）。
- * 服务器凭据由官方 UI 管理。浏览器服务的配对令牌通过独立平台消息保存在加密偏好中。
+ * - 返回：页面关闭浮层、退出子页面或回首页；首页交回 Android 的默认返回行为。
+ * 服务器凭据由官方 UI 管理。
  */
 class WebHostActivity : AppCompatActivity() {
 
@@ -354,7 +353,7 @@ class WebHostActivity : AppCompatActivity() {
 
         // UX11：官方前端由 App 自带（assets/www/ui），本机 http 静态来源只服务 UI 资源。
         // 🔴 这个端点不碰凭据、不代理 API —— 认证与 API 调用全部由页面直连用户配置的服务器。
-        localUiServer = LocalUiOriginServer(assets).also { it.start() }
+        localUiServer = (application as WebHostApp).localUiServer.also { it.start() }
         PerfMarks.mark("B2.localUiOrigin", "bound=${localUiServer.boundPort}")
 
         pendingPageScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0) ?: 0
@@ -383,8 +382,8 @@ class WebHostActivity : AppCompatActivity() {
      * 原生能力失效，比白屏更难查）。
      *
      * ⚠️ 这里**只**放「与 WebView 实例强绑定」的东西：
-     * - `bridge` / `fileChooser` / `localUiServer` 是 **Activity 级**依赖，建在
-     *   [onCreate] 早段，重建时**必须复用同一个实例** —— 所以它们不在本方法里。
+     * - `bridge` / `fileChooser` 是 Activity 级依赖，`localUiServer` 由进程统一持有。
+     *   渲染重建时复用它们，所以它们不在本方法里。
      *   这也保证了重建后 `window.__ocAndroid` 的桥名与注入通道与首次启动完全一致。
      * - `installBackHandler()` 只在 [onCreate] 调一次：它注册的是
      *   `onBackPressedDispatcher` 回调（注册两次会多挂一个 callback），而回调体
@@ -649,38 +648,53 @@ class WebHostActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 返回：**先问页面** → 再退历史 → 什么都不做 -------------------------
-    //
-    // F18（缺陷 B）：改前是 `if (webView.canGoBack()) { goBack(); return }` **优先**，
-    // 页面自己的 `onBack()` 排在 else 分支里。而上游 SPA 用 History API 做站内导航，
-    // 进会话时已经压了一条 history ⇒ 面板打开态按 BACK 时 `canGoBack()==true`
-    // ⇒ 直接 `goBack()` 把 SPA 路由退回首屏，**面板没关、还退了两级**。
-    //
-    // 改成"先问页面"：页面知道有没有浮层开着，能消费就消费（关面板），
-    // 消费不掉才落到历史回退 —— 这与桌面端"Esc 先关浮层、否则才后退"的心智一致。
+    // WebView history includes closed session tabs. Only the application decides
+    // which surface Back leaves; at its root, let Android leave the Activity.
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            private var pending: WebView? = null
+
+            private fun reportBackFailure(error: RuntimeException? = null) {
+                Log.e(TAG, "back: page handler failed, see WebView console", error)
+                Toast.makeText(this@WebHostActivity, "返回处理失败，请查看 WebView 日志", Toast.LENGTH_SHORT).show()
+            }
+
             override fun handleOnBackPressed() {
-                webView.evaluateJavascript(
-                    "(function(){try{" +
-                        "return !!(window.__ocAndroid && window.__ocAndroid.onBack && window.__ocAndroid.onBack());" +
-                        "}catch(e){return false}})()"
-                ) { result ->
-                    val pageHandled = result?.trim() == "true"
-                    if (pageHandled) {
-                        // 页面消费了（例如关掉 popover）⇒ 绝不走历史，绝不 finish。
-                        Log.i(TAG, "back: pageHandled=true (overlay closed), no history pop")
-                        return@evaluateJavascript
+                val current = webView
+                if (pending === current) return
+                pending = current
+                try {
+                    current.evaluateJavascript(
+                        "(function(){" +
+                            "return !!(window.__ocAndroid && window.__ocAndroid.onBack && window.__ocAndroid.onBack());" +
+                            "})()"
+                    ) { result ->
+                        if (pending !== current) return@evaluateJavascript
+                        pending = null
+                        if (current !== webView || isFinishing || isDestroyed) return@evaluateJavascript
+                        val pageHandled = when (result?.trim()) {
+                            "true" -> true
+                            "false" -> false
+                            else -> {
+                                reportBackFailure()
+                                return@evaluateJavascript
+                            }
+                        }
+                        if (pageHandled) {
+                            Log.i(TAG, "back: page handled current surface")
+                            return@evaluateJavascript
+                        }
+                        Log.i(TAG, "back: application root -> Android default")
+                        isEnabled = false
+                        try {
+                            onBackPressedDispatcher.onBackPressed()
+                        } finally {
+                            isEnabled = true
+                        }
                     }
-                    // 页面没处理，才退 WebView 历史。
-                    if (webView.canGoBack()) {
-                        webView.goBack()
-                        Log.i(TAG, "back: pageHandled=false -> goBack()")
-                    } else {
-                        // 注意：**没有** finish 分支。
-                        // 禁用直接 finish 是硬要求：Web 壳里 Activity 退出会丢会话页状态。
-                        Log.i(TAG, "back: canGoBack=false, pageHandled=false (no finish)")
-                    }
+                } catch (error: RuntimeException) {
+                    if (pending === current) pending = null
+                    reportBackFailure(error)
                 }
             }
         })
@@ -1147,9 +1161,6 @@ class WebHostActivity : AppCompatActivity() {
         // P6：销毁时也清一次（窗口虽马上就没了，但 flag 泄漏会在 `onSaveInstanceState`
         // 重建路径上被观察到；清掉是零成本的）。
         clearKeepScreenOnOnBackground()
-        if (::localUiServer.isInitialized) {
-            localUiServer.stop()
-        }
         disposeWebView()
         super.onDestroy()
     }

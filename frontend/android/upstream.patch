@@ -1095,3 +1095,18 @@ index f5f1754f..ec18971f 100644
    { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
 +  { ...serverBrowser, renderer: eager(serverBrowserRenderer) },
  )
+diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
+index 25bc4954..0a315c48 100644
+--- a/packages/app/src/shell/shell.tsx
++++ b/packages/app/src/shell/shell.tsx
+@@ -11,8 +11,10 @@ import { useSettingsSurface } from "@/settings/surface"
+ import { useSettings } from "@/settings/model"
+ import { ExtensionServerCover } from "@/runtime/extension/server-shell"
+ import { ExtensionSlot } from "@/runtime/extension/render"
++import { installAndroidBack } from "@/runtime/platform/android-back"
+ 
+ export default function Layout(props: ParentProps) {
++  installAndroidBack()
+   const platform = usePlatform()
+   const settings = useSettingsSurface()
+   const preferences = useSettings()

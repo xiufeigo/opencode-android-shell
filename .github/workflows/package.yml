@@ -98,6 +98,9 @@ jobs:
           git diff --exit-code --stat -- webapp/src/main/assets/www/ui
           test -z "$(git ls-files --others --exclude-standard -- webapp/src/main/assets/www/ui)"
 
+      - name: Verify Android Back with packaged phone and tablet UI
+        run: node scripts/verify-android-back.mjs
+
       - name: Build shared Web client and stage plugin distributions
         run: |
           node frontend/android/build.mjs --web

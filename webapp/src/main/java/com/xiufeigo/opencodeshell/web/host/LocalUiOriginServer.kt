@@ -5,7 +5,9 @@ import android.util.Log
 import java.io.BufferedOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.IOException
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
@@ -84,6 +86,20 @@ class LocalUiOriginServer(
         /** 页面来源。宿主启动链加载它。 */
         fun origin(port: Int = DEFAULT_PORT): String = "http://127.0.0.1:$port"
 
+        internal fun bindLoopbackSocket(port: Int): ServerSocket {
+            val socket = ServerSocket()
+            try {
+                // Activity recreation must retain the origin while old TCP connections finish.
+                // Set SO_REUSEADDR before bind; it does not replace an active listener.
+                socket.reuseAddress = true
+                socket.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 64)
+                return socket
+            } catch (error: IOException) {
+                socket.close()
+                throw error
+            }
+        }
+
         private fun contentTypeOf(path: String): String = when {
             path.endsWith(".html") -> "text/html; charset=utf-8"
             path.endsWith(".js") || path.endsWith(".mjs") -> "text/javascript; charset=utf-8"
@@ -124,7 +140,7 @@ class LocalUiOriginServer(
         if (!running.compareAndSet(false, true)) return boundPort != null
         return try {
             // 🔴 只绑回环：外部网络访问不到这个端点。
-            val socket = ServerSocket(port, 64, InetAddress.getByName("127.0.0.1"))
+            val socket = bindLoopbackSocket(port)
             serverSocket = socket
             boundPort = socket.localPort
             workers.execute { acceptLoop(socket) }
