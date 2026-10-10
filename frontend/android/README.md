@@ -20,6 +20,8 @@ Bun 必须为 1.4.2；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 2.0.17 用 `back.ts` 在官方 Shell 中注册 Android 返回处理，直接读取当前布局、设置层级与打开的标签。原生宿主不再使用 WebView 历史回退，页面未消费时交回 Android 默认返回；在首页离开 App，不复活已关闭的标签。`verify-android-back.mjs` 覆盖手机、平板，设置 `ANDROID_SERIAL` 后使用实际 APK 和系统返回键验证退出、重新进入。
 
+2.0.18 将手机端 xterm 滚动条滑块视觉宽度缩为 8 CSS px，同时保留 14 CSS px 的布局与触摸命中区，避免高 DPR 设备上的滚动条过粗。
+
 2.0.14 按用户要求移除内置 browser 扩展的 renderer 注册、平台桥、移动入口、配对和网关项目；官方类型检查同步移除该 composition 的浏览器断言，仍检查其余扩展的 IPC 依赖。旧构建缓存中的五个 Android 浏览器文件会清除，原生启动清除旧配对凭据。外部 URL 继续交给系统浏览器。
 
 `platform.ts` 通过官方 Platform 接口调用 `rpc.mjs`，AndroidX WebMessageListener 仅接受本地 UI 主框架。原生失败拒绝 Promise，用户取消保存返回 false。系统平台方法不伪装成功。剪贴板图片读取预算为 `AndroidPlatformHost.MAX_CLIPBOARD_IMAGE_BYTES`，默认 20 MiB，超出返回错误。

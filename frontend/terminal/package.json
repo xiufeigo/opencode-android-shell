@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "build": "node build.mjs", "test": "node --test panel-lifecycle.test.mjs ../embedded-ui/*.test.mjs ../android/*.test.mjs" },
+  "scripts": { "build": "node build.mjs", "test": "node --test panel-lifecycle.test.mjs scrollbar.test.mjs ../embedded-ui/*.test.mjs ../android/*.test.mjs" },
   "dependencies": {
     "@xterm/xterm": "6.0.0",
     "@xterm/addon-fit": "0.11.0",

@@ -3,6 +3,12 @@ import { FitAddon as XtermFit } from "@xterm/addon-fit"
 import { SerializeAddon } from "@xterm/addon-serialize"
 import css from "@xterm/xterm/css/xterm.css"
 
+// xterm reserves 14 CSS px for the vertical scrollbar. Keep that layout and
+// hit area stable for FitAddon and touch input; only narrow the mobile thumb's
+// painted surface so a high-DPR phone does not show an oversized bar.
+const XTERM_SCROLLBAR_WIDTH = 14
+const MOBILE_SCROLLBAR_THUMB_WIDTH = 8
+
 const scale = () => {
   // A stored preference wins on every screen; only a missing or invalid value
   // falls back to the narrow-screen default, so tablets keep full-size glyphs.
@@ -25,6 +31,12 @@ const installStyle = () => {
     .oc-terminal-frame .xterm{padding:0;touch-action:none;}
     .oc-terminal-frame .xterm-screen{touch-action:none;}
     .oc-terminal-frame .xterm-helper-textarea{font-size:16px;}
+    @media (max-width: 767px) {
+      .oc-terminal-frame .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+        width: ${MOBILE_SCROLLBAR_THUMB_WIDTH}px !important;
+        left: ${XTERM_SCROLLBAR_WIDTH - MOBILE_SCROLLBAR_THUMB_WIDTH}px !important;
+      }
+    }
   `
   document.head.appendChild(style)
 }

@@ -62,6 +62,10 @@ adapter 用两次同步的公共 `scrollLines()` 完成绝对定位；中间位�
 
 即宽屏不会因为"屏幕够大"就丢弃已保存的字号偏好。
 
+## 手机滚动条
+
+xterm 的垂直滚动条布局和触摸命中区固定为 14 CSS px，`FitAddon` 也按这个宽度计算列数。窄屏只把滑块的绘制宽度缩为 8 CSS px，并在命中区内右对齐；桌面和平板保持上游视觉宽度，避免高 DPR 手机显示过粗的滑块，也不改变终端可操作范围。
+
 ## 键盘 fit / bottom frame
 
 - `window.resize`、`oc:insets`、`visualViewport.resize|scroll`，以及

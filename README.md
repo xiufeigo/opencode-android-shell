@@ -2,7 +2,7 @@
 
 Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.17 / 45**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
+官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.18 / 46**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
 ## 与 Desktop 对齐
 
@@ -12,7 +12,7 @@ Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode
 
 电脑本地引擎启动、WSL、桌面更新器和电脑文件系统不在 Android 宿主内运行；工作区和终端由连接的 OpenCode 服务提供。当前 UI 使用 v2 服务协议。
 
-终端按服务器、工作目录和会话分别记忆标签、顺序及当前选中的 PTY。重新进入会话并打开终端，会连接原进程；App 被强杀期间命令继续由服务器执行，回来后重放服务端保留的输出，不自动重跑命令。OpenCode 服务必须保持运行；关闭终端标签会结束对应进程。
+终端按服务器、工作目录和会话分别记忆标签、顺序及当前选中的 PTY。重新进入会话并打开终端，会连接原进程；App 被强杀期间命令继续由服务器执行，回来后重放服务端保留的输出，不自动重跑命令。手机端仅缩窄滚动条滑块的视觉宽度，保留 xterm 的触摸命中区和列宽计算。OpenCode 服务必须保持运行；关闭终端标签会结束对应进程。
 
 Android 系统返回键先关闭弹窗、菜单或手机抽屉，设置按当前层级返回，会话页返回首页，首页交回系统离开 App。返回键不回放 WebView 历史，因此不会重新打开已关闭的会话标签；重新打开需要显式使用“重新打开已关闭的标签”。本地 UI 来源由进程统一持有，退出后立即重开不会争抢端口。
 
