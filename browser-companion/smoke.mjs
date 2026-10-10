@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url"
 import assert from "node:assert/strict"
 import WebSocket from "ws"
 import { PROTOCOL } from "./transport.mjs"
+import { browserTicket } from "../frontend/android/browser-transport.mjs"
 
 const url = process.env.OPENCODE_TEST_SERVER_URL
 const tokenFile = process.env.OPENCODE_BROWSER_TOKEN_FILE
-if (!url || !tokenFile) throw new Error("Set OPENCODE_TEST_SERVER_URL and OPENCODE_BROWSER_TOKEN_FILE; use a test OpenCode v2 server on this computer")
+if (!url) throw new Error("Set OPENCODE_TEST_SERVER_URL; use your own test OpenCode v2 server or unified gateway")
 const password = process.env.OPENCODE_TEST_SERVER_PASSWORD
 const username = process.env.OPENCODE_TEST_SERVER_USERNAME ?? "opencode"
 const headers = { "content-type": "application/json", ...(password ? { authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` } : {}) }
@@ -25,9 +26,10 @@ let ws
 const fixture = http.createServer((req, res) => {
   if (req.url.startsWith("/proof")) { proof.push(req.url); res.end("ok"); return }
   res.setHeader("content-type", "text/html; charset=utf-8")
-  res.end(`<!doctype html><title>Browser parity</title><style>body{font:20px sans-serif;margin:16px}input,button{display:block;margin:12px 0;height:40px;width:200px}</style>
+  res.end(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=.25,maximum-scale=5"><title>Browser parity</title><style>body{font:20px sans-serif;margin:16px}input,button{display:block;margin:12px 0;height:40px;width:200px}</style>
     <h1>Browser parity</h1><input id="text" aria-label="Text"><button onclick="fetch('/proof?click=1')">Click me</button>
-    <iframe src="about:blank" title="nested"></iframe><div style="height:2000px">Scroll fixture</div>`)
+    <iframe src="about:blank" title="nested"></iframe><div style="height:2000px">Scroll fixture</div>
+    <script>document.addEventListener('touchstart',e=>fetch('/proof?touch='+e.touches.length));</script>`)
 })
 const wait = async (condition, label) => {
   const deadline = Date.now() + 20_000
@@ -58,10 +60,14 @@ try {
   session = (json.data ?? json).id
   await new Promise((resolve, reject) => { fixture.once("error", reject); fixture.listen(0, "127.0.0.1", resolve) })
   const address = `http://127.0.0.1:${fixture.address().port}`
-  const service = new URL(process.env.OPENCODE_BROWSER_URL ?? "http://127.0.0.1:4100")
-  service.protocol = service.protocol === "https:" ? "wss:" : "ws:"
-  service.pathname = `${service.pathname.replace(/\/$/, "")}/bridge`
-  ws = new WebSocket(service, [PROTOCOL, (await fs.readFile(tokenFile, "utf8")).trim()])
+  let config
+  if (tokenFile) {
+    const service = new URL(process.env.OPENCODE_BROWSER_URL ?? "http://127.0.0.1:4100")
+    service.protocol = service.protocol === "https:" ? "wss:" : "ws:"
+    service.pathname = `${service.pathname.replace(/\/$/, "")}/bridge`
+    config = { url: service.href, token: (await fs.readFile(tokenFile, "utf8")).trim() }
+  } else config = await browserTicket({ id: "test", url, username, password })
+  ws = new WebSocket(config.url, [PROTOCOL, config.token])
   ws.on("message", (bytes, binary) => {
     if (binary) { frames.push(bytes); return }
     const message = JSON.parse(bytes)
@@ -101,6 +107,21 @@ try {
   await command({ type: "evaluate", tabID, script: 'fetch("/proof?text="+encodeURIComponent(document.querySelector("#text").value));null' })
   await wait(() => proof.some(value => decodeURIComponent(value).includes("你好 Android")), "Unicode reached the webpage")
   pass("Unicode text input")
+  const touch = (phase, points) => request("input", { id: embed.embed, event: { type: "touch", phase, points } })
+  await touch("start", [{ id: 1, x: 80, y: 190 }])
+  await touch("end", [])
+  await wait(() => proof.some(value => value.includes("touch=1")), "real touch event reached the webpage")
+  await touch("start", [{ id: 1, x: 200, y: 500 }, { id: 2, x: 400, y: 500 }])
+  for (let step = 1; step <= 10; step++) {
+    await touch("move", [{ id: 1, x: 200 - step * 10, y: 500 }, { id: 2, x: 400 + step * 10, y: 500 }])
+    await new Promise(resolve => setTimeout(resolve, 40))
+  }
+  await touch("end", [])
+  await wait(() => proof.some(value => value.includes("touch=2")), "two-finger touch reached the webpage")
+  await command({ type: "evaluate", tabID, script: 'fetch("/proof?scale="+visualViewport.scale);null' })
+  await wait(() => proof.some(value => value.includes("scale=")), "pinch viewport scale")
+  assert.ok(Number(new URL(proof.find(value => value.includes("scale=")), address).searchParams.get("scale")) > 1)
+  pass("real touch tap and two-finger pinch change Chromium viewport scale")
   assert.ok(Buffer.from(await request("capture", embed.embed), "base64").length > 1_000)
   await command({ type: "screenshot", tabID, format: "jpeg", maxWidth: 800 })
   pass("capture and screenshot transfer to server")

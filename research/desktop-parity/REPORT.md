@@ -1,6 +1,6 @@
 # OpenCode Desktop 与 Android 差异及实现记录
 
-基准：官方 v2 的 OpenCode **2.0.26**，commit `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。Android **2.0.12 / versionCode 40**。用户选择 Android 连接电脑或服务器的 OpenCode，并要求内置浏览器自动化。
+基准：官方 v2 的 OpenCode **2.0.26**，commit `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。Android **2.0.13 / versionCode 41**。用户选择 Android 连接电脑或服务器的 OpenCode，并要求内置浏览器自动化。
 
 Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工作区和设置来自 `packages/app`；浏览器与终端来自 `packages/gui-extensions`。Android 应复用这些模块，并补足平台接口。直接仿写桌面页面或持续修改压缩后的 JS 会产生第二套状态和升级负担，因此本轮选择官方源码构建。
 
@@ -25,7 +25,25 @@ Desktop 是 Electron 宿主，不是独立的一套会话界面：会话、工�
 
 手机显示客户端画面、提供触屏与 IME；浏览器服务执行官方 action schema。使用真实 OpenCode 2.0.25 后端与固定 2.0.26 客户端完成验证。浏览器服务必须可达，不能声称 APK 在 Android 本地运行了 Electron 或 OpenCode 引擎。
 
-桌面窗口逻辑适配远程宿主可见性、离屏渲染和命令 AbortSignal。不会把远程服务器错误标记为本地 sidecar，也不会授予电脑本地 `file://` 访问。服务的令牌只从文件或环境变量加载；服务端凭据来自官方服务器配置。
+桌面窗口逻辑适配远程宿主可见性、离屏渲染和命令 AbortSignal。不会把远程服务器错误标记为本地 sidecar，也不会授予电脑本地 `file://` 访问。2.0.13 统一模式复用 OpenCode 认证并签发单次票据，旧版配对令牌仅在兼容模式加载；服务端凭据来自官方服务器配置。
+
+## 2.0.13 浏览器打开流程与再次核对
+
+根因是 Android 将浏览器传输当成另一份全局配对设置，导致打开方式偏离 Desktop，也无法按 OpenCode 服务器隔离连接。统一网关把 API、SSE、PTY 和浏览器放在同一地址，以原服务认证验证能力和单次票据；Android 只管理官方服务器注册表，每台服务器各有连接，绑定与画面始终归属其服务器。配置移除、页面隐藏会中止连接握手和能力发现，未完成 RPC 明确失败。
+
+宽屏“＋ → 浏览器”和 Ctrl+Shift+B 先自动连接，再打开官方 New tab、地址栏与 Open a page 首页；手机“更多 → 浏览器”显示同一个 pane，首标签只创建一次。每个移动标签可独立关闭，文案复用官方翻译。没有部署网关的服务报明确错误；旧配对仅保留为设置中的兼容选项。
+
+再次核对并修复：应用 UI 缩放步长与 Desktop 一致为 20%；不支持的菜单快捷键不吞输入；鼠标中键保持中键；触摸由模拟鼠标/滚轮改为真实 CDP 多指事件。Electron 默认禁用视觉缩放，现显式启用，真实引擎 pinch 改变 visualViewport.scale。
+
+- Android RPC/传输、网关和输入回归 **13/13**；覆盖原认证、二进制 HTTP 流、PTY Upgrade、票据单次/超时、错误 JSON/超限、服务器隔离、握手和发现中止。
+- 官方设置与兼容入口单测 **9/9**，官方浏览器连接单测 **14/14**；app/GUI 生产类型检查和源码构建通过。
+- 完整打包 SPA 导航、五服务器管理、导入和菜单 **41/41**：`research/tmp/verify-android-navigation/2026-10-10T00-38-22-292Z/report.json`。
+- 真实 OpenCode + 生产 Electron 网关 **16/16**，包含真实 touch/pinch、官方自动化、网络隧道、截图、取消、CPU、Lighthouse 和堆快照：`research/tmp/verify-android-browser/2026-10-10T00-30-56-531Z/report.json`。
+- 实际 API 35 Android WebView：手机 **8/8**（540×1168），平板 **6/6**（1200×768），验证直接打开 New tab、官方地址栏与前进后退、ADB 网页点击/滑动；手机验证未选中标签关闭、原生剪贴板和系统全屏，平板验证“＋”文件菜单与 Ctrl+Shift+B。报告：`research/tmp/verify-android-menus/2026-10-10T00-49-14-114Z-device/report.json`、`research/tmp/verify-android-menus/2026-10-10T00-55-59-660Z-device/report.json`。菜单及地址输入由 DOM 驱动，网页点击/滑动由 ADB 驱动；不表述为实体手机或全部软键盘输入验证。
+- 解压最终分发包、独立 npm ci/启动后再次完成真实引擎 **16/16**：`research/tmp/verify-android-browser/2026-10-10T00-56-36-080Z/report.json`。同机多个网关的数据目录现在同时隔离标签、Chromium Cookie 与缓存。
+- Android 单测 **249/249**；debug/release 构建与指定签名核验通过。release APK **57,621,412 字节**、SHA-256 `1558b6c036edd22bf21134e290e6f3d37087e34fe8ab3865faf52ac78ae500e5`；包内 **1,688 个 UI 文件**与源码资产逐字节一致。重复构建时仅清除补丁声明的新文件，避免残留测试文件阻止补丁应用。
+
+服务分发包包含已构建官方引擎及锁定依赖，解压后 npm ci/npm start 即可运行；Release 同时提供 APK 与网关。仍需有 Electron 图形环境，不能把 APK 描述为 Android 原生运行 Chromium/Electron 引擎。
 
 ## 2.0.12 应用菜单与侧栏加号菜单
 
@@ -85,7 +103,7 @@ CI 首次完整构建还发现 Workbox 按文件系统遍历顺序生成缓存�
 
 ## 仍存在的差异
 
-当前不是所有 Desktop 平台能力的 100% 移植。第三方 GUI 扩展的本地安装/启停管理、SSH/WSL sidecar 生命周期、电脑本地文件应用、多窗口与 Electron 更新器未移植；应用菜单已复用官方组件并接入 Android 动作，Android 平台替代系统文件选择、通知与外链。内置浏览器手动 pinch/长按拖拽尚无适配；自动化 drag 等动作仍由官方 CDP 工具执行。浏览器服务目前需运行在有图形环境的电脑。
+当前不是所有 Desktop 平台能力的 100% 移植。第三方 GUI 扩展的本地安装/启停管理、SSH/WSL sidecar 生命周期、电脑本地文件应用、多窗口与 Electron 更新器未移植；应用菜单已复用官方组件并接入 Android 动作，Android 平台替代系统文件选择、通知与外链。浏览器触摸已传递真实多指事件，网页自己的手势交互由 Chromium 处理；电脑 Chromium 的原生右键菜单尚没有 Android 展示层。浏览器服务需运行在有图形环境的电脑。
 
 模型生成与付费提供商调用没有作为自动测试执行，因此“复用官方业务代码”不能等同于“逐一实测所有模型/代理/插件”。硬件相机扫码、系统通知投递、实体手机网络和不同厂商 WebView 仍需目标设备验收。这些边界不能用假成功或普通外部浏览器掩盖。
 

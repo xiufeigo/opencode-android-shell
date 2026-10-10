@@ -184,10 +184,10 @@ async function runOfficialPlus(browser, ui, server) {
     record("tablet", "official-review-plus-menu-opens-workspace-files", { customChooser: false })
     await visible(review.getByRole("button", { name: "Add tab", exact: true })).click()
     await page.getByRole("menuitem", { name: /^Browser\b/ }).click()
-    await page.waitForFunction(() => window.__ocNativeCalls.some(call => call.name === "configureBrowser"))
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await page.getByText(/This server has no built-in browser gateway/).first().waitFor()
+    assert.equal(await page.evaluate(() => window.__ocNativeCalls.some(call => call.name === "configureBrowser")), false)
     assert.equal(await page.locator('[data-android-browser-surface]').count(), 0)
-    record("tablet", "browser-menu-requests-pairing-and-cancel-does-not-open-a-fake-pane", { nativePairing: true })
+    record("tablet", "browser-without-gateway-reports-real-error-without-pairing-or-fake-pane", { nativePairing: false })
     await page.screenshot({ path: path.join(output, "tablet-official-plus.png"), fullPage: true })
   } catch (error) {
     await page.screenshot({ path: path.join(output, "tablet-plus-failure.png"), fullPage: true })
@@ -220,7 +220,13 @@ async function runAppMenu(browser, profile, ui, server) {
     record(profile.name, "official-application-menu-six-groups-and-settings-command", { unsupportedNewWindowDisabled: true })
     await button(page, "Back to app").click()
     await select("View", "Zoom In")
-    await page.waitForFunction(() => document.documentElement.style.zoom === "1.1")
+    await page.waitForFunction(() => document.documentElement.style.zoom === "1.2")
+    const unsupported = await page.evaluate(() => {
+      const event = new KeyboardEvent("keydown", { key: "N", code: "KeyN", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+      return event.defaultPrevented
+    })
+    assert.equal(unsupported, false)
     await select("View", "Actual Size")
     await page.waitForFunction(() => document.documentElement.style.zoom === "1")
     await select("View", "Toggle Full Screen")

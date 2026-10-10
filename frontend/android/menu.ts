@@ -2,7 +2,7 @@ import { createSignal } from "solid-js"
 import type { DesktopMenuAction } from "@/shell/commands/desktop-menu"
 
 type NativeRequest = <T = unknown>(method: string, payload?: Record<string, unknown>) => Promise<T>
-const ZOOM_STEP = 0.1
+const ZOOM_STEP = 0.2
 const ZOOM_MIN = 0.5
 const ZOOM_MAX = 2
 const actions = new Set<DesktopMenuAction>([

@@ -2,13 +2,13 @@
 
 Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.12 / 40**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
+官方 UI 固定为 **2.0.26**，提交 `ea666727a14c961f3a4e6ce9d0f5862b3a2bcbf4`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.13 / 41**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
 ## 与 Desktop 对齐
 
 会话、流式消息、权限与表单、模型及代理选择、附件、工作区文件、差异审查、设置、主题、语言和扩展的前端直接来自同一官方源码。Android 适配提供系统文件选择与 Markdown 保存、外链、剪贴板、通知、二维码相机、触屏面板和终端输入。
 
-内置浏览器复用官方 Electron/CDP 执行引擎，通过电脑上的 `browser-companion` 向 Android 传输画面和输入。手机提供官方地址栏、标签、检查器与评论；自动化继续使用官方 browser 工具和服务端网络隧道。它需要单独连接浏览器服务，不能只安装 APK 就独立执行。完整对比、验证范围和剩余差异见 [research/desktop-parity/REPORT.md](research/desktop-parity/REPORT.md)。
+内置浏览器复用官方 Electron/CDP 执行引擎，通过电脑上的 `browser-companion` 向 Android 传输画面和输入。手机提供官方地址栏、标签、检查器与评论；自动化继续使用官方 browser 工具和服务端网络隧道。统一网关让浏览器与 API 共用服务器地址和认证，点击后直接打开官方面板；需要在电脑部署配套服务，APK 本身不执行 Electron。完整对比、验证范围和剩余差异见 [research/desktop-parity/REPORT.md](research/desktop-parity/REPORT.md)。
 
 电脑本地引擎启动、WSL、桌面更新器和电脑文件系统不在 Android 宿主内运行；工作区和终端由连接的 OpenCode 服务提供。当前 UI 使用 v2 服务协议。
 
@@ -40,24 +40,29 @@ APK 自带 UI 由 `http://127.0.0.1:4173` 提供；该端点只服务静态文�
 
 ## 连接内置浏览器
 
-先完成上述官方 UI 源码构建，再在有图形环境的电脑上执行：
+从本项目 GitHub Release 下载配套 `opencode-browser-gateway-2.0.13.tar.gz`，在运行 OpenCode 的电脑解压，执行：
 
 ```sh
-cd browser-companion
 npm ci
-npm run build
+```
+
+PowerShell 启动统一服务：
+
+```powershell
+$env:OPENCODE_BROWSER_UPSTREAM = 'http://127.0.0.1:4096'
+$env:OPENCODE_BROWSER_HOST = '0.0.0.0'
 npm start
 ```
 
-服务默认监听电脑本机 4100。实体手机连接时设置 `OPENCODE_BROWSER_HOST=0.0.0.0`，在 Android「设置 → 常规 → 内置浏览器」填电脑地址和启动日志提示路径中的 `pairing-token` 内容。服务依赖 Electron 图形环境；没有显示服务的服务器需要先配置显示环境。配对令牌保存在 Android 加密偏好中。
+Android 只添加 `http://电脑地址:4100`，使用原 OpenCode 密码。浏览器、会话和终端共用这个地址；侧栏“＋ → 浏览器”、手机“更多 → 浏览器”、Ctrl+Shift+B 直接打开官方 New tab 和地址栏。多台服务器分别部署网关、分别添加即可。普通 OpenCode 服务没有远程浏览器执行端，未启用时会显示明确错误。
 
-HTTP/WS 会明文传输配对令牌和服务器认证信息，仅用于可信网络；公网或不可信网络请通过 HTTPS/WSS 反向代理连接。
+HTTP/WS 会明文传输服务器认证信息和短时票据；HTTPS/WSS 可由反向代理提供。
 
-模拟器可执行 `adb reverse tcp:4100 tcp:4100` 并填 `http://127.0.0.1:4100`。浏览器配置与 OpenCode 服务器配置分开；网页中的 localhost 指向所连 OpenCode 服务器。详见 [browser-companion/README.md](browser-companion/README.md)。
+网页执行在浏览器服务的 Chromium 中，网络经官方隧道到所选 OpenCode 服务，网页的 localhost 指向后者。服务需要 Electron 图形环境；Linux/HTTPS 部署和旧配对兼容见 [browser-companion/README.md](browser-companion/README.md)。
 
 ## 验证
 
-左上角复用官方应用菜单：文件、编辑、视图、转到、窗口、帮助。编辑接系统剪贴板，视图提供缩放、重载与 Android 全屏，窗口可最小化或关闭 Android 任务；新桌面窗口、最大化与 Electron 开发者工具明确禁用。右侧审查栏“＋”保留打开文件和浏览器菜单；未配对时打开原生浏览器服务配对框，连接后打开官方浏览器面板。
+左上角复用官方应用菜单：文件、编辑、视图、转到、窗口、帮助。编辑接系统剪贴板，视图提供缩放、重载与 Android 全屏，窗口可最小化或关闭 Android 任务；新桌面窗口、最大化与 Electron 开发者工具明确禁用。右侧审查栏“＋”保留打开文件和浏览器菜单；使用所选服务器自动连接后打开官方浏览器面板，旧配对仅保留在兼容设置。
 
 ```sh
 node scripts/verify-android-navigation.mjs
@@ -74,7 +79,7 @@ node scripts/verify-android-terminal-release.mjs
 
 构建说明：[frontend/android/README.md](frontend/android/README.md)；终端行为：[frontend/terminal/README.md](frontend/terminal/README.md)。CI 构建固定 UI，检查生成资产与提交内容一致，运行 Android 单测，只发布 `:webapp` 的 release APK。
 
-`verify-android-menus-device.mjs` 验证真实 APK 的应用菜单、原生剪贴板、全屏、宽屏加号菜单和首次浏览器配对。仅在独立模拟器上运行；设置 `MENU_TEST_PROFILE=phone` 或 `tablet` 并选择对应屏幕的 `ANDROID_SERIAL`，不在运行中改变设备尺寸。还需可选 `ADB`、`MENU_TEST_SERVER_CONFIG`（自己的测试 OpenCode `{url,password}` 文件）、`MENU_TEST_BROWSER_URL` 与 `MENU_TEST_BROWSER_TOKEN_FILE`。脚本不输出凭据，创建并清理自己的测试会话。
+`verify-android-menus-device.mjs` 验证真实 APK 的应用菜单、原生剪贴板、全屏、宽屏加号菜单、免二次配对打开浏览器、导航与 ADB 网页点击/滑动。仅在独立模拟器上运行；设置 `MENU_TEST_PROFILE=phone` 或 `tablet`、对应屏幕的 `ANDROID_SERIAL`、可选 `ADB` 与 `MENU_TEST_SERVER_CONFIG`（自己的统一网关 `{url,password}` 文件）。脚本通过兼容设置清除该测试设备的旧配对，不重置服务器数据；不输出凭据，创建并清理自己的测试会话。
 
 ## 安全边界
 
@@ -87,7 +92,7 @@ node scripts/verify-android-terminal-release.mjs
 - `webapp/`：发布的 Android 宿主与打包 UI。
 - `frontend/android/`：官方源码版本、源码补丁、平台接口和构建工具。
 - `frontend/terminal/`：固定 xterm 终端适配及测试。
-- `browser-companion/`：官方浏览器执行引擎、配对和远程画面传输。
+- `browser-companion/`：官方浏览器执行引擎、统一网关和远程画面传输。
 - `frontend/embedded-ui/`：服务器迁移和触屏拖动的共享逻辑。
 - `app/`、`frontend/patches/`、`frontend/OPENCODE_APP_VERSION`：旧原生/旧 WebView 方案，不驱动当前发布。
 - `research/desktop-parity/`：本轮对比、实现范围和验证记录。

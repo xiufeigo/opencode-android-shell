@@ -1,12 +1,13 @@
 {
   "name": "opencode-android-browser-companion",
   "private": true,
-  "version": "2.0.10",
+  "version": "2.0.13",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "package": "node package.mjs",
     "start": "node start.mjs",
-    "test": "node --test transport.test.mjs",
+    "test": "node --test transport.test.mjs gateway.test.mjs input.test.mjs",
     "smoke": "node smoke.mjs"
   },
   "dependencies": {

@@ -14,10 +14,10 @@ export function AndroidBrowserSettings() {
     <SettingsRow title={chinese() ? "内置浏览器" : "Built-in browser"}
       description={bridge?.browserConnection?.status()}>
       <Button data-action="settings-android-browser" onClick={() => void bridge?.browserConnection?.configure().catch(error => {
-        console.error("Browser pairing", error)
+        console.error("Legacy browser connection", error)
         showToast({ title: language.t("common.requestFailed"), description: String(error) })
       })}>
-        {chinese() ? "连接浏览器服务" : "Connect browser service"}
+        {chinese() ? "兼容旧版浏览器服务" : "Legacy browser connection"}
       </Button>
     </SettingsRow>
   </Show>

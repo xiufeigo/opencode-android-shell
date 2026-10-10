@@ -492,7 +492,7 @@ index f3780f58..1a40b321 100644
        <Dynamic
          component={debug() ? "button" : "div"}
 diff --git a/packages/app/src/shell/titlebar/windows-menu.tsx b/packages/app/src/shell/titlebar/windows-menu.tsx
-index 6a4ee0be..ebd06abb 100644
+index 6a4ee0be..d89a2e94 100644
 --- a/packages/app/src/shell/titlebar/windows-menu.tsx
 +++ b/packages/app/src/shell/titlebar/windows-menu.tsx
 @@ -17,6 +17,7 @@ import {
@@ -566,6 +566,15 @@ index 6a4ee0be..ebd06abb 100644
    }
  
    const runEntry = (entry: DesktopMenuEntry) => {
+@@ -96,7 +125,7 @@ export function WindowsAppMenu(props: {
+         if (event.defaultPrevented) return
+         const action = windowsMenuAccelerator(event)
+ 
+-        if (!action) return
++        if (!action || (props.actionEnabled && !props.actionEnabled(action))) return
+         event.preventDefault()
+         event.stopPropagation()
+         runAction(action)
 @@ -125,7 +154,7 @@ export function WindowsAppMenu(props: {
          <Menu.Content class="desktop-app-menu">
            <Menu.Group>
@@ -628,8 +637,37 @@ index 4e665fa8..b3c87cab 100644
            (error) => {
              if (signal.aborted) throw error
              throw new Error(
+diff --git a/packages/gui-extensions/src/browser/connection.ts b/packages/gui-extensions/src/browser/connection.ts
+index 21185374..c3b37697 100644
+--- a/packages/gui-extensions/src/browser/connection.ts
++++ b/packages/gui-extensions/src/browser/connection.ts
+@@ -117,13 +117,13 @@ export function createConnection(input: {
+ 
+   // Main closed the binding, or never took it (an SSH server's endpoint is missing while it reconnects).
+   // Keep the tabs and register again with backoff; commands sent through it already failed and are not replayed.
+-  const reopen = (registration: Registration) => {
++  const reopen = (registration: Registration, error?: string) => {
+     if (disposed || state.registration !== registration) return
+     registration.close()
+     state.registration = undefined
+     state.embeds = {}
+     state.suspended = false
+-    state.error = undefined
++    state.error = error
+     publish()
+     retry = setTimeout(register, Math.min(30_000, 1_000 * 2 ** attempts++))
+   }
+@@ -202,7 +202,7 @@ export function createConnection(input: {
+ 
+         // Main closed a binding it took; its closed-state event decides, whichever of the two arrives first.
+         if (error instanceof Error && error.message === "browser.pane.registration.closed") return
+-        reopen(registration)
++        reopen(registration, error instanceof Error ? error.message : String(error))
+       },
+     )
+ 
 diff --git a/packages/gui-extensions/src/browser/model.ts b/packages/gui-extensions/src/browser/model.ts
-index ffde316e..ec235152 100644
+index ffde316e..5f237598 100644
 --- a/packages/gui-extensions/src/browser/model.ts
 +++ b/packages/gui-extensions/src/browser/model.ts
 @@ -359,7 +359,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
@@ -641,7 +679,15 @@ index ffde316e..ec235152 100644
  
    const tab = (session: Session, tabID: string) => attachment(session)?.browser?.tabs.find((item) => item.id === tabID)
  
-@@ -485,6 +485,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
+@@ -455,6 +455,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
+       opening.add(session.key)
+       command(session, { type: "tabs.open" })
+     },
++    opening: (session: Session) => opening.has(session.key),
+     /** Whether the user just opened a tab in this session; true once, for the pane that focuses its address. */
+     opened: (session: Session) => opening.delete(session.key),
+     /** A page's icon and zoom, once this desktop reported them. */
+@@ -485,6 +486,7 @@ export function createModel(ctx: SetupContext<typeof definition>) {
        }
      },
      pending,
@@ -690,13 +736,10 @@ index 8b1ddb18..a06a92e9 100644
        publish: (error) => {
          if (entry.pages.has(id)) publishState(entry, error)
 diff --git a/packages/gui-extensions/src/browser/renderer.tsx b/packages/gui-extensions/src/browser/renderer.tsx
-index 0304feec..38429c88 100644
+index 0304feec..7494f0ff 100644
 --- a/packages/gui-extensions/src/browser/renderer.tsx
 +++ b/packages/gui-extensions/src/browser/renderer.tsx
-@@ -1,8 +1,9 @@
--import { createMemo, createSignal, getOwner, lazy, onCleanup, runWithOwner, Show, Suspense } from "solid-js"
-+import { createEffect, createMemo, createSignal, getOwner, lazy, onCleanup, runWithOwner, Show, Suspense } from "solid-js"
- import { Command, createKeyed, LinkHandler, MenuItem, onIdle, Panel, Style, type PanelTab, type Setup } from "../sdk"
+@@ -3,6 +3,7 @@ import { Command, createKeyed, LinkHandler, MenuItem, onIdle, Panel, Style, type
  import { Browser } from "./contract"
  import type definition from "./index"
  import type { Model } from "./model"
@@ -704,36 +747,23 @@ index 0304feec..38429c88 100644
  import { PageIcon } from "./page-icon"
  import barStyles from "./bar.css?inline"
  import commentStyles from "./comment.css?inline"
-@@ -11,6 +12,28 @@ import tabStyles from "./tabs.css?inline"
+@@ -11,6 +12,15 @@ import tabStyles from "./tabs.css?inline"
  const setup: Setup<typeof definition> = (ctx) => {
    const sessions = ctx.sessions
    const [model, setModel] = createSignal<Model>()
-+  const [requested, setRequested] = createSignal<string>()
-+  createEffect(() => {
-+    const view = sessions.current()
-+    const value = model()
-+    if (!requested()) return
-+    if (!view) { setRequested(undefined); return }
-+    if (requested() !== view.key) { setRequested(undefined); return }
-+    if (!value?.available(view)) return
-+    setRequested(undefined)
-+    value.open(view)
-+  })
 +  const open = async (view: NonNullable<ReturnType<typeof sessions.current>>) => {
-+    const value = model()
-+    if (value?.available(view)) { value.open(view); return }
-+    if (!ctx.browserConnection) return
 +    try {
-+      if (await ctx.browserConnection.configure() && sessions.current()?.key === view.key) setRequested(view.key)
++      await ctx.browserConnection?.connect(view.server.id)
++      if (sessions.current()?.key === view.key) model()?.open(view)
 +    } catch (error) {
-+      console.error("Browser pairing", error)
-+      ctx.layout.settings("general")
++      console.error("Browser connection", error)
++      ctx.browserConnection?.report(error instanceof Error ? error.message : String(error))
 +    }
 +  }
    // Settings > Shortcuts lists the command on every platform; it stays disabled until the pane can open.
    ctx.add(Command, (): Command | undefined => {
      const view = sessions.current()
-@@ -23,13 +46,12 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -23,13 +33,12 @@ const setup: Setup<typeof definition> = (ctx) => {
        title: ctx.t("command.open"),
        group: ctx.t("command.category.view"),
        bind: "mod+shift+b",
@@ -750,7 +780,7 @@ index 0304feec..38429c88 100644
    // Tab trigger styles render with the strip, before the pane chunk loads.
    ctx.add(Style, tabStyles)
    ctx.add(Style, commentStyles)
-@@ -106,8 +128,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -106,8 +115,9 @@ const setup: Setup<typeof definition> = (ctx) => {
    ctx.add(MenuItem, (): MenuItem | undefined => {
      const view = sessions.current()
      const value = model()
@@ -761,7 +791,7 @@ index 0304feec..38429c88 100644
  
      return {
        menu: "session.panel",
-@@ -116,7 +139,8 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -116,7 +126,8 @@ const setup: Setup<typeof definition> = (ctx) => {
        icon: "globe",
        keybind: "browser.open",
        order: 20,
@@ -771,7 +801,7 @@ index 0304feec..38429c88 100644
      }
    })
  
-@@ -171,6 +195,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -171,6 +182,7 @@ const setup: Setup<typeof definition> = (ctx) => {
    ctx.add(Panel, {
      id: "main",
      region: "side",
@@ -779,7 +809,7 @@ index 0304feec..38429c88 100644
      list(input) {
        // While the model loads, the stored tabs hold the strip and its selection, as before the first inventory.
        const ids = model()?.tabs(input.session, input.open) ?? input.open
-@@ -193,7 +218,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+@@ -193,7 +205,9 @@ const setup: Setup<typeof definition> = (ctx) => {
          {(value) => (
            <Show when={!value().pending(props.session)}>
              <Suspense>
@@ -791,7 +821,7 @@ index 0304feec..38429c88 100644
            </Show>
          )}
 diff --git a/packages/gui-extensions/src/sdk/bridge.ts b/packages/gui-extensions/src/sdk/bridge.ts
-index 38f73cd7..7780f25c 100644
+index 38f73cd7..94b2d161 100644
 --- a/packages/gui-extensions/src/sdk/bridge.ts
 +++ b/packages/gui-extensions/src/sdk/bridge.ts
 @@ -5,6 +5,8 @@
@@ -809,7 +839,7 @@ index 38f73cd7..7780f25c 100644
  export interface Bridge {
 +  /** DOM surface for hosts whose browser runs remotely. */
 +  readonly view?: (props: EmbedProps) => JSX.Element
-+  readonly browserConnection?: { status(): string; configure(): Promise<boolean> }
++  readonly browserConnection?: { status(): string; configure(): Promise<boolean>; connect(server: string): Promise<void>; report(message: string): void }
    /** The app runs packaged, as main's `Build.packaged` says; the window's `Build` reports the same. */
    readonly packaged: boolean
    /**

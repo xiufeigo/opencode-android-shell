@@ -8,16 +8,25 @@ import { Schema } from "effect"
 import { createBrowserPane } from "../packages/gui-extensions/src/browser/pane.ts"
 import { BrowserPane } from "../packages/gui-extensions/src/browser/ipc.ts"
 import { authenticate, endpoint, frame, PROTOCOL } from "./transport.mjs"
+import { createGateway } from "./gateway.mjs"
+import { dispatchInput } from "./input.mjs"
 
 async function main() {
 app.setName("OpenCode Android Browser")
-await app.whenReady()
 const data = process.env.OPENCODE_BROWSER_DATA ?? app.getPath("userData")
 fs.mkdirSync(data, { recursive: true })
+// Tabs, Chromium cookies and caches must share the configured instance path.
+// Otherwise parallel gateways collide in Electron's default profile.
+app.setPath("userData", path.resolve(data))
+await app.whenReady()
 const tokenFile = path.join(data, "pairing-token")
-if (!fs.existsSync(tokenFile)) fs.writeFileSync(tokenFile, randomBytes(32).toString("base64url"), { mode: 0o600 })
-const token = process.env.OPENCODE_BROWSER_TOKEN ?? fs.readFileSync(tokenFile, "utf8").trim()
-if (!/^[A-Za-z0-9_-]{32,256}$/.test(token)) throw new Error("Pairing token must be 32–256 base64url characters")
+const gateway = process.env.OPENCODE_BROWSER_UPSTREAM ? createGateway(process.env.OPENCODE_BROWSER_UPSTREAM) : undefined
+let token
+if (!gateway) {
+  if (!fs.existsSync(tokenFile)) fs.writeFileSync(tokenFile, randomBytes(32).toString("base64url"), { mode: 0o600 })
+  token = process.env.OPENCODE_BROWSER_TOKEN ?? fs.readFileSync(tokenFile, "utf8").trim()
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(token)) throw new Error("Pairing token must be 32–256 base64url characters")
+}
 const storage = {
   store(key, { schema, initial }) {
     const filename = path.join(data, `${createHash("sha256").update(key).digest("hex")}.json`)
@@ -34,19 +43,24 @@ const storage = {
 }
 const refs = storage.store("refs", { schema: Schema.Int, initial: 0 })
 const clients = new Set()
-const server = createServer((_, response) => {
+const server = createServer((request, response) => {
+  if (gateway) { gateway.handle(request, response); return }
   response.writeHead(200, { "content-type": "application/json" })
   response.end(JSON.stringify({ service: "opencode-android-browser", version: "2.0.26", protocol: PROTOCOL }))
 })
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024, handleProtocols: () => PROTOCOL })
 server.on("upgrade", (request, socket, head) => {
+  if (gateway) {
+    gateway.upgrade(request, socket, head, endpoint => sockets.handleUpgrade(request, socket, head, ws => sockets.emit("connection", ws, endpoint)))
+    return
+  }
   if (request.url !== "/bridge" || !authenticate(request.headers["sec-websocket-protocol"], token)) {
     socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n")
     return
   }
   sockets.handleUpgrade(request, socket, head, ws => sockets.emit("connection", ws))
 })
-sockets.on("connection", async ws => {
+sockets.on("connection", async (ws, authorizedEndpoint) => {
   // This carrier never has a native display surface; render explicitly offscreen.
   const win = new BrowserWindow({ show: false, width: 1000, height: 700, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
   const closeEarly = () => { if (!win.isDestroyed()) win.destroy() }
@@ -127,6 +141,11 @@ sockets.on("connection", async ws => {
       switch (request.method) {
         case "configure": {
           if (!Array.isArray(input) || input.length > 128) throw new Error("Invalid endpoint list")
+          if (authorizedEndpoint) {
+            if (input.length !== 1 || input[0].id !== authorizedEndpoint.id) throw new Error("Browser ticket belongs to a different OpenCode server")
+            servers.clear(); servers.set(authorizedEndpoint.id, authorizedEndpoint)
+            break
+          }
           const next = input.map(endpoint)
           servers.clear(); next.forEach(value => servers.set(value.id, value))
           break
@@ -159,26 +178,7 @@ sockets.on("connection", async ws => {
         case "input": {
           const record = views.get(input.id)
           if (!record?.visible) throw new Error("Browser surface is not visible")
-          const event = input.event
-          if (event.type === "text") {
-            if (typeof event.text !== "string" || event.text.length > 1_048_576) throw new Error("Invalid browser text")
-            await record.view.webContents.debugger.sendCommand("Input.insertText", { text: event.text })
-          } else if (["keyDown", "keyUp"].includes(event.type)) {
-            if (typeof event.key !== "string" || typeof event.code !== "string" || !Number.isInteger(event.keyCode)) throw new Error("Invalid browser key")
-            await record.view.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: event.type, key: event.key, code: event.code, windowsVirtualKeyCode: event.keyCode, modifiers: event.modifiers ?? 0 })
-          } else {
-            const type = { mouseDown: "mousePressed", mouseUp: "mouseReleased", mouseMove: "mouseMoved", mouseWheel: "mouseWheel" }[event.type]
-            if (!type || ![event.x, event.y].every(Number.isFinite)) throw new Error("Invalid browser pointer")
-            // Native Desktop clicks focus this WebContents; remote CDP clicks need the same routing.
-            if (event.type === "mouseDown") record.view.webContents.focus()
-            await record.view.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { type, x: event.x, y: event.y,
-              button: event.button ?? "none", clickCount: event.clickCount ?? 0,
-              ...(type === "mouseWheel" ? { deltaX: -(event.deltaX ?? 0), deltaY: -(event.deltaY ?? 0) } : {}) })
-            if (event.type === "mouseUp") {
-              const result = await record.view.webContents.debugger.sendCommand("Runtime.evaluate", { expression: "!!(document.activeElement?.isContentEditable || /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName ?? ''))", returnByValue: true })
-              if (result.result.value) send({ type: "keyboard", id: input.id })
-            }
-          }
+          await dispatchInput(record.view.webContents, input.event, () => send({ type: "keyboard", id: input.id }))
           break
         }
         case "capture": {
@@ -203,7 +203,7 @@ sockets.on("connection", async ws => {
 })
 const port = Number(process.env.OPENCODE_BROWSER_PORT ?? 4100)
 server.listen(port, process.env.OPENCODE_BROWSER_HOST ?? "127.0.0.1", () => {
-  console.log(`OpenCode browser companion listening on port ${port}; pairing token file: ${tokenFile}`)
+  console.log(gateway ? `OpenCode unified browser gateway listening on port ${port}` : `OpenCode browser companion listening on port ${port}; pairing token file: ${tokenFile}`)
 })
 server.on("error", error => { console.error(error); app.exit(1) })
 app.on("window-all-closed", () => {})

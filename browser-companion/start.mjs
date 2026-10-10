@@ -23,7 +23,7 @@ if (process.platform === "win32") {
     await fs.writeFile(marker, version)
   }
   executable = path.join(runtime, "electron.exe")
-  args.unshift(`--user-data-dir=${path.join(base, "profile")}`)
+  args.unshift(`--user-data-dir=${process.env.OPENCODE_BROWSER_DATA ? path.resolve(process.env.OPENCODE_BROWSER_DATA) : path.join(base, "profile")}`)
 }
 // Pipe handles also work when the caller has no Windows console.
 const child = spawn(executable, args, {

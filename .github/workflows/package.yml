@@ -74,7 +74,9 @@ jobs:
           npm run build
 
       - name: Build pinned official OpenCode UI
-        run: node frontend/android/build.mjs
+        run: |
+          node --test frontend/android/*.test.mjs
+          node frontend/android/build.mjs
 
       - name: Check and build browser companion
         working-directory: browser-companion
@@ -82,6 +84,7 @@ jobs:
           npm ci
           npm test
           npm run build
+          npm run package
 
       # Guard: the committed bundle must be byte-identical to what the source
       # produces. A developer who edits terminal.js but forgets to rebuild
@@ -153,6 +156,7 @@ jobs:
         run: |
           mkdir -p dist
           cp webapp/build/outputs/apk/release/webapp-release.apk "dist/${APK_NAME}"
+          cp browser-companion/dist/opencode-browser-gateway-*.tar.gz dist/
           sha256sum "dist/${APK_NAME}"
 
       # Release assets use separate storage from Actions artifacts.
@@ -160,7 +164,9 @@ jobs:
         if: inputs.publish
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.apk
+          files: |
+            dist/*.apk
+            dist/*.tar.gz
           name: OpenCode ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false

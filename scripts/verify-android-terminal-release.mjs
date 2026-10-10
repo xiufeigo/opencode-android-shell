@@ -455,6 +455,7 @@ function startBackend() {
     }
 
     // --- health / info -------------------------------------------------
+    if (p.startsWith("/api/android-browser/")) { send({ error: "Browser gateway is not installed in this test backend" }, 404); return }
     if (p === "/api/health" || p === "/global/health" || p === "/health") {
       send({ healthy: true, version: "verify-android-terminal", time: Date.now() })
       return

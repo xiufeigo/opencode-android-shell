@@ -14,7 +14,7 @@ const bun = process.env.BUN_BINARY ?? "bun"
 if (execFileSync(bun, ["--version"], { encoding: "utf8" }).trim() !== pin.bun) throw new Error(`Bun ${pin.bun} required`)
 const stage = path.join(checkout, "packages/gui-extensions/.android-browser")
 await fs.mkdir(stage, { recursive: true })
-await fs.copyFile(path.join(here, "transport.mjs"), path.join(stage, "transport.mjs"))
+for (const name of ["transport.mjs", "gateway.mjs", "input.mjs"]) await fs.copyFile(path.join(here, name), path.join(stage, name))
 await fs.writeFile(path.join(stage, "main.mjs"), (await fs.readFile(path.join(here, "main.mjs"), "utf8")).replaceAll("../packages/gui-extensions/src/", "../src/"))
 await fs.mkdir(path.join(here, "dist"), { recursive: true })
 execFileSync(bun, ["build", path.join(stage, "main.mjs"), "--target=node", "--format=esm", "--external=electron", "--external=ws", "--external=lighthouse", "--outfile", path.join(here, "dist/main.mjs")], { cwd: checkout, stdio: "inherit" })

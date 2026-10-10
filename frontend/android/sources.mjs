@@ -3,6 +3,14 @@ import path from "node:path"
 import { execFileSync } from "node:child_process"
 
 export async function applyAndroidSources(checkout, here) {
+  // Git checkout restores tracked files but keeps files added by our previous
+  // patch. Remove only that declared set so repeated builds start from the pin.
+  const patch = await fs.readFile(path.join(here, "upstream.patch"), "utf8")
+  for (const match of patch.matchAll(/^--- \/dev\/null\r?\n\+\+\+ b\/(.+)$/gm)) {
+    const filename = path.resolve(checkout, match[1].trim())
+    if (!filename.startsWith(path.resolve(checkout) + path.sep)) throw new Error("Patch path escapes build checkout")
+    await fs.rm(filename, { force: true })
+  }
   execFileSync("git", ["apply", "--check", path.join(here, "upstream.patch")], { cwd: checkout, stdio: "inherit" })
   execFileSync("git", ["apply", path.join(here, "upstream.patch")], { cwd: checkout, stdio: "inherit" })
   const files = [
@@ -11,6 +19,8 @@ export async function applyAndroidSources(checkout, here) {
     ["files.mjs", "packages/app/src/runtime/platform/android-files.mjs"],
     ["files.d.mts", "packages/app/src/runtime/platform/android-files.d.mts"],
     ["browser.tsx", "packages/app/src/runtime/platform/android-browser.tsx"],
+    ["browser-transport.mjs", "packages/app/src/runtime/platform/android-browser-transport.mjs"],
+    ["browser-transport.d.mts", "packages/app/src/runtime/platform/android-browser-transport.d.mts"],
     ["browser-settings.tsx", "packages/app/src/settings/general/android-browser.tsx"],
     ["mobile-browser.tsx", "packages/gui-extensions/src/browser/android-mobile.tsx"],
     ["rpc.mjs", "packages/app/src/runtime/platform/android-rpc.mjs"],

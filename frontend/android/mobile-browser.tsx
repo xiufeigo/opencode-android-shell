@@ -10,26 +10,27 @@ const SessionBrowserPane = lazy(() => import("./panel"))
 export function AndroidMobileBrowser(props: { model: Model; session: MountedSession; screen: SessionScreen }) {
   const panel = usePanel()
   const extension = useExtension()
-  const chinese = () => extension.locale.locale().startsWith("zh")
   const opened = new Set<string>()
   const state = () => props.model.inventory(props.session)
   const selected = () => state()?.tabs.find(tab => tab.id === state()?.focusedTabID)
   createEffect(() => {
     if (!panel.visible() || !props.model.available(props.session) || props.model.pending(props.session)) return
-    if (state()?.tabs.length || opened.has(props.session.key)) return
+    if (state()?.tabs.length || props.model.opening(props.session) || opened.has(props.session.key)) return
     opened.add(props.session.key)
     props.model.open(props.session)
   })
   return <div class="flex flex-col h-full min-h-0">
     <div class="flex items-center gap-1 overflow-x-auto shrink-0 px-2 py-1" role="tablist" aria-label={extension.t("tab.title")}>
-      <For each={state()?.tabs}>{tab => <Button role="tab" aria-selected={tab.id === selected()?.id}
-        onClick={() => props.model.focusTab(props.session, tab.id)}>{tab.title || extension.t("tab.title")}</Button>}</For>
-      <IconButton icon={<Icon name="plus-small" />} aria-label={chinese() ? "新建浏览器标签" : "New browser tab"} onClick={() => props.model.open(props.session)} />
-      <Show when={selected()}>{tab => <IconButton icon={<Icon name="close" />} aria-label={chinese() ? "关闭浏览器标签" : "Close browser tab"} onClick={() => props.model.closeTab(props.session, tab().id)} />}</Show>
+      <For each={state()?.tabs}>{tab => <div class="flex items-center shrink-0">
+        <Button role="tab" aria-selected={tab.id === selected()?.id}
+          onClick={() => props.model.focusTab(props.session, tab.id)}>{!tab.url || tab.url === "about:blank" ? extension.t("tab.new") : tab.title || tab.url}</Button>
+        <IconButton icon={<Icon name="close" />} aria-label={`${extension.t("common.closeTab")}: ${tab.title || extension.t("tab.new")}`} onClick={() => props.model.closeTab(props.session, tab.id)} />
+      </div>}</For>
+      <IconButton icon={<Icon name="plus-small" />} aria-label={extension.t("tab.new")} onClick={() => props.model.open(props.session)} />
     </div>
     <Show when={selected()} fallback={<div role="status" class="p-4">{props.model.error(props.session) || (props.model.available(props.session)
-      ? (chinese() ? "新建标签以打开网页。" : "Open a new tab to browse.")
-      : (chinese() ? "请在设置 → 常规中连接浏览器服务。" : "Connect the browser service in Settings → General."))}</div>}>
+      ? extension.t("home.title")
+      : `${extension.t("common.loading")}${extension.t("common.loading.ellipsis")}`)}</div>}>
       {tab => <div class="flex-1 min-h-0"><Suspense><SessionBrowserPane tab={() => ({ id: tab().id, title: tab().title })}
         session={props.session} screen={props.screen} model={props.model} /></Suspense></div>}
     </Show>
