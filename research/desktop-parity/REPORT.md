@@ -38,10 +38,11 @@ Android 直接连接普通 OpenCode 服务，例如 `http://电脑地址:4096`�
 
 - Native RPC 回归 **3/3**；固定上游设置路由/URL.parse 兼容 **9/9**；app/GUI 生产类型检查与源码构建通过。
 - Android 单测 **249/249**，失败/错误/跳过均为 0；debug 和 release 构建通过。Release 包名 `com.xiufeigo.opencodeshell`、版本 **2.0.14/42**，使用用户指定密钥；证书 SHA-256 `760dc05fb4d1a125ed82cf9bff8eee622c7244d44b6ddc82a4c34e0b37b820e6` 已核验。
-- 完整打包 SPA **43/43**：五服务器连续管理、导入超过 2 MiB 的会话文件、旧真实服务器恢复、应用菜单、文件入口、浏览器菜单/设置/RPC/快捷键移除。报告 `research/tmp/verify-android-navigation/2026-10-10T02-29-26-077Z/report.json`。
-- 完整终端发布回归 **51/51**：触摸滚动、输出期间锚定、IME、旋转、历史恢复和 PTY 输入。报告 `research/tmp/verify-android-terminal-release-ready/2026-10-10T02-22-34-462Z-cd032d/report.json`。
-- 实际 Android API 35 WebView：手机 **6/6**（412×891），覆盖原生剪贴板、系统栏全屏、应用菜单和浏览器入口/RPC/快捷键移除；平板 **4/4**（1200×768），覆盖设置、文件“＋”和浏览器移除。两者无页面异常。报告分别为 `research/tmp/verify-android-menus/2026-10-10T02-37-22-226Z-device/report.json`、`research/tmp/verify-android-menus/2026-10-10T02-34-00-209Z-device/report.json`；使用签名 debug APK 和普通 OpenCode 测试服务。
-- Release APK **57,551,805 字节**，SHA-256 `b39f6c908988696347e516793597d96b7d7234f576b25c7a024272927426e5e2`；包内 **1,621** 个 UI 文件与已验证的源码构建产物逐字节一致，DEX 不再包含 BrowserPairing 类。
+- 完整打包 SPA **43/43**：五服务器连续管理、导入超过 2 MiB 的会话文件、旧真实服务器恢复、应用菜单、文件入口、浏览器菜单/设置/RPC/快捷键移除。报告 `research/tmp/verify-android-navigation/2026-10-10T03-04-08-337Z/report.json`。
+- 完整终端发布回归 **51/51**：触摸滚动、输出期间锚定、IME、旋转、历史恢复和 PTY 输入。报告 `research/tmp/verify-android-terminal-release-ready/2026-10-10T03-04-08-342Z-6b74ad/report.json`。
+- 实际 Android API 35 WebView：手机 **6/6**（412×891），覆盖原生剪贴板、系统栏全屏、应用菜单和浏览器入口/RPC/快捷键移除；平板 **4/4**（1200×768），覆盖设置、文件“＋”和浏览器移除。两者无页面异常。报告分别为 `research/tmp/verify-android-menus/2026-10-10T03-05-57-486Z-device/report.json`、`research/tmp/verify-android-menus/2026-10-10T02-34-00-209Z-device/report.json`；使用签名 debug APK 和普通 OpenCode 测试服务。
+- Release APK **57,551,637 字节**，SHA-256 `c420469c765c1b6d4c86902875fd6415fd0eedf8ebff81af9a55f6d9b6f9ed72`；包内 **1,621** 个 UI 文件与已验证的源码构建产物逐字节一致，DEX 不再包含 BrowserPairing 类。
+- 修复构建缓存范围污染：每次构建重新固定 sparse 工作区和 Desktop 图标目录，避免审计时扩展的 Desktop 源码进入 Tailwind 扫描。修复后的 Windows 构建与独立 Linux 新构建 **1,621 个文件库存和字节完全一致**。
 
 上述 SPA 和终端脚本使用 Chromium、测试后端及模拟平台桥，不能当作 Android 设备或所有功能的端到端验收。实际 WebView 检查使用模拟器，也不能替代实体相机或各厂商后台行为验收；历史 v2.0.10–2.0.13 浏览器验证见 Git 历史，不再代表当前产品能力。
 

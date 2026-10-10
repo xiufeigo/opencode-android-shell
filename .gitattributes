@@ -1,8 +1,6 @@
 # Keep Android source adapters portable across Windows and Linux checkouts.
 frontend/android/** text eol=lf
-browser-companion/** text eol=lf
 research/desktop-parity/** text eol=lf
-scripts/verify-android-browser-device.mjs text eol=lf
 scripts/verify-android-menus-device.mjs text eol=lf
 
 # A unified diff needs a single-space prefix on empty context lines.

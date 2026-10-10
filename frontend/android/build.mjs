@@ -30,16 +30,17 @@ try { await fs.access(path.join(checkout, ".git")) } catch {
   await run("git", ["config", "remote.origin.promisor", "true"])
   await run("git", ["config", "remote.origin.partialclonefilter", "blob:none"])
   await run("git", ["sparse-checkout", "init", "--cone"])
-  await run("git", ["sparse-checkout", "set", "patches", ...workspaces.map(name => `packages/${name}`)])
 }
 // This directory is a disposable build checkout, never the developer's reference
 // repository. Restoring tracked source prevents patches accumulating on rebuild.
 // Public files participate in asset hashes; Windows CRLF conversion would make
 // the checked-in UI differ from the Linux CI build of the same commit.
 await run("git", ["config", "--local", "core.autocrlf", "false"])
+// Tailwind scans available source, including packages added during an audit.
+// Fix the input scope on every build so cached and fresh checkouts agree.
+await run("git", ["sparse-checkout", "set", "patches", ...workspaces.map(name => `packages/${name}`), "packages/desktop/icons"])
 await run("git", ["fetch", "--filter=blob:none", "--depth", "1", "origin", pin.commit])
 await run("git", ["checkout", "--force", "--detach", pin.commit])
-await run("git", ["restore", "--source=HEAD", "--worktree", "--ignore-skip-worktree-bits", "packages/desktop/icons"])
 // An older checkout can retain CRLF files in Git's stat cache. Remove only
 // files whose LF blobs were converted, then restore their original bytes.
 // --eol reads blobs: scanning excluded workspaces would defeat partial clone.
