@@ -168,15 +168,8 @@ jobs:
           cp webapp/build/outputs/apk/release/webapp-release.apk "dist/${APK_NAME}"
           (cd dist && sha256sum *.apk *.zip | tee SHA256SUMS)
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opencode-distribution
-          path: |
-            dist/*.apk
-            dist/*.zip
-            dist/SHA256SUMS
-
-      # Release assets use separate storage from Actions artifacts.
+      # Release is the distribution store. Avoid duplicating the same packages
+      # in Actions storage, whose quota can block an otherwise verified release.
       - name: Publish APK, server plugin and Web client to GitHub Release
         if: inputs.publish
         uses: softprops/action-gh-release@v2
