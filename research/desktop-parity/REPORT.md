@@ -4,6 +4,8 @@
 
 当前产品是 `:webapp`，用户选择连接电脑或服务器上的 OpenCode。历史 `:app` Compose 模块不参与产品发布。共享官方前端不等于完整移植 Desktop 平台能力，也不等于所有业务已经逐项实测。
 
+官方已发布到 **2.0.29**（10-14），本仓库 UI 基准已于 2026-10-15 升级到 v2.0.29（`042d0832`）。逐包增量、功能变化、升级成本与执行记录见 [UPSTREAM-DELTA.md](UPSTREAM-DELTA.md)；本文件以下内容仍描述 2.0.26 基准下的能力与差异。
+
 ## 2.0.16 服务端浏览器
 
 按最新需求新增独立 OpenCode v2 服务端插件与 Android/Web 共享面板。Chromium 由原 OpenCode 服务持有，继续使用其 URL、认证和端口，不恢复旧 gateway、Electron companion 或配对。宽屏“＋”恢复“打开文件／浏览器”菜单，手机使用“更多 → 浏览器”，外接键盘支持 Ctrl+Shift+B。

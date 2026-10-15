@@ -45,7 +45,7 @@ Linux 主机缺少 Chromium 系统依赖时，需要管理员按 Playwright 提�
 - 适配 Web：使用相同入口。下载 `opencode-web-2.0.16.zip`，解压后运行 `node serve.mjs`，打开打印的地址并连接原有 OpenCode 服务。需要其他设备访问时，可用 `node serve.mjs --host 0.0.0.0 --port 4175`，也可将 `dist/` 放在已有静态站点服务上。
 - AI：需要在插件条目中明确配置 `"options": { "automation": true }`，然后使用 `server_browser.tabs.open`、`snapshot`、`click`、`fill`、`screenshot` 等工具。默认只提供手动面板，不注册模型工具。
 
-`automation: true` 是对此插件模型自动化的一次性授权。OpenCode 2.0.26 的公开插件 SDK 没有暴露 `Permission.assert`，所以本插件**不承诺逐次动作弹窗审批**；`server_browser` 权限名称只参与官方工具目录过滤。需要逐次审批的环境请保持 automation 关闭，手动面板仍可用。
+`automation: true` 是对此插件模型自动化的一次性授权。OpenCode 2.0.26 的公开插件 SDK 没有暴露 `Permission.assert`，所以本插件**不承诺逐次动作弹窗审批**；`server_browser` 权限名称只参与官方工具目录过滤。需要逐次审批的环境请保持 automation 关闭，手动面板仍可用。上游 2.0.29 已新增 `permission.assert`（需要审批时弹窗并等待回复），但本插件仍按 2.0.26 SDK 编译；采用它需要先升 SDK 并在 2.0.29 服务上重新验收。
 
 **安装服务端插件不会自动修改官方 Web/Desktop 的前端文件。** 未改造的官方客户端可通过模型使用已注册的工具，但不会自动出现此可视面板。适配 Web 的静态站点仅提供界面，API 仍直连原有 OpenCode 服务，不是 gateway。
 

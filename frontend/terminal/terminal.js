@@ -28,7 +28,7 @@ const installStyle = () => {
   style.textContent = css + `
     [data-oc-terminal-engine=xterm]{display:flex;flex-direction:column;justify-content:flex-end;min-height:0;overflow:hidden;touch-action:none;}
     .oc-terminal-frame{position:relative;flex:none;width:100%;overflow:hidden;touch-action:none;}
-    .oc-terminal-frame .xterm{padding:0;touch-action:none;}
+    .oc-terminal-frame .xterm{padding:0;line-height:normal;touch-action:none;}
     .oc-terminal-frame .xterm-screen{touch-action:none;}
     .oc-terminal-frame .xterm-helper-textarea{font-size:16px;}
     @media (max-width: 767px) {
@@ -213,6 +213,10 @@ export class Terminal extends Xterm {
         if (!canceled && first && event.timeStamp > first.time) {
           this.fling((first.y - event.clientY) / (event.timeStamp - first.time))
         }
+        // A scroll must not open the keyboard, and it must not close it either: the
+        // gesture restores only the focus it found. Runs during the trusted release
+        // gesture, like a tap, so Android keeps accepting the IME focus request.
+        if (!canceled && gesture.hadFocus) this.textarea.focus({ preventScroll: true })
         return
       }
       if (!canceled) {
@@ -228,8 +232,14 @@ export class Terminal extends Xterm {
         this.gesture = undefined
         return
       }
+      // The capture listener stops xterm's own pointer handler so the page cannot pan,
+      // which also stops the upstream wrapper from focusing the textarea. Focus is not
+      // taken here — a drag would then summon the keyboard — and what the gesture found
+      // is remembered instead: a scroll that started with the keyboard open keeps it
+      // (see the drag branch above), while taps still focus on release.
+      const hadFocus = container.contains(document.activeElement)
       this.scrollRemainder = 0
-      this.gesture = { id: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, dragging: false, samples: [{ time: event.timeStamp, y: event.clientY }] }
+      this.gesture = { id: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, dragging: false, hadFocus, samples: [{ time: event.timeStamp, y: event.clientY }] }
       container.setPointerCapture(event.pointerId)
     }, { capture: true, passive: false })
     listen(container, "pointermove", (event) => {

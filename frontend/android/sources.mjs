@@ -17,6 +17,8 @@ export async function applyAndroidSources(checkout, here) {
     ["platform.ts", "packages/app/src/runtime/platform/android.ts"],
     ["back.ts", "packages/app/src/runtime/platform/android-back.ts"],
     ["menu.ts", "packages/app/src/runtime/platform/android-menu.ts"],
+    ["i18n-zh.ts", "packages/app/src/runtime/i18n/zh-android.ts"],
+    ["i18n-zht.ts", "packages/app/src/runtime/i18n/zht-android.ts"],
     ["files.mjs", "packages/app/src/runtime/platform/android-files.mjs"],
     ["files.d.mts", "packages/app/src/runtime/platform/android-files.d.mts"],
     ["rpc.mjs", "packages/app/src/runtime/platform/android-rpc.mjs"],

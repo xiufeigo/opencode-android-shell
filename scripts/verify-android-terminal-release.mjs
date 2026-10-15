@@ -2483,6 +2483,45 @@ async function runDevice(browser, { chromium }, device, state) {
           `drag moved=${dragMoved} focusTaken=${dragFocused} (viewportY ${beforeDrag.viewportY} -> ${afterDrag.viewportY}, activeElement=${afterDrag.activeTag}, gesture=${JSON.stringify(afterDrag.lastGesture)})`,
         )
       }
+
+      // The other half of the same rule: a scroll must not close the keyboard either.
+      // Opens the IME with a real tap, drags from that focused state, and requires the
+      // focus to still be there. This is the behaviour that made "keep the PTY receiving
+      // keys after a scroll" worth having, and it is what a pointerdown-focus shortcut
+      // used to break from the other side.
+      await settleAtBottom()
+      await trustedTap(client, { x: center.x, y: center.y })
+      await sleep(600)
+      const beforeKeep = await page.evaluate(PROBE)
+      if (!focusInTerminal(beforeKeep)) {
+        recordResult(
+          "drag-keeps-focus",
+          device.name,
+          "fail",
+          `tap did not focus the terminal, so the drag has nothing to keep (activeElement=${beforeKeep.activeTag})`,
+        )
+      } else {
+        await fingerDrag(client, { x: center.x, y: center.y - 130 }, { x: center.x, y: center.y + 130 })
+        await sleep(900)
+        const afterKeep = await page.evaluate(PROBE)
+        const keptFocus = focusInTerminal(afterKeep)
+        const keepMoved =
+          typeof afterKeep.viewportY === "number" && afterKeep.viewportY !== beforeKeep.viewportY
+        recordResult(
+          "drag-keeps-focus",
+          device.name,
+          keptFocus && keepMoved ? "pass" : "fail",
+          keptFocus && keepMoved
+            ? `drag scrolled (viewportY ${beforeKeep.viewportY} -> ${afterKeep.viewportY}) and kept the open keyboard focused (${focusLabel(afterKeep)})`
+            : `drag scrolled=${keepMoved} keptFocus=${keptFocus} (viewportY ${beforeKeep.viewportY} -> ${afterKeep.viewportY}, activeElement=${afterKeep.activeTag})`,
+        )
+      }
+      // Leave the state the way the previous checks found it: no focus carried into the
+      // keyboard/inset stages below.
+      await page.evaluate(() => {
+        const a = document.activeElement
+        if (a && a.blur && a !== document.body) a.blur()
+      })
     }
   }
 
@@ -3580,20 +3619,54 @@ function anchorProbe(anchorText) {
           { timeout: 30_000, label: "the SPA to paint again after a real refresh" },
         )
         await applyBootInsets(page, device).catch(() => null)
-        // The overlay/tab may still be animating in right after a reload, so the
-        // real control gets a few genuine attempts before it is called a failure.
+        // A real refresh drops the client back into "restoring": the session, its
+        // persisted tabs and the terminal surface all come back through the app's own
+        // startup path. Driving the reopen control before that restore has landed is
+        // what made this scenario flaky on the phone layout, where the terminal tab
+        // lives behind the "more" overflow and there is no tab to tap until it is back.
+        // Wait for the restored terminal (tab or live surface), then reopen with a real
+        // gap between attempts.
+        await waitFor(
+          async () => {
+            const engine = await page.evaluate(ENGINE_VISIBLE).catch(() => null)
+            if ((engine?.visibleCount ?? 0) > 0) return true
+            const tabs = await page.evaluate(TAB_STATE).catch(() => null)
+            return (tabs?.all || []).some(
+              (value) =>
+                typeof value === "string" &&
+                (value === "terminal" || value === "terminal:main" || value.startsWith("pty_")),
+            )
+          },
+          { timeout: 30_000, label: "the refreshed app to restore its terminal tab" },
+        ).catch(() => null)
         let reopenedAfterReload = null
         const reopenErrors = []
-        for (let attempt = 0; attempt < 3 && !reopenedAfterReload; attempt++) {
+        for (let attempt = 0; attempt < 4 && !reopenedAfterReload?.entered; attempt++) {
           try {
             reopenedAfterReload = await returnTerminalView(page, client)
           } catch (e) {
             reopenErrors.push(String(e.message).slice(0, 300))
-            await sleep(1800)
           }
+          if (!reopenedAfterReload?.entered) await sleep(1800)
         }
         if (!reopenedAfterReload?.entered) {
-          throw new Error(`could not reopen the terminal after a real refresh: ${JSON.stringify(reopenErrors)}`)
+          // The dump is what makes a future failure diagnosable: "could not reopen" alone
+          // cannot distinguish "the app never restored the terminal" from "the control
+          // was driven into a view that was not there yet".
+          const diagnosis = {
+            reopenErrors,
+            path: await page.evaluate("location.pathname + location.search").catch(() => null),
+            engine: await page.evaluate(ENGINE_VISIBLE).catch(() => null),
+            instances: await page.evaluate(ENGINE_INSTANCES).catch(() => null),
+            tabs: await page.evaluate(TAB_STATE).catch(() => null),
+            terminalNodes: await page
+              .evaluate(`document.querySelectorAll('[data-component="terminal"]').length`)
+              .catch(() => null),
+            moduleRequests: requestLog.filter((entry) => String(entry).includes("oc-terminal")).length,
+            consoleErrors: consoleErrors.slice(-5),
+            pageErrors: pageErrors.slice(-5),
+          }
+          throw new Error(`could not reopen the terminal after a real refresh: ${JSON.stringify(diagnosis)}`)
         }
         historyEvidence.reopenedVia = reopenedAfterReload.mechanism
         await waitFor(

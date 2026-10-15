@@ -652,6 +652,14 @@ index d01b8ccd..7b66ea9e 100644
      }
  
      if (!output) {
+@@ -453,6 +453,6 @@ export const Terminal = (props: TerminalProps) => {
+         fontFamily: appearance.font("mono"),
+         allowTransparency: false,
+-        convertEol: false,
++        convertEol: true,
+         theme: terminalColors(),
+         scrollback: 10_000,
+         ghostty: g,
 diff --git a/packages/ui/src/components/resize-handle.css b/packages/ui/src/components/resize-handle.css
 index 5d8b90b3..b1af7052 100644
 --- a/packages/ui/src/components/resize-handle.css
@@ -1110,3 +1118,21 @@ index 25bc4954..0a315c48 100644
    const platform = usePlatform()
    const settings = useSettingsSurface()
    const preferences = useSettings()
+diff --git a/packages/app/src/runtime/i18n/language.tsx b/packages/app/src/runtime/i18n/language.tsx
+index fed6514..74ef3d7 100644
+--- a/packages/app/src/runtime/i18n/language.tsx
++++ b/packages/app/src/runtime/i18n/language.tsx
+@@ -104,8 +104,11 @@ const merge = (app: Promise<Source>, ui: Promise<Source>) =>
+   Promise.all([app, ui]).then(([a, b]) => ({ ...base, ...flatten({ ...a.dict, ...b.dict }) }) as Dictionary)
+ 
+ const loaders: Record<Exclude<Locale, "en">, () => Promise<Dictionary>> = {
+-  zh: () => merge(import("@/runtime/i18n/zh"), import("@opencode/ui/i18n/zh")),
+-  zht: () => merge(import("@/runtime/i18n/zht"), import("@opencode/ui/i18n/zht")),
++  // zh-android / zht-android wrap the official dictionaries with this product's own
++  // translations for copy upstream has not translated yet; the official entry wins
++  // inside them, so this only fills gaps.
++  zh: () => merge(import("@/runtime/i18n/zh-android"), import("@opencode/ui/i18n/zh")),
++  zht: () => merge(import("@/runtime/i18n/zht-android"), import("@opencode/ui/i18n/zht")),
+   ko: () => merge(import("@/runtime/i18n/ko"), import("@opencode/ui/i18n/ko")),
+   de: () => merge(import("@/runtime/i18n/de"), import("@opencode/ui/i18n/de")),
+   es: () => merge(import("@/runtime/i18n/es"), import("@opencode/ui/i18n/es")),
