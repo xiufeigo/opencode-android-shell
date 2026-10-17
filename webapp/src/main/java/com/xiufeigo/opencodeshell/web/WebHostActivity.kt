@@ -591,7 +591,14 @@ class WebHostActivity : AppCompatActivity() {
      */
     private fun installFacade(wv: WebView) {
         val origins = setOf(LocalUiOriginServer.origin())
-        val script = legacyChannel.script(origins) + runCatching { assets.open("www/oc-host.js").bufferedReader().use { it.readText() } }
+        // 首帧深浅色：`ui/index.html` 的 preload 在页面脚本阶段就按
+        // `prefers-color-scheme` 铺底色，而 WebView 的该媒体查询可能还停在旧值
+        // ⇒ 深色冷启动会先闪一下浅色。`oc-host.js` 会用这个初值驱动它的深浅色桥
+        // （见其中的 `applyHostScheme`），所以注入前先把当前 uiMode 真值递进去。
+        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val initialScheme = "window.__ocHostSchemeInitial=" + JSONObject.quote(if (night) "dark" else "light") + ";"
+        val script = initialScheme + legacyChannel.script(origins) + runCatching { assets.open("www/oc-host.js").bufferedReader().use { it.readText() } }
             .getOrElse {
                 Log.e(TAG, "cannot read www/oc-host.js", it)
                 return

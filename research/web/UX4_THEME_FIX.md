@@ -65,6 +65,9 @@
    **没有任何** `FORCE_DARK` / `setAlgorithmicDarkeningAllowed` 之类设置 ——
    方向错误地"锁死某个模式"的风险不存在；WebView 走默认行为（`prefers-color-scheme`
    跟随 app `uiMode`）。✅ 无需改。
+   ⚠️ **2026-10-17 补记：这一条结论是错的** —— 恰恰是"没有设置"导致 WebView 的
+   `prefers-color-scheme` 不保证随 `uiMode` 翻转。真机再次复现后已改由宿主接管
+   该媒体查询，见文末「补记·跟随系统深浅色」。本节其余结论仍成立。
 5. **上游机制**（`_upstream` 实读，非猜测）：
    - 设置存在 localStorage key `opencode-color-scheme`，取值 `light|dark|system`，
      **默认 `system`**（`packages/ui/src/theme/context.tsx:14-19, 186`）；
@@ -184,3 +187,47 @@
   状态差异——修复后四组合 + 双向实时切换均有设备证据）；② R8 包的设备级
   🟡 证据（口令存储/错误态/常亮等）仍属旧字节体，本轮未在 R8 新包上重跑
   （非 R8/debug 的行为链路不受影响，按惯例引用旧证据需带旧 md5）。
+
+## 补记 · 跟随系统深浅色（2026-10-17，真机再次复现后定位并修复）
+
+### 结论修正
+
+上一轮把 PO 的"跟随系统不生效"归因为"存储的 scheme 非 system 或设备状态差异"，
+**这个归因是错的**。真因是宿主假设"WebView 的 `prefers-color-scheme` 会跟随 app
+`uiMode`"——这条假设不成立：Chromium 只有在 embedder 显式允许 algorithmic
+darkening 时才会把该媒体查询判为 `dark`，本宿主从未设置（原 §1 第 4 条把它当成
+"无需改"），于是该媒体查询可以长期停在 `light`。
+
+上游只认这一条通道，`packages/ui/src/theme/context.tsx`：
+
+- `getSystemMode()` = `matchMedia("(prefers-color-scheme: dark)").matches`；
+- `onMount` 里 `makeEventListener(mediaQuery, "change", onMedia)`，且 `onMedia`
+  只在 `store.colorScheme === "system"` 时才改 `mode`。
+
+所以媒体查询不翻转 ⇒ `mode` 永远不变 ⇒ 页面（含终端配色）整页不换肤。
+
+### 修法（不动上游一行，也不用改 WebView 模式设置）
+
+宿主本来就掌握真值：`InsetsHost.publish` 每帧带 `scheme`，
+`WebHostActivity.onConfigurationChanged` 又强制 `insets.refresh()`。缺的只是把这份
+真值喂给上游依赖的媒体查询。`webapp/src/main/assets/www/oc-host.js`（document-start
+注入，早于任何页面脚本）因此把 `(prefers-color-scheme: dark)` 换成一个宿主驱动的
+`MediaQueryList` 同形对象：
+
+- `matches` 由 `applyInsets` 的 `scheme` 决定（`doApply` → `applyHostScheme`）；
+- 翻转时派发 `change`（`addEventListener` / `addListener` / `onchange` 三种写法都支持）；
+- 只接管这一条查询，`prefers-reduced-motion` / `display-mode` 等继续走浏览器原生实现。
+
+完整链路：`onConfigurationChanged` → `insets.refresh()` → `publish()`（`dark`/`scheme`
+已翻转，去重通过）→ `pushInsets` → `oc.applyInsets` → `applyHostScheme` → `change`
+→ 上游 `onMedia` → `setStore("mode")` → `applyTheme`（`data-color-scheme` + CSS 变量）。
+
+### 验证
+
+- `node scripts/verify-android-scheme.mjs`：6 项全过。A 段钉桥本身（`matches` 跟随、
+  翻转只发一次、重复推送不重发、`addListener` 老 API、其它媒体查询不被劫持）；
+  B 段钉真实打包 SPA（`colorScheme=system` 下推 `dark` → `data-color-scheme` 变
+  `dark`、页面底色 `rgb(250,250,250)` → `rgb(8,8,8)`，再推回 `light` 复原，全程无重载）。
+- **反向验证**：把 `oc-host.js` 退回 HEAD 再跑同一脚本 ⇒ 3 项失败（含真实 SPA
+  `waitForFunction` 超时），证明该脚本不是空转。
+- 连带回归：`verify-android-resize.mjs` 10/10 通过（insets/IME 走的是同一个 facade）。

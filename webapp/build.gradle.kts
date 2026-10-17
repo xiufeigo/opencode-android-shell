@@ -34,9 +34,10 @@ android {
         // 37 多服务器管理、官方右侧栏入口及平板触摸分隔线修复。
         // 46 手机端 xterm 滚动条滑块视觉宽度缩窄，保留触摸命中区与列宽计算。
         // 47 官方 UI 升到 2.0.29，补齐其新增中文文案，并修正终端拖动“只滚动、不抢焦点、也不关键盘”的焦点规则。
-        versionCode = 47
+        // 48 系统深浅色跟随：宿主把 uiMode 真值转交给页面依赖的 `prefers-color-scheme`，修真机切深色不换肤。
+        versionCode = 48
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.19"
+        versionName = "2.0.20"
     }
 
     signingConfigs {
