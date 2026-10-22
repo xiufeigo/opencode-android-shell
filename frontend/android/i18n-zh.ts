@@ -37,8 +37,9 @@ const android = {
   "ui.sessionTimeline.notice.variantSwitched": "已切换到变体 {{variant}}",
   "ui.sessionTimeline.notice.variantDefault": "已切换到默认变体",
   "ui.question.custom.answerPlaceholder": "输入你自己的答案…",
-  // 其余 2.0.29 时官方仍缺的条目（连接流程、配对、第三方声明、运行计数、扩展状态、会话位置）。
+  // 其余官方仍缺的 156 条（2.0.29 基准：连接流程、配对、第三方声明、运行计数、扩展状态、会话位置）。
   // 规则同上：上游词条后展开、有官方翻译时自动胜出。
+  // 当前共 169 条：这 156 条 + 2.1.2 新增的 13 条（见文件末尾）。
   "command.provider.connect.description": "登录 OpenCode Go、OpenCode Console 或其他模型提供商",
   "common.retry": "重试",
   "dialog.model.chatgptManageUsage": "管理用量",
@@ -168,6 +169,20 @@ const android = {
   "ui.message.moveToQueue": "移到队列",
   "ui.message.pending": "待处理",
   "ui.messagePart.compaction.queued": "已排队会话压缩",
+  // 2.1.2 新增的 13 条：会话切换命令、项目文件夹缺失、时间线“变更文件”设置、免费额度与语音。
+  "command.session.previous": "上一个会话",
+  "command.session.next": "下一个会话",
+  "command.session.previous.unseen": "上一个未读会话",
+  "command.session.next.unseen": "下一个未读会话",
+  "project.settings.folderMissing.title": "未找到项目文件夹",
+  "project.settings.folderMissing.description": "恢复文件夹，或关闭此项目。",
+  "settings.timeline.row.turnDiffs.title": "变更文件",
+  "settings.timeline.row.turnDiffs.description": "每个回合结束时列出该回合变更的文件",
+  "ui.sessionTurn.freeLimit.title": "今天的免费消息已用完。",
+  "ui.sessionTurn.freeLimit.lineReset": "今天的免费消息已用完，将在 {{time}} 重置。",
+  "dialog.usageExceeded.freeTier.reset": "免费消息将在 {{time}} 重置。",
+  "ui.message.copyFullMessage": "复制完整消息",
+  "ui.message.voice": "语音",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }

@@ -203,3 +203,15 @@ ANDROID_SERIAL=emulator-5570 DEVICE_CDP=http://127.0.0.1:9226 node scripts/verif
 环境备注（不属于仓库改动）：本机直连 github.com 被断，构建检出通过 `ghproxy.net` 代理获取同提交对象，并用直连克隆的树哈希 `6561fbef…` 校对；Bun 1.4.2 从 npmmirror 取得；`subst` 盘符会让 bun 把工作区写成绝对路径从而导致 `--frozen-lockfile` 报 “lockfile had changes”，必须用真实路径构建。
 
 待决定项：服务端浏览器插件是否在后续轮次跟进 2.0.29 的插件 SDK（本轮按“无新功能不递增”处理，已记在上文）；APK 递增已完成（2.0.19 / 47）。
+
+## 升级执行记录（2.1.2，2026-10-22）
+
+已升级到 v2.1.2（`a517687fde98a7329ada3ae644a01a9fc6c4e99e`），`upstream.json` 的 commit/version 已更新，Bun 仍为 1.4.2。
+
+- 源码构建（本机实跑）：`upstream.patch` 的 29 个文件对 v2.1.2 `git apply --check` 通过；29 个补丁目标中只有 `gui-extensions/src/terminal/panel.tsx` 上游有改动（标签栏 52→49px，改动区与补丁上下文不重叠）；`runtime/platform/**`、`gui-extensions/src/sdk/**` 零 diff。`bun install --frozen-lockfile` 通过；app 单测 route+polyfills **9/9**、终端 session-model **4/4**；app 与 gui-extensions 的 `tsconfig.android.json` 类型检查通过；Vite 生产构建生成 **1621** 个 UI 文件（2.0.29 为 1625）。
+- Android：`:webapp:testDebugUnitTest` **245/245**（失败/错误/跳过 0）；`:webapp:assembleRelease` 成功，APK **2.0.21 / 49**，**57,584,944 字节**，SHA-256 `e8e61064be92b90f2168c636123758d10cac2be716a288199612da0d11bfc9c1`；`apksigner verify --print-certs` 证书 SHA-256 `760dc05f…`，与 CI/历史 Release 一致；包内 `assets/www/ui/opencode-build.json` 为 2.1.2。
+- i18n：`extract-i18n.mjs` 按 2.1.2 源码重跑（en **1275** / zh 1106 / zht 1106）；新增 13 条已由 `i18n-zh.ts` / `i18n-zht.ts` 补齐（156 → **169**）。
+- 回归（打包 SPA + 测试后端 + Chromium）：深浅色 **7/7**、导航 **43/43**、返回 **13/13**、文件选择 **4/4**、拖拽尺寸 **10/10**、终端发布 **52 pass / 0 fail**（4 条 info 为环境限制：oc-host 终端补丁在 xterm 引擎下按设计不安装、平板字号探针需真机）。
+- 回归适配：2.1.2 不再用 `SessionTransfer.Data` 在客户端预校验导入文件，改为把任意 JSON 交给服务端校验；`verify-android-navigation.mjs` 的“无效会话文件”用例改用**畸形 JSON**，仍钉住“客户端解析失败、不发导入请求”。
+- 已知依赖：2.1.2 的免费额度 UI 需要服务端 ≥2.1.2 产出 `provider.free-limit`（旧服务端静默不生效）；“每回合变更文件”不依赖新服务端。
+- 环境备注：github.com 直连仍不可用，构建检出 origin 指向 `ghproxy.net` 镜像；Bun 1.4.2 从 npmmirror 取得（`_scratch_root/tools/bun-1.4.2/`）。构造期间不在仓库内持久化凭据。

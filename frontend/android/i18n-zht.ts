@@ -165,6 +165,20 @@ const android = {
   "ui.message.moveToQueue": "移到佇列",
   "ui.message.pending": "待處理",
   "ui.messagePart.compaction.queued": "已排入工作階段壓縮",
+  // 2.1.2 新增的 13 條：工作階段切換命令、專案資料夾缺失、時間軸「變更的檔案」設定、免費額度與語音。
+  "command.session.previous": "上一個工作階段",
+  "command.session.next": "下一個工作階段",
+  "command.session.previous.unseen": "上一個未讀工作階段",
+  "command.session.next.unseen": "下一個未讀工作階段",
+  "project.settings.folderMissing.title": "找不到專案資料夾",
+  "project.settings.folderMissing.description": "還原資料夾，或關閉此專案。",
+  "settings.timeline.row.turnDiffs.title": "變更的檔案",
+  "settings.timeline.row.turnDiffs.description": "每個回合結束時列出該回合變更的檔案",
+  "ui.sessionTurn.freeLimit.title": "今天的免費訊息已用完。",
+  "ui.sessionTurn.freeLimit.lineReset": "今天的免費訊息已用完，將於 {{time}} 重置。",
+  "dialog.usageExceeded.freeTier.reset": "免費訊息將於 {{time}} 重置。",
+  "ui.message.copyFullMessage": "複製完整訊息",
+  "ui.message.voice": "語音",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }

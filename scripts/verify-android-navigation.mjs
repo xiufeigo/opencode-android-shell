@@ -287,11 +287,11 @@ async function runImport(browser, profile, ui, server) {
   try {
     await page.goto(ui, { waitUntil: "domcontentloaded" })
     const before = server.sessionImports.length
-    await importFile('{"invalid":true}')
+    await importFile('{"invalid":')
     await page.getByText("Request failed", { exact: true }).waitFor()
     assert.equal(server.sessionImports.length, before)
     assert.equal(await page.locator('input[type="file"]').count(), 0)
-    record(profile.name, "invalid-session-file-fails-before-api", { imports: 0 })
+    record(profile.name, "malformed-session-file-fails-before-api", { imports: 0 })
     const info = await fetch(`${server.origin}/api/session/${server.sessionId}`).then(response => response.json()).then(value => value.data)
     const data = { info, messages: [] }
     await importFile(JSON.stringify(data) + " ".repeat(2 * 1024 * 1024))
