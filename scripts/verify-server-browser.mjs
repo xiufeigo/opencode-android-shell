@@ -33,7 +33,7 @@ try {
   const session = await api("session", { title: "Server browser integration" })
   sessions.push(session.id)
   await rpc("state", { sessionID: session.id })
-  checks.push("Real OpenCode 2.0.26 loads the local v2 plugin")
+  checks.push("Real OpenCode server loads the local v2 plugin")
   const probe = (await api("rpc/xiufeigo.server-browser-test/check", { input: { sessionID: session.id } })).output
   assert.equal(probe.tools.length, 29)
   assert.equal(probe.listed.tabs[0].id, probe.tabID)
@@ -52,7 +52,7 @@ try {
   assert.equal(retained.tabs[0].id, tab.id)
   await assert.rejects(rpc("frame", { sessionID: "invalid", tabID: tab.id }), /HTTP 400|not found|Not found/)
   checks.push("Session validation rejects foreign requests")
-  const report = { environment: "actual OpenCode 2.0.26 + installed server plugin + real Chromium", checks, tab: { id: tab.id, title: tab.title }, serverPort: new URL(config.url).port }
+  const report = { environment: "actual OpenCode server + installed server plugin + real Chromium", cli: config.executable, checks, tab: { id: tab.id, title: tab.title }, serverPort: new URL(config.url).port }
   await fs.writeFile(path.join(out, "report.json"), JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report, null, 2))
 } finally {
