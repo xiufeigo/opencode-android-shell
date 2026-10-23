@@ -75,6 +75,8 @@ export class Terminal extends Xterm {
     this.mobileCleanups.push(() => bufferChange.dispose())
     this.mobileDisposed = false
     this.fitFrame = 0
+    this.fitSettleFrame = 0
+    this.fittedWidth = 0
     this.flingFrame = 0
     this.gesture = undefined
     this.scrollRemainder = 0
@@ -345,12 +347,51 @@ export class Terminal extends Xterm {
   scheduleFit() {
     // The SPA's first explicit fit follows snapshot write + viewport restore.
     // Font/resize observers must not change the saved grid before that point.
-    if (this.mobileDisposed || !this.mobileLayoutReady || this.fitFrame) return
+    if (this.mobileDisposed || !this.mobileLayoutReady) return
+    // Last-wins, not first-wins. A panel transition (the right sidebar opening
+    // or closing) resizes the container on every animation frame, so several
+    // notifications arrive before the pending frame runs. Keeping the *first*
+    // frame fits the grid against a mid-animation width and then drops every
+    // later width — including the final one — so the grid keeps a stale column
+    // count while the container has already moved on. The terminal then paints
+    // shifted: the text is cut at the left edge and a wide empty gutter shows
+    // up next to the grid.
+    if (this.fitFrame) cancelAnimationFrame(this.fitFrame)
     this.fitFrame = requestAnimationFrame(() => {
       this.fitFrame = 0
       if (this.mobileDisposed) return
       this.mobileFit?.fit()
+      // The transition is usually still running when the frame above lands.
+      // Settle once more so the grid follows the container to its final width.
+      this.scheduleFitSettle()
     })
+  }
+
+  // One extra fit, one frame later, and only when the container actually moved
+  // since the fit that armed it. The width check is what stops the chain: a
+  // settled container ends the settle pass instead of refitting forever.
+  scheduleFitSettle() {
+    if (this.mobileDisposed || this.fitSettleFrame) return
+    this.fitSettleFrame = requestAnimationFrame(() => {
+      this.fitSettleFrame = 0
+      if (this.mobileDisposed) return
+      const width = this.mobileContainer?.getBoundingClientRect?.().width ?? 0
+      if (!width || Math.abs(width - this.fittedWidth) < 0.5) return
+      this.scheduleFit()
+    })
+  }
+
+  // xterm 6 keeps the horizontal scroll of the grid in the native scrollLeft of
+  // `.xterm-scrollable-element` (it mirrors its scroll state onto that node).
+  // A refit does not reset that offset, so a grid that is wider than its
+  // container stays painted sideways: the left edge of the text is cut off
+  // (visible while moving the cursor vertically in Vim) and the grid no longer
+  // starts at the left edge of the terminal. Reset it after every fit.
+  resetHorizontalScroll() {
+    const element = this.element
+    if (!element) return
+    const scrollable = element.querySelector(".xterm-scrollable-element")
+    if (scrollable && scrollable.scrollLeft) scrollable.scrollLeft = 0
   }
 
   scrollPixels(pixels) {
@@ -395,6 +436,8 @@ export class Terminal extends Xterm {
     this.clearResizeAnchor()
     this.stopFling()
     cancelAnimationFrame(this.fitFrame)
+    cancelAnimationFrame(this.fitSettleFrame)
+    this.fitSettleFrame = 0
     for (const cleanup of this.mobileCleanups) cleanup()
     this.mobileCleanups = []
     if (this.mobileContainer?._ocTerminal === this) delete this.mobileContainer._ocTerminal
@@ -436,6 +479,12 @@ export class FitAddon extends XtermFit {
     super.fit()
     if (follow) terminal.scrollToBottom()
     terminal.layoutFrame()
+    // Remember the width this grid was fitted to, so the settle pass can tell
+    // whether the container moved again while the panel was animating.
+    terminal.fittedWidth = rect.width
+    // A refit can leave the grid scrolled sideways; put it back to the left
+    // edge so the text is not painted shifted.
+    terminal.resetHorizontalScroll()
   }
 
   observeResize() {

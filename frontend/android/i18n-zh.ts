@@ -47,7 +47,7 @@ const android = {
   "ui.question.custom.answerPlaceholder": "输入你自己的答案…",
   // 其余官方仍缺的 156 条（2.0.29 基准：连接流程、配对、第三方声明、运行计数、扩展状态、会话位置）。
   // 规则同上：上游词条后展开、有官方翻译时自动胜出。
-  // 当前共 169 条：这 156 条 + 2.1.2 新增的 13 条（见文件末尾）。
+  // 2.0.29 仍缺的条目，加上文件末尾 2.1.2 的 13 条与 2.1.4 的 1 条。
   "command.provider.connect.description": "登录 OpenCode Go、OpenCode Console 或其他模型提供商",
   "common.retry": "重试",
   "dialog.model.chatgptManageUsage": "管理用量",
@@ -191,6 +191,8 @@ const android = {
   "dialog.usageExceeded.freeTier.reset": "免费消息将在 {{time}} 重置。",
   "ui.message.copyFullMessage": "复制完整消息",
   "ui.message.voice": "语音",
+  // 2.1.4：MCP 征询表单的选项占位。堆快照命令只在桌面 Electron 注册，不进入 Android。
+  "session.elicitation.selectPlaceholder": "选择一个选项",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }

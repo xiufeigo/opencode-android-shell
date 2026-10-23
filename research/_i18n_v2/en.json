@@ -574,6 +574,7 @@
   "session.delete.confirm": "Delete session \"{{name}}\"?",
   "session.delete.failed.title": "Failed to delete session",
   "session.delete.title": "Delete session",
+  "session.elicitation.selectPlaceholder": "Select an option",
   "session.error.incompatible": "This server version isn't supported",
   "session.error.incompatible.description": "{{server}} is running OpenCode {{version}}, which isn't compatible with this app. Upgrade the server to OpenCode V2 to continue.",
   "session.error.notFound": "This session cannot be found",

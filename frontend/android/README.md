@@ -10,7 +10,7 @@
 node frontend/android/build.mjs
 ```
 
-Bun 必须为 1.4.2；`BUN_BINARY` 可指定二进制路径。Terminal 独立执行 `frontend/terminal` 的 `npm ci && npm test && npm run build`。最终 APK 通过 `:webapp:assembleRelease` 构建。
+Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执行 `frontend/terminal` 的 `npm ci && npm test && npm run build`。最终 APK 通过 `:webapp:assembleRelease` 构建。
 
 源码补丁涉及：官方入口的平台提供者和路由恢复；服务器设置的导航状态及持续添加入口；终端稳定模块入口及旧实例快照交接；共享 ResizeHandle 的触屏生命周期和点击范围；应用菜单的 Android 平台动作；官方中文词典的缺口填充。业务 API、会话状态、PTY、文件、设置和主题继续由官方实现负责。
 
@@ -19,11 +19,11 @@ Bun 必须为 1.4.2；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 终端触摸焦点规则：拖动只滚动，不抢焦点（不会因为滑一下历史就弹出键盘）；但拖动也不关闭已打开的键盘，手势结束时恢复它开始时已有的焦点，点击仍按原逻辑在释放时聚焦。`verify-android-terminal-release.mjs` 的 `drag-focus-separation` 与 `drag-keeps-focus` 两条检查分别钉住这两半；真实 APK 由 `verify-android-terminal-device.mjs` 的 `*-drag-does-not-open-ime` 在系统 IME 上复核（debug 包 debuggable ⇒ WebView 自带 `webview_devtools_remote_*` CDP 通道，无需改代码）。曾经在 pointerdown 无条件 `textarea.focus()` 的写法会同时破坏后半条，已改回按手势状态恢复。
 
-中文文案：`i18n-zh.ts` / `i18n-zht.ts` 包装官方词典（`packages/app/src/runtime/i18n/zh-android.ts`、`zht-android.ts`），只补官方尚未翻译的 key，官方词条后展开、优先胜出，所以上游补齐后无需删除。当前共 **175** 条：2.1.2 新增的 13 条（会话切换命令、项目文件夹缺失、时间线“变更文件”设置、免费额度与语音），以及 2.0.29 基准下官方仍缺的 156 条（提供方多账号、Console 连接、连接与配对流程、第三方声明、运行计数、扩展状态、会话位置等）。也就是说本基准下中文界面不再有因官方缺口而回退英文的条目。`scripts/extract-i18n.mjs` 继续只读官方源码，用来跟踪后续缺口；`research/_i18n_v2/_pending_*.json` 是早前轮次的人工快照，与当前版本已不匹配，不再作为来源。
+中文文案：`i18n-zh.ts` / `i18n-zht.ts` 包装官方词典（`packages/app/src/runtime/i18n/zh-android.ts`、`zht-android.ts`），只补官方尚未翻译的 key，官方词条后展开、优先胜出，所以上游补齐后无需删除。按未打补丁的 2.1.4 源码，`extract-i18n.mjs` 得到 en 1276 / zh 1106 / zht 1106，官方 app+ui 词典缺口 **170** 条（含本轮 `session.elicitation.selectPlaceholder`），覆盖词典全部补上。另外 8 条侧栏英文是本仓库写进 `en.ts` 的，不在上游词典里，同样有中文。本基准下中文界面不再有因官方 app 词典缺口而回退英文的条目。`scripts/extract-i18n.mjs` 继续只读官方源码，用来跟踪后续缺口；`research/_i18n_v2/_pending_*.json` 是早前轮次的人工快照，与当前版本已不匹配，不再作为来源。
 
-2.1.2 把官方 UI 从 2.0.29 升到正式 tag v2.1.2（`a517687f`）。上游这轮集中在共享 app、session-ui 与 ui：每回合“变更文件”、Voice 消息、标签未读/键盘导航、免费模型分组、工作区子菜单、项目文件夹缺失提示、免费额度、provider 图标与设计细节；v2.1.0 还有破坏性协议改名（`native` / `keepID`）。当前 `upstream.patch` 的 27 个文件里按 tag diff 只有 `gui-extensions/src/terminal/panel.tsx` 上游有改动（标签栏高度 52→49px），改动区与补丁上下文不重叠，`git apply --check` 通过；`runtime/platform/**` 与 `gui-extensions/src/sdk/**` 零 diff。Bun 仍为 1.4.2，构建流程未变。
+2.1.4 把官方 UI 从 2.1.2（`a517687f`）升到正式 tag v2.1.4（`68bc26b`）。2.1.3 把 Bun 升到 **1.4.4**（Brotli、TLS、HTTP/3、WebSocket 安全修复），代码块与差异改用 Pierre Highlights；2.1.4 在桌面/Web 会话里显示 MCP 征询表单。现有 `upstream.patch` / `sidebar.patch` 的目标里，上游只改了 `desktop-menu.ts`（文档链接与扩展菜单插入）和 `runtime/i18n/en.ts`（新增一条占位文案），改动区与补丁上下文不重叠。堆快照命令只在 Electron `ctx.desktop` 下注册，Android 不暴露。类型检查改为 `bun check -p tsconfig.android.json`，因为上游 `typecheck` 脚本不再接受位置参数形式的 tsconfig。
 
-2.1.2 的新界面文案上游仍没有中文（`zh.ts`/`zht.ts` 未更新）：新增的 13 条 key 已由本仓库补齐，中文界面不因本轮新增回退英文。`scripts/extract-i18n.mjs` 已按 2.1.2 源码重跑（en 1275 / zh 1106）。另外，2.1.2 的免费额度 UI 依赖服务端 ≥2.1.2 产出 `provider.free-limit`（旧服务端下静默不生效），“每回合变更文件”不依赖新服务端；未读徽标仍依赖服务端 `time.viewed`，服务端低于 2.0.26 时没有未读来源。
+2.1.4 的新界面文案上游仍没有中文：`session.elicitation.selectPlaceholder` 已由本仓库补齐。免费额度 UI 仍依赖服务端 ≥2.1.2 的 `provider.free-limit`；MCP 表单依赖服务端发出 `session.form` 请求。未读徽标仍依赖服务端 `time.viewed`。
 
 2.0.15 将终端标签按会话分组持久化，复用官方工作目录存储，避免运行中的 PTY 归属被会话布局缓存裁剪。旧目录共享的标签由首次打开终端的会话一次性接收。`session-model.test.ts` 直接测试真实终端模型及持久化器，并加入 UI 构建的必跑检查。
 

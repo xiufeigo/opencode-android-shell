@@ -215,3 +215,15 @@ ANDROID_SERIAL=emulator-5570 DEVICE_CDP=http://127.0.0.1:9226 node scripts/verif
 - 回归适配：2.1.2 不再用 `SessionTransfer.Data` 在客户端预校验导入文件，改为把任意 JSON 交给服务端校验；`verify-android-navigation.mjs` 的“无效会话文件”用例改用**畸形 JSON**，仍钉住“客户端解析失败、不发导入请求”。
 - 已知依赖：2.1.2 的免费额度 UI 需要服务端 ≥2.1.2 产出 `provider.free-limit`（旧服务端静默不生效）；“每回合变更文件”不依赖新服务端。
 - 环境备注：github.com 直连仍不可用，构建检出 origin 指向 `ghproxy.net` 镜像；Bun 1.4.2 从 npmmirror 取得（`_scratch_root/tools/bun-1.4.2/`）。构造期间不在仓库内持久化凭据。
+
+## 升级执行记录（2.1.4，2026-10-23）
+
+已升级到官方 tag v2.1.4（`68bc26b7da1990ce10ffecfbc1e09eb13aa5d824`）。2.1.3 把根 `packageManager` 升到 `bun@1.4.4`，本仓库 `upstream.json` 与 CI 的 Bun 一并跟上。APK 版本为 **2.0.25 / 53**。
+
+上游 2.1.2 → 2.1.4 在共享 UI 上的主要变化：Pierre Highlights 替换代码块/差异高亮；桌面与 Web 会话显示 MCP 征询表单（`session-elicitation-dock`）；堆快照命令只在 Electron `ctx.desktop` 下注册。现有补丁目标里上游只改了 `desktop-menu.ts`（文档链接改为 `/v2/docs`，扩展菜单改为原地插入）和 `runtime/i18n/en.ts`（新增 `session.elicitation.selectPlaceholder`），上下文不重叠，`upstream.patch` 与 `sidebar.patch` 无需改 hunk。
+
+- 源码构建：`bun install --frozen-lockfile` 通过。app 单测改为带 `packages/ui/test/solid-jsx.ts` 预加载（Bun 1.4.4 下 TSX 否则找不到 `jsxDEV`），route+polyfills **9/9**、终端 session-model **4/4**。类型检查改为 `bun check --no-script -b -p tsconfig.android.json`，因为上游 `typecheck` 脚本不再把多余参数当作 tsconfig。app 与 gui-extensions 均无类型错误。Vite 生产构建生成 **1722** 个 UI 文件（2.1.2 为 1621）。
+- Android：`:webapp:testDebugUnitTest` **245/245**（失败/错误/跳过 0）。`:webapp:assembleRelease` 编过资源合并与 dex，停在 `:webapp:validateSigningRelease`：本机没有 CI 那把密钥（默认路径 `~/.android/debug.keystore` 不存在，用户指定的 `C:/sensorsdata/main/packages/debug.keystore` 也不在这台 Linux 构建机上）。没有自行生成或改用另一把密钥。签名与 GitHub Release 交给打 tag 后的既有 `package.yml`（证书 SHA-256 `760dc05f…`）。
+- i18n：按未打补丁的 2.1.4 源码重跑 `extract-i18n.mjs`（en **1276** / zh 1106 / zht 1106）。官方缺口 **170** 条，覆盖词典全部补上；其中本轮新增的是 `session.elicitation.selectPlaceholder`。侧栏 8 条英文是本仓库补丁写入 `en.ts` 的，不计入上游缺口。
+- 插件：`plugins/server-browser` 仍使用 `@opencode/plugin` / `@opencode/schema` `^2.1.2`，本轮没有改插件实现。
+- 服务端依赖：MCP 表单需要服务端发出 `session.form`；免费额度仍要服务端 ≥2.1.2 的 `provider.free-limit`。

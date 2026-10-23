@@ -37,9 +37,10 @@ android {
         // 48 系统深浅色跟随：宿主把 uiMode 真值转交给页面依赖的 `prefers-color-scheme`，修真机切深色不换肤。
         // 49 官方 UI 升到 2.1.2（回合变更文件、Voice 消息、标签未读/键盘导航、免费模型分组），补齐 13 条新中文。
         // 52 图片预览同时接入 Pointer 与 Touch 事件，覆盖只派发 touch 事件的 WebView。
-        versionCode = 52
+        // 53 官方 UI 升到 2.1.4（Bun 1.4.4、Pierre 高亮、MCP 征询表单），补齐选项占位中文。
+        versionCode = 53
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.24"
+        versionName = "2.0.25"
     }
 
     signingConfigs {

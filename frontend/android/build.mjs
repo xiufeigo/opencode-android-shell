@@ -59,10 +59,15 @@ const pkg = JSON.parse(await fs.readFile(path.join(checkout, "packages/app/packa
 if (pkg.version !== pin.version) throw new Error("Pinned OpenCode version does not match source")
 await applyAndroidSources(checkout, here)
 await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", "@opencode/app"])
-await run(bun, ["test", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts"], path.join(checkout, "packages/app"))
+// 2.1.3+ runs app unit tests through Solid's hyperscript preload. TSX in the
+// production graph (pairing, settings) has no Solid compiler pass under bun test.
+await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts"], path.join(checkout, "packages/app"))
 await run(bun, ["test", "--conditions=browser", "src/terminal/session-model.test.ts"], path.join(checkout, "packages/gui-extensions"))
-await run(bun, ["run", "typecheck", "tsconfig.android.json"], path.join(checkout, "packages/app"))
-await run(bun, ["run", "typecheck", "tsconfig.android.json"], path.join(checkout, "packages/gui-extensions"))
+// Upstream 2.1.3+ typecheck is `bun check --no-script -b`, which reads the nearest
+// tsconfig and treats a bare extra argument as a source file. Android still
+// typechecks the production project (tests and Storybook excluded).
+await run(bun, ["check", "--no-script", "-b", "-p", "tsconfig.android.json"], path.join(checkout, "packages/app"))
+await run(bun, ["check", "--no-script", "-b", "-p", "tsconfig.android.json"], path.join(checkout, "packages/gui-extensions"))
 await run(bun, ["run", "build", "--base", "/", "--sourcemap", "false", "--logLevel", "warn"], path.join(checkout, "packages/app"), {
   VITE_OPENCODE_SERVER_MODE: "none",
   VITE_OPENCODE_PLATFORM: target,
