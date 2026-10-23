@@ -325,53 +325,6 @@ index f62712d8..1a3b5233 100644
            </Button>
            <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
              <Button size="large" variant="ghost" onClick={exportDebugLogs}>
-diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index f3780f58..1a40b321 100644
---- a/packages/app/src/shell/titlebar/titlebar.tsx
-+++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -64,7 +64,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-   const location = useLocation()
-   const mobile = createMediaQuery("(max-width: 767px)")
-   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
--  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
-+  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
- 
-   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
-   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -153,7 +153,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-       }}
-       style={{
-         height:
--          platform.platform === "web"
-+          platform.platform !== "desktop"
-             ? bottom()
-               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
-               : mobileTop()
-@@ -537,8 +537,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                 <Show when={!mobile() && (!props.verticalTabs || windows())}>
-                   <ChannelIndicator horizontal />
-                 </Show>
--                <Show when={windows() || linux()}>
--                  <WindowsAppMenu command={command} platform={platform} />
-+                <Show when={windows() || linux() || platform.platform === "android"}>
-+                  <WindowsAppMenu
-+                    command={command}
-+                    platform={platform}
-+                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
-+                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
-+                  />
-                 </Show>
-                 <Show when={!mobile() && !props.verticalTabs}>{homeButton()}</Show>
- 
-@@ -798,7 +803,7 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
-     <Tooltip
-       placement={props.sidebar ? "right" : "bottom"}
-       value={label()}
--      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform === "web" ? "ps-2.5" : ""}`}
-+      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform !== "desktop" ? "ps-2.5" : ""}`}
-     >
-       <Dynamic
-         component={debug() ? "button" : "div"}
 diff --git a/packages/app/src/shell/titlebar/windows-menu.tsx b/packages/app/src/shell/titlebar/windows-menu.tsx
 index 6a4ee0be..d89a2e94 100644
 --- a/packages/app/src/shell/titlebar/windows-menu.tsx
@@ -1103,21 +1056,6 @@ index f5f1754f..ec18971f 100644
    { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
 +  { ...serverBrowser, renderer: eager(serverBrowserRenderer) },
  )
-diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
-index 25bc4954..0a315c48 100644
---- a/packages/app/src/shell/shell.tsx
-+++ b/packages/app/src/shell/shell.tsx
-@@ -11,8 +11,10 @@ import { useSettingsSurface } from "@/settings/surface"
- import { useSettings } from "@/settings/model"
- import { ExtensionServerCover } from "@/runtime/extension/server-shell"
- import { ExtensionSlot } from "@/runtime/extension/render"
-+import { installAndroidBack } from "@/runtime/platform/android-back"
- 
- export default function Layout(props: ParentProps) {
-+  installAndroidBack()
-   const platform = usePlatform()
-   const settings = useSettingsSurface()
-   const preferences = useSettings()
 diff --git a/packages/app/src/runtime/i18n/language.tsx b/packages/app/src/runtime/i18n/language.tsx
 index fed6514..74ef3d7 100644
 --- a/packages/app/src/runtime/i18n/language.tsx

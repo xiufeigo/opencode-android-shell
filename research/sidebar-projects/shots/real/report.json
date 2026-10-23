@@ -1,0 +1,25 @@
+{
+  "app": "http://127.0.0.1:4444",
+  "server": "http://127.0.0.1:40199",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "shots": [
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\01-session-default.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\02-session-one-panel.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\03-session-two-panels.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\04-session-four-panels.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\05-session-collapsed-four-panels.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\06-home.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\real\\07-settings.png"
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to clone terminal ClientError: Transport: Failed to fetch\n    at execute (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:32:10)\n    at async request (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:46:20)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to clone terminal ClientError: Transport: Failed to fetch\n    at execute (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:32:10)\n    at async request (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:46:20)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to clone terminal ClientError: Transport: Failed to fetch\n    at execute (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:32:10)\n    at async request (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:46:20)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)"
+  ]
+}

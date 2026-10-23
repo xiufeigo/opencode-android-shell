@@ -1,0 +1,11 @@
+[
+  { "hover": "[data-slot=project-row]" },
+  { "wait": 300 },
+  { "click": "[data-action=project-sidebar-menu]" },
+  { "wait": 300 },
+  { "click": "text=关闭" },
+  { "wait": 600 },
+  {
+    "eval": "() => [...document.querySelectorAll('[data-slot=project-row]')].map((el) => el.getAttribute('data-project'))"
+  }
+]

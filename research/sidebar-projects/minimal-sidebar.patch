@@ -1,0 +1,690 @@
+diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
+index 6ee0b5a..61140c5 100644
+--- a/packages/app/src/runtime/i18n/en.ts
++++ b/packages/app/src/runtime/i18n/en.ts
+@@ -648,6 +648,8 @@ export const dict = {
+ 
+   "sidebar.settings": "Settings",
+   "sidebar.help": "Help",
++  "sidebar.collapse": "Hide sidebar",
++  "sidebar.expand": "Show sidebar",
+   "sidebar.project.recentSessions": "Recent sessions",
+   "sidebar.project.clearNotifications": "Clear notifications",
+ 
+diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
+index 0a315c4..3826427 100644
+--- a/packages/app/src/shell/shell.tsx
++++ b/packages/app/src/shell/shell.tsx
+@@ -3,7 +3,9 @@ import { createStore } from "solid-js/store"
+ import { createMediaQuery } from "@solid-primitives/media"
+ import { ResizeHandle } from "@opencode/ui/resize-handle"
+ import { Titlebar } from "@/shell/titlebar/titlebar"
++import { VerticalSidebarToolbar } from "@/shell/titlebar/vertical-sidebar-toolbar"
+ import { usePlatform } from "@/runtime/platform/platform"
++import { useLayout } from "@/shell/state/layout"
+ import { ToastRegion } from "@/shell/notifications/toast"
+ import { UploadToastHost } from "@/composer/attachments/uploads"
+ import { TitlebarRightProvider } from "@/shell/titlebar/right-slot"
+@@ -16,6 +18,7 @@ import { installAndroidBack } from "@/runtime/platform/android-back"
+ export default function Layout(props: ParentProps) {
+   installAndroidBack()
+   const platform = usePlatform()
++  const layout = useLayout()
+   const settings = useSettingsSurface()
+   const preferences = useSettings()
+   const mobile = createMediaQuery("(max-width: 767px)")
+@@ -26,6 +29,7 @@ export default function Layout(props: ParentProps) {
+   })
+ 
+   const verticalTabs = () => preferences.appearance.tabLayout() === "vertical" && !mobile()
++  const verticalTabsCollapsed = () => verticalTabs() && layout.verticalTabs.collapsed()
+   const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
+ 
+   return (
+@@ -49,7 +53,7 @@ export default function Layout(props: ParentProps) {
+       >
+         <Titlebar verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined} />
+         <div class="flex flex-1 min-h-0 min-w-0 flex-row">
+-          <Show when={verticalTabs()}>
++          <Show when={verticalTabs() && !verticalTabsCollapsed()}>
+             <aside
+               ref={(element) => setState("tabsMount", element)}
+               data-slot="vertical-tabs-sidebar"
+@@ -71,9 +75,13 @@ export default function Layout(props: ParentProps) {
+           </Show>
+           {/* Size containment collapses percentage-height descendants in WebKit. */}
+           <main
+-            class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content"
++            class="relative flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content"
+             style={{
+-              "padding-top": bottomTitlebar() ? "env(safe-area-inset-top, 0px)" : "0px",
++              "padding-top": verticalTabsCollapsed()
++                ? "28px"
++                : bottomTitlebar()
++                  ? "env(safe-area-inset-top, 0px)"
++                  : "0px",
+               "padding-bottom":
+                 bottomTitlebar() || settings.active()
+                   ? "0px"
+@@ -83,6 +91,13 @@ export default function Layout(props: ParentProps) {
+                 : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
+             }}
+           >
++            {/* Collapsed sidebar: the same toolbar floats over the reserved strip, so the
++                sidebar costs no horizontal space and back/forward stay reachable. */}
++            <Show when={verticalTabsCollapsed()}>
++              <div class="absolute start-0 top-[var(--shell-top-inset,8px)] z-30 flex h-7 items-center ps-2">
++                <VerticalSidebarToolbar />
++              </div>
++            </Show>
+             <ExtensionServerCover>
+               <Suspense>{props.children}</Suspense>
+             </ExtensionServerCover>
+diff --git a/packages/app/src/shell/state/layout.tsx b/packages/app/src/shell/state/layout.tsx
+index 77686c6..2852f72 100644
+--- a/packages/app/src/shell/state/layout.tsx
++++ b/packages/app/src/shell/state/layout.tsx
+@@ -119,6 +119,9 @@ export const layoutSchema = Persistence.struct({
+   }),
+   session: Persistence.struct({ width: Schema.Finite }),
+   mobileSidebar: Persistence.struct({ opened: Schema.Boolean }),
++  // The vertical-tabs sidebar is a shell element rather than a session panel; it can be
++  // collapsed to give the session the full width. Defaults to expanded.
++  verticalTabs: Persistence.struct({ collapsed: Schema.Boolean }),
+   sessionTabs: Persistence.record(Persistence.fallback(sessionTabsSchema, () => ({ all: [] }))),
+   sessionView: Persistence.record(Persistence.fallback(sessionViewSchema, () => ({ scroll: {} }))),
+   home: Persistence.struct({
+@@ -191,6 +194,7 @@ export function initialLayout(server?: ServerConnection.Key): typeof layoutSchem
+     fileTree: { opened: false, width: DEFAULT_FILE_TREE_WIDTH, tab: "changes" },
+     session: { width: DEFAULT_SESSION_WIDTH },
+     mobileSidebar: { opened: false },
++    verticalTabs: { collapsed: false },
+     sessionTabs: {},
+     sessionView: {},
+     home: { selection: server ? { server } : {} },
+@@ -442,6 +446,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
+           setStore("mobileSidebar", "opened", (x) => !x)
+         },
+       },
++      verticalTabs: {
++        collapsed: createMemo(() => store.verticalTabs?.collapsed ?? false),
++        setCollapsed(value: boolean) {
++          setStore("verticalTabs", "collapsed", value)
++        },
++        toggleCollapsed() {
++          setStore("verticalTabs", "collapsed", (x) => !x)
++        },
++      },
+       pendingMessage: {
+         set(sessionKey: string, messageID: string) {
+           const at = Date.now()
+diff --git a/packages/app/src/shell/titlebar/project-session-sidebar.tsx b/packages/app/src/shell/titlebar/project-session-sidebar.tsx
+new file mode 100644
+index 0000000..18b67af
+--- /dev/null
++++ b/packages/app/src/shell/titlebar/project-session-sidebar.tsx
+@@ -0,0 +1,418 @@
++import type { SessionInfo } from "@opencode/client/promise"
++import { skipToken, useQuery } from "@tanstack/solid-query"
++import { createMemo, For, Show, startTransition } from "solid-js"
++import { createStore } from "solid-js/store"
++import { Icon } from "@opencode/ui/icon"
++import { IconButton } from "@opencode/ui/icon-button"
++import {
++  displayName,
++  getProjectAvatarSource,
++  getProjectAvatarVariant,
++  ProjectAvatar,
++} from "@opencode/ui/project-avatar"
++import { Spinner } from "@opencode/ui/spinner"
++import { Tooltip } from "@opencode/ui/tooltip"
++import {
++  HOME_SESSION_LIMIT,
++  loadHomeSessionIndex,
++  mergeHomeSessionIndex,
++  retainHomeSessions,
++} from "@/home/sessions/index"
++import { homeProjectForSession } from "@/home/sessions/records"
++import { useLanguage } from "@/runtime/i18n/language"
++import { ServerConnection, useServers } from "@/runtime/server/registry"
++import { useServerCtx } from "@/runtime/server/runtime"
++import { useCommand } from "@/shell/commands/command"
++import { compareSessionTime } from "@/shell/layout/helpers"
++import { SessionTabAvatar } from "@/shell/layout/session-tab-avatar"
++import { useLayout, type LocalProject } from "@/shell/state/layout"
++import { findSessionTab, tabKey, useTabs, type DraftTab, type SessionTab } from "@/shell/tabs/tabs"
++import { sessionLabel } from "@/session/title"
++import { pathKey } from "@/workspaces/path-key"
++
++/**
++ * Vertical-tabs sidebar: a project tree with the project's sessions instead of a
++ * flat list of open tabs. Projects come from the same per-server registry the
++ * home page renders; sessions come from the same index the home page loads, so
++ * both views agree and no protocol change is required.
++ */
++export function ProjectSessionSidebar() {
++  const language = useLanguage()
++  const servers = useServers()
++  return (
++    <div data-slot="project-sidebar" class="flex min-h-0 flex-1 flex-col">
++      <div class="flex h-6 shrink-0 items-center ps-1.5 text-[11px] leading-4 text-v2-text-text-faint [font-weight:530]">
++        {language.t("home.projects")}
++      </div>
++      <div
++        data-slot="project-sidebar-scroll"
++        class="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2"
++      >
++        <For each={servers.visible}>
++          {(server) => <ServerProjectTree server={server} multiServer={servers.visible.length > 1} />}
++        </For>
++      </div>
++    </div>
++  )
++}
++
++type ProjectEntry = {
++  project: LocalProject
++  sessions: SessionInfo[]
++  drafts: DraftTab[]
++}
++
++function ServerProjectTree(props: { server: ServerConnection.Any; multiServer: boolean }) {
++  const language = useLanguage()
++  const tabs = useTabs()
++  const command = useCommand()
++  const layout = useLayout()
++  const ctx = useServerCtx(() => props.server)
++  const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
++  const serverKey = () => ServerConnection.key(props.server)
++  const active = createMemo(() => {
++    const route = layout.route()
++    return route.type === "session" ? { server: route.server, sessionId: route.sessionId } : undefined
++  })
++
++  // Same query key and loader as the home page: both views share one cached
++  // index, and the session store covers live updates and pending removals.
++  const sessionLoad = useQuery(() => {
++    const current = ctx()
++    return {
++      queryKey: ["home-sessions", props.server] as const,
++      enabled: !!current && current.sdk.connection.status() === "connected",
++      queryFn: current
++        ? ({ signal }: { signal: AbortSignal }) =>
++            loadHomeSessionIndex((input, options) => current.sdk.api.session.list(input, options), signal)
++        : skipToken,
++      retry: false,
++      staleTime: 30_000,
++      refetchOnMount: true,
++    }
++  })
++
++  const projects = createMemo(() => ctx()?.projects.list() ?? [])
++  const sessions = createMemo(() => {
++    const current = ctx()
++    if (!current) return []
++    const fetched = sessionLoad.isPending ? [] : (sessionLoad.data ?? [])
++    return retainHomeSessions(
++      mergeHomeSessionIndex(fetched, current.data.session.list()),
++      HOME_SESSION_LIMIT,
++      Date.now(),
++    )
++  })
++
++  const groups = createMemo(() => {
++    const list = projects()
++    const entries = new Map<string, ProjectEntry>()
++    for (const project of list) entries.set(pathKey(project.worktree), { project, sessions: [], drafts: [] })
++    for (const session of sessions()) {
++      const project = homeProjectForSession(session, list)
++      const entry = project ? entries.get(pathKey(project.worktree)) : undefined
++      if (entry) entry.sessions.push(session)
++    }
++    for (const tab of tabs.store) {
++      if (tab.type !== "draft" || tab.server !== serverKey()) continue
++      const project = list.find((item) => pathKey(item.worktree) === pathKey(tab.directory))
++      const entry = project ? entries.get(pathKey(project.worktree)) : undefined
++      if (entry) entry.drafts.push(tab)
++    }
++    for (const entry of entries.values()) entry.sessions.sort(compareSessionTime)
++    return [...entries.values()]
++  })
++
++  const groupKey = (entry: ProjectEntry) => pathKey(entry.project.worktree)
++  const isExpanded = (entry: ProjectEntry) => {
++    const value = expanded[groupKey(entry)]
++    if (value !== undefined) return value
++    const route = active()
++    if (
++      route?.server === serverKey() &&
++      (entry.sessions.some((session) => session.id === route.sessionId) ||
++        entry.drafts.some((tab) => tab.draftID === route.sessionId))
++    )
++      return true
++    return (
++      entry.drafts.length > 0 ||
++      entry.sessions.some((session) => !!findSessionTab(tabs.store, serverKey(), session.id))
++    )
++  }
++  const toggle = (entry: ProjectEntry) => setExpanded(groupKey(entry), !isExpanded(entry))
++
++  const closeTab = (tab: SessionTab | DraftTab) => {
++    const index = tabs.store.findIndex((item) => tabKey(item) === tabKey(tab))
++    if (index !== -1) tabs.closeTab(index)
++  }
++
++  const openSession = (session: SessionInfo) => {
++    const current = ctx()
++    const existing = findSessionTab(tabs.store, serverKey(), session.id)
++    if (existing) {
++      tabs.select(existing)
++      return
++    }
++    void startTransition(() => {
++      const tab = tabs.addSessionTab({ server: serverKey(), sessionId: session.id })
++      tabs.select(tab)
++      current?.data.session.remember(session)
++      current?.projects.open(session.location.directory)
++      current?.projects.touch(session.location.directory)
++    })
++  }
++
++  const newSession = (entry: ProjectEntry) => {
++    const current = ctx()
++    current?.projects.open(entry.project.worktree)
++    current?.projects.touch(entry.project.worktree)
++    void tabs.newDraft({ server: serverKey(), directory: entry.project.worktree })
++  }
++
++  const visibleTabs = createMemo(() => {
++    const ordered: SessionTab[] = []
++    for (const entry of groups()) {
++      for (const session of entry.sessions) {
++        const tab = findSessionTab(tabs.store, serverKey(), session.id)
++        if (tab?.type === "session") ordered.push(tab)
++      }
++    }
++    return ordered
++  })
++
++  const cycle = (offset: -1 | 1) => {
++    const list = visibleTabs()
++    if (list.length === 0) return
++    const route = active()
++    const current = route ? findSessionTab(tabs.store, route.server, route.sessionId) : undefined
++    const index = current ? list.findIndex((tab) => tabKey(tab) === tabKey(current)) : -1
++    tabs.select(list[(index + offset + list.length) % list.length]!)
++  }
++
++  command.register("project-sidebar-tab-cycle", () => [
++    {
++      id: "tab.prev",
++      category: "tab",
++      title: "",
++      keybind: `mod+option+ArrowLeft,ctrl+shift+tab`,
++      hidden: true,
++      onSelect: () => cycle(-1),
++    },
++    {
++      id: "tab.next",
++      category: "tab",
++      title: "",
++      keybind: `mod+option+ArrowRight,ctrl+tab`,
++      hidden: true,
++      onSelect: () => cycle(1),
++    },
++  ])
++  command.register("project-sidebar-tab-numbers", () =>
++    visibleTabs()
++      .slice(0, 9)
++      .map((tab, index) => ({
++        id: `tab.${index + 1}`,
++        category: "tab",
++        title: "",
++        keybind: `mod+${index + 1}`,
++        hidden: true,
++        onSelect: () => tabs.select(tab),
++      })),
++  )
++
++  return (
++    <div class="flex min-w-0 flex-col" data-server={serverKey()}>
++      <Show when={props.multiServer}>
++        <div class="flex h-6 shrink-0 items-center gap-2 ps-1.5 pe-2 pt-1 text-[11px] leading-4 text-v2-text-text-faint">
++          <span class="min-w-0 truncate [font-weight:530]">
++            {props.server.displayName ?? new URL(props.server.http.url).host}
++          </span>
++        </div>
++      </Show>
++      <For each={groups()}>
++        {(entry) => {
++          const count = () => entry.sessions.length + entry.drafts.length
++          return (
++            <div class="flex min-w-0 flex-col" data-slot="project-group">
++              <div
++                data-slot="project-row"
++                data-project={entry.project.worktree}
++                data-expanded={isExpanded(entry) ? "" : undefined}
++                class="group/project relative flex h-7 min-w-0 shrink-0 items-center rounded-[6px]"
++              >
++                <button
++                  type="button"
++                  aria-expanded={isExpanded(entry)}
++                  class={`
++                    flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-[6px] ps-1 pe-8 text-start
++                    text-[13px] leading-4 text-v2-text-text-muted transition-[background-color,color] duration-[120ms] ease-in-out
++                    hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base
++                    focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-text-text-base focus-visible:outline-none
++                  `}
++                  onClick={() => toggle(entry)}
++                >
++                  <Icon
++                    name="chevron-down"
++                    size="small"
++                    class="shrink-0 text-v2-icon-icon-muted transition-transform duration-150 ease-in-out"
++                    style={{ transform: isExpanded(entry) ? "rotate(0deg)" : "rotate(-90deg)" }}
++                  />
++                  <ProjectAvatar
++                    fallback={displayName(entry.project)}
++                    src={getProjectAvatarSource(entry.project.id, entry.project.icon)}
++                    variant={getProjectAvatarVariant(entry.project.icon?.color)}
++                  />
++                  <span data-slot="project-title" class="min-w-0 flex-1 truncate [font-weight:530]" dir="auto">
++                    {displayName(entry.project)}
++                  </span>
++                  <Show when={count() > 0}>
++                    <span class="shrink-0 pe-0.5 text-[11px] tabular-nums text-v2-text-text-faint">{count()}</span>
++                  </Show>
++                </button>
++                <div class="absolute end-0.5 top-0 flex h-7 items-center">
++                  <Tooltip class="flex shrink-0 items-center" placement="right" value={language.t("command.session.new")}>
++                    <IconButton
++                      data-action="project-sidebar-new-session"
++                      variant="ghost-muted"
++                      size="small"
++                      class="hover-reveal group-hover/project:opacity-100 focus-within:opacity-100"
++                      icon={<Icon name="edit" />}
++                      aria-label={language.t("command.session.new")}
++                      onClick={(event) => {
++                        event.preventDefault()
++                        event.stopPropagation()
++                        newSession(entry)
++                      }}
++                    />
++                  </Tooltip>
++                </div>
++              </div>
++              <Show when={isExpanded(entry)}>
++                <div class="flex min-w-0 flex-col gap-px pb-1" data-slot="project-sessions">
++                  <For each={entry.drafts}>
++                    {(tab) => (
++                      <SessionRow
++                        project={entry.project}
++                        server={props.server}
++                        directory={tab.directory}
++                        sessionId={undefined}
++                        title={language.t("command.session.new")}
++                        active={active()?.sessionId === tab.draftID}
++                        open
++                        onOpen={() => tabs.select(tab)}
++                        onClose={() => closeTab(tab)}
++                      />
++                    )}
++                  </For>
++                  <For each={entry.sessions}>
++                    {(session) => {
++                      const tab = createMemo(() => findSessionTab(tabs.store, serverKey(), session.id))
++                      return (
++                        <SessionRow
++                          project={entry.project}
++                          server={props.server}
++                          directory={session.location.directory}
++                          sessionId={session.id}
++                          title={sessionLabel(session)}
++                          active={active()?.sessionId === session.id && active()?.server === serverKey()}
++                          open={!!tab()}
++                          onOpen={() => openSession(session)}
++                          onClose={() => {
++                            const value = tab()
++                            if (value?.type === "session") closeTab(value)
++                          }}
++                        />
++                      )
++                    }}
++                  </For>
++                </div>
++              </Show>
++            </div>
++          )
++        }}
++      </For>
++      <Show when={sessionLoad.isPending && groups().length === 0}>
++        <div class="flex h-7 items-center justify-center">
++          <Spinner class="size-3.5" />
++        </div>
++      </Show>
++      <Show when={!sessionLoad.isPending && groups().length === 0}>
++        <div class="px-1.5 py-1 text-[11px] leading-4 text-v2-text-text-faint">
++          {language.t("sidebar.empty.title")}
++        </div>
++      </Show>
++    </div>
++  )
++}
++
++function SessionRow(props: {
++  project: LocalProject
++  server: ServerConnection.Any
++  directory: string
++  sessionId: string | undefined
++  title: string
++  active: boolean
++  open: boolean
++  onOpen: () => void
++  onClose: () => void
++}) {
++  const language = useLanguage()
++  return (
++    <div
++      data-slot="session-row"
++      data-session={props.sessionId ?? ""}
++      data-active={props.active ? "" : undefined}
++      class="group/session relative flex h-7 min-w-0 items-center rounded-[6px]"
++      classList={{ "bg-v2-overlay-simple-overlay-pressed": props.active }}
++    >
++      <button
++        type="button"
++        class={`
++          flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[6px] ps-6 pe-6 text-start text-[13px] leading-4
++          text-v2-text-text-muted transition-[background-color,color] duration-[120ms] ease-in-out
++          hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base
++          focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-text-text-base focus-visible:outline-none
++        `}
++        classList={{ "text-v2-text-text-base": props.active }}
++        onClick={() => props.onOpen()}
++      >
++        <span class="flex size-4 shrink-0 items-center justify-center">
++          <Show
++            when={props.sessionId}
++            fallback={<span class="block size-4 rounded-[3px] border border-v2-border-border-muted" aria-hidden="true" />}
++          >
++            {(sessionId) => (
++              <SessionTabAvatar
++                project={props.project}
++                directory={props.directory}
++                sessionId={sessionId()}
++                server={ServerConnection.key(props.server)}
++              />
++            )}
++          </Show>
++        </span>
++        <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap" dir="auto">
++          {props.title}
++        </span>
++      </button>
++      <Show when={props.open}>
++        <IconButton
++          variant="ghost-muted"
++          size="small"
++          class="hover-reveal absolute end-0.5 top-1/2 -translate-y-1/2 group-hover/session:opacity-100 focus-within:opacity-100"
++          onPointerDown={(event) => {
++            event.preventDefault()
++            event.stopPropagation()
++          }}
++          onClick={(event) => {
++            event.preventDefault()
++            event.stopPropagation()
++            props.onClose()
++          }}
++          icon={<Icon name="xmark-small" />}
++          aria-label={language.t("common.closeTab")}
++        />
++      </Show>
++    </div>
++  )
++}
+diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
+index 1a40b32..86592d2 100644
+--- a/packages/app/src/shell/titlebar/titlebar.tsx
++++ b/packages/app/src/shell/titlebar/titlebar.tsx
+@@ -15,6 +15,8 @@ import { useSettings } from "@/settings/model"
+ import { WindowsAppMenu } from "./windows-menu"
+ import { applyPath, backPath, forwardPath, type HistoryLocation } from "./history"
+ import { TitlebarTabStrip } from "@/shell/titlebar/tab-strip"
++import { ProjectSessionSidebar } from "@/shell/titlebar/project-session-sidebar"
++import { VerticalSidebarToolbar } from "@/shell/titlebar/vertical-sidebar-toolbar"
+ import { makeEventListener } from "@solid-primitives/event-listener"
+ import { createMediaQuery } from "@solid-primitives/media"
+ import { readSessionTabsRemovedDetail, SESSION_TABS_REMOVED_EVENT } from "@/shell/titlebar/session-events"
+@@ -132,6 +134,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       title: language.t("common.goBack"),
+       category: language.t("command.category.view"),
+       keybind: "mod+[",
++      disabled: !backPath(history),
+       onSelect: back,
+     },
+     {
+@@ -139,6 +142,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       title: language.t("common.goForward"),
+       category: language.t("command.category.view"),
+       keybind: "mod+]",
++      disabled: !forwardPath(history),
+       onSelect: forward,
+     },
+   ])
+@@ -730,6 +734,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                             <Show when={!windows()}>
+                               <ChannelIndicator sidebar />
+                             </Show>
++                            <VerticalSidebarToolbar class="mb-1" />
+                             {homeButton(true)}
+                             <RecentlyClosedTabsMenu
+                               vertical
+@@ -738,21 +743,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                             />
+                             <div class="h-4 w-full shrink-0" aria-hidden="true" />
+                             <div class="flex min-h-0 flex-1 flex-col gap-1">
+-                              <TitlebarTabStrip
+-                                orientation="vertical"
+-                                tabs={tabsStore}
+-                                currentTab={currentTab()}
+-                                onNavigate={(tab, el) => {
+-                                  tabs.select(tab)
+-                                  el?.scrollIntoView({ behavior: "instant", block: "nearest" })
+-                                }}
+-                                onClose={(tab) => {
+-                                  const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+-
+-                                  if (index !== -1) tabsStoreActions.closeTab(index)
+-                                }}
+-                                onReorder={(keys) => tabsStoreActions.reorder(keys)}
+-                              />
++                              <ProjectSessionSidebar />
+                             </div>
+                             <Show when={titlebarItems.ids().length > 0}>
+                               <div data-slot="vertical-tabs-footer" class="mt-2 flex w-full shrink-0 flex-col">
+diff --git a/packages/app/src/shell/titlebar/vertical-sidebar-toolbar.tsx b/packages/app/src/shell/titlebar/vertical-sidebar-toolbar.tsx
+new file mode 100644
+index 0000000..898b57a
+--- /dev/null
++++ b/packages/app/src/shell/titlebar/vertical-sidebar-toolbar.tsx
+@@ -0,0 +1,80 @@
++import { Icon } from "@opencode/ui/icon"
++import { IconButton } from "@opencode/ui/icon-button"
++import { Tooltip } from "@opencode/ui/tooltip"
++import { useCommand } from "@/shell/commands/command"
++import { useLanguage } from "@/runtime/i18n/language"
++import { usePlatform } from "@/runtime/platform/platform"
++import { useLayout } from "@/shell/state/layout"
++import { WindowsAppMenu } from "./windows-menu"
++
++/**
++ * Small top-left control row for the vertical-tabs sidebar, matching the familiar
++ * (menu / collapse sidebar / back / forward) cluster. The same component renders
++ * over the main pane while the sidebar is collapsed, so those controls do not
++ * disappear with it.
++ */
++export function VerticalSidebarToolbar(props: { class?: string }) {
++  const command = useCommand()
++  const platform = usePlatform()
++  const language = useLanguage()
++  const layout = useLayout()
++  const collapsed = () => layout.verticalTabs.collapsed()
++  const label = () => language.t(collapsed() ? "sidebar.expand" : "sidebar.collapse")
++  const disabled = (id: string) => !!command.options.find((option) => option.id === id)?.disabled
++
++  command.register("vertical-sidebar-toolbar", () => [
++    {
++      id: "sidebar.collapse",
++      title: language.t(layout.verticalTabs.collapsed() ? "sidebar.expand" : "sidebar.collapse"),
++      category: language.t("command.category.view"),
++      onSelect: () => layout.verticalTabs.toggleCollapsed(),
++    },
++  ])
++
++  return (
++    <div
++      data-slot="vertical-sidebar-toolbar"
++      class={`flex h-7 shrink-0 items-center gap-0.5 ${props.class ?? ""}`}
++    >
++      <WindowsAppMenu
++        command={command}
++        platform={platform}
++        menuPlatform={platform.platform === "android" ? "android" : "windows"}
++        actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
++      />
++      <Tooltip placement="bottom" value={label()}>
++        <IconButton
++          data-action="vertical-sidebar-collapse"
++          variant="ghost-muted"
++          size="large"
++          icon={<Icon name="layout-left" />}
++          aria-label={label()}
++          aria-expanded={!collapsed()}
++          onClick={() => layout.verticalTabs.toggleCollapsed()}
++        />
++      </Tooltip>
++      <Tooltip placement="bottom" value={language.t("common.goBack")}>
++        <IconButton
++          data-action="vertical-sidebar-back"
++          variant="ghost-muted"
++          size="large"
++          icon={<Icon name="arrow-left" />}
++          aria-label={language.t("common.goBack")}
++          disabled={disabled("common.goBack")}
++          onClick={() => void command.trigger("common.goBack")}
++        />
++      </Tooltip>
++      <Tooltip placement="bottom" value={language.t("common.goForward")}>
++        <IconButton
++          data-action="vertical-sidebar-forward"
++          variant="ghost-muted"
++          size="large"
++          icon={<Icon name="arrow-right" />}
++          aria-label={language.t("common.goForward")}
++          disabled={disabled("common.goForward")}
++          onClick={() => void command.trigger("common.goForward")}
++        />
++      </Tooltip>
++    </div>
++  )
++}

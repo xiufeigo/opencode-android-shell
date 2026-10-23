@@ -1,0 +1,5 @@
+[
+  { "hover": "[data-slot=project-row]" },
+  { "wait": 500 },
+  { "eval": "() => { const row = document.querySelector('[data-slot=project-row]'); const actions = row.querySelector('.hover-reveal'); return { opacity: getComputedStyle(actions).opacity, buttons: [...actions.querySelectorAll('[data-action]')].map((el) => el.getAttribute('data-action')) } }" }
+]

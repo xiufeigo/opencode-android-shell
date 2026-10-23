@@ -1,0 +1,117 @@
+{
+  "name": "review-crash",
+  "uiRoot": "C:\\sensorsdata\\main\\program\\opencode-android-shell\\dist\\sidebar-preview\\ui-after",
+  "uiOrigin": "http://127.0.0.1:56354",
+  "backendOrigin": "http://127.0.0.1:56353",
+  "viewport": {
+    "width": 1280,
+    "height": 770,
+    "dsf": 2
+  },
+  "theme": "light",
+  "steps": [
+    {
+      "console": "log",
+      "text": "[oc-pow] installed"
+    },
+    {
+      "console": "log",
+      "text": "[oc-pow] event stream OPEN #1 http://127.0.0.1:56353/api/event status=200"
+    },
+    {
+      "console": "error",
+      "text": "[extension] review TypeError: Cannot read properties of undefined (reading 'current')\n    at Object.fn (http://127.0.0.1:56354/_assets/index-DzJivo7r.js:105:3464)\n    at ge (http://127.0.0.1:56354/_assets/store-CWFQZoRe.js:1:5853)\n    at M (http://127.0.0.1:56354/_assets/store-CWFQZoRe.js:1:5633)\n    at w (http://127.0.0.1:56354/_assets/store-CWFQZoRe.js:1:1265)\n    at KP (http://127.0.0.1:56354/_assets/index-DzJivo7r.js:105:3386)\n    at http://127.0.0.1:56354/_assets/index-DzJivo7r.js:105:10650\n    at s (http://127.0.0.1:56354/_assets/store-CWFQZoRe.js:1:643)\n    at F (http://127.0.0.1:56354/_assets/store-CWFQZoRe.js:1:7111)\n    at b (http://127.0.0.1:56354/_assets/store-CWFQZoRe.js:1:684)\n    at http://127.0.0.1:56354/_assets/index-DzJivo7r.js:105:10628"
+    },
+    {
+      "requestFailed": "http://127.0.0.1:56353/api/worktree/refresh",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "requestFailed": "http://127.0.0.1:56353/api/worktree/refresh",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "boot": {
+        "url": "/server/aHR0cDovLzEyNy4wLjAuMTo1NjM1Mw/session/ses_settings_reset",
+        "vertical": true,
+        "homeTabText": null,
+        "bodyText": "0\n·\nUS$0.00\n主页\n新建会话\n项目\nO\nopencode-android-shell\n6\nO\n给会话设置添加重置按钮\nO\n检查本地分支是否为最新版本\nO\n新建 claude-UI 分支\nO\n修复 Android 终端 resize 抖动\nO\n把垂直标签页改成项目树\nO\n整理 OpenCode 上游补丁清单\nO\nopencode-ui\n3\nO\nopencode-claudeUI\n1\nD\ndeepseek-harness\n1\nY\nyiheda\n1\n给会话设置添加重置按钮\n\n可以。左侧栏可以复用主页的 Project 数据（本地项目列表）和 Session 索引，按项目分组、可折叠展开；点击会话直接开标签页。这样垂直布局下就不用回到主页找会话了，预计改动集中在一个侧栏组件和一处挂载点。\n\nBuild · deepseek-v4.1-flash\n垂直标签页的左侧栏现在只有一排打开的标签，",
+        "seedError": null,
+        "hostError": null,
+        "settings": "{\"appearance\":{\"fontSize\":14,\"mono\":\"\",\"sans\":\"\",\"terminal\":\"\",\"tabLayout\":\"vertical\",\"showProjectName\":false}}"
+      }
+    }
+  ],
+  "errors": [],
+  "screenshot": "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\notes\\_repro\\review-crash.png",
+  "backendHits": [
+    "GET /api/event",
+    "GET /api/info",
+    "GET /api/location",
+    "GET /api/project",
+    "GET /api/session/ses_settings_reset",
+    "GET /api/session",
+    "GET /api/session/active",
+    "GET /api/location",
+    "GET /api/vcs",
+    "GET /api/project",
+    "GET /api/session/ses_settings_reset/message",
+    "GET /api/session/ses_settings_reset/inbox",
+    "GET /api/session/ses_settings_reset",
+    "GET /api/session",
+    "GET /api/provider",
+    "GET /api/model",
+    "GET /api/integration",
+    "GET /api/location",
+    "GET /api/worktree",
+    "GET /api/config",
+    "GET /api/shell",
+    "GET /api/session/ses_settings_reset/permission",
+    "GET /api/session/ses_settings_reset/form",
+    "OPTIONS /api/rpc/xiufeigo.server-browser/state",
+    "GET /api/vcs",
+    "POST /api/rpc/xiufeigo.server-browser/state",
+    "GET /api/agent",
+    "GET /api/command",
+    "GET /api/integration",
+    "GET /api/mcp",
+    "GET /api/mcp/resource",
+    "GET /api/model",
+    "GET /api/provider",
+    "GET /api/reference",
+    "GET /api/skill",
+    "GET /api/form",
+    "OPTIONS /api/pty",
+    "GET /api/fs/list",
+    "POST /api/pty",
+    "OPTIONS /api/worktree/refresh",
+    "POST /api/worktree/refresh",
+    "POST /api/worktree/refresh",
+    "GET /api/agent",
+    "GET /api/command",
+    "GET /api/integration",
+    "GET /api/mcp",
+    "GET /api/mcp/resource",
+    "GET /api/model",
+    "GET /api/provider",
+    "GET /api/reference",
+    "GET /api/skill",
+    "GET /api/shell",
+    "GET /api/form",
+    "GET /api/agent",
+    "GET /api/command",
+    "GET /api/integration",
+    "GET /api/mcp",
+    "GET /api/mcp/resource",
+    "GET /api/model",
+    "GET /api/provider",
+    "GET /api/reference",
+    "GET /api/skill",
+    "GET /api/shell",
+    "GET /api/form"
+  ],
+  "state": {
+    "vertical": true,
+    "sidebarText": "主页\n新建会话\n项目\nO\nopencode-android-shell\n6\nO\n给会话设置添加重置按钮\nO\n检查本地分支是否为最新版本\nO\n新建 claude-UI 分支\nO\n修复 Android 终端 resize 抖动\nO\n把垂直标签页改成项目树\nO\n整理 OpenCode 上游补丁清单\nO\nopencode-ui\n3\nO\nopencode-claudeUI\n1\nD\ndeepseek-harness\n1\nY\nyiheda\n1"
+  }
+}

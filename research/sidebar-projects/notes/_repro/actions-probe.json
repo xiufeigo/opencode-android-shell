@@ -1,0 +1,6 @@
+[
+  { "wait": 800 },
+  { "eval": "() => Array.from(document.querySelectorAll('[data-slot=\"session-panel-frame\"]')).map((e) => ({ text: e.innerText.replace(/\\s+/g, ' ').slice(0, 40), rect: e.getBoundingClientRect().toJSON() }))" },
+  { "eval": "() => Array.from(document.querySelectorAll('[data-slot=\"session-review-v2-body\"]')).map((e) => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), display: getComputedStyle(e).display, hidden: !!e.closest('[hidden]'), frame: e.closest('[data-slot=\"session-panel-frame\"]') ? 'in-frame' : 'no-frame', parentSlot: e.parentElement?.closest('[data-slot]')?.getAttribute('data-slot') ?? null } })" },
+  { "eval": "() => document.body.innerText.includes('变更')" }
+]

@@ -1,0 +1,6 @@
+[
+  { "hover": "[data-slot=project-row]" },
+  { "wait": 300 },
+  { "click": "[data-action=project-sidebar-menu]" },
+  { "wait": 400 }
+]

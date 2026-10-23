@@ -2,10 +2,22 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { createResizePointerHandler } from "./resize-pointer.mjs"
 
-function fixture(props = {}, rtl = false) {
+function fixture(props = {}, rtl = false, manualFrames = false) {
   const element = new EventTarget()
   const view = new EventTarget()
+  const frames = new Map()
+  let nextFrame = 0
   view.getComputedStyle = () => ({ direction: rtl ? "rtl" : "ltr" })
+  view.requestAnimationFrame = callback => {
+    if (!manualFrames) {
+      callback(0)
+      return ++nextFrame
+    }
+    const id = ++nextFrame
+    frames.set(id, callback)
+    return id
+  }
+  view.cancelAnimationFrame = id => frames.delete(id)
   const style = { userSelect: "text", overflow: "clip" }
   element.ownerDocument = { body: { style }, defaultView: view }
   const captured = new Set()
@@ -23,7 +35,22 @@ function fixture(props = {}, rtl = false) {
     Object.assign(event, { pointerId: 1, isPrimary: true, pointerType: "touch", button: 0, detail: 0, clientX: 100, clientY: 100, ...props })
     element.dispatchEvent(event)
   }
-  return { element, view, style, captured, sizes, collapsed, send, cleanup: () => cleanup(), collapses: () => collapses }
+  return {
+    element,
+    view,
+    style,
+    captured,
+    sizes,
+    collapsed,
+    send,
+    cleanup: () => cleanup(),
+    collapses: () => collapses,
+    flushFrames() {
+      const pending = [...frames.values()]
+      frames.clear()
+      pending.forEach(callback => callback(0))
+    },
+  }
 }
 
 test("horizontal, RTL and vertical edges retain upstream direction and size limits", () => {
@@ -68,6 +95,18 @@ for (const ending of ["pointercancel", "lostpointercapture", "blur", "unmount"])
   f.send("pointermove", { clientY: 300 })
   f.send("pointerup")
   assert.deepEqual(f.sizes, [100])
+})
+
+test("pointer moves coalesce into one resize per animation frame", () => {
+  const f = fixture({}, false, true)
+  f.send("pointerdown")
+  f.send("pointermove", { clientX: 140 })
+  f.send("pointermove", { clientX: 180 })
+  f.send("pointermove", { clientX: 120 })
+  assert.deepEqual(f.sizes, [])
+  f.flushFrames()
+  assert.deepEqual(f.sizes, [320])
+  f.send("pointerup")
 })
 
 test("pointerup commits collapse once; right buttons and repeated mouse clicks do not resize", () => {

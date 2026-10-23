@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>侧栏改造方案 v3 — 界面草案</title>
+<style>
+  :root{
+    --bg:#0b0b0b; --card:#141414; --card2:#171717; --line:#2a2a2a;
+    --text:#d6d6d6; --muted:#8c8c8c; --faint:#5f5f5f;
+    --hover:#1e1e1e; --active:#262626; --ann:#f5a524;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#050505;color:var(--text);
+    font:13px/20px "Segoe UI","Microsoft YaHei",-apple-system,sans-serif}
+  svg.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .symbols{position:absolute;width:0;height:0;overflow:hidden}
+
+  .page{width:1600px;margin:0 auto;padding:28px 34px 60px}
+  h1{font-size:18px;line-height:26px;font-weight:600;margin:0 0 4px;color:#eee}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:26px}
+
+  .state{margin:0 0 54px}
+  .state-head{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+  .state-head b{font-size:14px;color:#eee;font-weight:600}
+  .state-head span{font-size:12px;color:var(--muted)}
+
+  .stage{display:flex;gap:18px;align-items:flex-start}
+  .frame{position:relative;width:1240px;height:730px;flex:none;background:var(--bg);
+    border:1px solid #1c1c1c;border-radius:10px;overflow:hidden;display:flex}
+  .notes{width:270px;flex:none;font-size:12px;line-height:18px;color:var(--muted)}
+  .notes .n{display:flex;gap:7px;margin:0 0 10px}
+  .notes .n i{flex:none;width:16px;height:16px;border-radius:50%;background:var(--ann);color:#111;
+    font:600 10px/16px "Segoe UI",sans-serif;text-align:center;font-style:normal;margin-top:1px}
+  .notes .n b{color:#ddd;font-weight:600}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{width:250px;flex:none;height:100%;padding:8px 10px 10px;display:flex;flex-direction:column;background:var(--bg)}
+  .toolbar{height:28px;display:flex;align-items:center;gap:2px;flex:none}
+  .tbtn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--muted)}
+  .tbtn.dark{color:#c9c9c9}
+  .tbtn.hot{background:var(--hover);color:#e2e2e2}
+  .brand{height:36px;display:flex;align-items:center;padding:0 6px;margin-top:4px;flex:none;
+    font:700 14px/1 "Segoe UI",sans-serif;letter-spacing:.14em;color:#cfcfcf}
+  .nav{margin-top:4px;display:flex;flex-direction:column;gap:1px;flex:none}
+  .navrow{height:28px;display:flex;align-items:center;gap:7px;padding:0 6px;border-radius:6px;color:var(--muted)}
+  .navrow svg{width:15px;height:15px}
+  .projhead{height:26px;display:flex;align-items:center;justify-content:space-between;
+    padding:8px 6px 0;margin-top:6px;flex:none;color:var(--faint);font-size:11px;font-weight:600}
+  .plus{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  .plus svg{width:14px;height:14px}
+  .tree{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px;padding-top:2px;position:relative}
+
+  .prow{position:relative;height:28px;display:flex;align-items:center;gap:6px;padding:0 6px 0 4px;border-radius:6px;color:var(--muted);flex:none}
+  .prow .chev{width:12px;height:12px;color:var(--faint)}
+  .avatar{width:16px;height:16px;border-radius:3px;flex:none;background:#3a3a3a;color:#ddd;
+    font:600 9px/16px "Segoe UI",sans-serif;text-align:center}
+  .avatar.green{background:#1f8a54;color:#fff}
+  .avatar.pink{background:#b3468d;color:#fff}
+  .avatar.blue{background:#2d6cdf;color:#fff}
+  .avatar.teal{background:#0e7c86;color:#fff}
+  .pname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b6b6b6;font-weight:500}
+  .pcount{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;padding-right:2px}
+  .pacts{position:absolute;right:3px;top:0;height:28px;display:flex;align-items:center;gap:1px;
+    padding-left:16px;background:linear-gradient(to right,transparent,var(--bg) 14px)}
+  .prow.hot{background:var(--hover)}
+  .prow.hot .pacts{background:linear-gradient(to right,transparent,var(--hover) 14px)}
+  .abtn{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  .abtn svg{width:14px;height:14px}
+
+  .srow{height:28px;display:flex;align-items:center;gap:7px;padding:0 6px 0 26px;border-radius:6px;color:var(--muted);flex:none}
+  .srow .avatar{width:16px;height:16px}
+  .stitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srow.active{background:var(--active);color:#e6e6e6}
+  .srow.hot{background:var(--hover)}
+  .sclose{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  .sclose svg{width:12px;height:12px}
+
+  /* ---------- main ---------- */
+  .main{flex:1;min-width:0;padding:8px 8px 8px 0;display:flex;flex-direction:row}
+  .card{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;overflow:hidden}
+  .shead{height:48px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px 0 8px}
+  .shead .mono{width:16px;height:16px;color:var(--muted)}
+  .stitle2{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ddd;font-weight:530;max-width:470px}
+  .dot{margin-left:2px;color:var(--faint)}
+  .grow{flex:1}
+  .hchip{height:24px;display:flex;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:11.5px;margin-right:4px;white-space:nowrap;flex:none}
+  .hchip .ring{width:10px;height:10px;border-radius:50%;border:1.5px solid #6f6f6f;border-top-color:transparent}
+  .hbtn{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  .hbtn svg{width:15px;height:15px}
+  .vsep{width:1px;height:16px;background:#2c2c2c;margin:0 4px}
+  .review{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#cfcfcf;background:#1e1e1e;border:1px solid #333}
+
+  .flow{flex:1;min-height:0;padding:6px 26px 0 22px;overflow:hidden;color:#c9c9c9;display:flex;flex-direction:column}
+  .msg{font-size:13px;line-height:22px;margin:0 0 14px;max-width:660px}
+  .msg.small{color:#b9b9b9}
+  .inline{background:#242424;border-radius:4px;padding:0 4px;font-family:Consolas,monospace;font-size:12px;color:#ddd}
+  .user{align-self:flex-end;margin-left:auto;width:500px;background:#1b2433;border:1px solid #26344a;border-radius:10px;padding:10px 12px;color:#cfd9e8;font-size:13px;line-height:21px;margin-bottom:16px}
+  .composer{flex:none;margin:10px 12px 12px;border:1px solid #333;border-radius:12px;background:#161616;padding:10px 12px 8px}
+  .composer .ph{color:#6f6f6f;font-size:13px;line-height:20px}
+  .composer .crow{height:28px;display:flex;align-items:center;gap:8px;margin-top:8px;color:#9b9b9b;font-size:12px}
+  .send{margin-left:auto;width:26px;height:26px;border-radius:6px;background:#3a3a3a;display:flex;align-items:center;justify-content:center;color:#ddd}
+
+  /* official right dock */
+  .dock{width:352px;flex:none;margin-left:8px;background:var(--card2);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;overflow:hidden}
+  .tabs{height:36px;flex:none;display:flex;align-items:center;gap:2px;padding:0 6px;border-bottom:1px solid #232323}
+  .tab{height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#232323;color:#d9d9d9;font-size:12px}
+  .tab svg{width:11px;height:11px;color:#9a9a9a}
+  .tabadd{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--muted);margin-left:auto}
+  .term{flex:1;padding:12px;font-family:Consolas,monospace;font-size:12px;line-height:19px;color:#bdbdbd}
+  .term .p{color:#6fbf73}
+  .term .cmd{color:#e6e6e6}
+
+  /* collapsed controls */
+  .cc{display:flex;align-items:center;gap:2px;margin-right:2px;padding-right:6px;border-right:1px solid #262626}
+  .cc .tbtn{width:26px;height:26px}
+  .cc .tbtn svg{width:15px;height:15px}
+
+  /* menus */
+  .menu{position:absolute;width:196px;background:#1c1c1c;border:1px solid #333;border-radius:8px;
+    box-shadow:0 12px 32px rgba(0,0,0,.55);padding:4px;font-size:12.5px;color:#d6d6d6;z-index:5}
+  .mi{height:28px;display:flex;align-items:center;padding:0 8px;border-radius:5px}
+  .mi.sep{height:1px;background:#303030;margin:4px 6px;padding:0}
+  .mi.dim{color:#6d6d6d}
+
+  /* annotation badges */
+  .bd{position:absolute;z-index:9;width:17px;height:17px;border-radius:50%;background:var(--ann);color:#131313;
+    font:700 10px/17px "Segoe UI",sans-serif;text-align:center;box-shadow:0 0 0 3px rgba(245,165,36,.16)}
+</style>
+</head>
+<body>
+<svg class="symbols" aria-hidden="true">
+  <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></symbol>
+  <symbol id="i-sidebar" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.6"/><path d="M6.2 3v10"/></symbol>
+  <symbol id="i-arrow-l" viewBox="0 0 16 16"><path d="M13 8H3.5M7 4 3 8l4 4"/></symbol>
+  <symbol id="i-arrow-r" viewBox="0 0 16 16"><path d="M3 8h9.5M9 4l4 4-4 4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.2v9.6M3.2 8h9.6"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 16 16"><circle cx="3.6" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.4" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 16 16"><path d="M3.2 12.8h9.6"/><path d="M9.9 3.6l2.2 2.2-6 6-2.7.5.5-2.7 6-6z"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 2.3l.8 1.5 1.7-.4.5 1.7 1.6.8-.6 1.6.9 1.5-1.4 1.1.2 1.7-1.7.3-.9 1.5L7.5 13l-1.5 1-1-1.4-1.7-.2.2-1.7L2 9.6l1.2-1.3-.5-1.6L4.4 6l.3-1.7 1.7.2z"/></symbol>
+  <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.4"/><path d="M6.4 6.6a1.7 1.7 0 1 1 2.4 1.6c-.6.3-.8.7-.8 1.3"/><circle cx="8" cy="11.4" r=".7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 16 16"><path d="M4.5 6.2 8 9.7l3.5-3.5"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 16 16"><path d="M6.2 4.5 9.7 8l-3.5 3.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
+  <symbol id="i-term" viewBox="0 0 16 16"><rect x="2.4" y="3" width="11.2" height="10" rx="1.5"/><path d="M5 6.4 6.8 8 5 9.6M8.4 10h2.6"/></symbol>
+  <symbol id="i-review" viewBox="0 0 16 16"><rect x="2.4" y="3" width="11.2" height="10" rx="1.5"/><path d="M2.4 10h11.2M6 6.2h4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.4"/><path d="M2.8 8h10.4M8 2.6c1.7 1.6 2.6 3.4 2.6 5.4S9.7 11.8 8 13.4C6.3 11.8 5.4 10 5.4 8S6.3 4.2 8 2.6z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2.5 4.5h3.2l1.2 1.4h6.6v6.6H2.5z"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 16 16"><rect x="2.4" y="3" width="11.2" height="10" rx="1.5"/><path d="M9.4 3v10"/></symbol>
+  <symbol id="i-send" viewBox="0 0 16 16"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.6" y="2.6" width="4.4" height="4.4" rx="1"/><rect x="9" y="2.6" width="4.4" height="4.4" rx="1"/><rect x="2.6" y="9" width="4.4" height="4.4" rx="1"/><rect x="9" y="9" width="4.4" height="4.4" rx="1"/></symbol>
+</svg>
+
+<div class="page">
+  <h1>左侧栏 / 会话页改造草案 v3</h1>
+  <div class="sub">按 250px 侧栏 + 1240px 视口示意；真实边距沿用现有 v2 主题 token。橙色编号仅用于评审。</div>
+
+  <!-- ============================================================ A -->
+  <section class="state">
+    <div class="state-head"><b>A. 展开态（会话页，右侧栏为官方停靠面板）</b><span>≥768px，垂直布局</span></div>
+    <div class="stage">
+      <div class="frame">
+        <aside class="sidebar">
+          <div class="toolbar">
+            <div class="tbtn dark"><svg class="ic"><use href="#i-menu"/></svg></div>
+            <div class="tbtn dark"><svg class="ic"><use href="#i-sidebar"/></svg></div>
+            <div class="tbtn dark"><svg class="ic"><use href="#i-arrow-l"/></svg></div>
+            <div class="tbtn dark"><svg class="ic"><use href="#i-arrow-r"/></svg></div>
+            <div class="bd" style="left:128px;top:2px">1</div>
+          </div>
+
+          <div class="brand">OPENCODE</div>
+
+          <div class="nav">
+            <div class="navrow"><svg class="ic"><use href="#i-grid"/></svg>新建会话</div>
+            <div class="navrow"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
+            <div class="navrow"><svg class="ic"><use href="#i-help"/></svg>帮助</div>
+          </div>
+
+          <div class="projhead"><span>项目</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span>
+            <div class="bd" style="left:222px;top:160px">2</div>
+          </div>
+
+          <div class="tree">
+            <div class="bd" style="left:210px;top:4px">3</div>
+            <div class="bd" style="left:210px;top:33px">4</div>
+            <div class="prow hot">
+              <svg class="ic chev"><use href="#i-chev-down"/></svg>
+              <span class="avatar green">O</span>
+              <span class="pname">opencode-android-shell</span>
+              <span class="pcount">6</span>
+              <div class="pacts">
+                <div class="abtn"><svg class="ic"><use href="#i-dots"/></svg></div>
+                <div class="abtn"><svg class="ic"><use href="#i-edit"/></svg></div>
+              </div>
+            </div>
+            <div class="srow active"><span class="avatar blue">D</span><span class="stitle">给会话设置添加重置按钮</span><div class="sclose"><svg class="ic"><use href="#i-x"/></svg></div></div>
+            <div class="srow hot"><span class="avatar blue">D</span><span class="stitle">检查本地分支是否为最新版本</span><div class="sclose"><svg class="ic"><use href="#i-x"/></svg></div></div>
+            <div class="srow"><span class="avatar blue">D</span><span class="stitle">新建 claude-UI 分支</span></div>
+            <div class="srow"><span class="avatar blue">D</span><span class="stitle">修复 Android 终端 resize …</span></div>
+            <div class="srow"><span class="avatar blue">D</span><span class="stitle">把垂直标签页改成项目树</span></div>
+            <div class="srow"><span class="avatar blue">D</span><span class="stitle">整理 OpenCode 上游补丁清…</span></div>
+
+            <div class="prow" style="margin-top:2px">
+              <svg class="ic chev"><use href="#i-chev-right"/></svg>
+              <span class="avatar teal">o</span><span class="pname">opencode-ui</span><span class="pcount">3</span>
+            </div>
+            <div class="prow">
+              <svg class="ic chev"><use href="#i-chev-right"/></svg>
+              <span class="avatar pink">D</span><span class="pname">DSH 临时会话</span><span class="pcount">12</span>
+            </div>
+            <div class="prow">
+              <svg class="ic chev"><use href="#i-chev-right"/></svg>
+              <span class="avatar">/</span><span class="pname">/</span><span class="pcount">42</span>
+            </div>
+          </div>
+        </aside>
+
+        <div class="main">
+          <div class="card">
+            <div class="shead">
+              <svg class="ic mono"><use href="#i-panel"/></svg>
+              <span class="stitle2">用 Flutter 打造适配 Android 平板与 Windows 的 OpenCode 桌面端</span>
+              <span class="dot">⋯</span>
+              <div class="grow"></div>
+              <div class="hchip"><span class="ring"></span>20万 · US$262.34</div>
+              <div class="hbtn"><svg class="ic"><use href="#i-term"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-review"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-globe"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-folder"/></svg></div>
+              <div class="vsep"></div>
+              <div class="review"><svg class="ic"><use href="#i-panel"/></svg></div>
+              <div class="bd" style="left:836px;top:0px">5</div>
+            </div>
+
+            <div class="flow">
+              <p class="msg small">已安排 <span class="inline">session ABA</span> 正常单例，仅运行一次；不做 mutation，不自动续跑。</p>
+              <p class="msg">更新</p>
+              <p class="msg">Windows 主题的 session ABA 单例原始通过，源码、断言和预算均未改。</p>
+              <p class="msg">现在独立审计该结果；通过前不运行 stale-read 场景，也不做 mutation。</p>
+              <p class="msg small">使用了 1 个 智能体</p>
+              <p class="msg">session ABA Windows 单例原始通过，独立审计已启动。</p>
+              <p class="msg">stale-read 与 mutation 仍未放行。</p>
+              <div class="user">垂直标签页的左侧栏现在只有一排打开的标签，找某个项目的旧会话还得先回主页。能不能把主页的项目列表搬进左侧栏，点开项目就展开它下面的会话？</div>
+            </div>
+
+            <div class="composer">
+              <div class="ph">随便问点什么，/ 可查看命令，@ 可添加上下文…</div>
+              <div class="crow">
+                <span>＋</span><span>◌</span><span>GPT-6.1 Sol</span><span>Max</span>
+                <span class="send"><svg class="ic"><use href="#i-send"/></svg></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dock">
+            <div class="tabs">
+              <div class="tab">终端 1 <svg class="ic"><use href="#i-x"/></svg></div>
+              <div class="tabadd"><svg class="ic"><use href="#i-plus"/></svg></div>
+              <div class="bd" style="left:876px;top:0px">6</div>
+            </div>
+            <div class="term">
+              <div><span class="p">D:\work\opencode\packages\app&gt;</span> <span class="cmd">bun dev</span></div>
+              <div>&nbsp;</div>
+              <div>$ VITE v7.1.3 ready in 412 ms</div>
+              <div>&nbsp;</div>
+              <div>➜ Local: http://localhost:4444/</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="n"><i>1</i><span><b>四个按钮下移</b><br>☰ / 收起侧栏 / ← / → 放到侧栏最顶部，顺序不变。</span></div>
+        <div class="n"><i>2</i><span><b>添加项目变 ＋</b><br>去掉“添加项目”导航行，在“项目”标题最右侧放 ＋。</span></div>
+        <div class="n"><i>3</i><span><b>文件夹两个按钮</b><br>⋯（含“关闭项目”）+ ✎ 新建会话；悬停显示，触屏常显。</span></div>
+        <div class="n"><i>4</i><span><b>会话关闭</b><br>已打开会话保留 ×；右键 / 长按出菜单（重命名 / 导出 / 删除）。</span></div>
+        <div class="n"><i>5</i><span><b>官方 session 头</b><br>用量与面板按钮回到标题右侧，与 main 一致。</span></div>
+        <div class="n"><i>6</i><span><b>右侧栏回官方</b><br>恢复单框 + 标签页的停靠面板，不再四宫格。</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ B -->
+  <section class="state">
+    <div class="state-head"><b>B. 收起态（无顶栏，两按钮嵌在 session 标题左侧）</b><span>点击 ▯ 后</span></div>
+    <div class="stage">
+      <div class="frame">
+        <div class="main" style="padding-left:8px">
+          <div class="card">
+            <div class="shead">
+              <div class="cc">
+                <div class="tbtn"><svg class="ic"><use href="#i-menu"/></svg></div>
+                <div class="tbtn"><svg class="ic"><use href="#i-sidebar"/></svg></div>
+              </div>
+              <svg class="ic mono"><use href="#i-panel"/></svg>
+              <span class="stitle2">用 Flutter 打造适配 Android 平板与 Windows 的 OpenCode 桌面端</span>
+              <span class="dot">⋯</span>
+              <div class="grow"></div>
+              <div class="hchip"><span class="ring"></span>20万 · US$262.34</div>
+              <div class="hbtn"><svg class="ic"><use href="#i-term"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-review"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-globe"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-folder"/></svg></div>
+              <div class="vsep"></div>
+              <div class="review"><svg class="ic"><use href="#i-panel"/></svg></div>
+              <div class="bd" style="left:54px;top:2px">1</div>
+            </div>
+
+            <div class="flow">
+              <p class="msg small">已安排 <span class="inline">session ABA</span> 正常单例，仅运行一次；不做 mutation，不自动续跑。</p>
+              <p class="msg">更新</p>
+              <p class="msg">Windows 主题的 session ABA 单例原始通过，源码、断言和预算均未改。</p>
+              <p class="msg">现在独立审计该结果；通过前不运行 stale-read 场景，也不做 mutation。</p>
+              <p class="msg small">使用了 1 个 智能体</p>
+              <p class="msg">session ABA Windows 单例原始通过，独立审计已启动。</p>
+              <p class="msg">stale-read 与 mutation 仍未放行。</p>
+            </div>
+
+            <div class="composer">
+              <div class="ph">随便问点什么，/ 可查看命令，@ 可添加上下文…</div>
+              <div class="crow"><span>＋</span><span>◌</span><span>GPT-6.1 Sol</span><span>Max</span>
+                <span class="send"><svg class="ic"><use href="#i-send"/></svg></span></div>
+            </div>
+          </div>
+
+          <div class="dock">
+            <div class="tabs"><div class="tab">终端 1 <svg class="ic"><use href="#i-x"/></svg></div><div class="tabadd"><svg class="ic"><use href="#i-plus"/></svg></div></div>
+            <div class="term"><div><span class="p">D:\work\opencode\packages\app&gt;</span> <span class="cmd">bun dev</span></div><div>&nbsp;</div><div>$ VITE v7.1.3 ready in 412 ms</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="n"><i>1</i><span><b>只留前两个</b><br>☰ 与 ▯ 嵌入 session 标题最左侧，位于项目图标之前；← / → 收起态不再显示。</span></div>
+        <div class="n"><i>2</i><span><b>无自绘顶栏</b><br>标题栏整条移除，主区顶到窗口上沿，安全区改由 shell 内边距处理。</span></div>
+        <div class="n"><i>3</i><span><b>其它页面</b><br>设置 / 草稿等无 session 标题的页面，收起时在左上角浮一条 2 按钮小条（待确认）。</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ C -->
+  <section class="state">
+    <div class="state-head"><b>C. 右键 / 长按菜单</b><span>桌面右键，移动端长按 500ms</span></div>
+    <div class="stage">
+      <div class="frame">
+        <aside class="sidebar">
+          <div class="toolbar">
+            <div class="tbtn dark"><svg class="ic"><use href="#i-menu"/></svg></div>
+            <div class="tbtn dark"><svg class="ic"><use href="#i-sidebar"/></svg></div>
+            <div class="tbtn dark"><svg class="ic"><use href="#i-arrow-l"/></svg></div>
+            <div class="tbtn dark"><svg class="ic"><use href="#i-arrow-r"/></svg></div>
+          </div>
+          <div class="brand">OPENCODE</div>
+          <div class="nav">
+            <div class="navrow"><svg class="ic"><use href="#i-grid"/></svg>新建会话</div>
+            <div class="navrow"><svg class="ic"><use href="#i-gear"/></svg>设置</div>
+            <div class="navrow"><svg class="ic"><use href="#i-help"/></svg>帮助</div>
+          </div>
+          <div class="projhead"><span>项目</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></div>
+          <div class="tree">
+            <div class="prow" style="background:var(--hover)">
+              <svg class="ic chev"><use href="#i-chev-down"/></svg><span class="avatar green">O</span><span class="pname">opencode-android-shell</span><span class="pcount">6</span>
+              <div class="pacts"><div class="abtn"><svg class="ic"><use href="#i-dots"/></svg></div><div class="abtn"><svg class="ic"><use href="#i-edit"/></svg></div></div>
+            </div>
+            <div class="srow"><span class="avatar blue">D</span><span class="stitle">给会话设置添加重置按钮</span></div>
+            <div class="srow" style="background:var(--hover)"><span class="avatar blue">D</span><span class="stitle">检查本地分支是否为最新版本</span></div>
+            <div class="srow"><span class="avatar blue">D</span><span class="stitle">新建 claude-UI 分支</span></div>
+            <div class="prow" style="margin-top:2px"><svg class="ic chev"><use href="#i-chev-right"/></svg><span class="avatar teal">o</span><span class="pname">opencode-ui</span><span class="pcount">3</span></div>
+          </div>
+
+          <!-- project menu -->
+          <div class="menu" style="left:258px;top:196px">
+            <div class="mi">新建会话</div>
+            <div class="mi">导入会话…</div>
+            <div class="mi">编辑项目</div>
+            <div class="mi dim">在文件管理器中显示</div>
+            <div class="mi dim">清除通知</div>
+            <div class="mi sep"></div>
+            <div class="mi">关闭</div>
+          </div>
+
+          <!-- session menu -->
+          <div class="menu" style="left:258px;top:404px">
+            <div class="mi">重命名</div>
+            <div class="mi">导出…</div>
+            <div class="mi sep"></div>
+            <div class="mi" style="color:#e08a8a">删除…</div>
+          </div>
+
+          <div class="bd" style="left:458px;top:210px">1</div>
+          <div class="bd" style="left:458px;top:418px">2</div>
+        </aside>
+
+        <div class="main">
+          <div class="card">
+            <div class="shead">
+              <div class="cc"><div class="tbtn"><svg class="ic"><use href="#i-menu"/></svg></div><div class="tbtn"><svg class="ic"><use href="#i-sidebar"/></svg></div></div>
+              <svg class="ic mono"><use href="#i-panel"/></svg>
+              <span class="stitle2">检查本地分支是否为最新版本</span><span class="dot">⋯</span>
+              <div class="grow"></div>
+              <div class="hchip"><span class="ring"></span>20万 · US$262.34</div>
+              <div class="hbtn"><svg class="ic"><use href="#i-term"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-review"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-globe"/></svg></div>
+              <div class="hbtn"><svg class="ic"><use href="#i-folder"/></svg></div>
+              <div class="vsep"></div><div class="review"><svg class="ic"><use href="#i-panel"/></svg></div>
+            </div>
+            <div class="flow">
+              <p class="msg">已经是最新版本，工作区干净。</p>
+              <p class="msg small">已检查 <span class="inline">origin/claude-UI</span> 与 <span class="inline">origin/main</span>，没有需要拉取的提交。</p>
+            </div>
+            <div class="composer">
+              <div class="ph">随便问点什么，/ 可查看命令，@ 可添加上下文…</div>
+              <div class="crow"><span>＋</span><span>◌</span><span>GPT-6.1 Sol</span><span>Max</span><span class="send"><svg class="ic"><use href="#i-send"/></svg></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="n"><i>1</i><span><b>项目菜单</b><br>与主页文件夹一致：新建 / 导入 / 编辑 / 显示 / 清除通知 / 关闭；“关闭”即关闭项目。</span></div>
+        <div class="n"><i>2</i><span><b>会话菜单</b><br>与主页会话行一致：重命名 / 导出 / 删除。</span></div>
+        <div class="n"><i>3</i><span><b>触发方式</b><br>桌面：右键；触屏：长按 500ms，移动超过 8px 取消；长按后吞掉那次 click，不会误打开会话。</span></div>
+        <div class="n"><i>4</i><span><b>手机宽度</b><br>&lt;768px 仍是官方抽屉，没有项目树；长按只作用于有侧栏的平板 / 触屏桌面。</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

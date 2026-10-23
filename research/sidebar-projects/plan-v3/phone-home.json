@@ -1,0 +1,4 @@
+[
+  { "click": "[data-action=mobile-home]" },
+  { "wait": 800 }
+]

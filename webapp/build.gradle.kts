@@ -36,9 +36,10 @@ android {
         // 47 官方 UI 升到 2.0.29，补齐其新增中文文案，并修正终端拖动“只滚动、不抢焦点、也不关键盘”的焦点规则。
         // 48 系统深浅色跟随：宿主把 uiMode 真值转交给页面依赖的 `prefers-color-scheme`，修真机切深色不换肤。
         // 49 官方 UI 升到 2.1.2（回合变更文件、Voice 消息、标签未读/键盘导航、免费模型分组），补齐 13 条新中文。
-        versionCode = 49
+        // 52 图片预览同时接入 Pointer 与 Touch 事件，覆盖只派发 touch 事件的 WebView。
+        versionCode = 52
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.21"
+        versionName = "2.0.24"
     }
 
     signingConfigs {
@@ -57,9 +58,10 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("sharedDebug")
-            // 🔴 刻意**不加** `applicationIdSuffix = ".debug"`：包名必须与正式包一致
-            //    （产品负责人："只有这个"）。代价是 debug 包与正式包互相覆盖 —— 装哪个是哪个，
-            //    这正是要的语义。debug 包只在"该构建就是 debug"时产出，不进 CI 发布。
+            // 2026-10-22 追加要求：本机 debug 包需要与正式包并存试用，产品负责人明确
+            // “包名最后需要加 .debug”。因此**只有 debug 变体**带后缀；release 与 CI
+            // 分发物仍是 `com.xiufeigo.opencodeshell`，不受影响。
+            applicationIdSuffix = ".debug"
         }
         // 正式发布变体：**无 `applicationIdSuffix`** ⇒ 包名 = `com.xiufeigo.opencodeshell`。
         //

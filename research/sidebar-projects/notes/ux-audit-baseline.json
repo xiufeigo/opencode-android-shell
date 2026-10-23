@@ -1,0 +1,974 @@
+{
+  "generatedAt": "2026-10-22T13:59:46.438Z",
+  "app": "http://127.0.0.1:4444",
+  "server": "http://127.0.0.1:40199",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "checkout": "_scratch_root\\desktop-parity\\checkout",
+  "sourceSnapshot": [
+    {
+      "path": "packages/app/src/shell/routes/routes.tsx",
+      "size": 7296,
+      "mtime": "2026-10-22T13:57:36.135Z"
+    },
+    {
+      "path": "packages/app/src/shell/titlebar/titlebar.tsx",
+      "size": 39679,
+      "mtime": "2026-10-22T13:52:12.382Z"
+    },
+    {
+      "path": "packages/app/src/shell/titlebar/project-session-sidebar.tsx",
+      "size": 20038,
+      "mtime": "2026-10-22T13:52:12.442Z"
+    },
+    {
+      "path": "packages/app/src/shell/titlebar/vertical-session-toolbar.tsx",
+      "size": 2562,
+      "mtime": "2026-10-22T11:06:15.478Z"
+    },
+    {
+      "path": "packages/app/src/session/screen.tsx",
+      "size": 26096,
+      "mtime": "2026-10-22T11:22:55.081Z"
+    },
+    {
+      "path": "packages/app/src/session/panel-grid.tsx",
+      "size": 7463,
+      "mtime": "2026-10-22T13:55:31.799Z"
+    },
+    {
+      "path": "packages/app/src/session/panel-grid-state.ts",
+      "size": 4766,
+      "mtime": "2026-10-22T11:31:42.124Z"
+    },
+    {
+      "path": "packages/ui/src/components/resize-handle.tsx",
+      "size": 1257,
+      "mtime": "2026-10-22T04:50:35.910Z"
+    }
+  ],
+  "panelPerf": [
+    {
+      "count": 0,
+      "panel": "review",
+      "status": "no-frame-opened",
+      "latencyMs": null,
+      "warmLatencyMs": null,
+      "latencyMedianMs": null,
+      "latencySamples": [],
+      "longTaskCount": null,
+      "longTaskCountMax": null,
+      "totalBlockingMs": null,
+      "totalBlockingMsMax": null,
+      "blockingSamples": [],
+      "longTaskDurations": [],
+      "rounds": [
+        {
+          "round": 3,
+          "opened": false,
+          "latencyMs": 69.5,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    },
+    {
+      "count": 0,
+      "panel": "browser",
+      "status": "no-frame-opened",
+      "latencyMs": null,
+      "warmLatencyMs": null,
+      "latencyMedianMs": null,
+      "latencySamples": [],
+      "longTaskCount": null,
+      "longTaskCountMax": null,
+      "totalBlockingMs": null,
+      "totalBlockingMsMax": null,
+      "blockingSamples": [],
+      "longTaskDurations": [],
+      "rounds": [
+        {
+          "round": 3,
+          "opened": false,
+          "latencyMs": 39.2,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    },
+    {
+      "count": 0,
+      "panel": "file",
+      "status": "no-frame-opened",
+      "latencyMs": null,
+      "warmLatencyMs": null,
+      "latencyMedianMs": null,
+      "latencySamples": [],
+      "longTaskCount": null,
+      "longTaskCountMax": null,
+      "totalBlockingMs": null,
+      "totalBlockingMsMax": null,
+      "blockingSamples": [],
+      "longTaskDurations": [],
+      "rounds": [
+        {
+          "round": 3,
+          "opened": false,
+          "latencyMs": 108.8,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "panel": "terminal",
+      "status": "ok",
+      "latencyMs": 44.7,
+      "warmLatencyMs": 112.9,
+      "latencyMedianMs": 99.7,
+      "latencySamples": [
+        44.7,
+        99.7,
+        126.2
+      ],
+      "longTaskCount": 0,
+      "longTaskCountMax": 0,
+      "totalBlockingMs": 0,
+      "totalBlockingMsMax": 0,
+      "blockingSamples": [
+        0,
+        0,
+        0
+      ],
+      "longTaskDurations": [],
+      "latencyMethod": "click-capture",
+      "rounds": [
+        {
+          "round": 1,
+          "opened": true,
+          "latencyMs": 44.7,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        },
+        {
+          "round": 2,
+          "opened": true,
+          "latencyMs": 99.7,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        },
+        {
+          "round": 3,
+          "opened": true,
+          "latencyMs": 126.2,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    },
+    {
+      "count": 2,
+      "panel": "review",
+      "status": "ok",
+      "latencyMs": 203,
+      "warmLatencyMs": 543.2,
+      "latencyMedianMs": 373.1,
+      "latencySamples": [
+        203,
+        543.2
+      ],
+      "longTaskCount": 0,
+      "longTaskCountMax": 0,
+      "totalBlockingMs": 0,
+      "totalBlockingMsMax": 0,
+      "blockingSamples": [
+        0,
+        0
+      ],
+      "longTaskDurations": [],
+      "latencyMethod": "click-capture",
+      "rounds": [
+        {
+          "round": 1,
+          "opened": true,
+          "latencyMs": 203,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        },
+        {
+          "round": 2,
+          "opened": true,
+          "latencyMs": 543.2,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "panel": "browser",
+      "status": "ok",
+      "latencyMs": 1224.9,
+      "warmLatencyMs": 634.3,
+      "latencyMedianMs": 929.6,
+      "latencySamples": [
+        1224.9,
+        634.3
+      ],
+      "longTaskCount": 1,
+      "longTaskCountMax": 1,
+      "totalBlockingMs": 38,
+      "totalBlockingMsMax": 38,
+      "blockingSamples": [
+        38,
+        0
+      ],
+      "longTaskDurations": [
+        88
+      ],
+      "latencyMethod": "click-capture",
+      "rounds": [
+        {
+          "round": 1,
+          "opened": true,
+          "latencyMs": 1224.9,
+          "longTaskCount": 1,
+          "totalBlockingMs": 38
+        },
+        {
+          "round": 2,
+          "opened": true,
+          "latencyMs": 634.3,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    },
+    {
+      "count": 4,
+      "panel": "file",
+      "status": "ok",
+      "latencyMs": 382.2,
+      "warmLatencyMs": 259,
+      "latencyMedianMs": 320.6,
+      "latencySamples": [
+        382.2,
+        259
+      ],
+      "longTaskCount": 0,
+      "longTaskCountMax": 0,
+      "totalBlockingMs": 0,
+      "totalBlockingMsMax": 0,
+      "blockingSamples": [
+        0,
+        0
+      ],
+      "longTaskDurations": [],
+      "latencyMethod": "click-capture",
+      "rounds": [
+        {
+          "round": 1,
+          "opened": true,
+          "latencyMs": 382.2,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        },
+        {
+          "round": 2,
+          "opened": true,
+          "latencyMs": 259,
+          "longTaskCount": 0,
+          "totalBlockingMs": 0
+        }
+      ]
+    }
+  ],
+  "resize": {
+    "idle": {
+      "windowMs": 1000,
+      "longTaskCount": 0,
+      "totalBlockingMs": 0
+    },
+    "candidates": {
+      "grid": true,
+      "items": [
+        {
+          "index": 0,
+          "rect": {
+            "x": 863,
+            "y": 460,
+            "width": 280,
+            "height": 8,
+            "right": 1143,
+            "bottom": 468
+          },
+          "centerX": 1003,
+          "centerY": 464,
+          "direction": "vertical",
+          "edge": "end",
+          "slot": null,
+          "component": "resize-handle",
+          "className": ""
+        },
+        {
+          "index": 1,
+          "rect": {
+            "x": 1139,
+            "y": 45,
+            "width": 8,
+            "height": 846,
+            "right": 1147,
+            "bottom": 891
+          },
+          "centerX": 1143,
+          "centerY": 468,
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "component": "resize-handle",
+          "className": ""
+        },
+        {
+          "index": 2,
+          "rect": {
+            "x": 1151,
+            "y": 460,
+            "width": 280,
+            "height": 8,
+            "right": 1431,
+            "bottom": 468
+          },
+          "centerX": 1291,
+          "centerY": 464,
+          "direction": "vertical",
+          "edge": "end",
+          "slot": null,
+          "component": "resize-handle",
+          "className": ""
+        }
+      ]
+    },
+    "column": {
+      "selector": "[data-component=\"resize-handle\"][data-direction=\"horizontal\"]",
+      "splitterRect": {
+        "x": 1139,
+        "y": 45,
+        "width": 8,
+        "height": 846
+      },
+      "targetRect": {
+        "x": 863,
+        "y": 45,
+        "width": 280,
+        "height": 846
+      },
+      "targetSlot": null,
+      "targetPanel": null,
+      "hitIsSplitter": true,
+      "status": "ok",
+      "dimension": "width",
+      "requestedDelta": 120,
+      "steps": 25,
+      "initial": 280,
+      "final": 400,
+      "totalDelta": 120,
+      "changedSteps": 25,
+      "maxDeviation": 0.4,
+      "longTaskCount": 4,
+      "totalBlockingMs": 216,
+      "longTaskDurations": [
+        216,
+        55,
+        54,
+        91
+      ],
+      "series": [
+        280,
+        285,
+        290,
+        294,
+        299,
+        304,
+        309,
+        314,
+        318,
+        323,
+        328,
+        333,
+        338,
+        342,
+        347,
+        352,
+        357,
+        362,
+        366,
+        371,
+        376,
+        381,
+        386,
+        390,
+        395,
+        400
+      ]
+    },
+    "row": {
+      "selector": "[data-component=\"resize-handle\"][data-direction=\"vertical\"]",
+      "splitterRect": {
+        "x": 743,
+        "y": 460,
+        "width": 400,
+        "height": 8
+      },
+      "targetRect": {
+        "x": 743,
+        "y": 45,
+        "width": 400,
+        "height": 419
+      },
+      "targetSlot": "session-panel-frame",
+      "targetPanel": "terminal",
+      "hitIsSplitter": true,
+      "status": "ok",
+      "dimension": "height",
+      "requestedDelta": 120,
+      "steps": 25,
+      "initial": 419,
+      "final": 539,
+      "totalDelta": 120,
+      "changedSteps": 25,
+      "maxDeviation": 0.4,
+      "longTaskCount": 4,
+      "totalBlockingMs": 149,
+      "longTaskDurations": [
+        58,
+        86,
+        123,
+        82
+      ],
+      "series": [
+        419,
+        424,
+        429,
+        433,
+        438,
+        443,
+        448,
+        453,
+        457,
+        462,
+        467,
+        472,
+        477,
+        481,
+        486,
+        491,
+        496,
+        501,
+        505,
+        510,
+        515,
+        520,
+        525,
+        529,
+        534,
+        539
+      ]
+    },
+    "chatBoundary": {
+      "status": "missing",
+      "chat": true,
+      "found": false,
+      "chatRect": {
+        "x": 269,
+        "y": 45,
+        "width": 466,
+        "height": 846,
+        "right": 735
+      },
+      "hitAtChatEdge": {
+        "tag": "DIV",
+        "slot": "session-turn-message-container",
+        "component": null,
+        "direction": null
+      }
+    }
+  },
+  "ux": {
+    "root": {
+      "url": "http://127.0.0.1:4444/new-session?draftId=5c7719e9-ab98-418e-9720-b97f30431232",
+      "showsNewSession": true,
+      "showsHome": false,
+      "sidebarPresent": true,
+      "sidebarCollapsed": false,
+      "draftListPresent": true,
+      "draftListAriaLabel": "新建会话",
+      "draftRowsTotal": 1,
+      "draftRowsInDraftList": 1,
+      "draftRowsInProjectGroups": 0,
+      "draftListMentionsNewSession": true,
+      "sampleText": "新建会话\n新建会话\n设置\n帮助\n添加项目\n项目\nO\nopencode-flutter-v2-80067709\n1\nO\nopencode-claudeUI\n2\nO\n用 Flutter 打造适配 Android 平板与 Windows 的 OpenCode 桌面端\nO\nClaude 风格的 OpenCode v2 多端桌面应用设计\nO\nopencode-old-ui\n36\nD\nDSH 临时会话\n12\n/\n/\n42\nO\nopencode-android-shell\n17\nY\nyiheda\n1\nO\nOpenCodeUI\n1\nO\nopencode-android-smoke-b9b4255c9b8946eca7e306a0cd189144\n64\nS\nsystem32\n1\nJ\nJetBrainsAirLike\n7\nD\nDSH-Remote\n5\nC\nchenjieyan_test\n4\nD\nDSH-Desktop\n2\nP\nprogram\nA\nagency-agents-zh\n1\nC\nC-UI\n16\n随便问点什么， / 可查看命令， @ 可添加上下文…\nMiniMax M3.1 Flash Free\nDefault\nO\nopencode-flutter-v2-80067709\n/\n本地\nmaster\n在新工作区中开始下一个会话以保持更改独立"
+    }
+  },
+  "checks": {
+    "rootShowsNewSession": true,
+    "draftUnderNewSession": true
+  },
+  "shots": [
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\panels-0.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\panels-1.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\panels-2.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\panels-3.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\panels-4.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\mid-drag-column.png",
+    "C:\\sensorsdata\\main\\program\\opencode-android-shell\\research\\sidebar-projects\\shots\\ux-audit\\root.png"
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to clone terminal ClientError: UnexpectedStatus: 500\n    at responseError (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:40:9)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to clone terminal ClientError: UnexpectedStatus: 500\n    at responseError (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:40:9)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES",
+    "Failed to clone terminal ClientError: Transport: Failed to fetch\n    at execute (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:32:10)\n    at async request (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:46:20)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to clone terminal ClientError: UnexpectedStatus: 500\n    at responseError (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:40:9)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: net::ERR_CONNECTION_RESET",
+    "ClientError: Transport: network error\n    at [Symbol.asyncIterator] (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:76:12)\n    at async run (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/shared-events.ts:19:18)",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to clone terminal ClientError: Transport: Failed to fetch\n    at execute (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:32:10)\n    at async request (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:46:20)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)",
+    "Failed to clone terminal ClientError: Transport: Failed to fetch\n    at execute (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:32:10)\n    at async request (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/client/src/promise/generated/client.ts:46:20)\n    at async Proxy.clone (http://127.0.0.1:4444/@fs/C:/sensorsdata/main/program/opencode-android-shell/_scratch_root/desktop-parity/checkout/packages/gui-extensions/src/terminal/model.ts:258:16)"
+  ],
+  "retries": [],
+  "session": {
+    "id": "ses_eac0ae438ffe5SHKnyUfHZ0r4c",
+    "title": "用 Flutter 打造适配 Android 平板与 Windows 的 OpenCode 桌面端",
+    "updated": 1792677365759,
+    "created": 1792409934951
+  },
+  "layout": {
+    "tabLayout": "vertical",
+    "grid": true,
+    "toolbar": true,
+    "sidebar": true,
+    "framesAfterReset": 0
+  },
+  "geometry": {
+    "panels0": {
+      "grid": {
+        "x": 1431,
+        "y": 45,
+        "width": 0,
+        "height": 846,
+        "right": 1431,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "chat": {
+        "x": 269,
+        "y": 45,
+        "width": 1154,
+        "height": 846,
+        "right": 1423,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "frames": [],
+      "splitters": [
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 265,
+          "y": 37,
+          "width": 8,
+          "height": 862,
+          "right": 273,
+          "bottom": 899,
+          "inViewport": true
+        }
+      ],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    "panels1": {
+      "grid": {
+        "x": 1151,
+        "y": 45,
+        "width": 280,
+        "height": 846,
+        "right": 1431,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "chat": {
+        "x": 269,
+        "y": 45,
+        "width": 874,
+        "height": 846,
+        "right": 1143,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "frames": [
+        {
+          "panel": "terminal",
+          "x": 1151,
+          "y": 45,
+          "width": 280,
+          "height": 846,
+          "right": 1431,
+          "bottom": 891,
+          "inViewport": true
+        }
+      ],
+      "splitters": [
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 265,
+          "y": 37,
+          "width": 8,
+          "height": 862,
+          "right": 273,
+          "bottom": 899,
+          "inViewport": true
+        }
+      ],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    "panels2": {
+      "grid": {
+        "x": 863,
+        "y": 45,
+        "width": 568,
+        "height": 846,
+        "right": 1431,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "chat": {
+        "x": 269,
+        "y": 45,
+        "width": 586,
+        "height": 846,
+        "right": 855,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "frames": [
+        {
+          "panel": "terminal",
+          "x": 863,
+          "y": 45,
+          "width": 280,
+          "height": 846,
+          "right": 1143,
+          "bottom": 891,
+          "inViewport": true
+        },
+        {
+          "panel": "review",
+          "x": 1151,
+          "y": 45,
+          "width": 280,
+          "height": 846,
+          "right": 1431,
+          "bottom": 891,
+          "inViewport": true
+        }
+      ],
+      "splitters": [
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 265,
+          "y": 37,
+          "width": 8,
+          "height": 862,
+          "right": 273,
+          "bottom": 899,
+          "inViewport": true
+        },
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 1139,
+          "y": 45,
+          "width": 8,
+          "height": 846,
+          "right": 1147,
+          "bottom": 891,
+          "inViewport": true
+        }
+      ],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    "panels3": {
+      "grid": {
+        "x": 863,
+        "y": 45,
+        "width": 568,
+        "height": 846,
+        "right": 1431,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "chat": {
+        "x": 269,
+        "y": 45,
+        "width": 586,
+        "height": 846,
+        "right": 855,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "frames": [
+        {
+          "panel": "terminal",
+          "x": 863,
+          "y": 45,
+          "width": 280,
+          "height": 419,
+          "right": 1143,
+          "bottom": 464,
+          "inViewport": true
+        },
+        {
+          "panel": "review",
+          "x": 863,
+          "y": 472,
+          "width": 280,
+          "height": 419,
+          "right": 1143,
+          "bottom": 891,
+          "inViewport": true
+        },
+        {
+          "panel": "browser",
+          "x": 1151,
+          "y": 45,
+          "width": 280,
+          "height": 846,
+          "right": 1431,
+          "bottom": 891,
+          "inViewport": true
+        }
+      ],
+      "splitters": [
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 265,
+          "y": 37,
+          "width": 8,
+          "height": 862,
+          "right": 273,
+          "bottom": 899,
+          "inViewport": true
+        },
+        {
+          "direction": "vertical",
+          "edge": "end",
+          "slot": null,
+          "x": 863,
+          "y": 460,
+          "width": 280,
+          "height": 8,
+          "right": 1143,
+          "bottom": 468,
+          "inViewport": true
+        },
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 1139,
+          "y": 45,
+          "width": 8,
+          "height": 846,
+          "right": 1147,
+          "bottom": 891,
+          "inViewport": true
+        }
+      ],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    "panels4": {
+      "grid": {
+        "x": 863,
+        "y": 45,
+        "width": 568,
+        "height": 846,
+        "right": 1431,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "chat": {
+        "x": 269,
+        "y": 45,
+        "width": 586,
+        "height": 846,
+        "right": 855,
+        "bottom": 891,
+        "inViewport": true
+      },
+      "frames": [
+        {
+          "panel": "terminal",
+          "x": 863,
+          "y": 45,
+          "width": 280,
+          "height": 419,
+          "right": 1143,
+          "bottom": 464,
+          "inViewport": true
+        },
+        {
+          "panel": "review",
+          "x": 863,
+          "y": 472,
+          "width": 280,
+          "height": 419,
+          "right": 1143,
+          "bottom": 891,
+          "inViewport": true
+        },
+        {
+          "panel": "browser",
+          "x": 1151,
+          "y": 45,
+          "width": 280,
+          "height": 419,
+          "right": 1431,
+          "bottom": 464,
+          "inViewport": true
+        },
+        {
+          "panel": "file",
+          "x": 1151,
+          "y": 472,
+          "width": 280,
+          "height": 419,
+          "right": 1431,
+          "bottom": 891,
+          "inViewport": true
+        }
+      ],
+      "splitters": [
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 265,
+          "y": 37,
+          "width": 8,
+          "height": 862,
+          "right": 273,
+          "bottom": 899,
+          "inViewport": true
+        },
+        {
+          "direction": "vertical",
+          "edge": "end",
+          "slot": null,
+          "x": 863,
+          "y": 460,
+          "width": 280,
+          "height": 8,
+          "right": 1143,
+          "bottom": 468,
+          "inViewport": true
+        },
+        {
+          "direction": "horizontal",
+          "edge": "end",
+          "slot": null,
+          "x": 1139,
+          "y": 45,
+          "width": 8,
+          "height": 846,
+          "right": 1147,
+          "bottom": 891,
+          "inViewport": true
+        },
+        {
+          "direction": "vertical",
+          "edge": "end",
+          "slot": null,
+          "x": 1151,
+          "y": 460,
+          "width": 280,
+          "height": 8,
+          "right": 1431,
+          "bottom": 468,
+          "inViewport": true
+        }
+      ],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    }
+  },
+  "perfRounds": 3,
+  "openPanels": 4,
+  "consoleErrorCount": 52,
+  "extensionErrors": [],
+  "runtimeHealthy": true
+}

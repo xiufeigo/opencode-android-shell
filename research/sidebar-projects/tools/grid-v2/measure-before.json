@@ -1,0 +1,152 @@
+[
+  {
+    "id": "terminal",
+    "direction": "open",
+    "syncCost": 10.799999999813735,
+    "clickToRaf": 1.1000000000931323,
+    "clickToBox": 12,
+    "clickToContent": 45.199999999953434,
+    "existed": false,
+    "tagCount": 0,
+    "remountedExisting": 1,
+    "openPanels": [
+      "terminal"
+    ],
+    "countsAfter": {
+      "terminals": 1,
+      "terminalWrappers": 1,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 1436
+    },
+    "countsBefore": {
+      "terminals": 0,
+      "terminalWrappers": 0,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 1411
+    },
+    "at": 2864.9000000001397,
+    "longTasks": [],
+    "longTaskMs": 0,
+    "taskDuration": 0.0332,
+    "scriptDuration": 0.0105,
+    "layoutDuration": 0.0042,
+    "recalcStyleDuration": 0.0022,
+    "jsHeapUsedSize": 2086248
+  },
+  {
+    "id": "review",
+    "direction": "open",
+    "syncCost": 16.5999999998603,
+    "clickToRaf": 2,
+    "clickToBox": 18.5999999998603,
+    "clickToContent": 45.89999999990687,
+    "existed": false,
+    "tagCount": 1,
+    "remountedExisting": 2,
+    "openPanels": [
+      "terminal",
+      "review"
+    ],
+    "countsAfter": {
+      "terminals": 2,
+      "terminalWrappers": 2,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 1453
+    },
+    "countsBefore": {
+      "terminals": 12,
+      "terminalWrappers": 12,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 1467
+    },
+    "at": 3356.600000000093,
+    "longTasks": [],
+    "longTaskMs": 0,
+    "taskDuration": 0.0506,
+    "scriptDuration": 0.0162,
+    "layoutDuration": 0.0029,
+    "recalcStyleDuration": 0.005,
+    "jsHeapUsedSize": 3377904
+  },
+  {
+    "id": "browser",
+    "direction": "open",
+    "syncCost": 13.5,
+    "clickToRaf": 6.600000000093132,
+    "clickToBox": 20.199999999953434,
+    "clickToContent": -1,
+    "existed": false,
+    "tagCount": 2,
+    "remountedExisting": 3,
+    "openPanels": [
+      "terminal",
+      "review",
+      "browser"
+    ],
+    "countsAfter": {
+      "terminals": 314,
+      "terminalWrappers": 314,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 2100
+    },
+    "countsBefore": {
+      "terminals": 14,
+      "terminalWrappers": 14,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 1477
+    },
+    "at": 3840.5,
+    "longTasks": [],
+    "longTaskMs": 0,
+    "taskDuration": 4.554,
+    "scriptDuration": 0.3037,
+    "layoutDuration": 0.1273,
+    "recalcStyleDuration": 0.4475,
+    "jsHeapUsedSize": -13677352
+  },
+  {
+    "id": "file",
+    "direction": "open",
+    "syncCost": 73.19999999995343,
+    "clickToRaf": 8.700000000186265,
+    "clickToBox": 82,
+    "clickToContent": 146.10000000009313,
+    "existed": false,
+    "tagCount": 3,
+    "remountedExisting": 4,
+    "openPanels": [
+      "terminal",
+      "review",
+      "browser",
+      "file"
+    ],
+    "countsAfter": {
+      "terminals": 3,
+      "terminalWrappers": 3,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 1512
+    },
+    "countsBefore": {
+      "terminals": 320,
+      "terminalWrappers": 320,
+      "iframes": 0,
+      "sockets": 1,
+      "nodes": 2112
+    },
+    "at": 19329.5,
+    "longTasks": [],
+    "longTaskMs": 0,
+    "taskDuration": 0.1347,
+    "scriptDuration": 0.0738,
+    "layoutDuration": 0.0025,
+    "recalcStyleDuration": 0.0131,
+    "jsHeapUsedSize": 5211912
+  }
+]

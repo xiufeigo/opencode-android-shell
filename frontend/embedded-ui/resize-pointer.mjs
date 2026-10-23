@@ -24,6 +24,35 @@ export function createResizePointerHandler(local, onCleanup) {
     const savedSelect = doc.body.style.userSelect
     const savedOverflow = doc.body.style.overflow
     let collapsed = false
+    let pending
+    let pendingCollapsed = false
+    let frame
+    let scheduled = false
+
+    const apply = () => {
+      if (pending === undefined) return
+      const size = pending
+      pending = undefined
+      if (pendingCollapsed !== collapsed) {
+        collapsed = pendingCollapsed
+        onCollapseChange?.(collapsed)
+      }
+      onResize(size)
+    }
+
+    // Coalesce pointer moves to one resize per animation frame. A 144Hz pointer stream can
+    // deliver several moves per frame, and each resize reflows the session layout.
+    const schedule = () => {
+      if (scheduled) return
+      scheduled = true
+      let id
+      id = view.requestAnimationFrame(() => {
+        scheduled = false
+        if (frame === id) frame = undefined
+        apply()
+      })
+      if (scheduled) frame = id
+    }
 
     element.setPointerCapture(pointer)
     event.preventDefault()
@@ -35,19 +64,31 @@ export function createResizePointerHandler(local, onCleanup) {
       const position = horizontal ? event.clientX : event.clientY
       const reverse = horizontal ? (edge === "start") !== rtl : edge !== "end"
       const current = startSize + (reverse ? start - position : position - start)
-      const nextCollapsed = threshold > 0 && current < threshold
-      if (nextCollapsed !== collapsed) {
-        collapsed = nextCollapsed
-        onCollapseChange?.(collapsed)
-      }
-      onResize(Math.min(max, Math.max(min, current)))
+      pendingCollapsed = threshold > 0 && current < threshold
+      pending = Math.min(max, Math.max(min, current))
+      schedule()
     }
     const end = event => {
-      if (event.pointerId === pointer) finish?.(event.type === "pointerup")
+      if (event.pointerId !== pointer) return
+      if (scheduled) view.cancelAnimationFrame(frame)
+      scheduled = false
+      frame = undefined
+      apply()
+      finish?.(event.type === "pointerup")
     }
-    const cancel = () => finish?.(false)
+    const cancel = () => {
+      if (scheduled) view.cancelAnimationFrame(frame)
+      scheduled = false
+      frame = undefined
+      pending = undefined
+      finish?.(false)
+    }
     finish = commit => {
       finish = undefined
+      if (scheduled) view.cancelAnimationFrame(frame)
+      scheduled = false
+      frame = undefined
+      pending = undefined
       element.removeEventListener("pointermove", move)
       element.removeEventListener("pointerup", end)
       element.removeEventListener("pointercancel", end)

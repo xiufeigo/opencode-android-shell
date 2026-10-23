@@ -1,0 +1,11 @@
+[
+  {
+    "eval": "() => { const el = document.querySelectorAll('[data-slot=session-row]')[1]; const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 90, clientY: r.top + 14 })); return true }"
+  },
+  { "wait": 400 },
+  { "clickAt": [160, 393] },
+  { "wait": 500 },
+  {
+    "eval": "() => { const input = document.querySelector('[data-slot=session-rename]'); return { hasInput: !!input, focused: document.activeElement === input, value: input?.value ?? null } }"
+  }
+]

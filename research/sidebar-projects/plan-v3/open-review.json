@@ -1,0 +1,4 @@
+[
+  { "click": "[data-slot=session-review-toggle] button" },
+  { "wait": 1000 }
+]

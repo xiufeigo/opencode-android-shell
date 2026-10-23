@@ -1,0 +1,183 @@
+{
+  "grid": {
+    "x": 863,
+    "w": 568,
+    "h": 846,
+    "children": [
+      {
+        "cls": "relative flex flex-col gap-2 min-h-0 h-full shrink-0",
+        "x": 863,
+        "w": 280,
+        "h": 846
+      },
+      {
+        "cls": "relative flex flex-col gap-2 min-h-0 h-full shrink-0",
+        "x": 1151,
+        "w": 280,
+        "h": 846
+      }
+    ]
+  },
+  "chat": {
+    "x": 269,
+    "w": 586
+  },
+  "frames": [
+    {
+      "panel": "terminal",
+      "rect": {
+        "x": 863,
+        "y": 45,
+        "w": 280,
+        "h": 419
+      },
+      "html": "<div class=\"relative min-h-0 flex-1 overflow-hidden rounded-[10px]\"><div class=\"flex flex-col h-full\"><div class=\"h-[49px] shrink-0 flex border-b border-border-weaker-base\"><div id=\"tabs-cl-114\" data-component=\"tabs\" data-variant=\"normal\" data-orientation=\"horizontal\" class=\"!h-full min-w-0 !flex-1\"><div role=\"tablist\" aria-orientation=\"horizontal\" data-orientation=\"horizontal\" data-slot=\"tabs-lis",
+      "kids": [
+        {
+          "depth": 0,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "relative min-h-0 flex-1 overflow-hidden rounded-[10px]",
+          "w": 280,
+          "h": 419,
+          "text": "终端 1"
+        },
+        {
+          "depth": 1,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "flex flex-col h-full",
+          "w": 280,
+          "h": 419,
+          "text": "终端 1"
+        },
+        {
+          "depth": 2,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "h-[49px] shrink-0 flex border-b border-border-weaker-base",
+          "w": 280,
+          "h": 49,
+          "text": "终端 1"
+        },
+        {
+          "depth": 2,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "flex-1 min-h-0 relative",
+          "w": 280,
+          "h": 370,
+          "text": ""
+        },
+        {
+          "depth": 0,
+          "tag": "div",
+          "slot": null,
+          "component": "resize-handle",
+          "cls": "",
+          "w": 280,
+          "h": 8,
+          "text": ""
+        }
+      ]
+    },
+    {
+      "panel": "review",
+      "rect": {
+        "x": 863,
+        "y": 472,
+        "w": 280,
+        "h": 419
+      },
+      "html": "<div class=\"relative min-h-0 flex-1 overflow-hidden rounded-[10px]\"><div class=\"relative h-full overflow-hidden\"><div data-component=\"session-review\"><div data-slot=\"session-review-header\" class=\"!px-2 !h-10 !pb-0 relative before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-v2-border-border-base before:content-['']\"><div data-slot=\"session-review-title",
+      "kids": [
+        {
+          "depth": 0,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "relative min-h-0 flex-1 overflow-hidden rounded-[10px]",
+          "w": 280,
+          "h": 419,
+          "text": "Git 变更正在加载更改…"
+        },
+        {
+          "depth": 1,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "relative h-full overflow-hidden",
+          "w": 280,
+          "h": 419,
+          "text": "Git 变更正在加载更改…"
+        },
+        {
+          "depth": 2,
+          "tag": "div",
+          "slot": null,
+          "component": "session-review",
+          "cls": "",
+          "w": 280,
+          "h": 419,
+          "text": "Git 变更正在加载更改…"
+        }
+      ]
+    },
+    {
+      "panel": "browser",
+      "rect": {
+        "x": 1151,
+        "y": 45,
+        "w": 280,
+        "h": 846
+      },
+      "html": "<div class=\"relative min-h-0 flex-1 overflow-hidden rounded-[10px]\"><aside data-component=\"server-browser\" aria-label=\"浏览器\"><form class=\"browser-bar\"><button type=\"button\" disabled=\"\" data-disabled=\"\" aria-label=\"后退\" data-component=\"icon-button-v2\" data-size=\"normal\" data-variant=\"ghost-muted\"><svg data-slot=\"icon-svg\" data-directional=\"\" width=\"16\" height=\"16\" viewBox=\"0 0 20 20\" fill=\"none\" xmln",
+      "kids": [
+        {
+          "depth": 0,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "relative min-h-0 flex-1 overflow-hidden rounded-[10px]",
+          "w": 280,
+          "h": 846,
+          "text": "打开网页预览应用、阅读文档或浏览网页。"
+        },
+        {
+          "depth": 1,
+          "tag": "aside",
+          "slot": null,
+          "component": "server-browser",
+          "cls": "",
+          "w": 280,
+          "h": 846,
+          "text": "打开网页预览应用、阅读文档或浏览网页。"
+        },
+        {
+          "depth": 2,
+          "tag": "form",
+          "slot": null,
+          "component": null,
+          "cls": "browser-bar",
+          "w": 280,
+          "h": 40,
+          "text": ""
+        },
+        {
+          "depth": 2,
+          "tag": "div",
+          "slot": null,
+          "component": null,
+          "cls": "browser-home",
+          "w": 280,
+          "h": 806,
+          "text": "打开网页预览应用、阅读文档或浏览网页。"
+        }
+      ]
+    }
+  ]
+}

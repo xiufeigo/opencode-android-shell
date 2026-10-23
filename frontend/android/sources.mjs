@@ -5,14 +5,20 @@ import { execFileSync } from "node:child_process"
 export async function applyAndroidSources(checkout, here) {
   // Git checkout restores tracked files but keeps files added by our previous
   // patch. Remove only that declared set so repeated builds start from the pin.
-  const patch = await fs.readFile(path.join(here, "upstream.patch"), "utf8")
-  for (const match of patch.matchAll(/^--- \/dev\/null\r?\n\+\+\+ b\/(.+)$/gm)) {
-    const filename = path.resolve(checkout, match[1].trim())
-    if (!filename.startsWith(path.resolve(checkout) + path.sep)) throw new Error("Patch path escapes build checkout")
-    await fs.rm(filename, { force: true })
+  const patches = await Promise.all(
+    ["upstream.patch", "sidebar.patch"].map((name) => fs.readFile(path.join(here, name), "utf8")),
+  )
+  for (const patch of patches) {
+    for (const match of patch.matchAll(/^--- \/dev\/null\r?\n\+\+\+ b\/(.+)$/gm)) {
+      const filename = path.resolve(checkout, match[1].trim())
+      if (!filename.startsWith(path.resolve(checkout) + path.sep)) throw new Error("Patch path escapes build checkout")
+      await fs.rm(filename, { force: true })
+    }
   }
-  execFileSync("git", ["apply", "--check", path.join(here, "upstream.patch")], { cwd: checkout, stdio: "inherit" })
-  execFileSync("git", ["apply", path.join(here, "upstream.patch")], { cwd: checkout, stdio: "inherit" })
+  for (const name of ["upstream.patch", "sidebar.patch"]) {
+    execFileSync("git", ["apply", "--check", path.join(here, name)], { cwd: checkout, stdio: "inherit" })
+    execFileSync("git", ["apply", path.join(here, name)], { cwd: checkout, stdio: "inherit" })
+  }
   const files = [
     ["platform.ts", "packages/app/src/runtime/platform/android.ts"],
     ["back.ts", "packages/app/src/runtime/platform/android-back.ts"],

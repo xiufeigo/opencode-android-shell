@@ -1,0 +1,6 @@
+[
+  { "wait": 800 },
+  { "eval": "() => Array.from(document.querySelectorAll('[data-slot]')).map((e) => e.getAttribute('data-slot')).filter((s) => s && s.includes('review'))" },
+  { "eval": "() => Array.from(document.querySelectorAll('[data-slot]')).map((e) => e.getAttribute('data-slot')).filter((s) => s && /panel-grid|side-panel|frame/.test(s))" },
+  { "eval": "() => document.body.innerText.includes('变更')" }
+]
