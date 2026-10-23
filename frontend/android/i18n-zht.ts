@@ -187,6 +187,8 @@ const android = {
   "dialog.usageExceeded.freeTier.reset": "免費訊息將於 {{time}} 重置。",
   "ui.message.copyFullMessage": "複製完整訊息",
   "ui.message.voice": "語音",
+  // 2.1.4：MCP 徵詢表單的選項占位。堆快照命令只在桌面 Electron 註冊，不進入 Android。
+  "session.elicitation.selectPlaceholder": "選擇一個選項",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }
