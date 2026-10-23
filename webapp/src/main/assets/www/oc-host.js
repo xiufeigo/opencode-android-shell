@@ -528,6 +528,19 @@
   window.__ocAndroid = oc;
 
   // ======================================================================
+  // 物理 ESC 透传标记。
+  //
+  // 宿主（WebHostActivity.dispatchKeyEvent）保证物理 ESC **不会**被当成
+  // Android Back：ESC 原样进 WebView，被 OEM 报成 KEYCODE_BACK 的物理 ESC
+  // 会被还原成 ESCAPE 再进来。页面侧据此知道"ESC 归我"，xterm / Vim 可以
+  // 正常退出插入模式，而不会触发宿主的返回逻辑。
+  //
+  // 与 :app 的 MainActivity 保持同名同义，便于两边行为一致。
+  // ======================================================================
+  window.__ocAndroidShell = true;
+  window.__ocAndroidEscapePassThrough = true;
+
+  // ======================================================================
   // N5 / upstream notification policy bridge.
   //
   // Upstream delivers system notifications through the browser Notification

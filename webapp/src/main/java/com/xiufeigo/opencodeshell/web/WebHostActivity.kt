@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
@@ -43,6 +44,7 @@ import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
+import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
 import java.util.Base64
@@ -653,6 +655,50 @@ class WebHostActivity : AppCompatActivity() {
         } else {
             Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported -> g1 probe falls back to onPageStarted")
         }
+    }
+
+    /**
+     * 物理 **ESC 透传给 WebView**，绝不能变成 Android Back。
+     *
+     * v2.0.25 真机（Android 平板 + 物理键盘）：终端里按 ESC 退不出 Vim 的插入模式，
+     * 反而整页跳回首页。原因是部分 OEM 键盘把 ESC 报成 `KEYCODE_BACK`，而
+     * `ComponentActivity.dispatchKeyEvent` 会把 `KEYCODE_BACK` 交给
+     * `onBackPressedDispatcher` ⇒ 命中 [installBackHandler] ⇒
+     * `window.__ocAndroid.onBack()` ⇒ `frontend/android/back.ts` 的 `navigate("/")`。
+     *
+     * 三条路互不干扰：
+     * 1. **真 ESC**（`KEYCODE_ESCAPE`）：原样 `super.dispatchKeyEvent` 交给
+     *    WebView（xterm / Vim / OpenCode 自己的快捷键）。宿主**不消费**、不 finish。
+     * 2. **被报成 BACK 的物理 ESC**：来源是键盘、且不是系统合成的虚拟硬键 ⇒
+     *    还原成 `KEYCODE_ESCAPE` 再交给 WebView（见 [WebHostEscapePolicy]）。
+     * 3. **导航栏 / 手势返回**：不是虚拟硬键就是压根不是 KeyEvent ⇒ 继续走
+     *    [installBackHandler] → `__ocAndroid.onBack()` 的老路，行为不变。
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // 1) 真 ESC：交给 WebView，宿主不消费。
+        if (WebHostEscapePolicy.isEscape(event.keyCode)) {
+            return super.dispatchKeyEvent(event)
+        }
+        // 2) 物理键盘的 ESC 被报成了 BACK：还原成 ESC 再发给 WebView。
+        if (WebHostEscapePolicy.shouldRemapBackToEscape(event.keyCode, event.source, event.flags, event.deviceId)) {
+            val escaped = KeyEvent(
+                event.downTime,
+                event.eventTime,
+                event.action,
+                KeyEvent.KEYCODE_ESCAPE,
+                event.repeatCount,
+                event.metaState,
+                event.deviceId,
+                event.scanCode,
+                event.flags,
+                event.source,
+            )
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "key: BACK from keyboard -> remapped to ESCAPE")
+            }
+            return super.dispatchKeyEvent(escaped)
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     // WebView history includes closed session tabs. Only the application decides
