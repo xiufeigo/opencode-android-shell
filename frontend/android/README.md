@@ -27,7 +27,7 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 2.2.0 把官方 UI 从 2.1.4（`68bc26b`）升到正式 tag v2.2.0（`1097e266`），Bun 仍是 **1.4.4**。上游结构变化有三处，本仓库逐一跟进：
 
-- `packages/gui-extensions` 更名为 `packages/gui-plugins`，`build.mjs` / `sources.mjs` / 两份补丁里的路径同步改名。旧补丁备份保留为 `upstream.patch.bak-214` / `sidebar.patch.bak-214`。
+- `packages/gui-extensions` 更名为 `packages/gui-plugins`，`build.mjs` / `sources.mjs` / 两份补丁里的路径同步改名。
 - GUI SDK 从 `packages/gui-extensions/src/sdk/` 迁到 `packages/plugin/src/gui/`，包名从 `@opencode/gui-extensions/sdk` 变为 `@opencode/plugin/gui`；旧 `sdk/core.ts` 里 `"web" | "desktop"` 的平台联合类型改到 `packages/plugin/src/gui/core.ts`，在这里补上 `"android"`。旧的 `builtins.typecheck.ts` 上游已删除，2.2.0 的 `compose()` 不再对“渲染条目必须有主进程提供者”做类型断言，所以浏览器扩展的 typecheck 移除逻辑不再需要复刻。
 - 上游 2.2.0 的 `packages/app/src/runtime/polyfills.ts` 不再依赖 core-js，改成内联 polyfill。旧补丁靠 `core-js/stable/url/parse` 补 `URL.parse`（旧 Android WebView 缺失），2.2.0 的 lockfile 已无 core-js，因此改为在本仓库内联实现 `URL.parse`，`polyfills.test.ts` 保留官方的 Map.groupBy / Promise 用例并合并本仓库的 URL.parse 与配对链接用例。
 
