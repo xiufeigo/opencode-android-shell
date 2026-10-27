@@ -4,7 +4,7 @@ import { createStore, produce } from "solid-js/store"
 import { Schema } from "effect"
 import { createTerminalModel } from "./model"
 import { persistStore } from "../../../app/src/runtime/persistence/persist"
-import type { Storage, Sessions, ServerRef, MountedSession } from "../sdk"
+import type { Storage, Sessions, ServerRef, MountedSession } from "@opencode/plugin/gui"
 
 function fixture(raw = new Map<string, string>()) {
   const create = mock(async () => ({ data: { id: `pty-${create.mock.calls.length}`, title: "Terminal" } }))

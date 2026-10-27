@@ -13,7 +13,9 @@ if (bunVersion !== pin.bun) throw new Error(`Bun ${pin.bun} is required; found $
 const checkout = path.join(root, "_scratch_root/desktop-parity/checkout")
 const target = process.argv.includes("--web") ? "web" : "android"
 const assets = path.join(root, target === "android" ? "webapp/src/main/assets/www/ui" : "frontend/web/dist")
-const workspaces = ["app", "gui-extensions", "ui", "client", "schema", "util", "session-ui", "plugin-browser", "protocol", "plugin", "script", "httpapi-codegen", "theme", "ai", "http-recorder"]
+// 2.2.0 split more packages out of session-ui; patchmark must stay in the sparse
+// checkout or the workspace graph cannot be resolved.
+const workspaces = ["app", "gui-plugins", "ui", "client", "schema", "util", "session-ui", "plugin-browser", "protocol", "plugin", "script", "httpapi-codegen", "theme", "ai", "http-recorder", "patchmark"]
 
 async function run(command, args, cwd = checkout, env = {}) {
   console.log(`[android-ui] ${command} ${args.join(" ")}`)
@@ -62,12 +64,12 @@ await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", 
 // 2.1.3+ runs app unit tests through Solid's hyperscript preload. TSX in the
 // production graph (pairing, settings) has no Solid compiler pass under bun test.
 await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts"], path.join(checkout, "packages/app"))
-await run(bun, ["test", "--conditions=browser", "src/terminal/session-model.test.ts"], path.join(checkout, "packages/gui-extensions"))
+await run(bun, ["test", "--conditions=browser", "src/terminal/session-model.test.ts"], path.join(checkout, "packages/gui-plugins"))
 // Upstream 2.1.3+ typecheck is `bun check --no-script -b`, which reads the nearest
 // tsconfig and treats a bare extra argument as a source file. Android still
 // typechecks the production project (tests and Storybook excluded).
 await run(bun, ["check", "--no-script", "-b", "-p", "tsconfig.android.json"], path.join(checkout, "packages/app"))
-await run(bun, ["check", "--no-script", "-b", "-p", "tsconfig.android.json"], path.join(checkout, "packages/gui-extensions"))
+await run(bun, ["check", "--no-script", "-b", "-p", "tsconfig.android.json"], path.join(checkout, "packages/gui-plugins"))
 await run(bun, ["run", "build", "--base", "/", "--sourcemap", "false", "--logLevel", "warn"], path.join(checkout, "packages/app"), {
   VITE_OPENCODE_SERVER_MODE: "none",
   VITE_OPENCODE_PLATFORM: target,

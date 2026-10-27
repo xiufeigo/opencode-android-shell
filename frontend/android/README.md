@@ -14,7 +14,7 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 源码补丁涉及：官方入口的平台提供者和路由恢复；服务器设置的导航状态及持续添加入口；终端稳定模块入口及旧实例快照交接；共享 ResizeHandle 的触屏生命周期和点击范围；应用菜单的 Android 平台动作；官方中文词典的缺口填充。业务 API、会话状态、PTY、文件、设置和主题继续由官方实现负责。
 
-`sidebar.patch` 叠加在 `upstream.patch` 之后，负责垂直布局的左侧栏：项目树、顶部四按钮（应用菜单 / 收起侧栏 / 后退 / 前进）、“项目”标题右侧的添加项目 +、文件夹的 ⋯ 与新建会话按钮、桌面右键与触屏长按菜单、会话内联重命名，以及收起后嵌入会话标题（显示器图标前）的两个按钮。文件夹行使用 `currentColor` 的单色文件夹图标，随深浅色主题切换；会话行不带头像但保留标题缩进；每个文件夹默认只列最近 5 个会话，超出时用“展开其余的 x 个会话 / 收起”切换；子 agent 会话不直接铺平，而是通过主会话左侧的箭头按需载入并缩进展示。多服务器时，“新建会话”上方提供服务器下拉框，项目树只显示选中服务器，项目来源与水平首页一致，只列已添加/打开的项目，不再从会话目录推导未打开项目。左侧栏收起/展开使用与右侧栏一致的 160ms 宽度过渡，内容保持固定宽度、只裁剪容器，避免项目树在动画期间逐帧重排；共享 `ResizeHandle` 的拖拽合并到每个动画帧一次。右侧审阅栏保持官方布局与拖拽调宽，动画缩短到 160ms、去掉对 `width` 无效的 `will-change`，并把审阅内容挂载推迟到动画第一帧之后；窄屏下给聊天列保留至少 120px 的可拖行程，避免分隔条被锁在 450px。这样保留官方推挤式动效，同时减少逐帧重排和首次点击的挂载阻塞。上下文页（`gui-extensions/src/context/tab.tsx`）打开时会把该会话的完整历史一次拉全再发布（`data.session.message.loadMore(id, { all: true })`），所以“消息数 / 原始消息列表 / 系统提示词”与桌面端一致；加载中显示提示，失败时保留最近消息、显示原因并提供重试。旧实现只读时间线首屏的最近一页，会话开头的 `system` 通知（系统提示词）不在窗口内时整块隐藏，看起来像 Android 少了这个区块。
+`sidebar.patch` 叠加在 `upstream.patch` 之后，负责垂直布局的左侧栏：项目树、顶部四按钮（应用菜单 / 收起侧栏 / 后退 / 前进）、“项目”标题右侧的添加项目 +、文件夹的 ⋯ 与新建会话按钮、桌面右键与触屏长按菜单、会话内联重命名，以及收起后嵌入会话标题（显示器图标前）的两个按钮。文件夹行使用 `currentColor` 的单色文件夹图标，随深浅色主题切换；会话行不带头像但保留标题缩进；每个文件夹默认只列最近 5 个会话，超出时用“展开其余的 x 个会话 / 收起”切换；子 agent 会话不直接铺平，而是通过主会话左侧的箭头按需载入并缩进展示。多服务器时，“新建会话”上方提供服务器下拉框，项目树只显示选中服务器，项目来源与水平首页一致，只列已添加/打开的项目，不再从会话目录推导未打开项目。左侧栏收起/展开使用与右侧栏一致的 160ms 宽度过渡，内容保持固定宽度、只裁剪容器，避免项目树在动画期间逐帧重排；共享 `ResizeHandle` 的拖拽合并到每个动画帧一次。右侧审阅栏保持官方布局与拖拽调宽，动画缩短到 160ms、去掉对 `width` 无效的 `will-change`，并把审阅内容挂载推迟到动画第一帧之后；窄屏下给聊天列保留至少 120px 的可拖行程，避免分隔条被锁在 450px。这样保留官方推挤式动效，同时减少逐帧重排和首次点击的挂载阻塞。上下文页（`gui-plugins/src/context/tab.tsx`）打开时会把该会话的完整历史一次拉全再发布（`data.session.message.loadMore(id, { all: true })`），所以“消息数 / 原始消息列表 / 系统提示词”与桌面端一致；加载中显示提示，失败时保留最近消息、显示原因并提供重试。旧实现只读时间线首屏的最近一页，会话开头的 `system` 通知（系统提示词）不在窗口内时整块隐藏，看起来像 Android 少了这个区块。
 `shell.tsx` / `titlebar.tsx` 的竖排与 Android 平台改动由 `sidebar.patch` 一并承载，`upstream.patch` 不再单独修改这两个文件，避免同一文件跨补丁叠加。会话页与右侧栏保持官方实现，不再注册面板网格或标题栏右侧插槽。中文词条补 `sidebar.collapse` / `sidebar.expand` 及会话预览、子会话展开相关文案。
 
 终端触摸焦点规则：拖动只滚动，不抢焦点（不会因为滑一下历史就弹出键盘）；但拖动也不关闭已打开的键盘，手势结束时恢复它开始时已有的焦点，点击仍按原逻辑在释放时聚焦。`verify-android-terminal-release.mjs` 的 `drag-focus-separation` 与 `drag-keeps-focus` 两条检查分别钉住这两半；真实 APK 由 `verify-android-terminal-device.mjs` 的 `*-drag-does-not-open-ime` 在系统 IME 上复核（debug 包 debuggable ⇒ WebView 自带 `webview_devtools_remote_*` CDP 通道，无需改代码）。曾经在 pointerdown 无条件 `textarea.focus()` 的写法会同时破坏后半条，已改回按手势状态恢复。
@@ -24,6 +24,17 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 2.1.4 把官方 UI 从 2.1.2（`a517687f`）升到正式 tag v2.1.4（`68bc26b`）。2.1.3 把 Bun 升到 **1.4.4**（Brotli、TLS、HTTP/3、WebSocket 安全修复），代码块与差异改用 Pierre Highlights；2.1.4 在桌面/Web 会话里显示 MCP 征询表单。现有 `upstream.patch` / `sidebar.patch` 的目标里，上游只改了 `desktop-menu.ts`（文档链接与扩展菜单插入）和 `runtime/i18n/en.ts`（新增一条占位文案），改动区与补丁上下文不重叠。堆快照命令只在 Electron `ctx.desktop` 下注册，Android 不暴露。类型检查改为 `bun check -p tsconfig.android.json`，因为上游 `typecheck` 脚本不再接受位置参数形式的 tsconfig。
 
 2.1.4 的新界面文案上游仍没有中文：`session.elicitation.selectPlaceholder` 已由本仓库补齐。免费额度 UI 仍依赖服务端 ≥2.1.2 的 `provider.free-limit`；MCP 表单依赖服务端发出 `session.form` 请求。未读徽标仍依赖服务端 `time.viewed`。
+
+2.2.0 把官方 UI 从 2.1.4（`68bc26b`）升到正式 tag v2.2.0（`1097e266`），Bun 仍是 **1.4.4**。上游结构变化有三处，本仓库逐一跟进：
+
+- `packages/gui-extensions` 更名为 `packages/gui-plugins`，`build.mjs` / `sources.mjs` / 两份补丁里的路径同步改名。旧补丁备份保留为 `upstream.patch.bak-214` / `sidebar.patch.bak-214`。
+- GUI SDK 从 `packages/gui-extensions/src/sdk/` 迁到 `packages/plugin/src/gui/`，包名从 `@opencode/gui-extensions/sdk` 变为 `@opencode/plugin/gui`；旧 `sdk/core.ts` 里 `"web" | "desktop"` 的平台联合类型改到 `packages/plugin/src/gui/core.ts`，在这里补上 `"android"`。旧的 `builtins.typecheck.ts` 上游已删除，2.2.0 的 `compose()` 不再对“渲染条目必须有主进程提供者”做类型断言，所以浏览器扩展的 typecheck 移除逻辑不再需要复刻。
+- 上游 2.2.0 的 `packages/app/src/runtime/polyfills.ts` 不再依赖 core-js，改成内联 polyfill。旧补丁靠 `core-js/stable/url/parse` 补 `URL.parse`（旧 Android WebView 缺失），2.2.0 的 lockfile 已无 core-js，因此改为在本仓库内联实现 `URL.parse`，`polyfills.test.ts` 保留官方的 Map.groupBy / Promise 用例并合并本仓库的 URL.parse 与配对链接用例。
+
+官方 2.2.0 重写了 Shell：自带竖排标签、侧栏收起（`settings.appearance.sidebarOpen()`）、peek 动画和折叠后的悬浮开关。Android 侧的竖排项目树不再自带一套收起状态，而是复用官方的 `sidebarOpen` 设置；`shell/layout/vertical.ts` 保留为路由与外壳共用的 `useVerticalTabs()` 取值入口，判定条件与 2.2.0 的 `shell.tsx` 对齐（`tabLayout() !== "horizontal" && !mobile()`）。`shell.tsx` / `titlebar.tsx` 的竖排与 Android 平台改动仍由 `sidebar.patch` 承载。
+
+`build.mjs` 的工作区列表新增 `patchmark`：2.2.0 把 `packages/session-ui` 依赖的补丁渲染包拆成独立工作区，稀疏检出缺它时 bun 无法解析工作区图。
+
 
 2.0.15 将终端标签按会话分组持久化，复用官方工作目录存储，避免运行中的 PTY 归属被会话布局缓存裁剪。旧目录共享的标签由首次打开终端的会话一次性接收。`session-model.test.ts` 直接测试真实终端模型及持久化器，并加入 UI 构建的必跑检查。
 

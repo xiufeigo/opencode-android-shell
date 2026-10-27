@@ -1,0 +1,1076 @@
+diff --git a/packages/app/src/home/sessions/controller.tsx b/packages/app/src/home/sessions/controller.tsx
+index ea010619..c4081735 100644
+--- a/packages/app/src/home/sessions/controller.tsx
++++ b/packages/app/src/home/sessions/controller.tsx
+@@ -111,7 +111,7 @@ export function createHomeSessionsController(home: HomeController) {
+   }
+ 
+   const syncLocations = (record?: HomeSessionRecord) => {
+-    if (platform.platform !== "desktop") return
++    if (platform.platform === "web") return
+     const ctx = home.server.focusedContext()
+ 
+     if (!ctx) return
+@@ -308,7 +308,7 @@ export function createHomeSessionsController(home: HomeController) {
+       searchRecords: allRecords,
+     },
+     platform: {
+-      desktop: platform.platform === "desktop",
++      desktop: platform.platform !== "web",
+     },
+     location: {
+       value: location,
+diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
+index 4caac345..b750252d 100644
+--- a/packages/app/src/runtime/platform/platform.tsx
++++ b/packages/app/src/runtime/platform/platform.tsx
+@@ -19,7 +19,7 @@ type OpenAttachmentPickerOptions = {
+ 
+ type SaveFilePickerOptions = { title?: string; defaultPath?: string }
+ 
+-type PlatformName = "web" | "desktop"
++type PlatformName = "web" | "desktop" | "android"
+ 
+ type DesktopOS = "macos" | "windows" | "linux"
+ 
+@@ -56,7 +56,7 @@ type PlatformBase = {
+   /** Send a system notification */
+   notify(title: string, description?: string, onClick?: () => void): Promise<void>
+ 
+-  /** Open a native attachment picker and read selected files sequentially (desktop only) */
++  /** Open the host's attachment picker and read selected files sequentially. */
+   openAttachmentPickerDialog?<Value>(
+     opts: OpenAttachmentPickerOptions,
+     onFile: (file: File) => Promise<Value>,
+@@ -68,7 +68,7 @@ type PlatformBase = {
+   /** Observe native drag cancellation that does not reach the renderer event loop. */
+   onDragCancel?(callback: () => void): () => void
+ 
+-  /** Open a native save file dialog and write content to the selected path (desktop only) */
++  /** Open the host's save file dialog and write content to the selected path. */
+   saveFile?(opts: SaveFilePickerOptions, content: string): Promise<boolean>
+ 
+   /** Storage mechanism, defaults to localStorage */
+@@ -92,8 +92,10 @@ type PlatformBase = {
+   /** Allow native pinch/Ctrl-scroll zoom gestures (desktop only) */
+   setPinchZoomEnabled?(enabled: boolean): Promise<void> | void
+ 
+-  /** Run a desktop-only menu action from the app chrome */
++  /** Run a host menu action from the app chrome. */
+   runDesktopMenuAction?(action: DesktopMenuAction): Promise<void> | void
++  /** Android advertises only actions the host actually implements. */
++  androidMenuActionEnabled?(action: DesktopMenuAction): boolean
+ 
+   /** Check if an editor app exists (desktop only) */
+   checkAppExists?(appName: string): Promise<boolean>
+@@ -113,13 +115,14 @@ type PlatformBase = {
+   /** Record a fatal renderer error in platform logs (desktop only) */
+   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
+ 
+   /** GUI extension bridge to the main-process extension host (desktop only). */
+   extensions?: Bridge
+ }
+ 
+ export type Platform = PlatformBase &
+   (
+     | { platform: "web"; os?: never; windowID?: never }
++    | { platform: "android"; os?: never; windowID?: never }
+     | {
+         platform: "desktop"
+         os?: DesktopOS
+diff --git a/packages/app/src/runtime/polyfills.test.ts b/packages/app/src/runtime/polyfills.test.ts
+new file mode 100644
+index 00000000..06954f8d
+--- /dev/null
++++ b/packages/app/src/runtime/polyfills.test.ts
+@@ -0,0 +1,18 @@
++import { expect, test } from "bun:test"
++import { pairingLink } from "../servers/connect/pairing"
++
++test("bootstrap supports server pairing without native URL.parse", async () => {
++  const descriptor = Object.getOwnPropertyDescriptor(URL, "parse")
++  Object.defineProperty(URL, "parse", { value: undefined, configurable: true, writable: true })
++  try {
++    await import("./polyfills")
++    expect(URL.parse("not a URL")).toBeNull()
++    expect(URL.parse("/auth/connect/abc", "http://host:4096")?.href).toBe("http://host:4096/auth/connect/abc")
++    expect(() => URL.parse()).toThrow(TypeError)
++    expect(pairingLink("http://host:4096/auth/connect/abc")).toEqual({ urls: ["http://host:4096"], code: "abc" })
++    expect(pairingLink("http://host:4096")).toBeUndefined()
++  } finally {
++    if (descriptor) Object.defineProperty(URL, "parse", descriptor)
++    else Reflect.deleteProperty(URL, "parse")
++  }
++})
+diff --git a/packages/app/src/runtime/polyfills.ts b/packages/app/src/runtime/polyfills.ts
+index cf609290..1759a2f8 100644
+--- a/packages/app/src/runtime/polyfills.ts
++++ b/packages/app/src/runtime/polyfills.ts
+@@ -2,3 +2,5 @@
+ import "core-js/es/map/group-by"
+ import "core-js/es/promise/with-resolvers"
+ import "core-js/es/promise/try"
++// Android WebView before Chromium 126 lacks URL.parse, used by server pairing.
++import "core-js/stable/url/parse"
+diff --git a/packages/app/src/servers/connect/camera.ts b/packages/app/src/servers/connect/camera.ts
+index 1f3adf17..ae37c2f6 100644
+--- a/packages/app/src/servers/connect/camera.ts
++++ b/packages/app/src/servers/connect/camera.ts
+@@ -3,7 +3,7 @@ import { usePlatform } from "@/runtime/platform/platform"
+ 
+ export function createCameraAvailability() {
+   const platform = usePlatform()
+-  const supported = platform.platform === "web" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
++  const supported = platform.platform !== "desktop" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
+ 
+   const [available, actions] = createResource(
+     async () => {
+diff --git a/packages/app/src/servers/connect/dialog.tsx b/packages/app/src/servers/connect/dialog.tsx
+index b4573f41..d37cef2a 100644
+--- a/packages/app/src/servers/connect/dialog.tsx
++++ b/packages/app/src/servers/connect/dialog.tsx
+@@ -218,7 +218,7 @@ export const DialogServer: Component<{
+                 </span>
+               </div>
+             </Show>
+-            <Show when={form.state.method() === "link" && platform.platform === "web"}>
++            <Show when={form.state.method() === "link" && platform.platform !== "desktop"}>
+               <Show
+                 when={camera.available.latest || camera.available.loading}
+                 fallback={<span class="settings-server-dialog-hint">{language.t(cameraHint())}</span>}
+diff --git a/packages/app/src/servers/connect/screen.tsx b/packages/app/src/servers/connect/screen.tsx
+index 21f54fb2..9a66afdb 100644
+--- a/packages/app/src/servers/connect/screen.tsx
++++ b/packages/app/src/servers/connect/screen.tsx
+@@ -223,7 +223,7 @@ export function ConnectServerScreen(props: { url?: string } = {}) {
+               {language.t(request.isPending ? "dialog.server.add.checking" : "server.connect.button")}
+             </Button>
+           </form>
+-          <Show when={state.method === "link" && platform.platform === "web"}>
++          <Show when={state.method === "link" && platform.platform !== "desktop"}>
+             <Show
+               when={camera.available.latest || camera.available.loading}
+               fallback={<p>{language.t(cameraHint())}</p>}
+diff --git a/packages/app/src/settings/route.test.ts b/packages/app/src/settings/route.test.ts
+index 3802fab3..447579c2 100644
+--- a/packages/app/src/settings/route.test.ts
++++ b/packages/app/src/settings/route.test.ts
+@@ -2,6 +2,15 @@ import { describe, expect, test } from "bun:test"
+ import { parseSettingsView, settingsViewRedirect, settingsViewUrl, type SettingsView } from "./route"
+ 
+ describe("settings route", () => {
++  test("inventory growth resolves obsolete root tabs without overwriting the saved server route", () => {
++    expect(parseSettingsView("?tab=servers", false)).toEqual({ type: "root", tab: "servers", subtab: undefined })
++    expect(parseSettingsView("?tab=servers", true)).toEqual({ type: "root", tab: "general" })
++    expect(parseSettingsView("?tab=models", true)).toEqual({ type: "root", tab: "general" })
++    expect(parseSettingsView("?server=http%3A%2F%2Fhost%3A4096", true)).toEqual({
++      type: "server", server: "http://host:4096", tab: "general", subtab: undefined,
++    })
++    expect(parseSettingsView("?tab=appearance", true)).toEqual({ type: "root", tab: "appearance", subtab: undefined })
++  })
+   test("keeps root preferences at the canonical route", () => {
+     expect(settingsViewUrl({ type: "root", tab: "general" })).toBe("/settings")
+     expect(parseSettingsView("", false)).toEqual({ type: "root", tab: "general", subtab: undefined })
+diff --git a/packages/app/src/settings/route.ts b/packages/app/src/settings/route.ts
+index e4b0f115..f3f438bf 100644
+--- a/packages/app/src/settings/route.ts
++++ b/packages/app/src/settings/route.ts
+@@ -112,8 +112,14 @@ export function parseSettingsView(
+   if (!project && server && isServerTab(tab))
+     return { type: "server", server, tab, subtab: nested === "lsps" ? undefined : nested, ...transient }
+ 
+-  if (!project && !server && isRootTab(tab))
++  if (!project && !server && isRootTab(tab)) {
++    // Server tabs move into their server scope when the inventory grows.
++    // Resolve the displayed view here: an effect that navigates on growth can
++    // overwrite the add dialog's navigation to the newly saved server.
++    const scoped = tab === "servers" || (tab !== "general" && isServerTab(tab))
++    if (multipleServers && scoped) return { type: "root", tab: "general" }
+     return { type: "root", tab, subtab: nested === "lsps" ? undefined : nested, ...transient }
++  }
+ 
+   if (!project && !server && extensionTabs && isExtensionTab(tab, extensionTabs))
+     return { type: "root", tab, subtab: undefined, ...transient }
+diff --git a/packages/app/src/settings/settings.css b/packages/app/src/settings/settings.css
+index 794c53f2..a258b956 100644
+--- a/packages/app/src/settings/settings.css
++++ b/packages/app/src/settings/settings.css
+@@ -155,6 +155,12 @@
+   background: var(--v2-background-bg-layer-03);
+ }
+ 
++@media (hover: none) {
++  .settings-nav-group-header [data-component="icon-button-v2"] {
++    opacity: 1;
++  }
++}
++
+ @media (hover: hover) {
+   .settings-nav-group-header:hover {
+     background: var(--v2-background-bg-layer-03);
+diff --git a/packages/app/src/settings/shell.tsx b/packages/app/src/settings/shell.tsx
+index b3cc58bc..ee364322 100644
+--- a/packages/app/src/settings/shell.tsx
++++ b/packages/app/src/settings/shell.tsx
+@@ -223,15 +223,23 @@ export function SettingsScreen() {
+   )
+ }
+ 
++function useAddSettingsServer() {
++  const dialog = useDialog()
++  const surface = useSettingsSurface()
++  return () =>
++    void dialog.push(() => (
++      <DialogServer mode="add" onSave={(server) => surface.openServer(ServerConnection.key(server))} />
++    ))
++}
++
+ function RootSettings() {
+   const language = useLanguage()
+-  const dialog = useDialog()
++  const addServer = useAddSettingsServer()
+   const surface = useSettingsSurface()
+   const layout = useLayout()
+   const tabs = useTabs()
+   const servers = useServerCollectionController()
+   const inventory = useSettingsServers()
+-  const loaded = useSettingsServersLoaded()
+   const platform = usePlatform()
+ 
+   const [state, setState] = createStore<{ worktreeFilterReset: number; modelProvider: string | undefined }>({
+@@ -278,11 +286,6 @@ function RootSettings() {
+     if (view.tab === "gui-extensions" && !guiExtensions) surface.open("general")
+   })
+ 
+-  const addServer = () =>
+-    void dialog.push(() => (
+-      <DialogServer mode="add" onSave={(server) => surface.openServer(ServerConnection.key(server))} />
+-    ))
+-
+   const groups = createMemo<SettingsNavGroup[]>(() => [
+     {
+       items: [
+@@ -326,15 +329,6 @@ function RootSettings() {
+     { items: aboutTab.map((item) => ({ ...item, label: language.t(item.label) })) },
+   ])
+ 
+-  createEffect(() => {
+-    const view = surface.view()
+-
+-    if (view.type !== "root" || !loaded() || !multiple()) return
+-
+-    if (["projects", "workspaces", "providers", "models", "extensions", "servers"].includes(view.tab))
+-      surface.open("general")
+-  })
+-
+   const change = (value: string) => {
+     if (value.startsWith("server:")) {
+       surface.openServer(value.slice("server:".length))
+@@ -438,6 +432,7 @@ function RootSettings() {
+ function ServerSettings(props: { entry: SettingsServer }) {
+   const language = useLanguage()
+   const surface = useSettingsSurface()
++  const addServer = useAddSettingsServer()
+   const activeDirectory = useSettingsDirectory(() => props.entry.connection)
+   const prefetchWorkspaces = useWorkspacesPrefetch(() => props.entry.connection)
+ 
+@@ -448,6 +443,8 @@ function ServerSettings(props: { entry: SettingsServer }) {
+ 
+   const groups = createMemo<SettingsNavGroup[]>(() => [
+     {
++      label: language.t("settings.tab.servers"),
++      action: <AddServerMenu compact onAddServer={addServer} />,
+       items: nestedServerTabs.map((item) => ({
+         ...item,
+         label: item.value === "general" ? props.entry.name : language.t(item.label),
+@@ -473,6 +470,7 @@ function ServerSettings(props: { entry: SettingsServer }) {
+       backLabel={language.t("settings.backToSettings")}
+       onBack={() => surface.back()}
+       onChange={change}
++      mobileAction={<AddServerMenu compact onAddServer={addServer} />}
+     >
+       <Tabs.Content value="general" class="settings-panel">
+         <SettingsServerGeneral
+diff --git a/packages/app/src/shell/commands/desktop-menu.ts b/packages/app/src/shell/commands/desktop-menu.ts
+index b101c65b..416ebb25 100644
+--- a/packages/app/src/shell/commands/desktop-menu.ts
++++ b/packages/app/src/shell/commands/desktop-menu.ts
+@@ -1,6 +1,6 @@
+ import type { DesktopNativeKey } from "@/runtime/i18n/desktop-native"
+ 
+-export type DesktopMenuPlatform = "macos" | "windows"
++export type DesktopMenuPlatform = "macos" | "windows" | "android"
+ 
+ export type DesktopMenuAction =
+   | "app.installCli"
+@@ -111,7 +111,7 @@ export const DESKTOP_MENU: DesktopMenu[] = [
+         labelKey: "desktop.menu.settings",
+         command: "settings.open",
+         accelerator: { windows: "Ctrl+," },
+-        platforms: ["windows"],
++        platforms: ["windows", "android"],
+       },
+       {
+         type: "item",
+diff --git a/packages/app/src/shell/errors/error.tsx b/packages/app/src/shell/errors/error.tsx
+index f62712d8..1a3b5233 100644
+--- a/packages/app/src/shell/errors/error.tsx
++++ b/packages/app/src/shell/errors/error.tsx
+@@ -355,7 +355,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
+         />
+         <div class="flex flex-row items-center justify-center gap-3 flex-wrap max-w-64">
+           <Button size="large" onClick={platform.restart}>
+-            {language.t(platform.platform === "web" ? "error.page.action.reload" : "error.page.action.restart")}
++            {language.t(platform.platform === "desktop" ? "error.page.action.restart" : "error.page.action.reload")}
+           </Button>
+           <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
+             <Button size="large" variant="ghost" onClick={exportDebugLogs}>
+diff --git a/packages/app/src/shell/titlebar/windows-menu.tsx b/packages/app/src/shell/titlebar/windows-menu.tsx
+index 6a4ee0be..d89a2e94 100644
+--- a/packages/app/src/shell/titlebar/windows-menu.tsx
++++ b/packages/app/src/shell/titlebar/windows-menu.tsx
+@@ -17,6 +17,7 @@ import {
+ import { usePlatform } from "@/runtime/platform/platform"
+ import { useLanguage } from "@/runtime/i18n/language"
+ import { useMenubarItems } from "@/runtime/extension/menubar-items"
++import { showToast } from "@/shell/notifications/toast"
+ 
+ const accelerators = DESKTOP_MENU.flatMap((menu) => menu.items ?? []).flatMap((entry) => {
+   if (entry.type === "separator" || !entry.action || !entry.accelerator?.windows) return []
+@@ -34,15 +35,19 @@ export function windowsMenuAccelerator(event: KeyboardEvent) {
+ export function WindowsAppMenu(props: {
+   command: ReturnType<typeof useCommand>
+   platform: ReturnType<typeof usePlatform>
++  menuPlatform?: "windows" | "android"
++  actionEnabled?: (action: DesktopMenuAction) => boolean
+ }) {
+   let lastFocused: HTMLElement | undefined
++  let lastRange: Range | undefined
++  let lastInputSelection: { start: number; end: number } | undefined
+   const language = useLanguage()
+   const menubar = useMenubarItems()
+ 
+   const entries = (menu: DesktopMenu) =>
+     desktopMenuWithExtensions(
+       (menu.items ?? [])
+-        .filter((entry) => desktopMenuVisible(entry, "windows"))
++        .filter((entry) => desktopMenuVisible(entry, props.menuPlatform ?? "windows"))
+         .map((entry) => ({ key: desktopMenuKey(entry), entry })),
+       menubar?.items().filter((item) => item.menu === menu.id) ?? [],
+     )
+@@ -50,6 +55,22 @@ export function WindowsAppMenu(props: {
+   const rememberFocus = () => {
+     const active = document.activeElement
+     lastFocused = active instanceof HTMLElement ? active : undefined
++    const selection = window.getSelection()
++    lastRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined
++    lastInputSelection = (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && active.selectionStart !== null
++      ? { start: active.selectionStart, end: active.selectionEnd ?? active.selectionStart } : undefined
++  }
++
++  const restoreFocus = () => {
++    if (!lastFocused?.isConnected) return
++    lastFocused.focus({ preventScroll: true })
++    if (lastInputSelection && (lastFocused instanceof HTMLInputElement || lastFocused instanceof HTMLTextAreaElement))
++      lastFocused.setSelectionRange(lastInputSelection.start, lastInputSelection.end)
++    if (lastRange?.commonAncestorContainer.isConnected) {
++      const selection = window.getSelection()
++      selection?.removeAllRanges()
++      selection?.addRange(lastRange)
++    }
+   }
+ 
+   const commandDisabled = (id: string) => {
+@@ -66,8 +87,16 @@ export function WindowsAppMenu(props: {
+   }
+ 
+   const runAction = (action: DesktopMenuAction) => {
+-    if (action.startsWith("edit.") && lastFocused?.isConnected) lastFocused.focus({ preventScroll: true })
+-    void props.platform.runDesktopMenuAction?.(action)
++    if (props.actionEnabled && !props.actionEnabled(action)) return
++    // Menus restore trigger focus when they close. Run after that restoration,
++    // so editing applies to the original field and its original selection.
++    requestAnimationFrame(() => {
++      if (action.startsWith("edit.")) restoreFocus()
++      void Promise.resolve(props.platform.runDesktopMenuAction?.(action)).catch((error) => {
++        console.error("Application menu action", action, error)
++        showToast({ title: language.t("common.requestFailed"), description: String(error) })
++      })
++    })
+   }
+ 
+   const runEntry = (entry: DesktopMenuEntry) => {
+@@ -96,7 +125,7 @@ export function WindowsAppMenu(props: {
+         if (event.defaultPrevented) return
+         const action = windowsMenuAccelerator(event)
+ 
+-        if (!action) return
++        if (!action || (props.actionEnabled && !props.actionEnabled(action))) return
+         event.preventDefault()
+         event.stopPropagation()
+         runAction(action)
+@@ -125,7 +154,7 @@ export function WindowsAppMenu(props: {
+         <Menu.Content class="desktop-app-menu">
+           <Menu.Group>
+             <Menu.GroupLabel class="desktop-app-menu-heading">OpenCode</Menu.GroupLabel>
+-            <For each={DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "windows"))}>
++            <For each={DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, props.menuPlatform ?? "windows"))}>
+               {(menu) => (
+                 <DesktopMenuSubmenu label={language.t(menu.labelKey)}>
+                   <For each={entries(menu)}>
+@@ -157,7 +186,7 @@ export function WindowsAppMenu(props: {
+                         <DesktopMenuItem
+                           label={label()}
+                           keybind={keybind()}
+-                          disabled={disabled()}
++                          disabled={disabled() || (!!entry.action && !!props.actionEnabled && !props.actionEnabled(entry.action))}
+                           onSelect={() => runEntry(entry)}
+                         />
+                       )
+diff --git a/packages/app/vite.pwa.ts b/packages/app/vite.pwa.ts
+index 20661ce1..f7b06133 100644
+--- a/packages/app/vite.pwa.ts
++++ b/packages/app/vite.pwa.ts
+@@ -39,6 +39,8 @@ export function serviceWorker(directory: string) {
+           manifest: await Promise.all(
+             entries
+               .filter((entry) => !onDemandAsset(entry.url))
++              // Filesystem traversal order differs between Windows and Linux.
++              .sort((a, b) => a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
+               .map(async (entry) => ({
+               ...entry,
+               // A revision labels a cache entry; integrity rejects mixed deployments
+diff --git a/packages/gui-extensions/src/sdk/core.ts b/packages/gui-extensions/src/sdk/core.ts
+index 3d6d6ba6..c0c35598 100644
+--- a/packages/gui-extensions/src/sdk/core.ts
++++ b/packages/gui-extensions/src/sdk/core.ts
+@@ -68,9 +68,10 @@ export interface Build {
+    * Where the code runs. Main is always `desktop`.
+    * - `web`: a browser tab.
+    * - `desktop`: the Electron app.
++   * - `android`: the Android native host.
+    */
+-  readonly platform: "web" | "desktop"
+-  /** A packaged desktop app, not a development run. Always false on the web. */
++  readonly platform: "web" | "desktop" | "android"
++  /** A packaged native app, not a development run. Always false on the web. */
+   readonly packaged: boolean
+ }
+ 
+diff --git a/packages/gui-extensions/src/terminal/panel.tsx b/packages/gui-extensions/src/terminal/panel.tsx
+index a39906e7..6fd5232b 100644
+--- a/packages/gui-extensions/src/terminal/panel.tsx
++++ b/packages/gui-extensions/src/terminal/panel.tsx
+@@ -329,7 +329,8 @@ export default function TerminalPanel(props: { model: TerminalModel; session: Mo
+                   }}
+                 >
+                   <Terminal
+-                    pty={surface.pty}
++                    pty={surface.ops.all().find(pty => pty.id === surface.pty.id) ?? surface.pty}
++                    handoffs={props.model.handoffs}
+                     server={surface.ops.server()}
+                     directory={surface.ops.directory}
+                     ghostty={props.model.ghostty}
+diff --git a/packages/gui-extensions/src/terminal/terminal.tsx b/packages/gui-extensions/src/terminal/terminal.tsx
+index d01b8ccd..7b66ea9e 100644
+--- a/packages/gui-extensions/src/terminal/terminal.tsx
++++ b/packages/gui-extensions/src/terminal/terminal.tsx
+@@ -28,6 +28,7 @@ export interface TerminalProps extends ComponentProps<"div"> {
+   server: ServerRef
+   directory: string
+   ghostty: TerminalModel["ghostty"]
++  handoffs: TerminalModel["handoffs"]
+   autoFocus?: boolean
+   onAutoFocus?: () => void
+   onSubmit?: () => void
+@@ -194,6 +195,7 @@ export const Terminal = (props: TerminalProps) => {
+     "server",
+     "directory",
+     "ghostty",
++    "handoffs",
+     "class",
+     "classList",
+     "autoFocus",
+@@ -207,10 +209,16 @@ export const Terminal = (props: TerminalProps) => {
+   const server = local.server
+   const directory = local.directory
+   const id = local.pty.id
+-  const restore = local.pty.buffer ?? ""
+-  const stored = { cols: local.pty.cols, rows: local.pty.rows }
+-
+-  const restoreSize =
++  const handoffKey = `${server.id}\0${directory}\0${id}`
++  let restore = ""
++  let stored: { cols?: number; rows?: number } = {}
++  let restoreSize: { cols: number; rows: number } | undefined
++  let scrollY: number | undefined
++
++  const captureRestore = () => {
++    restore = local.pty.buffer ?? ""
++    stored = { cols: local.pty.cols, rows: local.pty.rows }
++    restoreSize =
+     restore &&
+     stored.cols !== undefined &&
+     Number.isSafeInteger(stored.cols) &&
+@@ -221,7 +229,11 @@ export const Terminal = (props: TerminalProps) => {
+       ? { cols: stored.cols, rows: stored.rows }
+       : undefined
+ 
+-  const scrollY = local.pty.scrollY
++    scrollY = local.pty.scrollY
++    const start = local.pty.cursor !== undefined && Number.isSafeInteger(local.pty.cursor) ? local.pty.cursor : undefined
++    cursor = start ?? 0
++    seek = start !== undefined ? start : restore ? -1 : 0
++  }
+   let ws: WebSocket | undefined
+   let term: Term | undefined
+   let serializeAddon: SerializeAddon
+@@ -234,10 +246,8 @@ export const Terminal = (props: TerminalProps) => {
+   let disposed = false
+   const cleanups: VoidFunction[] = []
+ 
+-  const start = local.pty.cursor !== undefined && Number.isSafeInteger(local.pty.cursor) ? local.pty.cursor : undefined
+-
+-  let cursor = start ?? 0
+-  let seek = start !== undefined ? start : restore ? -1 : 0
++  let cursor = 0
++  let seek = 0
+   let output: ReturnType<typeof terminalWriter> | undefined
+   let drop: VoidFunction | undefined
+   let reconn: ReturnType<typeof setTimeout> | undefined
+@@ -427,8 +437,10 @@ export const Terminal = (props: TerminalProps) => {
+   onMount(() => {
+     const run = async () => {
+       const loaded = await local.ghostty()
++      await local.handoffs.wait(handoffKey)
+ 
+       if (disposed) return
++      captureRestore()
+ 
+       const mod = loaded.mod
+       const g = loaded.ghostty
+@@ -523,10 +535,6 @@ export const Terminal = (props: TerminalProps) => {
+         cleanups.push(() => clearTimeout(timer))
+       }
+ 
+-      if (typeof document !== "undefined" && document.fonts) {
+-        void document.fonts.ready.then(scheduleFit)
+-      }
+-
+       const onResize = t.onResize((size) => {
+         scheduleSize(size.cols, size.rows)
+       })
+@@ -548,6 +556,9 @@ export const Terminal = (props: TerminalProps) => {
+       cleanups.push(() => disposeIfDisposable(onKey))
+ 
+       const startResize = () => {
++        if (typeof document !== "undefined" && document.fonts) {
++          void document.fonts.ready.then(scheduleFit)
++        }
+         fit.observeResize()
+         handleResize = scheduleFit
+         window.addEventListener("resize", handleResize)
+@@ -569,10 +580,9 @@ export const Terminal = (props: TerminalProps) => {
+       if (restore && restoreSize) {
+         await write(restore)
+         reveal()
++        if (scrollY !== undefined) t.scrollToLine(scrollY)
+         fit.fit()
+         scheduleSize(t.cols, t.rows)
+-
+-        if (scrollY !== undefined) t.scrollToLine(scrollY)
+         startResize()
+       } else {
+         fit.fit()
+@@ -764,6 +774,7 @@ export const Terminal = (props: TerminalProps) => {
+   })
+ 
+   onCleanup(() => {
++    const complete = local.handoffs.begin(handoffKey)
+     disposed = true
+ 
+     if (fitFrame !== undefined) cancelAnimationFrame(fitFrame)
+@@ -776,8 +787,12 @@ export const Terminal = (props: TerminalProps) => {
+     if (ws && ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) ws.close(1000)
+ 
+     const finalize = () => {
+-      persistTerminal({ term, addon: serializeAddon, cursor, id, onCleanup: props.onCleanup })
+-      cleanup()
++      try {
++        persistTerminal({ term, addon: serializeAddon, cursor, id, onCleanup: props.onCleanup })
++      } finally {
++        cleanup()
++        complete()
++      }
+     }
+ 
+     if (!output) {
+@@ -453,6 +453,6 @@ export const Terminal = (props: TerminalProps) => {
+         fontFamily: appearance.font("mono"),
+         allowTransparency: false,
+-        convertEol: false,
++        convertEol: true,
+         theme: terminalColors(),
+         scrollback: 10_000,
+         ghostty: g,
+diff --git a/packages/ui/src/components/resize-handle.css b/packages/ui/src/components/resize-handle.css
+index 5d8b90b3..b1af7052 100644
+--- a/packages/ui/src/components/resize-handle.css
++++ b/packages/ui/src/components/resize-handle.css
+@@ -1,6 +1,7 @@
+ [data-component="resize-handle"] {
+   position: absolute;
+   z-index: 10;
++  touch-action: none;
+ 
+   &::after {
+     content: "";
+@@ -68,3 +69,14 @@
+     }
+   }
+ }
++
++@media (any-pointer: coarse) {
++  [data-component="resize-handle"]::before {
++    content: "";
++    position: absolute;
++    inset: 0 -8px;
++  }
++  [data-component="resize-handle"][data-direction="vertical"]::before {
++    inset: -8px 0;
++  }
++}
+diff --git a/packages/ui/src/components/resize-handle.tsx b/packages/ui/src/components/resize-handle.tsx
+index f63f83af..e6ae7291 100644
+--- a/packages/ui/src/components/resize-handle.tsx
++++ b/packages/ui/src/components/resize-handle.tsx
+@@ -1,4 +1,5 @@
+-import { splitProps, type JSX } from "solid-js"
++import { onCleanup, splitProps, type JSX } from "solid-js"
++import { createResizePointerHandler } from "./android-resize-pointer.mjs"
+ 
+ export interface ResizeHandleProps extends Omit<JSX.HTMLAttributes<HTMLDivElement>, "onResize"> {
+   direction: "horizontal" | "vertical"
+@@ -28,71 +29,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
+     "classList",
+   ])
+ 
+-  const handleMouseDown = (e: MouseEvent) => {
+-    if (e.detail > 1) return
+-    e.preventDefault()
+-    const edge = local.edge ?? (local.direction === "vertical" ? "start" : "end")
+-    const start = local.direction === "horizontal" ? e.clientX : e.clientY
+-
+-    const rtl =
+-      local.direction === "horizontal" &&
+-      e.currentTarget instanceof Element &&
+-      getComputedStyle(e.currentTarget).direction === "rtl"
+-
+-    const startSize = local.size
+-    const min = local.min
+-    const max = local.max
+-    const threshold = local.collapseThreshold ?? 0
+-    const onResize = local.onResize
+-    const onCollapse = local.onCollapse
+-    const onCollapseChange = local.onCollapseChange
+-    let current = startSize
+-    let collapsed = false
+-
+-    document.body.style.userSelect = "none"
+-    document.body.style.overflow = "hidden"
+-
+-    const onMouseMove = (moveEvent: MouseEvent) => {
+-      const pos = local.direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY
+-
+-      const delta =
+-        local.direction === "vertical"
+-          ? edge === "end"
+-            ? pos - start
+-            : start - pos
+-          : (edge === "start") !== rtl
+-            ? start - pos
+-            : pos - start
+-
+-      current = startSize + delta
+-      const nextCollapsed = threshold > 0 && current < threshold
+-
+-      if (nextCollapsed !== collapsed) {
+-        collapsed = nextCollapsed
+-        onCollapseChange?.(collapsed)
+-      }
+-
+-      onResize(Math.min(max, Math.max(min, current)))
+-    }
+-
+-    const onMouseUp = () => {
+-      document.body.style.userSelect = ""
+-      document.body.style.overflow = ""
+-      document.removeEventListener("mousemove", onMouseMove)
+-      document.removeEventListener("mouseup", onMouseUp)
+-
+-      if (collapsed) {
+-        onCollapse?.()
+-
+-        return
+-      }
+-
+-      onCollapseChange?.(false)
+-    }
+-
+-    document.addEventListener("mousemove", onMouseMove)
+-    document.addEventListener("mouseup", onMouseUp)
+-  }
++  const handlePointerDown = createResizePointerHandler(local, onCleanup)
+ 
+   return (
+     <div
+@@ -104,7 +41,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
+         ...local.classList,
+         [local.class ?? ""]: !!local.class,
+       }}
+-      onMouseDown={handleMouseDown}
++      onPointerDown={handlePointerDown}
+     />
+   )
+ }
+diff --git a/packages/gui-extensions/src/builtins.typecheck.ts b/packages/gui-extensions/src/builtins.typecheck.ts
+index b1d448a1..2bc5a488 100644
+--- a/packages/gui-extensions/src/builtins.typecheck.ts
++++ b/packages/gui-extensions/src/builtins.typecheck.ts
+@@ -2,26 +2,12 @@
+ // renderer entry declares in `provides`, `uses` or `requires` needs a main entry that provides it: an unprovided Ipc in
+ // `ctx.uses` stays pending forever, and an unprovided `requires` would also hold the window's startup gate. Each
+ // `@ts-expect-error` fails the typecheck if its line stops being an error.
+-import { Extension, Ipc, type MissingMain, type IpcsProvided } from "./sdk"
++import { Extension, Ipc, type IpcsProvided } from "./sdk"
+ import type { builtins } from "./renderer"
+ // Both compositions export `builtins`, and this file names the two together.
+ import type { builtins as mainBuiltins } from "./main"
+-import type browser from "./browser"
+-
+-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+-
+-const equal = <A, B>(value: Equal<A, B>) => value
+-
+ export const ipcs: IpcsProvided<typeof builtins, typeof mainBuiltins> = true
+ 
+-// The main composition with the browser's definition but not its main entry, which provides the pane.
+-type Mainless = readonly (Exclude<(typeof mainBuiltins)[number], { readonly id: "browser" }> | typeof browser)[]
+-
+-// @ts-expect-error no main entry provides browser.pane, which the browser's renderer reads through `provides`
+-export const mainless: IpcsProvided<typeof builtins, Mainless> = true
+-
+-equal<IpcsProvided<typeof builtins, Mainless>, MissingMain<"browser.pane">>(true)
+-
+ const Orphan = Ipc.define({ id: "fixture.orphan", methods: {} })
+ 
+ // A renderer that uses an Ipc nothing in main provides.
+diff --git a/packages/gui-extensions/src/terminal/model.ts b/packages/gui-extensions/src/terminal/model.ts
+index 8ba5f356..fbff294a 100644
+--- a/packages/gui-extensions/src/terminal/model.ts
++++ b/packages/gui-extensions/src/terminal/model.ts
+@@ -1,8 +1,9 @@
+-import { batch, createMemo, createRoot, getOwner, onCleanup, untrack } from "solid-js"
++import { batch, createMemo, createRoot, getOwner, onCleanup, runWithOwner, untrack } from "solid-js"
+ import { createStore } from "solid-js/store"
+-import { createKeyed, type Mutable, type Storage, type ServerRef, type MountedSession, type Sessions } from "../sdk"
+-import { MAX_TERMINAL_SESSIONS, numberFromTitle, TerminalState, type LocalPTY } from "./state"
++import { createKeyed, type Mutable, type Persisted, type Storage, type ServerRef, type MountedSession, type Sessions } from "../sdk"
++import { MAX_TERMINAL_SESSIONS, numberFromTitle, TerminalState, WorkspaceTerminalState, type LocalPTY } from "./state"
+ import { defaultTitle } from "./title"
++import { createTerminalHandoffs } from "./android-handoffs.mjs"
+ 
+ const STORE = "terminals"
+ 
+@@ -13,16 +14,20 @@ const HANDOFF_MAX = 40
+ 
+ export type TerminalModel = ReturnType<typeof createTerminalModel>
+ 
+-export type TerminalWorkspace = ReturnType<typeof createWorkspace>
++export type TerminalWorkspace = ReturnType<typeof createSession>
+ 
+ type CacheEntry = {
+-  value: TerminalWorkspace
++  value: ReturnType<typeof createWorkspace>
+   dispose: VoidFunction
+ }
+ 
+ type FocusRequest = { request: number; id?: string; pending: boolean }
+ 
+-const importGhostty = () => import("ghostty-web").then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
++const importGhostty = async () => {
++  const url = "/oc-terminal.js"
++  const mod: typeof import("ghostty-web") = await import(/* @vite-ignore */ url)
++  return { mod, ghostty: await mod.Ghostty.load() }
++}
+ 
+ /** The one ghostty-web load the window's terminals share; a failed load is retried by the next terminal. */
+ type Ghostty = { shared?: ReturnType<typeof importGhostty> }
+@@ -57,8 +62,9 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+   }
+ 
+   return {
+-    load(session: Pick<MountedSession, "server" | "directory">) {
+-      // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
++    handoffs: createTerminalHandoffs(),
++    load(session: Pick<MountedSession, "id" | "server" | "directory">) {
++      // Keep durable PTY ownership separate from the host's prunable layout cache.
+       const key = workspaceKey(session.server.id, session.directory)
+       const existing = cache.get(key)
+ 
+@@ -66,7 +72,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+         cache.delete(key)
+         cache.set(key, existing)
+ 
+-        return existing.value
++        return existing.value.session(session.id)
+       }
+ 
+       // A cached workspace keeps talking to its own server after the route moves on.
+@@ -84,7 +90,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+       cache.set(key, entry)
+       prune()
+ 
+-      return entry.value
++      return entry.value.session(session.id)
+     },
+     ghostty() {
+       if (ghostty.shared) return ghostty.shared
+@@ -129,14 +135,59 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
+ }
+ 
+ function createWorkspace(input: { storage: Storage; server: ServerRef; directory: string; key: string }) {
+-  const location = { directory: input.directory }
+-
+   const stored = input.storage.store(STORE, {
+-    schema: TerminalState,
+-    initial: { all: [] },
++    schema: WorkspaceTerminalState,
++    initial: { sessions: {} },
+     scope: { server: input.server.id, directory: input.directory },
+     from: LEGACY,
+   })
++  const owner = getOwner()
++  const sessions = new Map<string, TerminalWorkspace>()
++
++  return {
++    clear: () => stored.set({ sessions: Object.fromEntries([...sessions.keys()].map((id) => [id, { all: [] }])) }),
++    session(id: string) {
++      const existing = sessions.get(id)
++      if (existing) return existing
++
++      const value = runWithOwner(owner, () => createSession({ ...input, id, stored }))!
++      sessions.set(id, value)
++      return value
++    },
++  }
++}
++
++function createSession(input: {
++  server: ServerRef
++  directory: string
++  key: string
++  id: string
++  stored: Persisted<typeof WorkspaceTerminalState.Type>
++}) {
++  const location = { directory: input.directory }
++  const workspace = input.stored
++
++  createKeyed(workspace.ready, () => {
++    workspace.update((draft) => {
++      if (draft.sessions[input.id]) return
++      // The first opened session claims the old shared tabs once; other sessions start independently.
++      draft.sessions[input.id] = draft.unassigned ?? { all: [] }
++      draft.unassigned = undefined
++    })
++  })
++
++  const stored = {
++    get value() { return workspace.value?.sessions[input.id] },
++    ready: () => workspace.ready() && !!workspace.value?.sessions[input.id],
++    update(mutate: (draft: Mutable<typeof TerminalState.Type>) => void) {
++      workspace.update((draft) => {
++        mutate(draft.sessions[input.id] ??= { all: [] })
++      })
++    },
++    set(next: typeof TerminalState.Type) {
++      workspace.update((draft) => { draft.sessions[input.id] = { ...next, all: next.all.map((pty) => ({ ...pty })) } })
++    },
++  }
+ 
+   // Empty until the stored terminals load; changes made before then apply over them in order.
+   const all = createMemo(() => stored.value?.all ?? [])
+@@ -299,7 +350,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
+   }
+ 
+   return {
+-    key: input.key,
++    key: `${input.key}\0${input.id}`,
+     // An accessor, so storing the workspace in a Solid store never unwraps the host's server data.
+     server: () => input.server,
+     directory: input.directory,
+@@ -361,11 +412,6 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
+         trimTerminal(draft.all[index])
+       })
+     },
+-    trimAll() {
+-      stored.update((draft) => {
+-        draft.all.forEach(trimTerminal)
+-      })
+-    },
+     clone,
+     open(id: string) {
+       stored.update((draft) => {
+diff --git a/packages/gui-extensions/src/terminal/renderer.tsx b/packages/gui-extensions/src/terminal/renderer.tsx
+index c2261112..119f9557 100644
+--- a/packages/gui-extensions/src/terminal/renderer.tsx
++++ b/packages/gui-extensions/src/terminal/renderer.tsx
+@@ -1,7 +1,7 @@
+-import { createMemo, lazy, on, onCleanup, Suspense } from "solid-js"
++import { createMemo, lazy, onCleanup, Suspense } from "solid-js"
+ import { Command, createKeyed, onIdle, Panel, type Setup } from "../sdk"
+ import type Terminal from "./index"
+-import { createTerminalModel, type TerminalWorkspace } from "./model"
++import { createTerminalModel } from "./model"
+ 
+ const DOCK = "terminal:main"
+ 
+@@ -14,21 +14,6 @@ const setup: Setup<typeof Terminal> = (ctx) => {
+   // The host withdraws the listener with the extension.
+   ctx.workspaces.on("remove", model.remove)
+ 
+-  // The routed session's workspace stays loaded while no panel renders it, like the session route did.
+-  const workspace = createMemo<TerminalWorkspace | undefined>((previous) => {
+-    const session = sessions.current()
+-
+-    return session ? model.load(session) : previous
+-  })
+-
+-  // The workspace each later route change leaves.
+-  const left = createMemo(
+-    on(workspace, (next, previous) => (previous && next !== previous ? previous : undefined), { defer: true }),
+-  )
+-
+-  // A workspace the route leaves drops its restore buffers.
+-  createKeyed(left, (previous) => previous.trimAll())
+-
+   const routed = createMemo(() => !!sessions.current())
+ 
+   const current = () => {
+diff --git a/packages/gui-extensions/src/terminal/state.ts b/packages/gui-extensions/src/terminal/state.ts
+index fa50d397..1cb21824 100644
+--- a/packages/gui-extensions/src/terminal/state.ts
++++ b/packages/gui-extensions/src/terminal/state.ts
+@@ -74,3 +74,16 @@ export const TerminalState = State.pipe(
+     encode: SchemaGetter.transform((value) => value),
+   }),
+ )
++
++const Workspace = Schema.Struct({
++  sessions: Schema.Record(Schema.String, TerminalState),
++  unassigned: optional(TerminalState),
++})
++
++// Existing workspace state cannot identify its original chat; preserve it until one session claims it.
++export const WorkspaceTerminalState = Schema.Union([Workspace, TerminalState]).pipe(
++  Schema.decodeTo(Schema.toType(Workspace), {
++    decode: SchemaGetter.transform((value) => "sessions" in value ? value : { sessions: {}, unassigned: value }),
++    encode: SchemaGetter.transform((value) => value),
++  }),
++)
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+index b9760dd8..33119b5d 100644
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -7,6 +7,8 @@ import { AppBaseProviders, AppInterface } from "@/app"
+ import { loadInitialLocale } from "@/runtime/i18n/language"
+ import { PlatformProvider } from "@/runtime/platform/platform"
+ import { createWebPlatform } from "@/runtime/platform/web"
++import { createAndroidPlatform } from "@/runtime/platform/android"
++import { prepareEmbeddedServerStorage } from "@/runtime/platform/android-server-state.mjs"
+ import { isStandalone, PwaRoutePersistence, restorePwaRoute } from "@/runtime/platform/pwa"
+ import { KeyboardInsets } from "@/runtime/platform/keyboard"
+ import en from "@/runtime/i18n/en"
+@@ -50,8 +52,11 @@ const clearAuthToken = () => {
+ }
+ 
+ const web = createWebPlatform(pkg.version)
++const android = import.meta.env.VITE_OPENCODE_PLATFORM === "android"
++if (android) prepareEmbeddedServerStorage(localStorage, location.origin)
++const platform = android ? createAndroidPlatform(web.platform) : web.platform
+ 
+-if (import.meta.env.PROD && "serviceWorker" in navigator) {
++if (import.meta.env.PROD && !window.__ocPlatform && "serviceWorker" in navigator) {
+   window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
+ }
+ 
+@@ -80,7 +85,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+   void loadInitialLocale().then((locale) => {
+     const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
+     clearAuthToken()
+-    const standalone = isStandalone()
++    const standalone = !!window.__ocPlatform || isStandalone()
+     root.dataset.standalone = String(standalone)
+ 
+     if (standalone) restorePwaRoute()
+@@ -98,7 +103,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+ 
+     render(
+       () => (
+-        <PlatformProvider value={web.platform}>
++        <PlatformProvider value={platform}>
+           <AppBaseProviders locale={locale}>
+             <AppInterface
+               canonicalLocalServer={server ? ServerConnection.key(server) : undefined}
+diff --git a/packages/gui-extensions/src/renderer.ts b/packages/gui-extensions/src/renderer.ts
+index f5f1754f..ec18971f 100644
+--- a/packages/gui-extensions/src/renderer.ts
++++ b/packages/gui-extensions/src/renderer.ts
+@@ -13,8 +13,6 @@ import review from "./review"
+ import reviewRenderer from "./review/renderer"
+ import details from "./details"
+ import detailsRenderer from "./details/renderer"
+-import browser from "./browser"
+-import browserRenderer from "./browser/renderer"
+ import pairing from "./pairing"
+ import pairingRenderer from "./pairing/renderer"
+ import updater from "./updater"
+@@ -25,6 +23,8 @@ import wsl from "./wsl"
+ import wslRenderer from "./wsl/renderer"
+ import microsoftOffice from "./microsoft-office"
+ import microsoftOfficeRenderer from "./microsoft-office/renderer"
++import serverBrowser from "./remote-browser"
++import serverBrowserRenderer from "./remote-browser/renderer"
+ 
+ // The window renders once every built-in is active, so the small renderer entries load with the app, like the
+ // features they replaced. Heavy UI stays behind `lazy()` inside them.
+@@ -43,10 +43,10 @@ export const builtins = Extension.compose(
+   { ...file, renderer: eager(fileRenderer) },
+   { ...review, renderer: eager(reviewRenderer) },
+   { ...details, renderer: eager(detailsRenderer) },
+-  { ...browser, renderer: eager(browserRenderer) },
+   { ...pairing, renderer: eager(pairingRenderer) },
+   { ...updater, renderer: eager(updaterRenderer) },
+   { ...ssh, renderer: eager(sshRenderer) },
+   { ...wsl, renderer: eager(wslRenderer) },
+   { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
++  { ...serverBrowser, renderer: eager(serverBrowserRenderer) },
+ )
+diff --git a/packages/app/src/runtime/i18n/language.tsx b/packages/app/src/runtime/i18n/language.tsx
+index fed6514..74ef3d7 100644
+--- a/packages/app/src/runtime/i18n/language.tsx
++++ b/packages/app/src/runtime/i18n/language.tsx
+@@ -104,8 +104,11 @@ const merge = (app: Promise<Source>, ui: Promise<Source>) =>
+   Promise.all([app, ui]).then(([a, b]) => ({ ...base, ...flatten({ ...a.dict, ...b.dict }) }) as Dictionary)
+ 
+ const loaders: Record<Exclude<Locale, "en">, () => Promise<Dictionary>> = {
+-  zh: () => merge(import("@/runtime/i18n/zh"), import("@opencode/ui/i18n/zh")),
+-  zht: () => merge(import("@/runtime/i18n/zht"), import("@opencode/ui/i18n/zht")),
++  // zh-android / zht-android wrap the official dictionaries with this product's own
++  // translations for copy upstream has not translated yet; the official entry wins
++  // inside them, so this only fills gaps.
++  zh: () => merge(import("@/runtime/i18n/zh-android"), import("@opencode/ui/i18n/zh")),
++  zht: () => merge(import("@/runtime/i18n/zht-android"), import("@opencode/ui/i18n/zht")),
+   ko: () => merge(import("@/runtime/i18n/ko"), import("@opencode/ui/i18n/ko")),
+   de: () => merge(import("@/runtime/i18n/de"), import("@opencode/ui/i18n/de")),
+   es: () => merge(import("@/runtime/i18n/es"), import("@opencode/ui/i18n/es")),

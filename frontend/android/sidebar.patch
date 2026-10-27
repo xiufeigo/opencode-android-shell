@@ -1,13 +1,13 @@
 diff --git a/packages/app/src/home/projects/controller.tsx b/packages/app/src/home/projects/controller.tsx
-index f531d26..777602d 100644
+index 25cac94..e9a9a69 100644
 --- a/packages/app/src/home/projects/controller.tsx
 +++ b/packages/app/src/home/projects/controller.tsx
 @@ -6,9 +6,8 @@ import { type LocalProject } from "@/shell/state/layout"
  import { useLanguage } from "@/runtime/i18n/language"
  import { usePlatform } from "@/runtime/platform/platform"
  import { ServerConnection } from "@/runtime/server/registry"
--import { closeHomeProject, errorMessage, homeProjectDirectories } from "@/shell/layout/helpers"
-+import { closeHomeProject, homeProjectDirectories } from "@/shell/layout/helpers"
+-import { errorMessage, homeProjectDirectories } from "@/shell/layout/helpers"
++import { homeProjectDirectories } from "@/shell/layout/helpers"
  import { Persist, persisted } from "@/runtime/persistence/storage"
 -import { showToast } from "@/shell/notifications/toast"
  import { useDialog } from "@opencode/ui/context/dialog"
@@ -21,7 +21,7 @@ index f531d26..777602d 100644
  
  export const HomeServersSchema = Schema.Struct({
    collapsed: Persistence.record(Persistence.fallback(Schema.Boolean, () => false)),
-@@ -111,36 +111,13 @@ export function createHomeProjectsController(home: HomeController) {
+@@ -110,36 +110,13 @@ export function createHomeProjectsController(home: HomeController) {
        },
        canImportSession: !!platform.openAttachmentPickerDialog,
        importSession: (conn: ServerConnection.Any, project: LocalProject) => {
@@ -65,7 +65,6 @@ index f531d26..777602d 100644
        },
        edit: (conn: ServerConnection.Any, project: LocalProject) => {
          settings.openProject({
-
 diff --git a/packages/app/src/home/projects/import-session.ts b/packages/app/src/home/projects/import-session.ts
 new file mode 100644
 index 0000000..6b2fbb7
@@ -123,7 +122,6 @@ index 0000000..6b2fbb7
 +      })
 +    })
 +}
-
 diff --git a/packages/app/src/home/sessions/actions.ts b/packages/app/src/home/sessions/actions.ts
 new file mode 100644
 index 0000000..dad575a
@@ -247,9 +245,8 @@ index 0000000..dad575a
 +      void input.queryClient.invalidateQueries({ queryKey: ["home-sessions", input.server], exact: true })
 +    })
 +}
-
 diff --git a/packages/app/src/home/sessions/controller.tsx b/packages/app/src/home/sessions/controller.tsx
-index b991aea..e4f69d1 100644
+index e951602..d9f1495 100644
 --- a/packages/app/src/home/sessions/controller.tsx
 +++ b/packages/app/src/home/sessions/controller.tsx
 @@ -1,10 +1,7 @@
@@ -257,13 +254,13 @@ index b991aea..e4f69d1 100644
  import { useDialog } from "@opencode/ui/context/dialog"
 -import { Button } from "@opencode/ui/button"
 -import { DialogFooter, DialogHeader, DialogTitleGroup, Dialog } from "@opencode/ui/dialog"
- import { skipToken, useQuery, useQueryClient } from "@tanstack/solid-query"
+ import { useQuery, useQueryClient } from "@tanstack/solid-query"
  import { type Accessor, createEffect, createMemo, type JSX, startTransition, untrack } from "solid-js"
 -import { notifySessionTabsRemoved } from "@/shell/titlebar/session-events"
  import { useCommand } from "@/shell/commands/command"
- import {
-   HOME_SESSION_LIMIT,
-@@ -18,15 +15,15 @@ import { ServerConnection } from "@/runtime/server/registry"
+ import { HOME_SESSION_LIMIT, mergeHomeSessionIndex, retainHomeSessions } from "@/home/sessions/index"
+ import type { LocalProject } from "@/shell/state/layout"
+@@ -13,16 +10,16 @@ import { ServerConnection } from "@/runtime/server/registry"
  import { sessionHasOpenTab, useTabs } from "@/shell/tabs/tabs"
  import { errorMessage } from "@/shell/layout/helpers"
  import { useSessionTabAvatarState } from "@/shell/layout/project-avatar-state"
@@ -275,6 +272,7 @@ index b991aea..e4f69d1 100644
 +import { sessionTitle } from "@/session/title"
  import { showToast } from "@/shell/notifications/toast"
  import { archiveHomeSession } from "./archive"
+ import { homeSessionsQuery } from "./queries"
  import type { HomeController } from "../model"
  import { buildHomeSessionRecords, homeProjectForSession, homeSessionLocation, type HomeSessionRecord } from "./records"
 +import { DeleteSessionDialog } from "@/session/delete-session-dialog"
@@ -282,7 +280,7 @@ index b991aea..e4f69d1 100644
  
  export type { HomeSessionRecord } from "./records"
  
-@@ -184,32 +181,8 @@ export function createHomeSessionsController(home: HomeController) {
+@@ -171,32 +168,8 @@ export function createHomeSessionsController(home: HomeController) {
      const ctx = conn ? home.server.context(conn) : undefined
  
      if (!conn || !ctx) return false
@@ -316,7 +314,7 @@ index b991aea..e4f69d1 100644
    }
  
    const exportSession = async (server: ServerConnection.Key, session: SessionInfo) => {
-@@ -218,24 +191,7 @@ export function createHomeSessionsController(home: HomeController) {
+@@ -205,24 +178,7 @@ export function createHomeSessionsController(home: HomeController) {
  
      if (!ctx) return
  
@@ -342,21 +340,31 @@ index b991aea..e4f69d1 100644
    }
  
    const remove = async (server: ServerConnection.Key, session: SessionInfo) => {
-@@ -243,58 +199,8 @@ export function createHomeSessionsController(home: HomeController) {
+@@ -230,65 +186,18 @@ export function createHomeSessionsController(home: HomeController) {
      const ctx = conn ? home.server.context(conn) : undefined
  
      if (!conn || !ctx) return false
 -    const ids = sessionTreeIDs(ctx.data.session.list(), session.id)
--
--    return ctx.data.session
--      .remove(session.id)
+     const rows = homeRowTops()
+     // session.deleted clears the local hide mutation before the refetch lands,
+     // so the cached index must drop the row now or it briefly reappears.
+     queryClient.setQueryData<SessionInfo[]>(["home-sessions", conn], (current) =>
+       current?.filter((item) => item.id !== session.id),
+     )
+-    const request = ctx.data.session.remove(session.id)
++    // The shared action removes the session and the tabs it owned; the home list
++    // keeps the row animation and the optimistic drop that only it shows.
++    const request = removeSessionRecord({ ctx, server, session, queryClient, language })
+     animateHomeRowsUp(rows)
+ 
+     return request
 -      .then(() => {
 -        notifySessionTabsRemoved({
 -          server: ServerConnection.key(conn),
 -          directory: session.location.directory,
 -          sessionIDs: ids,
 -        })
- 
+-
 -        return true
 -      })
 -      .catch((cause) => {
@@ -376,8 +384,8 @@ index b991aea..e4f69d1 100644
 -    const name = () => sessionTitle(props.session.title) ?? language.t("command.session.new")
 -
 -    const confirm = async () => {
--      await remove(props.server, props.session)
 -      dialog.close()
+-      await remove(props.server, props.session)
 -    }
 -
 -    return (
@@ -389,7 +397,7 @@ index b991aea..e4f69d1 100644
 -          />
 -        </DialogHeader>
 -        <DialogFooter>
--          <Button variant="ghost" onClick={() => dialog.close()}>
+-          <Button variant="ghost" autofocus onClick={() => dialog.close()}>
 -            {language.t("common.cancel")}
 -          </Button>
 -          <Button variant="danger" onClick={confirm}>
@@ -398,11 +406,10 @@ index b991aea..e4f69d1 100644
 -        </DialogFooter>
 -      </Dialog>
 -    )
-+    return removeSessionRecord({ ctx, server, session, queryClient, language })
    }
  
    return {
-@@ -379,7 +285,12 @@ export function createHomeSessionsController(home: HomeController) {
+@@ -372,7 +281,12 @@ export function createHomeSessionsController(home: HomeController) {
        rename,
        export: exportSession,
        showDelete: (server: ServerConnection.Key, session: SessionInfo) =>
@@ -416,7 +423,25 @@ index b991aea..e4f69d1 100644
      },
      tab: {
        isOpen: (record: HomeSessionRecord) => {
-
+diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
+index 5d6946b..fb5278c 100644
+--- a/packages/app/src/runtime/i18n/en.ts
++++ b/packages/app/src/runtime/i18n/en.ts
+@@ -715,6 +715,14 @@ export const dict = {
+ 
+   "sidebar.settings": "Settings",
+   "sidebar.help": "Help",
++  "sidebar.server.select": "Select server",
++  "sidebar.collapse": "Hide sidebar",
++  "sidebar.expand": "Show sidebar",
++  "sidebar.sessions.more.one": "Show {{count}} more session",
++  "sidebar.sessions.more.other": "Show {{count}} more sessions",
++  "sidebar.sessions.collapse": "Collapse",
++  "sidebar.session.children.expand": "Show subagent sessions",
++  "sidebar.session.children.collapse": "Hide subagent sessions",
+   "sidebar.inbox.empty": "Sessions you work on will appear here",
+   "sidebar.inbox.section.needsAttention": "Needs attention",
+   "sidebar.inbox.section.working": "Working",
 diff --git a/packages/app/src/session/delete-session-dialog.tsx b/packages/app/src/session/delete-session-dialog.tsx
 new file mode 100644
 index 0000000..6144a87
@@ -459,34 +484,154 @@ index 0000000..6144a87
 +    </Dialog>
 +  )
 +}
-
+diff --git a/packages/app/src/session/helpers.ts b/packages/app/src/session/helpers.ts
+index 1d8810b..d242112 100644
+--- a/packages/app/src/session/helpers.ts
++++ b/packages/app/src/session/helpers.ts
+@@ -21,6 +21,7 @@ export const createSizing = () => {
+       t = undefined
+     }
+ 
++    if (state.active) return
+     setState("active", true)
+   }
+ 
+@@ -38,7 +39,8 @@ export const createSizing = () => {
+     active: () => state.active,
+     start,
+     touch() {
+-      start()
++      if (t !== undefined) clearTimeout(t)
++      if (!state.active) setState("active", true)
+       t = window.setTimeout(stop, 120)
+     },
+   }
+diff --git a/packages/app/src/session/screen.tsx b/packages/app/src/session/screen.tsx
+index 0a0a044..e39ac80 100644
+--- a/packages/app/src/session/screen.tsx
++++ b/packages/app/src/session/screen.tsx
+@@ -202,9 +202,25 @@ function SessionScreenContent(props: {
+     setStore("timelineScrollbarHidden", false)
+   }
+ 
+-  createEffect(() => {
+-    if (screen.side.open()) setStore("sideMounted", true)
+-  })
++  createEffect(
++    on(
++      () => screen.side.open(),
++      (open, previous) => {
++        if (!open) return
++
++        // A panel that opens flies in, and mounting its content in the same frame would
++        // charge the click that starts the flight for the panel's first render. A panel
++        // that is already open, e.g. restored with the session, has no flight to start.
++        if (previous === false) {
++          const frame = requestAnimationFrame(() => setStore("sideMounted", true))
++          onCleanup(() => cancelAnimationFrame(frame))
++          return
++        }
++
++        setStore("sideMounted", true)
++      },
++    ),
++  )
+ 
+   const mobileView = attachment.mobile.current
+ 
+diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
+index 7510e42..1c4c5fa 100644
+--- a/packages/app/src/session/session-panel-width.test.ts
++++ b/packages/app/src/session/session-panel-width.test.ts
+@@ -8,6 +8,8 @@ test.each([
+   // Regression: the old cap was 45% of the window, forcing the review pane to at least 55%.
+   ["lets the chat panel take everything beyond the review pane minimum", 3440, 3440, false, false, 2960],
+   ["holds the chat panel minimum when there is no room for both", 1600, 700, true, false, 450],
++  // Regression: a narrow layout used to lock the divider at the chat panel's fit minimum.
++  ["leaves a usable drag range on a narrow split layout", 600, 994, true, false, 570],
+   ["never drops below the chat panel minimum on small windows", 1600, 0, false, false, 450],
+   ["skips clamping before the layout is measured", 1600, undefined, false, false, 1600],
+   ["lets a dragged width leave the side pane its hard minimum, split diffs included", 1600, 1700, true, true, 1380],
+diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
+index 9afe75e..26d6179 100644
+--- a/packages/app/src/session/session-panel-width.ts
++++ b/packages/app/src/session/session-panel-width.ts
+@@ -15,20 +15,45 @@ const REVIEW_PANE_WIDTH_FIT = 480
+ 
+ const REVIEW_PANE_WIDTH_FIT_SPLIT = 800
+ 
++/** Leave enough travel for the splitter; otherwise a narrow layout locks the chat width. */
++const SESSION_PANEL_WIDTH_RANGE_MIN = 120
++
++/**
++ * The width the review pane keeps before the user drags the divider: its preferred minimum, but never so much
++ * that the chat cannot travel, and never less than the pane's own hard minimum, which would leave it unusable on
++ * a tablet.
++ */
++function reviewPaneReserve(available: number, split: boolean) {
++  const preferred = split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
++
++  return Math.min(
++    preferred,
++    Math.max(
++      SIDE_PANE_WIDTH_MIN,
++      available - SESSION_PANEL_WIDTH_FIT - SESSION_PANEL_WIDTH_RANGE_MIN,
++    ),
++  )
++}
++
+ export function sessionPanelWidthMax(input: { available: number; split: boolean; resized: boolean }) {
+   if (input.resized) return Math.max(SESSION_PANEL_WIDTH_MIN, input.available - SIDE_PANE_WIDTH_MIN)
+-  const pane = input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
++  const reserve = reviewPaneReserve(input.available, input.split)
+ 
+-  return Math.max(SESSION_PANEL_WIDTH_FIT, input.available - pane)
++  return Math.max(SESSION_PANEL_WIDTH_FIT, input.available - reserve)
+ }
+ 
+ // The same limit in CSS, against the pane row's width less its 8px gap, so the chat panel follows the row on the frame
+ // it resizes, e.g. while the left sidebar moves, rather than after a ResizeObserver callback.
+ export function sessionPanelWidthCss(input: { width: number; split: boolean; resized: boolean }) {
+   const minimum = input.resized ? SESSION_PANEL_WIDTH_MIN : SESSION_PANEL_WIDTH_FIT
+-  const pane = input.resized ? SIDE_PANE_WIDTH_MIN : input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
+ 
+-  return `min(${input.width}px, max(${minimum}px, 100% - ${pane + 8}px))`
++  if (input.resized) return `min(${input.width}px, max(${minimum}px, 100% - ${SIDE_PANE_WIDTH_MIN + 8}px))`
++
++  const preferred = input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
++  // The same reserve as `reviewPaneReserve`, in percentages, so it follows the row as the row resizes.
++  const reserve = `min(${preferred}px, max(${SIDE_PANE_WIDTH_MIN}px, 100% - 8px - ${SESSION_PANEL_WIDTH_FIT}px - ${SESSION_PANEL_WIDTH_RANGE_MIN}px))`
++
++  return `min(${input.width}px, max(${minimum}px, calc(100% - 8px - ${reserve})))`
+ }
+ 
+ // `available` is undefined until the layout row is first measured; render the
 diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
-index 85acc85..301615f 100644
+index 1fc9dd3..f3140c0 100644
 --- a/packages/app/src/session/timeline/message-timeline.tsx
 +++ b/packages/app/src/session/timeline/message-timeline.tsx
-@@ -26,6 +26,7 @@ import { parseCommentNote, readPromptPresentation } from "@/composer/comment-not
- import { parseVoiceDelegation } from "./voice-delegation"
- import { useCommand } from "@/shell/commands/command"
- import { SessionAncestorTrail, SessionProjectMenu, SessionTitleHeader } from "../session-identity-header"
+@@ -33,6 +33,7 @@ import {
+   SessionLocation,
+   SessionTitleHeader,
+ } from "../session-identity-header"
 +import { CollapsedSidebarControls } from "@/shell/titlebar/vertical-sidebar-toolbar"
  import { SessionHeaderSpacer } from "@/session/header/session-header"
- import { SessionRunningMenu } from "@/session/header/session-running-menu"
- 
-@@ -466,6 +467,7 @@ function MessageTimelineView(
-             <div class="h-12 w-full flex items-center justify-between gap-2">
-               <div class="flex items-center gap-1 min-w-0 flex-1">
-                 <div class="flex items-center gap-0.5 min-w-0 flex-1 w-full">
+ import { SessionHeaderGap } from "@/session/header/drag-area"
+ import { SessionWorkingIndicator } from "@/session/header/session-working-indicator"
+@@ -511,6 +512,7 @@ function MessageTimelineView(
+               title={title.editing ? title.draft : childTitle()}
+               location={
+                 <>
 +                  <CollapsedSidebarControls />
-                   <SessionProjectMenu
+                   <SessionLocation
                      project={headerProject()}
                      directory={sessionDirectory()}
-
 diff --git a/packages/app/src/shell/layout/vertical.ts b/packages/app/src/shell/layout/vertical.ts
 new file mode 100644
-index 0000000..350aec6
+index 0000000..9b96134
 --- /dev/null
 +++ b/packages/app/src/shell/layout/vertical.ts
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,17 @@
 +import { createMediaQuery } from "@solid-primitives/media"
 +import { useSettings } from "@/settings/model"
 +
@@ -494,16 +639,18 @@ index 0000000..350aec6
 + * The vertical-tabs shell is desktop-only: phone widths keep the horizontal titlebar even when the
 + * stored preference is "vertical". Every surface that must branch on the effective layout reads
 + * this one accessor so routing and chrome cannot disagree.
++ *
++ * This mirrors the shell's own `verticalTabs()`: anything that is not the horizontal layout gets
++ * the vertical sidebar, including the "inbox" tab layout.
 + */
 +export function useVerticalTabs() {
 +  const settings = useSettings()
 +  const mobile = createMediaQuery("(max-width: 767px)")
 +
-+  return () => settings.appearance.tabLayout() === "vertical" && !mobile()
++  return () => settings.appearance.tabLayout() !== "horizontal" && !mobile()
 +}
-
 diff --git a/packages/app/src/shell/routes/routes.tsx b/packages/app/src/shell/routes/routes.tsx
-index 33b0058..81e12e7 100644
+index 2aa62fb..0e45be4 100644
 --- a/packages/app/src/shell/routes/routes.tsx
 +++ b/packages/app/src/shell/routes/routes.tsx
 @@ -1,11 +1,14 @@
@@ -523,7 +670,7 @@ index 33b0058..81e12e7 100644
  import { SettingsSurfaceProvider } from "@/settings/surface"
  import Shell from "@/shell/shell"
  import { requireServerKey } from "./session"
-@@ -43,7 +46,7 @@ export function preloadRoute(url: string) {
+@@ -50,7 +53,7 @@ export function preloadRoute(url: string) {
  export function AppRoutes() {
    return (
      <Route component={AppLayout}>
@@ -532,7 +679,7 @@ index 33b0058..81e12e7 100644
        <Route path="/settings" component={SettingsScreen} />
        <Route
          path="/server/:serverKey/session/:id"
-@@ -108,3 +111,91 @@ function AppLayout(props: ParentProps) {
+@@ -116,3 +119,90 @@ function AppLayout(props: ParentProps) {
      </Show>
    )
  }
@@ -570,7 +717,7 @@ index 33b0058..81e12e7 100644
 +  let settled = false
 +
 +  // Same project order the Home page uses for "new session": selected, then last used, then first.
-+  // `sync.data.project` covers a fresh window whose local project registry has not opened anything
++  // `ctx.projects.list()` covers a fresh window whose local project registry has not opened anything
 +  // yet, and the server's own directory is the last resort for a server with no projects at all.
 +  const target = createMemo(() => {
 +    const selection = layout.home.selection()
@@ -578,13 +725,13 @@ index 33b0058..81e12e7 100644
 +
 +    if (!conn) return
 +    const ctx = global.ensureServerCtx(conn)
-+    const projects = ctx.projects.list()
++    const projects = ctx.projects.used()
 +    const last = ctx.projects.last()
 +    const directory =
 +      projects.find((item) => item.worktree === selection.directory)?.worktree ??
-+      projects.find((item) => item.worktree === last)?.worktree ??
++      last?.worktree ??
 +      projects[0]?.worktree ??
-+      ctx.sync.data.project[0]?.worktree ??
++      ctx.projects.list()[0]?.worktree ??
 +      ctx.sync.data.path.directory
 +
 +    if (!directory) return
@@ -612,7 +759,6 @@ index 33b0058..81e12e7 100644
 +    settled = true
 +    redirecting = true
 +    const ctx = global.ensureServerCtx(next.conn)
-+    ctx.projects.open(next.directory)
 +    ctx.projects.touch(next.directory)
 +    void tabs
 +      .newDraft({ server: ServerConnection.key(next.conn), directory: next.directory })
@@ -624,52 +770,34 @@ index 33b0058..81e12e7 100644
 +
 +  return null
 +}
-
-diff --git a/packages/app/src/shell/state/layout.tsx b/packages/app/src/shell/state/layout.tsx
-index 77686c6..2852f72 100644
---- a/packages/app/src/shell/state/layout.tsx
-+++ b/packages/app/src/shell/state/layout.tsx
-@@ -119,6 +119,9 @@ export const layoutSchema = Persistence.struct({
-   }),
-   session: Persistence.struct({ width: Schema.Finite }),
-   mobileSidebar: Persistence.struct({ opened: Schema.Boolean }),
-+  // The vertical-tabs sidebar is a shell element rather than a session panel; it can be
-+  // collapsed to give the session the full width. Defaults to expanded.
-+  verticalTabs: Persistence.struct({ collapsed: Schema.Boolean }),
-   sessionTabs: Persistence.record(Persistence.fallback(sessionTabsSchema, () => ({ all: [] }))),
-   sessionView: Persistence.record(Persistence.fallback(sessionViewSchema, () => ({ scroll: {} }))),
-   home: Persistence.struct({
-@@ -191,6 +194,7 @@ export function initialLayout(server?: ServerConnection.Key): typeof layoutSchem
-     fileTree: { opened: false, width: DEFAULT_FILE_TREE_WIDTH, tab: "changes" },
-     session: { width: DEFAULT_SESSION_WIDTH },
-     mobileSidebar: { opened: false },
-+    verticalTabs: { collapsed: false },
-     sessionTabs: {},
-     sessionView: {},
-     home: { selection: server ? { server } : {} },
-@@ -442,6 +446,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
-           setStore("mobileSidebar", "opened", (x) => !x)
-         },
-       },
-+      verticalTabs: {
-+        collapsed: createMemo(() => store.verticalTabs?.collapsed ?? false),
-+        setCollapsed(value: boolean) {
-+          setStore("verticalTabs", "collapsed", value)
-+        },
-+        toggleCollapsed() {
-+          setStore("verticalTabs", "collapsed", (x) => !x)
-+        },
-+      },
-       pendingMessage: {
-         set(sessionKey: string, messageID: string) {
-           const at = Date.now()
-
+diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
+index 52e8c1f..2282728 100644
+--- a/packages/app/src/shell/shell.tsx
++++ b/packages/app/src/shell/shell.tsx
+@@ -26,6 +26,8 @@ import {
+ import { createPanelMotion, guardClosingFocus, panelOpacity } from "@/shell/panel-motion"
+ import { createSidebarPeek } from "@/shell/sidebar-peek"
+ import { windowDragEnabled } from "@/session/header/drag-area"
++// Injected by the Android build (frontend/android/sources.mjs); a no-op on every other platform.
++import { installAndroidBack } from "@/runtime/platform/android-back"
+ 
+ // How far Home steps along a peek's header to clear the collapsed toggle: to the toggle's end, from the sidebar's 18px
+ // start padding.
+@@ -36,6 +38,8 @@ type SidebarPose = { closed: number; peek: number | undefined }
+ export const sidebarToggleCommand = { id: "sidebar.toggle", keybind: "mod+shift+b" }
+ 
+ export default function Layout(props: ParentProps) {
++  // The Android host drives the system Back button through the app's own surfaces.
++  installAndroidBack()
+   const platform = usePlatform()
+   const settings = useSettingsSurface()
+   const preferences = useSettings()
 diff --git a/packages/app/src/shell/titlebar/project-session-sidebar.tsx b/packages/app/src/shell/titlebar/project-session-sidebar.tsx
 new file mode 100644
-index 0000000..0000000
+index 0000000..e78d56e
 --- /dev/null
 +++ b/packages/app/src/shell/titlebar/project-session-sidebar.tsx
-@@ -0,0 +1,1083 @@
+@@ -0,0 +1,1087 @@
 +import type { SessionInfo } from "@opencode/client/promise"
 +import { skipToken, useQuery, useQueryClient } from "@tanstack/solid-query"
 +import { createEffect, createMemo, createSignal, For, onCleanup, Show, startTransition } from "solid-js"
@@ -700,7 +828,7 @@ index 0000000..0000000
 +import { useDirectoryPicker } from "@/workspaces/selection/picker"
 +import { useCommand } from "@/shell/commands/command"
 +import { createDraftComposerState } from "@/composer/state"
-+import { closeHomeProject, compareSessionTime, homeProjectDirectories } from "@/shell/layout/helpers"
++import { compareSessionTime, homeProjectDirectories } from "@/shell/layout/helpers"
 +import { useLayout, type LocalProject } from "@/shell/state/layout"
 +import { findSessionTab, tabKey, useTabs, type DraftTab, type SessionTab } from "@/shell/tabs/tabs"
 +import { DeleteSessionDialog } from "@/session/delete-session-dialog"
@@ -1001,7 +1129,7 @@ index 0000000..0000000
 +
 +  // Match the home page: only projects the user added or opened are part of this tree.
 +  // Deriving rows from every session directory made never-opened projects appear here.
-+  const projects = createMemo(() => ctx()?.projects.list() ?? [])
++  const projects = createMemo(() => ctx()?.projects.used() ?? [])
 +
 +  const groups = createMemo(() => {
 +    const current = ctx()
@@ -1061,7 +1189,6 @@ index 0000000..0000000
 +      const tab = tabs.addSessionTab({ server: serverKey(), sessionId: session.id })
 +      tabs.select(tab)
 +      current?.data.session.remember(session)
-+      current?.projects.open(session.location.directory)
 +      current?.projects.touch(session.location.directory)
 +    })
 +  }
@@ -1074,7 +1201,6 @@ index 0000000..0000000
 +
 +  const newSession = (entry: ProjectEntry) => {
 +    const current = ctx()
-+    current?.projects.open(entry.project.worktree)
 +    current?.projects.touch(entry.project.worktree)
 +    void tabs.newDraft({ server: serverKey(), directory: entry.project.worktree })
 +  }
@@ -1111,8 +1237,12 @@ index 0000000..0000000
 +  const closeProject = (entry: ProjectEntry) => {
 +    const current = ctx()
 +    if (!current) return
-+    const next = closeHomeProject(layout.home.selection(), serverKey(), current.projects, entry.project.worktree)
-+    if (next) layout.home.setSelection(next)
++    // Hiding drops the project from this client's used projects; the server keeps it.
++    current.projects.hide(entry.project)
++    const selection = layout.home.selection()
++    if (selection?.server === serverKey() && selection.directory === entry.project.worktree) {
++      layout.home.setSelection({ server: serverKey() })
++    }
 +  }
 +
 +  const renameSession = async (session: SessionInfo, title: string) => {
@@ -1275,7 +1405,9 @@ index 0000000..0000000
 +        </div>
 +      </Show>
 +      <Show when={!sessionLoad.isPending && groups().length === 0}>
-+        <div class="px-1.5 py-1 text-[11px] leading-4 text-v2-text-text-faint">{language.t("sidebar.empty.title")}</div>
++        <div class="px-1.5 py-1 text-[11px] leading-4 text-v2-text-text-faint">
++          {language.t("settings.projects.empty.title")}
++        </div>
 +      </Show>
 +    </div>
 +  )
@@ -1753,10 +1885,383 @@ index 0000000..0000000
 +    },
 +  }
 +}
-
+diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
+index 7ac8d8b..3dbd5bf 100644
+--- a/packages/app/src/shell/titlebar/titlebar.tsx
++++ b/packages/app/src/shell/titlebar/titlebar.tsx
+@@ -6,7 +6,9 @@ import { useDialog } from "@opencode/ui/context/dialog"
+ import { IconButton } from "@opencode/ui/icon-button"
+ import { Icon } from "@opencode/ui/icon"
+ import { Keybind } from "@opencode/ui/keybind"
++import { Logo } from "@opencode/ui/logo"
+ import { Tooltip } from "@opencode/ui/tooltip"
++import type { IconName } from "@opencode/ui/icons/catalog"
+ 
+ import { LayoutRoute, useLayout } from "@/shell/state/layout"
+ import { usePlatform } from "@/runtime/platform/platform"
+@@ -17,7 +19,8 @@ import { WindowsAppMenu } from "./windows-menu"
+ import { applyPath, backPath, forwardPath, type HistoryLocation } from "./history"
+ import { TitlebarTabStrip } from "@/shell/titlebar/tab-strip"
+ import { macVerticalTrafficLights, SidebarToggle } from "@/shell/sidebar-toggle"
+-import { SidebarInbox } from "@/shell/titlebar/inbox"
++import { ProjectSessionSidebar, DraftList, ServerSwitcher } from "@/shell/titlebar/project-session-sidebar"
++import { VerticalSidebarToolbar } from "@/shell/titlebar/vertical-sidebar-toolbar"
+ import { makeEventListener } from "@solid-primitives/event-listener"
+ import { createMediaQuery } from "@solid-primitives/media"
+ import { readSessionTabsRemovedDetail, SESSION_TABS_REMOVED_EVENT } from "@/shell/titlebar/session-events"
+@@ -54,8 +57,6 @@ const windowsControlsBaseWidth = 138 // 3 native Windows caption buttons at 46px
+ 
+ const macTrafficLightsBaseWidth = 68
+ 
+-const macTrafficLightsTopClearance = 28
+-
+ // Matches the desktop window's `trafficLightPosition`.
+ const macTrafficLightsDefaultPosition = { x: 14, y: 14 }
+ 
+@@ -74,7 +75,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+   const location = useLocation()
+   const mobile = createMediaQuery("(max-width: 767px)")
+   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
+-  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
++  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
+ 
+   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
+   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
+@@ -128,7 +129,6 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+ 
+   const titlebarItems = useTitlebarItems()
+   const hideVerticalTitlebar = createMemo(() => !!props.verticalTabs && !windows())
+-  const homeInSidebarHeader = () => !windows() && !macTrafficLights()
+ 
+   const back = () => {
+     const next = backPath(history)
+@@ -151,12 +151,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       ...goBackCommand,
+       title: language.t("common.goBack"),
+       category: language.t("command.category.view"),
++      disabled: !backPath(history),
+       onSelect: back,
+     },
+     {
+       ...goForwardCommand,
+       title: language.t("common.goForward"),
+       category: language.t("command.category.view"),
++      disabled: !forwardPath(history),
+       onSelect: forward,
+     },
+   ])
+@@ -171,7 +173,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       }}
+       style={{
+         height:
+-          platform.platform === "web"
++          platform.platform !== "desktop"
+             ? bottom()
+               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
+               : mobileTop()
+@@ -345,6 +347,33 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+             const openNewTab = () => {
+               const route = layout.route()
+ 
++              // The vertical sidebar's server picker owns the project tree; a new session
++              // from that tree must use the selected server, not the routed session's server.
++              if (props.verticalTabs) {
++                const selection = layout.home.selection()
++                const conn = global.servers.list().find((item) => ServerConnection.key(item) === selection.server)
++
++                if (conn) {
++                  const ctx = global.ensureServerCtx(conn)
++                  // The projects this client has used, like the home page's project list.
++                  const projects = ctx.projects.used()
++                  const active = session()
++                  const routeServer = route.type === "session" ? route.server : undefined
++                  const preferActive = selection.server === routeServer ? active?.location.directory : undefined
++                  const directory =
++                    projects.find((project) => project.worktree === preferActive)?.worktree ??
++                    projects.find((project) => project.worktree === selection.directory)?.worktree ??
++                    ctx.projects.last()?.worktree ??
++                    projects[0]?.worktree
++
++                  if (directory) {
++                    void tabs.newDraft({ server: ServerConnection.key(conn), directory }, "")
++
++                    return true
++                  }
++                }
++              }
++
+               switch (route.type) {
+                 case "session": {
+                   const pending = tabs.pendingSession(route.server, route.sessionId)
+@@ -520,6 +549,12 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                 keybind: windows() ? "alt+home" : "mod+b",
+                 hidden: true,
+                 onSelect: () => {
++                  // Vertical tabs have no Home surface: the same shortcut opens a new draft.
++                  if (props.verticalTabs) {
++                    openNewTab()
++                    return
++                  }
++
+                   if (layout.route().type !== "home") layout.home.searchFocus.request()
+                   toggleHome()
+                 },
+@@ -535,6 +570,21 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+               },
+             ])
+ 
++            command.register("vertical-sidebar-collapse", () =>
++              props.verticalTabs
++                ? [
++                    {
++                      id: "sidebar.collapse",
++                      title: language.t(
++                        settings.appearance.sidebarOpen() ? "sidebar.collapse" : "sidebar.expand",
++                      ),
++                      category: language.t("command.category.view"),
++                      onSelect: () => settings.appearance.setSidebarOpen(!settings.appearance.sidebarOpen()),
++                    },
++                  ]
++                : [],
++            )
++
+             command.register("tabs", () => {
+               const current = currentTab()
+ 
+@@ -624,8 +674,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                   "ps-3.5": windows(),
+                 }}
+               >
+-                <Show when={windows() || linux()}>
+-                  <WindowsAppMenu command={command} platform={platform} />
++                <Show when={windows() || linux() || platform.platform === "android"}>
++                  <WindowsAppMenu
++                    command={command}
++                    platform={platform}
++                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
++                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
++                  />
+                 </Show>
+                 <Show when={windows() && props.verticalTabs}>
+                   <SidebarToggle />
+@@ -636,6 +691,32 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                     {searchButton()}
+                   </div>
+                 </Show>
++                <Show when={mobile() && !props.verticalTabs}>
++                  <Tooltip placement="bottom" value={language.t("home.title")}>
++                    <IconButton
++                      data-action="mobile-home"
++                      variant="ghost-muted"
++                      size="large"
++                      icon={<Icon name="grid-plus" />}
++                      aria-label={language.t("home.title")}
++                      aria-pressed={layout.route().type === "home"}
++                      state={layout.route().type === "home" ? "pressed" : undefined}
++                      onClick={toggleHome}
++                    />
++                  </Tooltip>
++                  <Tooltip placement="bottom" value={language.t("sidebar.settings")}>
++                    <IconButton
++                      data-action="mobile-settings"
++                      variant="ghost-muted"
++                      size="large"
++                      icon={<Icon name="settings-gear" />}
++                      aria-label={language.t("sidebar.settings")}
++                      aria-pressed={layout.route().type === "settings"}
++                      state={layout.route().type === "settings" ? "pressed" : undefined}
++                      onClick={() => openSettings()}
++                    />
++                  </Tooltip>
++                </Show>
+ 
+                 <Show
+                   when={!mobile()}
+@@ -810,76 +891,25 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                             mount={mount}
+                             ref={(element) => (element.className = "flex size-full min-h-0 flex-col")}
+                           >
++                            {/* The macOS traffic lights sit above the sidebar's own rows. */}
++                            <Show when={macVerticalTabs()}>
++                              <div class="h-8 w-full shrink-0" data-tauri-drag-region />
++                            </Show>
++                            <VerticalSidebarToolbar class="mb-1" />
+                             <Show when={!windows()}>
+-                              {/* Shares the session header's 48px center line. Without traffic lights, Home fills the
+-                                  start so the row doesn't leave an empty band. */}
+-                              <div
+-                                data-slot="sidebar-header"
+-                                data-home={homeInSidebarHeader() ? "" : undefined}
+-                                class="flex w-full shrink-0 gap-2"
+-                                classList={{
+-                                  "items-start pt-2.5 pb-1": homeInSidebarHeader(),
+-                                  "mb-2 h-12 items-center": !homeInSidebarHeader(),
+-                                }}
+-                                style={{
+-                                  "min-height": macVerticalTabs()
+-                                    ? `${macTrafficLightsTopClearance / zoom()}px`
+-                                    : undefined,
+-                                }}
+-                                data-tauri-drag-region
+-                              >
+-                                <Show when={macTrafficLights()}>
+-                                  {/* The sidebar's 18px start padding already covers part of the traffic lights. */}
+-                                  <div
+-                                    class="shrink-0"
+-                                    style={{
+-                                      width: `calc(${macVerticalTrafficLights(zoom()).width / zoom()}px - 18px)`,
+-                                    }}
+-                                    aria-hidden="true"
+-                                  />
+-                                </Show>
+-                                <Show when={homeInSidebarHeader()} fallback={<div class="flex-1" />}>
+-                                  <div class="min-w-0 flex-1">{homeButton(true)}</div>
+-                                </Show>
+-                                {/* Optically aligns the toggle's glyph with the selected session's end edge. */}
+-                                <div class="-me-0.5 flex shrink-0">
+-                                  <SidebarToggle handoff="out" />
+-                                </div>
+-                              </div>
++                              <SidebarBrand />
+                             </Show>
+-                            <div class="flex w-full shrink-0 flex-col gap-1">
+-                              <Show when={!homeInSidebarHeader()}>{homeButton(true)}</Show>
+-                              {searchButton(true)}
+-                              <RecentlyClosedTabsMenu
+-                                vertical
+-                                onNewTab={openNewTab}
+-                                keybind={command.keybind("tab.new")}
+-                              />
+-                            </div>
++                            <ServerSwitcher />
++                            <RecentlyClosedTabsMenu
++                              vertical
++                              onNewTab={openNewTab}
++                              keybind={command.keybind("tab.new")}
++                            />
++                            <DraftList />
++                            <VerticalSidebarNav />
+                             <div class="h-4 w-full shrink-0" aria-hidden="true" />
+                             <div class="flex min-h-0 flex-1 flex-col gap-1">
+-                              <Show
+-                                when={settings.appearance.tabLayout() === "inbox"}
+-                                fallback={
+-                                  <TitlebarTabStrip
+-                                    orientation="vertical"
+-                                    tabs={tabsStore}
+-                                    currentTab={currentTab()}
+-                                    onNavigate={(tab, el) => {
+-                                      tabs.select(tab)
+-                                      el?.scrollIntoView({ behavior: "instant", block: "nearest" })
+-                                    }}
+-                                    onClose={(tab) => {
+-                                      const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+-
+-                                      if (index !== -1) tabsStoreActions.closeTab(index)
+-                                    }}
+-                                    onReorder={(keys) => tabsStoreActions.reorder(keys)}
+-                                  />
+-                                }
+-                              >
+-                                <SidebarInbox />
+-                              </Show>
++                              <ProjectSessionSidebar />
+                             </div>
+                             <Show when={titlebarItems.ids().length > 0}>
+                               <div data-slot="vertical-tabs-footer" class="mt-2 flex w-full shrink-0 flex-col">
+@@ -900,6 +930,18 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                     <TitlebarItems items={titlebarItems} />
+                   </div>
+                 </Show>
++                <Show when={mobile()}>
++                  <Tooltip placement="bottom" value={language.t("command.session.new")}>
++                    <IconButton
++                      data-action="mobile-new-tab"
++                      variant="ghost-muted"
++                      size="large"
++                      icon={<Icon name="plus" />}
++                      aria-label={language.t("command.session.new")}
++                      onClick={openNewTab}
++                    />
++                  </Tooltip>
++                </Show>
+               </div>
+             )
+           }}
+@@ -908,3 +950,70 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+     </header>
+   )
+ }
++
++/**
++ * The sidebar's wordmark. It stands in for the Home surface the vertical layout does not have:
++ * tapping it starts a new session.
++ */
++function SidebarBrand() {
++  const language = useLanguage()
++  const command = useCommand()
++
++  return (
++    <Tooltip
++      placement="right"
++      value={language.t("command.session.new")}
++      class="mb-2 me-1 shrink-0 self-start"
++    >
++      <button
++        type="button"
++        data-slot="sidebar-brand"
++        data-action="vertical-tabs-brand"
++        class="flex h-10 w-full shrink-0 items-center rounded-[6px] ps-2 pe-2 [app-region:no-drag] hover:bg-v2-background-bg-layer-02 focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
++        aria-label={language.t("command.session.new")}
++        onClick={() => void command.trigger("tab.new")}
++      >
++        <Logo class="h-[30px] w-auto" />
++      </button>
++    </Tooltip>
++  )
++}
++
++/**
++ * The sidebar's footer navigation: the two destinations that are not part of the project tree.
++ */
++function VerticalSidebarNav() {
++  const language = useLanguage()
++  const command = useCommand()
++  const platform = usePlatform()
++
++  const row = (props: { action: string; icon: IconName; label: string; onClick: () => void }) => (
++    <button
++      type="button"
++      data-action={props.action}
++      class="flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[6px] ps-1.5 pe-2 text-[13px] leading-4 text-v2-text-text-faint hover:text-v2-text-text-base focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
++      aria-label={props.label}
++      onClick={props.onClick}
++    >
++      <Icon name={props.icon} class="shrink-0" />
++      <span class="min-w-0 truncate">{props.label}</span>
++    </button>
++  )
++
++  return (
++    <div data-slot="vertical-sidebar-nav" class="flex shrink-0 flex-col gap-0.5">
++      {row({
++        action: "vertical-tabs-settings",
++        icon: "settings-gear",
++        label: language.t("sidebar.settings"),
++        onClick: () => void command.trigger("settings.open"),
++      })}
++      {row({
++        action: "vertical-tabs-help",
++        icon: "help",
++        label: language.t("sidebar.help"),
++        onClick: () => platform.openExternal("https://opencode.ai/docs"),
++      })}
++    </div>
++  )
++}
 diff --git a/packages/app/src/shell/titlebar/vertical-sidebar-toolbar.tsx b/packages/app/src/shell/titlebar/vertical-sidebar-toolbar.tsx
 new file mode 100644
-index 0000000..7a7b847
+index 0000000..7eb344e
 --- /dev/null
 +++ b/packages/app/src/shell/titlebar/vertical-sidebar-toolbar.tsx
 @@ -0,0 +1,106 @@
@@ -1767,7 +2272,7 @@ index 0000000..7a7b847
 +import { useCommand } from "@/shell/commands/command"
 +import { useLanguage } from "@/runtime/i18n/language"
 +import { usePlatform } from "@/runtime/platform/platform"
-+import { useLayout } from "@/shell/state/layout"
++import { useSettings } from "@/settings/model"
 +import { WindowsAppMenu } from "./windows-menu"
 +
 +/**
@@ -1822,10 +2327,10 @@ index 0000000..7a7b847
 +export function CollapsedSidebarControls() {
 +  const command = useCommand()
 +  const platform = usePlatform()
-+  const layout = useLayout()
++  const settings = useSettings()
 +
 +  return (
-+    <Show when={layout.verticalTabs.collapsed()}>
++    <Show when={!settings.appearance.sidebarOpen()}>
 +      <div
 +        data-slot="collapsed-sidebar-controls"
 +        class="flex shrink-0 items-center gap-0.5 border-e border-v2-border-border-muted pe-1 me-0.5"
@@ -1843,9 +2348,9 @@ index 0000000..7a7b847
 +}
 +
 +function SidebarCollapseButton() {
-+  const layout = useLayout()
++  const settings = useSettings()
 +  const language = useLanguage()
-+  const collapsed = () => layout.verticalTabs.collapsed()
++  const collapsed = () => !settings.appearance.sidebarOpen()
 +  const label = () => language.t(collapsed() ? "sidebar.expand" : "sidebar.collapse")
 +
 +  return (
@@ -1857,7 +2362,7 @@ index 0000000..7a7b847
 +        icon={<Icon name="layout-left" />}
 +        aria-label={label()}
 +        aria-expanded={!collapsed()}
-+        onClick={() => layout.verticalTabs.toggleCollapsed()}
++        onClick={() => settings.appearance.setSidebarOpen(!settings.appearance.sidebarOpen())}
 +      />
 +    </Tooltip>
 +  )
@@ -1866,708 +2371,53 @@ index 0000000..7a7b847
 +function disabled(command: ReturnType<typeof useCommand>, id: string) {
 +  return !!command.options.find((option) => option.id === id)?.disabled
 +}
-
-diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
-index 3cf0efe..076ca47 100644
---- a/packages/app/src/session/session-panel-width.ts
-+++ b/packages/app/src/session/session-panel-width.ts
-@@ -8,10 +8,20 @@ const REVIEW_PANE_WIDTH_MIN = 480
- 
- const REVIEW_PANE_WIDTH_MIN_SPLIT = 800
- 
-+/** Leave enough travel for the splitter; otherwise a narrow layout locks the chat width. */
-+const SESSION_PANEL_WIDTH_RANGE_MIN = 120
-+
-+/** Do not reserve so much for the review pane that it becomes unusable on a tablet. */
-+const REVIEW_PANE_WIDTH_MIN_FLOOR = 320
-+
- export function sessionPanelWidthMax(input: { available: number; split: boolean }) {
--  const pane = input.split ? REVIEW_PANE_WIDTH_MIN_SPLIT : REVIEW_PANE_WIDTH_MIN
-+  const preferred = input.split ? REVIEW_PANE_WIDTH_MIN_SPLIT : REVIEW_PANE_WIDTH_MIN
-+  const reserve = Math.min(
-+    preferred,
-+    Math.max(REVIEW_PANE_WIDTH_MIN_FLOOR, input.available - SESSION_PANEL_WIDTH_MIN - SESSION_PANEL_WIDTH_RANGE_MIN),
-+  )
- 
--  return Math.max(SESSION_PANEL_WIDTH_MIN, input.available - pane)
-+  return Math.max(SESSION_PANEL_WIDTH_MIN, input.available - reserve)
+diff --git a/packages/gui-plugins/src/context/i18n/en.ts b/packages/gui-plugins/src/context/i18n/en.ts
+index 5ad0d90..0808c27 100644
+--- a/packages/gui-plugins/src/context/i18n/en.ts
++++ b/packages/gui-plugins/src/context/i18n/en.ts
+@@ -29,4 +29,7 @@ export default {
+   "export.success.description": "Saved session to {{filename}}",
+   "export.failed.title": "Failed to export session",
+   "export.failed.description": "An error occurred while exporting the session",
++  "history.loading": "Loading the full history…",
++  "history.failed": "Could not load the full history",
++  "history.retry": "Retry",
  }
- 
- // `available` is undefined until the layout row is first measured; render the
-
-diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
-index 35ee282..1fc2f47 100644
---- a/packages/app/src/session/session-panel-width.test.ts
-+++ b/packages/app/src/session/session-panel-width.test.ts
-@@ -8,6 +8,7 @@ test.each([
-   // Regression: the old cap was 45% of the window, forcing the review pane to at least 55%.
-   ["lets the chat panel take everything beyond the review pane minimum", 3440, 3440, false, 2960],
-   ["holds the chat panel minimum when there is no room for both", 1600, 700, true, 450],
-+  ["leaves a usable drag range on a narrow split layout", 600, 994, true, 570],
-   ["never drops below the chat panel minimum on small windows", 1600, 0, false, 450],
-   ["skips clamping before the layout is measured", 1600, undefined, false, 1600],
- ])("%s", (_name, width, available, split, expected) => {
-
-diff --git a/packages/app/src/runtime/extension/side-region.tsx b/packages/app/src/runtime/extension/side-region.tsx
-index 7f4a0c2..bfbeecf 100644
---- a/packages/app/src/runtime/extension/side-region.tsx
-+++ b/packages/app/src/runtime/extension/side-region.tsx
-@@ -103,7 +103,7 @@ export function SideRegion(props: {
-           "h-full shrink-0": !props.stacked,
-           "h-full min-h-0": props.stacked,
-           "pointer-events-none": !open(),
--          "transition-[width] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
-+          "transition-[width] duration-[160ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none":
-             !props.size.active(),
-           "flex-1": tabsVisible(),
-         }}
-
-diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
-index 6ee0b5a..aeddfaf 100644
---- a/packages/app/src/runtime/i18n/en.ts
-+++ b/packages/app/src/runtime/i18n/en.ts
-@@ -648,6 +648,14 @@ export const dict = {
- 
-   "sidebar.settings": "Settings",
-   "sidebar.help": "Help",
-+  "sidebar.server.select": "Select server",
-+  "sidebar.collapse": "Hide sidebar",
-+  "sidebar.expand": "Show sidebar",
-+  "sidebar.sessions.more.one": "Show {{count}} more session",
-+  "sidebar.sessions.more.other": "Show {{count}} more sessions",
-+  "sidebar.sessions.collapse": "Collapse",
-+  "sidebar.session.children.expand": "Show subagent sessions",
-+  "sidebar.session.children.collapse": "Hide subagent sessions",
-   "sidebar.project.recentSessions": "Recent sessions",
-   "sidebar.project.clearNotifications": "Clear notifications",
-
-diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
-index 25bc495..7c45ccd 100644
---- a/packages/app/src/shell/shell.tsx
-+++ b/packages/app/src/shell/shell.tsx
-@@ -4,26 +4,38 @@ import { createMediaQuery } from "@solid-primitives/media"
- import { ResizeHandle } from "@opencode/ui/resize-handle"
- import { Titlebar } from "@/shell/titlebar/titlebar"
- import { usePlatform } from "@/runtime/platform/platform"
-+import { useLayout } from "@/shell/state/layout"
-+import { useVerticalTabs } from "@/shell/layout/vertical"
- import { ToastRegion } from "@/shell/notifications/toast"
- import { UploadToastHost } from "@/composer/attachments/uploads"
- import { TitlebarRightProvider } from "@/shell/titlebar/right-slot"
-+import { CollapsedSidebarControls } from "@/shell/titlebar/vertical-sidebar-toolbar"
- import { useSettingsSurface } from "@/settings/surface"
- import { useSettings } from "@/settings/model"
- import { ExtensionServerCover } from "@/runtime/extension/server-shell"
- import { ExtensionSlot } from "@/runtime/extension/render"
-+import { installAndroidBack } from "@/runtime/platform/android-back"
- 
- export default function Layout(props: ParentProps) {
-+  installAndroidBack()
-   const platform = usePlatform()
-+  const layout = useLayout()
-   const settings = useSettingsSurface()
-   const preferences = useSettings()
-   const mobile = createMediaQuery("(max-width: 767px)")
- 
--  const [state, setState] = createStore<{ tabsWidth: number; tabsMount: HTMLElement | undefined }>({
-+  const [state, setState] = createStore<{
-+    tabsWidth: number
-+    tabsMount: HTMLElement | undefined
-+    tabsSizing: boolean
-+  }>({
-     tabsWidth: 260,
-     tabsMount: undefined,
-+    tabsSizing: false,
-   })
- 
--  const verticalTabs = () => preferences.appearance.tabLayout() === "vertical" && !mobile()
-+  const verticalTabs = useVerticalTabs()
-+  const verticalTabsCollapsed = () => verticalTabs() && layout.verticalTabs.collapsed()
-   const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
- 
-   return (
-@@ -48,28 +60,50 @@ export default function Layout(props: ParentProps) {
-         <Titlebar verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined} />
-         <div class="flex flex-1 min-h-0 min-w-0 flex-row">
-           <Show when={verticalTabs()}>
--            <aside
--              ref={(element) => setState("tabsMount", element)}
--              data-slot="vertical-tabs-sidebar"
--              class="relative flex h-full min-h-0 shrink-0 flex-col bg-v2-background-bg-deep pe-0.5 ps-2.5 pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]"
-+            <div
-+              data-slot="vertical-tabs-slot"
-+              data-collapsed={verticalTabsCollapsed() ? "" : undefined}
-+              class="relative flex h-full min-h-0 shrink-0 flex-col overflow-visible transition-[width] duration-[160ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-+              classList={{ "transition-none": state.tabsSizing }}
-               style={{
--                width: `${state.tabsWidth}px`,
--                "padding-bottom": "max(10px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))",
-+                width: verticalTabsCollapsed() ? "0px" : `${state.tabsWidth}px`,
-+                // The portal content keeps this width while the slot collapses, so only the
-+                // container edge moves instead of reflowing the project tree every frame.
-+                "--vertical-sidebar-content-width": `${state.tabsWidth}px`,
-               }}
-+              inert={verticalTabsCollapsed()}
-+              aria-hidden={verticalTabsCollapsed() ? "true" : undefined}
-+              onPointerUp={() => setState("tabsSizing", false)}
-+              onPointerCancel={() => setState("tabsSizing", false)}
-+              onLostPointerCapture={() => setState("tabsSizing", false)}
-             >
--              <ResizeHandle
--                class="-end-2"
--                direction="horizontal"
--                size={state.tabsWidth}
--                min={140}
--                max={520}
--                onResize={(width) => setState("tabsWidth", width)}
--              />
--            </aside>
-+              <aside
-+                ref={(element) => setState("tabsMount", element)}
-+                data-slot="vertical-tabs-sidebar"
-+                class="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-v2-background-bg-deep"
-+              >
-+                {/* The titlebar portals its content into the mount; see titlebar.tsx. */}
-+              </aside>
-+              <Show when={!verticalTabsCollapsed()}>
-+                <div
-+                  class="absolute inset-y-0 end-0 z-10 w-0"
-+                  onPointerDown={() => setState("tabsSizing", true)}
-+                >
-+                  <ResizeHandle
-+                    class="-end-2"
-+                    direction="horizontal"
-+                    size={state.tabsWidth}
-+                    min={140}
-+                    max={520}
-+                    onResize={(width) => setState("tabsWidth", width)}
-+                  />
-+                </div>
-+              </Show>
-+            </div>
-           </Show>
-           {/* Size containment collapses percentage-height descendants in WebKit. */}
-           <main
--            class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content"
-+            class="relative flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content"
-             style={{
-               "padding-top": bottomTitlebar() ? "env(safe-area-inset-top, 0px)" : "0px",
-               "padding-bottom":
-@@ -81,6 +115,14 @@ export default function Layout(props: ParentProps) {
-                 : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
-             }}
-           >
-+            <Show when={verticalTabsCollapsed() && layout.route().type !== "session"}>
-+              <div
-+                data-slot="collapsed-sidebar-floating"
-+                class="absolute start-2 top-2 z-40 flex items-center rounded-[7px] bg-v2-background-bg-deep shadow-[var(--v2-elevation-raised)]"
-+              >
-+                <CollapsedSidebarControls />
-+              </div>
-+            </Show>
-             <ExtensionServerCover>
-               <Suspense>{props.children}</Suspense>
-             </ExtensionServerCover>
-
-diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index f3780f5..7fcf858 100644
---- a/packages/app/src/shell/titlebar/titlebar.tsx
-+++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "@solidjs/router"
- import { IconButton } from "@opencode/ui/icon-button"
- import { Icon } from "@opencode/ui/icon"
- import { Keybind } from "@opencode/ui/keybind"
-+import { Logo } from "@opencode/ui/logo"
- import { Tooltip } from "@opencode/ui/tooltip"
- 
- import { LayoutRoute, useLayout } from "@/shell/state/layout"
-@@ -15,11 +16,14 @@ import { useSettings } from "@/settings/model"
- import { WindowsAppMenu } from "./windows-menu"
- import { applyPath, backPath, forwardPath, type HistoryLocation } from "./history"
- import { TitlebarTabStrip } from "@/shell/titlebar/tab-strip"
-+import { ProjectSessionSidebar, DraftList, ServerSwitcher } from "@/shell/titlebar/project-session-sidebar"
-+import { VerticalSidebarToolbar } from "@/shell/titlebar/vertical-sidebar-toolbar"
- import { makeEventListener } from "@solid-primitives/event-listener"
- import { createMediaQuery } from "@solid-primitives/media"
- import { readSessionTabsRemovedDetail, SESSION_TABS_REMOVED_EVENT } from "@/shell/titlebar/session-events"
- import { useGlobal } from "@/runtime/server/runtime"
- import { ServerConnection } from "@/runtime/server/registry"
-+import type { IconName } from "@opencode/ui/icons/catalog"
- import { tabKey, useTabs } from "@/shell/tabs/tabs"
- import type { ComposerState } from "@/composer/persistence"
- import "./titlebar.css"
-@@ -64,7 +68,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-   const location = useLocation()
-   const mobile = createMediaQuery("(max-width: 767px)")
-   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
--  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
-+  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
- 
-   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
-   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -132,6 +136,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-       title: language.t("common.goBack"),
-       category: language.t("command.category.view"),
-       keybind: "mod+[",
-+      disabled: !backPath(history),
-       onSelect: back,
-     },
-     {
-@@ -139,6 +144,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-       title: language.t("common.goForward"),
-       category: language.t("command.category.view"),
-       keybind: "mod+]",
-+      disabled: !forwardPath(history),
-       onSelect: forward,
-     },
-   ])
-@@ -153,7 +159,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-       }}
-       style={{
-         height:
--          platform.platform === "web"
-+          platform.platform !== "desktop"
-             ? bottom()
-               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
-               : mobileTop()
-@@ -328,6 +334,30 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
- 
-               switch (route.type) {
-                 case "session": {
-+                  // The vertical sidebar's server picker owns the project tree; a new session
-+                  // from that tree must use the selected server, not the routed session's server.
-+                  if (props.verticalTabs) {
-+                    const selection = layout.home.selection()
-+                    const conn = global.servers.list().find((item) => ServerConnection.key(item) === selection.server)
-+
-+                    if (conn) {
-+                      const ctx = global.ensureServerCtx(conn)
-+                      const projects = ctx.projects.list()
-+                      const active = session()
-+                      const preferActive = selection.server === route.server ? active?.location.directory : undefined
-+                      const directory =
-+                        projects.find((project) => project.worktree === preferActive)?.worktree ??
-+                        projects.find((project) => project.worktree === selection.directory)?.worktree ??
-+                        ctx.projects.last() ??
-+                        projects[0]?.worktree
-+
-+                      if (directory) {
-+                        void tabs.newDraft({ server: ServerConnection.key(conn), directory }, "")
-+                        return
-+                      }
-+                    }
-+                  }
-+
-                   const pending = tabs.pendingSession(route.server, route.sessionId)
- 
-                   if (pending) {
-@@ -445,6 +475,21 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-               </Show>
-             )
- 
-+            command.register("vertical-sidebar-collapse", () =>
-+              props.verticalTabs
-+                ? [
-+                    {
-+                      id: "sidebar.collapse",
-+                      title: language.t(
-+                        layout.verticalTabs.collapsed() ? "sidebar.expand" : "sidebar.collapse",
-+                      ),
-+                      category: language.t("command.category.view"),
-+                      onSelect: () => layout.verticalTabs.toggleCollapsed(),
-+                    },
-+                  ]
-+                : [],
-+            )
-+
-             command.register("titlebar-home", () => [
-               {
-                 id: "home.toggle",
-@@ -453,6 +498,12 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                 keybind: windows() ? "alt+home" : "mod+b",
-                 hidden: true,
-                 onSelect: () => {
-+                  // Vertical tabs have no Home surface: the same shortcut opens a new draft.
-+                  if (props.verticalTabs) {
-+                    openNewTab()
-+                    return
-+                  }
-+
-                   if (layout.route().type !== "home") layout.home.searchFocus.request()
-                   toggleHome()
-                 },
-@@ -534,13 +585,46 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                   "ps-3.5": windows(),
-                 }}
-               >
--                <Show when={!mobile() && (!props.verticalTabs || windows())}>
--                  <ChannelIndicator horizontal />
--                </Show>
--                <Show when={windows() || linux()}>
--                  <WindowsAppMenu command={command} platform={platform} />
-+                <Show when={!props.verticalTabs}>
-+                  <Show when={!mobile()}>
-+                    <ChannelIndicator horizontal />
-+                  </Show>
-+                  <Show when={windows() || linux() || platform.platform === "android"}>
-+                    <WindowsAppMenu
-+                      command={command}
-+                      platform={platform}
-+                      menuPlatform={platform.platform === "android" ? "android" : "windows"}
-+                      actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
-+                    />
-+                  </Show>
-+                  <Show when={!mobile()}>{homeButton()}</Show>
-+                  <Show when={mobile()}>
-+                    <Tooltip placement="bottom" value={language.t("home.title")}>
-+                      <IconButton
-+                        data-action="mobile-home"
-+                        variant="ghost-muted"
-+                        size="large"
-+                        icon={<Icon name="grid-plus" />}
-+                        aria-label={language.t("home.title")}
-+                        aria-pressed={layout.route().type === "home"}
-+                        state={layout.route().type === "home" ? "pressed" : undefined}
-+                        onClick={toggleHome}
-+                      />
-+                    </Tooltip>
-+                    <Tooltip placement="bottom" value={language.t("sidebar.settings")}>
-+                      <IconButton
-+                        data-action="mobile-settings"
-+                        variant="ghost-muted"
-+                        size="large"
-+                        icon={<Icon name="settings-gear" />}
-+                        aria-label={language.t("sidebar.settings")}
-+                        aria-pressed={layout.route().type === "settings"}
-+                        state={layout.route().type === "settings" ? "pressed" : undefined}
-+                        onClick={() => openSettings()}
-+                      />
-+                    </Tooltip>
-+                  </Show>
-                 </Show>
--                <Show when={!mobile() && !props.verticalTabs}>{homeButton()}</Show>
- 
-                 <Show
-                   when={!mobile()}
-@@ -713,7 +797,15 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                         {(mount) => (
-                           <Portal
-                             mount={mount}
--                            ref={(element) => (element.className = "flex size-full min-h-0 flex-col")}
-+                            ref={(element) => {
-+                              // Keep the sidebar content at its settled width while the slot
-+                              // animates, so collapsing clips it instead of reflowing it.
-+                              element.className =
-+                                "flex h-full min-h-0 flex-col ps-2.5 pe-0.5 pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]"
-+                              element.style.width = "var(--vertical-sidebar-content-width, 100%)"
-+                              element.style.paddingBottom =
-+                                "max(10px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))"
-+                            }}
-                           >
-                             <Show when={macVerticalTabs()}>
-                               <div
-@@ -722,32 +814,21 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                                 data-tauri-drag-region
-                               />
-                             </Show>
-+                            <VerticalSidebarToolbar class="mb-1" />
-                             <Show when={!windows()}>
--                              <ChannelIndicator sidebar />
-+                              <SidebarBrand />
-                             </Show>
--                            {homeButton(true)}
-+                            <ServerSwitcher />
-                             <RecentlyClosedTabsMenu
-                               vertical
-                               onNewTab={openNewTab}
-                               keybind={command.keybind("tab.new")}
-                             />
-+                            <DraftList />
-+                            <VerticalSidebarNav />
-                             <div class="h-4 w-full shrink-0" aria-hidden="true" />
-                             <div class="flex min-h-0 flex-1 flex-col gap-1">
--                              <TitlebarTabStrip
--                                orientation="vertical"
--                                tabs={tabsStore}
--                                currentTab={currentTab()}
--                                onNavigate={(tab, el) => {
--                                  tabs.select(tab)
--                                  el?.scrollIntoView({ behavior: "instant", block: "nearest" })
--                                }}
--                                onClose={(tab) => {
--                                  const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
--
--                                  if (index !== -1) tabsStoreActions.closeTab(index)
--                                }}
--                                onReorder={(keys) => tabsStoreActions.reorder(keys)}
--                              />
-+                              <ProjectSessionSidebar />
-                             </div>
-                             <Show when={titlebarItems.ids().length > 0}>
-                               <div data-slot="vertical-tabs-footer" class="mt-2 flex w-full shrink-0 flex-col">
-@@ -769,6 +850,18 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                     <TitlebarRightMount />
-                   </div>
-                 </Show>
-+                <Show when={mobile()}>
-+                  <Tooltip placement="bottom" value={language.t("command.session.new")}>
-+                    <IconButton
-+                      data-action="mobile-new-tab"
-+                      variant="ghost-muted"
-+                      size="large"
-+                      icon={<Icon name="plus" />}
-+                      aria-label={language.t("command.session.new")}
-+                      onClick={openNewTab}
-+                    />
-+                  </Tooltip>
-+                </Show>
-               </div>
-             )
-           }}
-@@ -778,6 +871,80 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-   )
+diff --git a/packages/gui-plugins/src/context/i18n/zh.ts b/packages/gui-plugins/src/context/i18n/zh.ts
+index e35c175..d4db2f0 100644
+--- a/packages/gui-plugins/src/context/i18n/zh.ts
++++ b/packages/gui-plugins/src/context/i18n/zh.ts
+@@ -28,4 +28,7 @@ export default {
+   "export.success.description": "已将会话保存到 {{filename}}",
+   "export.failed.title": "导出会话失败",
+   "export.failed.description": "导出会话时发生错误",
++  "history.loading": "正在加载完整历史…",
++  "history.failed": "无法加载完整历史",
++  "history.retry": "重试",
  }
- 
-+/**
-+ * The vertical sidebar's navigation: settings and help. No Home row: vertical tabs replace Home
-+ * with new drafts, and the brand wordmark above also opens one. Adding a project lives on the
-+ * project tree's own header, next to the list it appends to.
-+ */
-+function VerticalSidebarNav() {
-+  const language = useLanguage()
-+  const command = useCommand()
-+  const platform = usePlatform()
-+
-+  const row = (props: { action: string; icon: IconName; label: string; onClick: () => void }) => (
-+    <button
-+      type="button"
-+      data-action={props.action}
-+      class="flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[6px] ps-1.5 pe-2 text-[13px] leading-4 text-v2-text-text-faint hover:text-v2-text-text-base focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
-+      aria-label={props.label}
-+      onClick={props.onClick}
-+    >
-+      <Icon name={props.icon} class="shrink-0" />
-+      <span class="min-w-0 truncate">{props.label}</span>
-+    </button>
-+  )
-+
-+  return (
-+    <div data-slot="vertical-sidebar-nav" class="flex shrink-0 flex-col gap-0.5">
-+      {row({
-+        action: "vertical-tabs-settings",
-+        icon: "settings-gear",
-+        label: language.t("sidebar.settings"),
-+        onClick: () => void command.trigger("settings.open"),
-+      })}
-+      {row({
-+        action: "vertical-tabs-help",
-+        icon: "help",
-+        label: language.t("sidebar.help"),
-+        onClick: () => platform.openExternal("https://opencode.ai/docs"),
-+      })}
-+    </div>
-+  )
-+}
-+
-+/**
-+ * The vertical sidebar's brand slot: the official OpenCode wordmark from `@opencode/ui/logo`.
-+ * Its fills are theme tokens (--icon-weak-base / --icon-strong-base), so the wordmark is dark
-+ * on light themes and light on dark themes without a separate per-theme asset. Vertical tabs
-+ * have no Home surface, so clicking the wordmark opens a new draft like the row below it.
-+ */
-+function SidebarBrand() {
-+  const language = useLanguage()
-+  const command = useCommand()
-+  const channel = import.meta.env.VITE_OPENCODE_CHANNEL
-+
-+  return (
-+    <Tooltip
-+      placement="right"
-+      value={
-+        channel && channel !== "prod" ? language.t(`titlebar.channel.${channel}`) : language.t("command.session.new")
-+      }
-+      class="mb-2 me-1 shrink-0 self-start"
-+    >
-+      <button
-+        type="button"
-+        data-slot="sidebar-brand"
-+        data-action="vertical-tabs-brand"
-+        class="flex h-10 w-full shrink-0 items-center rounded-[6px] ps-2 pe-2 [app-region:no-drag] hover:bg-v2-background-bg-layer-02 focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
-+        aria-label={language.t("command.session.new")}
-+        onClick={() => void command.trigger("tab.new")}
-+      >
-+        <Logo class="h-[30px] w-auto" />
-+      </button>
-+    </Tooltip>
-+  )
-+}
-+
- function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
-   const language = useLanguage()
-   const platform = usePlatform()
-@@ -798,7 +965,7 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
-     <Tooltip
-       placement={props.sidebar ? "right" : "bottom"}
-       value={label()}
--      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform === "web" ? "ps-2.5" : ""}`}
-+      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform !== "desktop" ? "ps-2.5" : ""}`}
-     >
-       <Dynamic
-         component={debug() ? "button" : "div"}
-
-diff --git a/packages/app/src/session/screen.tsx b/packages/app/src/session/screen.tsx
-index a2cd389..4eb372d 100644
---- a/packages/app/src/session/screen.tsx
-+++ b/packages/app/src/session/screen.tsx
-@@ -182,9 +182,22 @@ function SessionScreenContent(props: {
-     if (isDesktop() && screen.dock.side()) setStore("bottomDockCached", false)
-   })
-   createEffect(() => {
--    if (screen.side.region.open()) setStore("sideRegionPresent", true)
-+    if (!screen.side.region.open() && !screen.side.tabs.open()) return
- 
--    if (screen.side.tabs.open()) setStore("sideTabsPresent", true)
-+    const show = () => {
-+      if (screen.side.region.open()) setStore("sideRegionPresent", true)
-+      if (screen.side.tabs.open()) setStore("sideTabsPresent", true)
-+    }
-+
-+    if (!sidePresence.animate()) {
-+      show()
-+      return
-+    }
-+
-+    // Mount the review content on the next frame so the click that starts the width
-+    // animation is not also charged for the panel's first render.
-+    const frame = requestAnimationFrame(show)
-+    onCleanup(() => cancelAnimationFrame(frame))
-   })
- 
-   // The dock's narrow-screen view follows the dock's open state; other views are a selection.
-@@ -388,7 +401,7 @@ function SessionScreenContent(props: {
-           <div
-             classList={{
-               "@container relative z-10 min-w-0 shrink-0 flex flex-col min-h-0 h-full flex-1 md:flex-none transition-[width]": true,
--              "duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)] will-change-[width] motion-reduce:transition-none":
-+              "duration-[160ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none":
-                 !screen.size.active() && sidePresence.animate(),
-               "transition-none": screen.size.active() || !sidePresence.animate(),
-             }}
-@@ -452,7 +465,7 @@ function SessionScreenContent(props: {
-                 <div
-                   data-slot="session-side-region"
-                   classList={{
--                    "absolute inset-x-0 top-0 min-h-0 overflow-visible transition-[height] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none": true,
-+                    "absolute inset-x-0 top-0 min-h-0 overflow-visible transition-[height] duration-[160ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none": true,
-                     "will-change-[height]": !screen.size.active() && store.sideHeightMotion && regionAnimating(),
-                     "transition-none": screen.size.active() || !store.sideHeightMotion || !regionAnimating(),
-                   }}
-@@ -497,7 +510,7 @@ function SessionScreenContent(props: {
-                   <div
-                     data-slot="session-side-panel-gap"
-                     classList={{
--                      "relative z-0 shrink-0 overflow-visible bg-v2-background-bg-deep transition-[height] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none": true,
-+                      "relative z-0 shrink-0 overflow-visible bg-v2-background-bg-deep transition-[height] duration-[160ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none": true,
-                       "transition-none": screen.size.active() || !store.sideHeightMotion || !regionAnimating(),
-                     }}
-                     style={{ height: screen.side.gap.height() }}
-@@ -522,7 +535,7 @@ function SessionScreenContent(props: {
-                   <div
-                     data-slot="session-side-terminal-region"
-                     classList={{
--                      "relative z-10 min-h-0 shrink-0 overflow-visible transition-[height] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none": true,
-+                      "relative z-10 min-h-0 shrink-0 overflow-visible transition-[height] duration-[160ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none": true,
-                       "will-change-[height]": !screen.size.active() && store.sideHeightMotion && regionAnimating(),
-                       "transition-none": screen.size.active() || !store.sideHeightMotion || !regionAnimating(),
-                     }}
-
-diff --git a/packages/app/src/index.css b/packages/app/src/index.css
-index ae897e0..731d66e 100644
---- a/packages/app/src/index.css
-+++ b/packages/app/src/index.css
-@@ -45,11 +45,11 @@
-   }
- 
-   [data-slot="session-side-panel-presence"][data-opened="true"] {
--    animation: side-region-presence-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
-+    animation: side-region-presence-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
-   }
- 
-   [data-slot="session-side-panel-presence"][data-opened="false"] {
--    animation: side-region-presence-out 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-+    animation: side-region-presence-out 160ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-   }
- 
-   #review-panel {
-@@ -100,16 +100,16 @@
-   }
- 
-   [data-slot="session-side-region-presence"][data-opened="true"] {
--    animation: side-region-presence-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
-+    animation: side-region-presence-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
-   }
- 
-   [data-slot="session-side-region-presence"][data-opened="false"] {
--    animation: side-region-presence-out 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-+    animation: side-region-presence-out 160ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-   }
- 
-   /* A collapsing frame's elevation outlives its height as a flat line over the panel beside it, so it fades out. */
-   [data-slot="session-side-region-presence"][data-opened="false"] #review-panel {
--    animation: side-panel-frame-out 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-+    animation: side-panel-frame-out 160ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-   }
- 
-   [data-slot="terminal-panel-presence"][data-opened="true"] {
-@@ -121,11 +121,11 @@
-   }
- 
-   [data-slot="side-terminal-panel-presence"][data-opened="true"] {
--    animation: side-terminal-panel-presence-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
-+    animation: side-terminal-panel-presence-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
-   }
- 
-   [data-slot="side-terminal-panel-presence"][data-opened="false"] {
--    animation: side-terminal-panel-presence-out 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-+    animation: side-terminal-panel-presence-out 160ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-   }
- 
-   [data-component="terminal-panel"][data-size-animated="true"][data-opened="true"] {
-
-diff --git a/packages/app/src/session/helpers.ts b/packages/app/src/session/helpers.ts
-index 1d8810b..d242112 100644
---- a/packages/app/src/session/helpers.ts
-+++ b/packages/app/src/session/helpers.ts
-@@ -21,6 +21,7 @@ export const createSizing = () => {
-       t = undefined
-     }
- 
-+    if (state.active) return
-     setState("active", true)
-   }
- 
-@@ -38,7 +39,8 @@ export const createSizing = () => {
-     active: () => state.active,
-     start,
-     touch() {
--      start()
-+      if (t !== undefined) clearTimeout(t)
-+      if (!state.active) setState("active", true)
-       t = window.setTimeout(stop, 120)
-     },
-   }
-
-diff --git a/packages/gui-extensions/src/context/tab.tsx b/packages/gui-extensions/src/context/tab.tsx
-index 606dabc..0c76dbb 100644
---- a/packages/gui-extensions/src/context/tab.tsx
-+++ b/packages/gui-extensions/src/context/tab.tsx
+diff --git a/packages/gui-plugins/src/context/i18n/zht.ts b/packages/gui-plugins/src/context/i18n/zht.ts
+index 5b25681..0fb2503 100644
+--- a/packages/gui-plugins/src/context/i18n/zht.ts
++++ b/packages/gui-plugins/src/context/i18n/zht.ts
+@@ -28,4 +28,7 @@ export default {
+   "export.success.description": "已將工作階段儲存至 {{filename}}",
+   "export.failed.title": "匯出工作階段失敗",
+   "export.failed.description": "匯出工作階段時發生錯誤",
++  "history.loading": "正在載入完整歷史…",
++  "history.failed": "無法載入完整歷史",
++  "history.retry": "重試",
+ }
+diff --git a/packages/gui-plugins/src/context/tab.tsx b/packages/gui-plugins/src/context/tab.tsx
+index 8a331bf..9ce4d15 100644
+--- a/packages/gui-plugins/src/context/tab.tsx
++++ b/packages/gui-plugins/src/context/tab.tsx
 @@ -1,4 +1,4 @@
--import { createMemo, on, onCleanup, For, Show } from "solid-js"
-+import { createEffect, createMemo, createSignal, on, onCleanup, For, Show } from "solid-js"
+-import { createMemo, on, onCleanup, onMount, For, Show } from "solid-js"
++import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js"
  import type { JSX } from "solid-js"
  import { checksum } from "@opencode/util/encode"
  import { Icon } from "@opencode/ui/icon"
-@@ -101,6 +101,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -100,6 +100,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
      { equals: same },
    )
  
@@ -2591,7 +2441,7 @@ index 606dabc..0c76dbb 100644
 +    historyTried = id
 +    setHistory("loading")
 +    setHistoryError(undefined)
-+    const store = props.session.server.data.session
++    const store = data().session
 +    void store.message
 +      .loadMore(id, { all: true })
 +      .then(() => setHistory("done"))
@@ -2617,7 +2467,7 @@ index 606dabc..0c76dbb 100644
 +      () => {
 +        const id = props.session.id
 +        if (!id) return
-+        const store = props.session.server.data.session
++        const store = data().session
 +        return [id, store.message.list(id).length > 0, store.message.more(id)] as const
 +      },
 +      (value) => {
@@ -2639,7 +2489,7 @@ index 606dabc..0c76dbb 100644
    const usd = createMemo(
      () =>
        new Intl.NumberFormat(i18n.locale(), {
-@@ -291,10 +356,30 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -292,10 +357,30 @@ export default function SessionContextTab(props: { session: MountedSession }) {
        onScroll={handleScroll}
      >
        <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
@@ -2670,7 +2520,7 @@ index 606dabc..0c76dbb 100644
          <Show when={systemPrompt()}>
            {(prompt) => (
              <div class="flex flex-col gap-2">
-@@ -308,7 +393,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -309,7 +394,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
  
          <div class="flex flex-col gap-2">
            <div class="flex items-center justify-between">
@@ -2692,7 +2542,7 @@ index 606dabc..0c76dbb 100644
              <Button
                size="small"
                variant="ghost"
-@@ -319,11 +417,15 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -320,11 +418,15 @@ export default function SessionContextTab(props: { session: MountedSession }) {
                <span>{ctx.t("export.session")}</span>
              </Button>
            </div>
@@ -2712,509 +2562,212 @@ index 606dabc..0c76dbb 100644
 +          </Show>
          </div>
        </div>
-     </ScrollView>
-
-diff --git a/packages/gui-extensions/src/context/i18n/en.ts b/packages/gui-extensions/src/context/i18n/en.ts
-index 5ad0d90..0808c27 100644
---- a/packages/gui-extensions/src/context/i18n/en.ts
-+++ b/packages/gui-extensions/src/context/i18n/en.ts
-@@ -29,4 +29,7 @@ export default {
-   "export.success.description": "Saved session to {{filename}}",
-   "export.failed.title": "Failed to export session",
-   "export.failed.description": "An error occurred while exporting the session",
-+  "history.loading": "Loading the full history…",
-+  "history.failed": "Could not load the full history",
-+  "history.retry": "Retry",
- }
-
-diff --git a/packages/gui-extensions/src/context/i18n/zh.ts b/packages/gui-extensions/src/context/i18n/zh.ts
-index e35c175..d4db2f0 100644
---- a/packages/gui-extensions/src/context/i18n/zh.ts
-+++ b/packages/gui-extensions/src/context/i18n/zh.ts
-@@ -28,4 +28,7 @@ export default {
-   "export.success.description": "已将会话保存到 {{filename}}",
-   "export.failed.title": "导出会话失败",
-   "export.failed.description": "导出会话时发生错误",
-+  "history.loading": "正在加载完整历史…",
-+  "history.failed": "无法加载完整历史",
-+  "history.retry": "重试",
- }
-
-diff --git a/packages/gui-extensions/src/context/i18n/zht.ts b/packages/gui-extensions/src/context/i18n/zht.ts
-index 5b25681..0fb2503 100644
---- a/packages/gui-extensions/src/context/i18n/zht.ts
-+++ b/packages/gui-extensions/src/context/i18n/zht.ts
-@@ -28,4 +28,7 @@ export default {
-   "export.success.description": "已將工作階段儲存至 {{filename}}",
-   "export.failed.title": "匯出工作階段失敗",
-   "export.failed.description": "匯出工作階段時發生錯誤",
-+  "history.loading": "正在載入完整歷史…",
-+  "history.failed": "無法載入完整歷史",
-+  "history.retry": "重試",
- }
-
+     </div>
 diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
-index 7eda4d0..6cf1d6a 100644
+index 880ba65..007382c 100644
 --- a/packages/ui/src/components/image-preview.tsx
 +++ b/packages/ui/src/components/image-preview.tsx
-@@ -1,21 +1,287 @@
- import { Dialog as Kobalte } from "@kobalte/core/dialog"
-+import { createSignal, onCleanup, onMount, Show } from "solid-js"
- import { useI18n } from "../context/i18n"
- import { Icon } from "@opencode/ui/icon"
- import { IconButton } from "@opencode/ui/icon-button"
-+import {
-+  distance,
-+  DOUBLE_TAP_SCALE,
-+  easeOut,
-+  IDENTITY,
-+  lerp,
-+  midpoint,
-+  MIN_SCALE,
-+  pan,
-+  settle,
-+  zoomAround,
-+  type Box,
-+  type Frame,
-+  type Point,
-+  type Zoom,
-+} from "./image-preview-zoom"
+@@ -44,6 +44,14 @@ export interface ImagePreviewProps {
  
- export interface ImagePreviewProps {
-   src: string
-   alt?: string
- }
+ const STEP = Math.SQRT2
  
++// How long a second tap may follow the first, and how far apart the two may be, for them to count as
++// a double tap.
 +const DOUBLE_TAP_WINDOW = 300
++const DOUBLE_TAP_DISTANCE = 24
 +
-+/** Spring back into the allowed range after a pinch goes past the fitted size or the edge. */
-+const SETTLE_DURATION = 180
++// How far a press may travel and still count as a tap.
++const TAP_SLOP = 8
 +
-+/**
-+ * A full-screen preview that zooms itself.
-+ *
-+ * Desktop relies on the browser's page-level pinch zoom; the Android WebView host disables that
-+ * (`setSupportZoom(false)`), so the preview carries its own pinch / double-tap / drag handling and
-+ * behaves the same on every host.
-+ */
- export function ImagePreview(props: ImagePreviewProps) {
-   const i18n = useI18n()
-+  const [zoom, setZoom] = createSignal<Zoom>(IDENTITY)
-+  // The picture's fitted size at scale 1. The <img> box is set to exactly this, so a transform
-+  // scales the picture and not a full-screen box with empty bands inside it.
-+  const [content, setContent] = createSignal<Box>({ width: 0, height: 0 })
-+
-+  let body: HTMLDivElement | undefined
-+  let image: HTMLImageElement | undefined
-+  // Fingers down on the body, in client coordinates, keyed per input family: one drags, two pinch.
-+  const pointers = new Map<string, Point>()
-+  let pinch: { distance: number; zoom: Zoom } | undefined
-+  let drag: { point: Point; zoom: Zoom } | undefined
+ // How far up from its bottom edge a video keeps its own controls, whose drag scrubs rather than pans.
+ const CONTROLS = 56
+ 
+@@ -92,6 +100,20 @@ export function ImagePreview(props: ImagePreviewProps) {
+   const [view, setView] = createSignal(FIT_VIEW)
+   const [fitRatio, setFitRatio] = createSignal(1)
+   const [drag, setDrag] = createSignal<{ id: number; x: number; y: number }>()
++  // The fingers on the body, in client coordinates: one drags the zoomed picture, two pinch it. The
++  // preview follows them from the first touch, so a pinch that starts at the fitted size reads too.
++  const pointers = new Map<number, { x: number; y: number }>()
++  // The zoom a pinch started from, and the spread between the fingers then, so the picture follows
++  // the fingers instead of jumping to the new spread.
++  let pinch: { distance: number; zoom: ZoomView } | undefined
++  // A press that is still down, so a press that travelled is not read as a tap.
++  let press: { id: number; x: number; y: number } | undefined
 +  // A completed tap, used to recognise a double tap. Set on release, never on press: a pinch or a
 +  // drag also starts with a press, and must not arm the second tap of a double tap.
-+  let lastTap: { at: number; point: Point } | undefined
-+  let gesture: { point: Point; at: number; moved: boolean } | undefined
++  let tap: { at: number; x: number; y: number } | undefined
++  // A double tap on a touch host also fires the browser's own double click, which would zoom the
++  // picture a second time; the tap owns the gesture and the click is skipped.
++  let tapped = false
+   // Whether the press that ends in a click began on the backdrop around the image and stayed put. A pan captures the
+   // pointer, so its click lands on the backdrop wherever it began.
+   let backdrop = false
+@@ -418,12 +440,18 @@ export function ImagePreview(props: ImagePreviewProps) {
+   )
+ 
+   // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
+-  const point = (event: MouseEvent) => {
++  // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
++  const anchor = (x: number, y: number) => {
+     const rect = (props.video ? image : viewport).getBoundingClientRect()
+ 
+-    return { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 }
++    return { x: x - rect.left - rect.width / 2, y: y - rect.top - rect.height / 2 }
+   }
+ 
++  const point = (event: MouseEvent) => anchor(event.clientX, event.clientY)
 +
-+  const reset = () => setZoom(IDENTITY)
++  // The distance between two points, for the spread between the fingers of a pinch.
++  const spread = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
 +
-+  /**
-+   * The painted picture at scale 1 and the viewport it centres in. The picture is fitted so one
-+   * edge touches the matching screen edge (a 1080×1920 photo on a 1080×2180 screen fills the width
-+   * and leaves bands above and below), and a smaller picture is upscaled the same way. The <img>
-+   * box is sized to `content`, so panning and scaling share one coordinate space.
-+   */
-+  const frameOf = (): Frame => {
-+    const bounds = body?.getBoundingClientRect()
-+    const natural = { width: image?.naturalWidth ?? 0, height: image?.naturalHeight ?? 0 }
-+    const viewport = { width: bounds?.width ?? 0, height: bounds?.height ?? 0 }
-+    if (!natural.width || !natural.height) return { content: viewport, viewport }
-+    const scale = Math.min(viewport.width / natural.width, viewport.height / natural.height)
-+    return { content: { width: natural.width * scale, height: natural.height * scale }, viewport }
-+  }
+   const measure = () => {
+     if (!natural().width || !image.offsetWidth) return
+     size = { width: image.offsetWidth, height: image.offsetHeight }
+@@ -449,12 +477,62 @@ export function ImagePreview(props: ImagePreviewProps) {
+   )
+ 
+   const detail = (event: MouseEvent) => {
++    // The browser's own double click follows a touch double tap, and would zoom the picture twice.
++    if (tapped) {
++      tapped = false
 +
-+  /** Re-fits the picture after a resize or load, and re-settles the zoom against the new bounds. */
-+  const measure = () => {
-+    const frame = frameOf()
-+    setContent(frame.content)
-+    setZoom((current) => settle(current, frame))
-+  }
-+
-+  onMount(() => {
-+    const observer = new ResizeObserver(() => measure())
-+    if (body) observer.observe(body)
-+    onCleanup(() => observer.disconnect())
-+  })
-+
-+  /** Client coordinates to the image-centred space the transform is applied in. */
-+  const focal = (point: Point): Point => {
-+    const bounds = body?.getBoundingClientRect()
-+    return {
-+      x: point.x - (bounds?.left ?? 0) - (bounds?.width ?? 0) / 2,
-+      y: point.y - (bounds?.top ?? 0) - (bounds?.height ?? 0) / 2,
-+    }
-+  }
-+
-+  const zoomAt = (client: Point, scale: number, from: Zoom) => setZoom(zoomAround(from, scale, focal(client), frameOf()))
-+
-+  // A single animation owns every spring back; a new gesture cancels it.
-+  let spring: number | undefined
-+  const stopSpring = () => {
-+    if (spring === undefined) return
-+    cancelAnimationFrame(spring)
-+    spring = undefined
-+  }
-+
-+  /** Eases the picture back to the allowed range: never smaller than the fit, never past the edge. */
-+  const springBack = () => {
-+    const target = settle(zoom(), frameOf())
-+    const from = zoom()
-+    if (from.scale === target.scale && from.x === target.x && from.y === target.y) return
-+
-+    stopSpring()
-+    const started = performance.now()
-+    const step = (now: number) => {
-+      const t = Math.min(1, (now - started) / SETTLE_DURATION)
-+      setZoom(lerp(from, target, easeOut(t)))
-+      spring = t < 1 ? requestAnimationFrame(step) : undefined
-+    }
-+    spring = requestAnimationFrame(step)
-+  }
-+
-+  onCleanup(stopSpring)
-+
-+  const onWheel = (event: WheelEvent) => {
-+    if (!event.ctrlKey && !event.metaKey) return
-+    event.preventDefault()
-+    zoomAt({ x: event.clientX, y: event.clientY }, zoom().scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15), zoom())
-+  }
-+
-+  /**
-+   * Which input family owns the current gesture. Pointer Events fire first on hosts that have them,
-+   * and the compat Touch Events that follow must not be counted as a second finger; a WebView that
-+   * delivers only Touch Events (no pointer events at all) is picked up by the other branch.
-+   */
-+  let source: "pointer" | "touch" | undefined
-+
-+  const begin = (key: string, point: Point, kind: "mouse" | "touch") => {
-+    stopSpring()
-+    pointers.set(key, point)
-+
-+    if (pointers.size === 1) {
-+      const before = zoom()
-+      drag = { point, zoom: before }
-+      gesture = { point, at: performance.now(), moved: false }
-+      // A double tap is decided on press against the previous completed tap, but zooming happens
-+      // here so the first tap of a pinch never arms one.
-+      if (kind === "touch" && lastTap && gesture.at - lastTap.at < DOUBLE_TAP_WINDOW && distance(point, lastTap.point) < 24) {
-+        lastTap = undefined
-+        drag = undefined
-+        gesture = undefined
-+        setZoom(before.scale > MIN_SCALE ? IDENTITY : zoomAround(IDENTITY, DOUBLE_TAP_SCALE, focal(point), frameOf()))
-+      }
++      return
 +    }
 +
+     if (goal().scale > 1) return ease(FIT_VIEW)
+     ease(zoomAt(goal(), detailScale(fitRatio()), point(event), bounds()))
+   }
+ 
+   const grab = (event: PointerEvent, target: HTMLElement) => {
+-    if (event.button !== 0 || view().scale <= 1) return
++    if (event.button !== 0) return
++
++    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++    press = { id: event.pointerId, x: event.clientX, y: event.clientY }
++
++    // A second finger turns the gesture into a pinch: the picture scales about the fingers' midpoint.
 +    if (pointers.size === 2) {
 +      const [a, b] = [...pointers.values()]
-+      pinch = { distance: distance(a, b), zoom: zoom() }
-+      drag = undefined
++
++      pinch = { distance: spread(a, b), zoom: view() }
++      // The pinch owns the picture now, so the first finger's drag ends with it.
++      setDrag(undefined)
++      event.preventDefault()
++      target.setPointerCapture(event.pointerId)
++
++      return
 +    }
-+  }
 +
-+  const move = (key: string, point: Point) => {
-+    if (!pointers.has(key)) return
-+    pointers.set(key, point)
-+    if (gesture && distance(point, gesture.point) > 8) gesture.moved = true
++    // A second tap zooms the picture: a touch host has no double click of its own to rely on.
++    if (
++      event.pointerType !== "mouse" &&
++      tap &&
++      performance.now() - tap.at < DOUBLE_TAP_WINDOW &&
++      spread(tap, { x: event.clientX, y: event.clientY }) < DOUBLE_TAP_DISTANCE
++    ) {
++      tap = undefined
++      press = undefined
++      tapped = true
++      // The browser's own double click follows; it must not zoom the picture a second time.
++      window.setTimeout(() => (tapped = false), DOUBLE_TAP_WINDOW * 2)
++      event.preventDefault()
++      target.setPointerCapture(event.pointerId)
 +
-+    if (pointers.size >= 2 && pinch) {
++      if (goal().scale > 1) ease(FIT_VIEW)
++      else ease(zoomAt(goal(), detailScale(fitRatio()), anchor(event.clientX, event.clientY), bounds()))
++
++      return
++    }
++
++    // A tap that is older than the double tap window cannot pair with the next one.
++    if (tap && performance.now() - tap.at >= DOUBLE_TAP_WINDOW) tap = undefined
++
++    if (view().scale <= 1) return
++
+     event.preventDefault()
+     target.setPointerCapture(event.pointerId)
+     setDrag({ id: event.pointerId, x: event.clientX, y: event.clientY })
+@@ -463,6 +541,38 @@ export function ImagePreview(props: ImagePreviewProps) {
+   const pan = (event: PointerEvent) => {
+     const current = drag()
+ 
++    if (pinch) {
++      // The pinch owns the picture: its spread drives the scale, about the fingers' midpoint.
 +      const [a, b] = [...pointers.values()]
-+      if (!pinch.distance) return
-+      zoomAt(midpoint(a, b), pinch.zoom.scale * (distance(a, b) / pinch.distance), pinch.zoom)
++
++      if (!a || !b || !pinch.distance) return
++
++      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++
++      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
++
++      follow(
++        zoomAt(
++          pinch.zoom,
++          pinch.zoom.scale * (spread(a, b) / pinch.distance),
++          anchor(midpoint.x, midpoint.y),
++          bounds(),
++        ),
++      )
++
 +      return
 +    }
 +
-+    if (pointers.size === 1 && drag) {
-+      setZoom(pan(drag.zoom, point.x - drag.point.x, point.y - drag.point.y, frameOf()))
-+    }
-+  }
++    if (!pointers.has(event.pointerId)) return
 +
-+  const end = (key: string, kind: "mouse" | "touch") => {
-+    pointers.delete(key)
-+    // Only a still, single-finger touch that was not part of a pinch arms the next tap; that is what
-+    // keeps a pinch's first finger from being mistaken for the second tap of a double tap.
-+    if (gesture && pointers.size === 0) {
-+      if (kind === "mouse" || gesture.moved) lastTap = undefined
-+      else lastTap = { at: performance.now(), point: gesture.point }
-+      gesture = undefined
++    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++
++    // A press that travelled is not a tap, and the tap before it cannot pair with the next press.
++    if (press?.id === event.pointerId && spread(press, { x: event.clientX, y: event.clientY }) > TAP_SLOP) {
++      press = undefined
++      tap = undefined
 +    }
 +
-+    if (pointers.size < 2) pinch = undefined
-+    if (pointers.size === 0) {
-+      drag = undefined
-+      // Releasing is where an over-pinch below the fit, or a drag past the edge, comes back.
-+      springBack()
-+      return
-+    }
-+    // Dropping from two fingers to one restarts the drag from where that finger is now.
-+    const point = [...pointers.values()][0]
-+    drag = { point, zoom: zoom() }
-+  }
-+
-+  const onPointerDown = (event: PointerEvent) => {
-+    if (event.pointerType === "mouse" && event.button !== 0) return
-+    source = "pointer"
-+    const key = `p${event.pointerId}`
-+    begin(key, { x: event.clientX, y: event.clientY }, event.pointerType === "mouse" ? "mouse" : "touch")
-+    // Capture keeps the gesture alive when a finger leaves the body. It needs a live pointer, so a
-+    // host that reports none (synthetic events, some embedded WebViews) must still get the gesture.
-+    try {
-+      body?.setPointerCapture(event.pointerId)
-+    } catch {}
-+  }
-+
-+  const onPointerMove = (event: PointerEvent) => {
-+    if (source !== "pointer") return
-+    move(`p${event.pointerId}`, { x: event.clientX, y: event.clientY })
-+  }
-+
-+  const onPointerUp = (event: PointerEvent) => {
-+    if (source !== "pointer") return
-+    try {
-+      if (body?.hasPointerCapture(event.pointerId)) body.releasePointerCapture(event.pointerId)
-+    } catch {}
-+    end(`p${event.pointerId}`, event.pointerType === "mouse" ? "mouse" : "touch")
-+  }
-+
-+  const onTouchStart = (event: TouchEvent) => {
-+    if (source === "pointer") return
-+    source = "touch"
-+    event.preventDefault()
-+    for (const touch of [...event.changedTouches]) begin(`t${touch.identifier}`, { x: touch.clientX, y: touch.clientY }, "touch")
-+  }
-+
-+  const onTouchMove = (event: TouchEvent) => {
-+    if (source !== "touch") return
-+    event.preventDefault()
-+    for (const touch of [...event.changedTouches]) move(`t${touch.identifier}`, { x: touch.clientX, y: touch.clientY })
-+  }
-+
-+  const onTouchEnd = (event: TouchEvent) => {
-+    if (source !== "touch") return
-+    event.preventDefault()
-+    for (const touch of [...event.changedTouches]) end(`t${touch.identifier}`, "touch")
-+  }
-+
-+  /**
-+   * The body owns the gesture listeners directly: `preventDefault` needs non-passive handlers, and
-+   * the element must react to whichever family (Pointer or Touch) this WebView actually delivers.
-+   */
-+  const attach = (element: HTMLDivElement) => {
-+    body = element
-+    const listeners: [string, EventListener][] = [
-+      ["pointerdown", onPointerDown as EventListener],
-+      ["pointermove", onPointerMove as EventListener],
-+      ["pointerup", onPointerUp as EventListener],
-+      ["pointercancel", onPointerUp as EventListener],
-+      ["touchstart", onTouchStart as EventListener],
-+      ["touchmove", onTouchMove as EventListener],
-+      ["touchend", onTouchEnd as EventListener],
-+      ["touchcancel", onTouchEnd as EventListener],
-+    ]
-+    for (const [type, listener] of listeners) element.addEventListener(type, listener, { passive: false })
-+    const wheel = (event: Event) => onWheel(event as WheelEvent)
-+    element.addEventListener("wheel", wheel, { passive: false })
-+    onCleanup(() => {
-+      for (const [type, listener] of listeners) element.removeEventListener(type, listener)
-+      element.removeEventListener("wheel", wheel)
-+    })
-+  }
- 
-   return (
-     <div data-component="image-preview">
-       <div data-slot="image-preview-container">
-         <Kobalte.Content data-slot="image-preview-content">
-           <div data-slot="image-preview-header">
-+            <Show when={zoom().scale > MIN_SCALE}>
-+              <IconButton
-+                data-action="image-preview-reset"
-+                icon={<Icon name="magnifying-glass" />}
-+                variant="ghost"
-+                aria-label={i18n.t("ui.imagePreview.reset")}
-+                onClick={reset}
-+              />
-+            </Show>
-             <Kobalte.CloseButton
-               data-slot="image-preview-close"
-               as={IconButton}
-@@ -24,8 +290,35 @@ export function ImagePreview(props: ImagePreviewProps) {
-               aria-label={i18n.t("ui.common.close")}
-             />
-           </div>
--          <div data-slot="image-preview-body">
--            <img src={props.src} alt={props.alt ?? i18n.t("ui.imagePreview.alt")} data-slot="image-preview-image" />
-+          <div
-+            data-slot="image-preview-body"
-+            data-zoomed={zoom().scale > MIN_SCALE ? "" : undefined}
-+            ref={attach}
-+            onDblClick={(event) =>
-+              setZoom(
-+                zoom().scale > MIN_SCALE
-+                  ? IDENTITY
-+                  : zoomAround(IDENTITY, DOUBLE_TAP_SCALE, focal({ x: event.clientX, y: event.clientY }), frameOf()),
-+              )
-+            }
-+          >
-+            <img
-+              src={props.src}
-+              alt={props.alt ?? i18n.t("ui.imagePreview.alt")}
-+              data-slot="image-preview-image"
-+              draggable={false}
-+              ref={(element) => {
-+                image = element
-+                // Fit the box once the natural size is known; the observer handles the rest.
-+                element.addEventListener("load", measure)
-+                onCleanup(() => element.removeEventListener("load", measure))
-+              }}
-+              style={{
-+                width: content().width ? `${content().width}px` : undefined,
-+                height: content().height ? `${content().height}px` : undefined,
-+                transform: `translate(${zoom().x}px, ${zoom().y}px) scale(${zoom().scale})`,
-+              }}
-+            />
-           </div>
-         </Kobalte.Content>
-       </div>
-
-diff --git a/packages/ui/src/components/image-preview.css b/packages/ui/src/components/image-preview.css
-index 3c47f7a..cb7a528 100644
---- a/packages/ui/src/components/image-preview.css
-+++ b/packages/ui/src/components/image-preview.css
-@@ -5,58 +5,94 @@
-   display: flex;
-   align-items: center;
-   justify-content: center;
-+  /* Photo viewers sit on a dark stage in both themes: a theme-tinted backdrop competes with the
-+     picture and makes the translucent letterbox edges read as a rendering bug. */
-+  background: #000;
- 
-+  /* The preview is the screen: an inset card would cap the picture far below the screen size and
-+     clip a zoomed image at its own edge, which reads as "zoom does nothing". */
-   [data-slot="image-preview-container"] {
-     position: relative;
-     z-index: 50;
--    width: min(calc(100vw - 32px), 90vw);
--    max-width: 1200px;
--    height: min(calc(100vh - 32px), 90vh);
-+    width: 100%;
-+    height: 100%;
-     display: flex;
-     flex-direction: column;
-     align-items: center;
-     justify-content: center;
- 
-     [data-slot="image-preview-content"] {
-+      position: relative;
-       display: flex;
-       flex-direction: column;
-       align-items: center;
-       width: 100%;
--      max-height: 100%;
--      border-radius: var(--radius-lg);
--      background: var(--surface-raised-stronger-non-alpha);
--      box-shadow:
--        0 15px 45px 0 rgba(19, 16, 16, 0.35),
--        0 3.35px 10.051px 0 rgba(19, 16, 16, 0.25),
--        0 0.998px 2.993px 0 rgba(19, 16, 16, 0.2);
-+      height: 100%;
-       overflow: hidden;
- 
-       &:focus-visible {
-         outline: none;
-       }
- 
-+      /* Floating over the picture, so the picture itself can use the whole screen. Each control
-+         keeps a solid surface behind it, or it would vanish against a photo. */
-       [data-slot="image-preview-header"] {
-+        position: absolute;
-+        inset-block-start: 0;
-+        inset-inline: 0;
-+        z-index: 2;
-         display: flex;
--        padding: 8px 8px 0;
-+        gap: 6px;
-+        padding: 8px;
-         justify-content: flex-end;
-         align-items: center;
--        align-self: stretch;
-+        pointer-events: none;
-+
-+        > * {
-+          pointer-events: auto;
-+          background: var(--v2-background-bg-base, #fff);
-+          border-radius: 999px;
-+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
-+        }
-       }
- 
-       [data-slot="image-preview-body"] {
-+        position: relative;
-+        flex: 1;
-         width: 100%;
-+        min-height: 0;
-         display: flex;
-         align-items: center;
-         justify-content: center;
--        padding: 16px;
--        overflow: auto;
-+        overflow: hidden;
-+        touch-action: none;
-+
-+        &[data-zoomed] {
-+          cursor: grab;
-+        }
-+
-+        &[data-zoomed]:active {
-+          cursor: grabbing;
-+        }
-       }
- 
-       [data-slot="image-preview-image"] {
-+        /* The box is the picture, not the viewport: `max-*: 100%` with an auto size fits the
-+           longest edge to the screen (and upscales a smaller picture), so the transform scales
-+           the picture itself instead of scaling a full-screen box with empty letterbox bands in
-+           it. That keeps the pan bounds and what is painted in the same coordinates. */
-+        display: block;
-         max-width: 100%;
--        max-height: calc(90vh - 100px);
-+        max-height: 100%;
-+        width: auto;
-+        height: auto;
-         object-fit: contain;
--        border-radius: var(--radius-md);
-+        transform-origin: center;
-+        /* Only the gesture drives the transform, so no transition fights the pinch. */
-+        transition: none;
-+        will-change: transform;
-+        user-select: none;
-+        -webkit-user-drag: none;
-       }
-     }
+     if (current?.id !== event.pointerId) return
+     backdrop = false
+     panned = true
+@@ -471,7 +581,26 @@ export function ImagePreview(props: ImagePreviewProps) {
    }
-
+ 
+   const release = (event: PointerEvent) => {
++    pointers.delete(event.pointerId)
++
+     if (drag()?.id === event.pointerId) setDrag(undefined)
++
++    // A press that stayed put is a tap, and two quick taps zoom the picture. A mouse has a double
++    // click of its own, so only a touch arms the next tap.
++    if (press?.id === event.pointerId) {
++      if (event.pointerType !== "mouse") tap = { at: performance.now(), x: event.clientX, y: event.clientY }
++      press = undefined
++    }
++
++    if (pointers.size < 2) {
++      pinch = undefined
++
++      // Dropping from two fingers to one continues the drag from where that finger is now.
++      const remaining = [...pointers.entries()][0]
++
++      if (remaining && view().scale > 1)
++        setDrag({ id: remaining[0], x: remaining[1].x, y: remaining[1].y })
++    }
+   }
+ 
+   if (props.video) {
 diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
-index 7186c1f..a53da6a 100644
+index 7ed8e6d..331f9c0 100644
 --- a/packages/ui/src/i18n/en.ts
 +++ b/packages/ui/src/i18n/en.ts
-@@ -181,6 +181,7 @@ const source = {
+@@ -198,6 +198,7 @@ const source = {
    "ui.textField.copied": "Copied",
  
    "ui.imagePreview.alt": "Image preview",
 +  "ui.imagePreview.reset": "Reset zoom",
-   "ui.scrollView.ariaLabel": "scrollable content",
- 
-   "ui.tool.read": "Read",
-
+   "ui.imagePreview.zoomIn": "Zoom in",
+   "ui.imagePreview.zoomOut": "Zoom out",
+   "ui.imagePreview.zoomToFit": "Zoom to fit",
 diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
-index 6eb6355..23908bc 100644
+index 16d623b..93ad246 100644
 --- a/packages/ui/src/i18n/zh.ts
 +++ b/packages/ui/src/i18n/zh.ts
 @@ -143,6 +143,7 @@ export const dict = {
@@ -3225,9 +2778,8 @@ index 6eb6355..23908bc 100644
    "ui.scrollView.ariaLabel": "可滚动内容",
  
    "ui.tool.read": "读取",
-
 diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
-index edfff5c..da6dc33 100644
+index 1b55a97..7bdb332 100644
 --- a/packages/ui/src/i18n/zht.ts
 +++ b/packages/ui/src/i18n/zht.ts
 @@ -143,6 +143,7 @@ export const dict = {
@@ -3238,242 +2790,3 @@ index edfff5c..da6dc33 100644
    "ui.scrollView.ariaLabel": "可捲動內容",
  
    "ui.tool.read": "讀取",
-
-diff --git a/packages/ui/src/components/image-preview-zoom.ts b/packages/ui/src/components/image-preview-zoom.ts
-new file mode 100644
-index 0000000..0000000
---- /dev/null
-+++ b/packages/ui/src/components/image-preview-zoom.ts
-@@ -0,0 +1,120 @@
-+/**
-+ * Geometry for the image preview's own pinch / double-tap / drag zoom.
-+ *
-+ * The preview applies `translate(x, y) scale(scale)` about the image centre, so a focal point given
-+ * in viewport coordinates relative to that centre stays put while the scale changes:
-+ *
-+ *   translation' = focal - (focal - translation) * (scale' / scale)
-+ *
-+ * Scale `1` is the fitted size: the picture is contained in the viewport, so one edge touches the
-+ * matching screen edge (a 1080×1920 photo on a 1080×2180 screen spans the full width and leaves
-+ * bands above and below). That is the resting minimum — the picture never *stays* smaller than the
-+ * screen — but a pinch may pull it below while the fingers are down, and `settle` is the target it
-+ * springs back to on release.
-+ *
-+ * Panning is bounded by what is actually painted (`content`), not by the element box it sits in: a
-+ * contained picture is narrower than the viewport on one axis, and bounding by the element would
-+ * let a zoomed picture be dragged off screen.
-+ *
-+ * Kept apart from the component so the arithmetic is testable without a DOM.
-+ */
-+
-+export const MIN_SCALE = 1
-+export const MAX_SCALE = 6
-+
-+/** How much of an over-pinch below the fitted size shows through, for the spring back. */
-+export const RUBBER_RESISTANCE = 0.35
-+
-+/** Scale a double tap jumps to, and back from. */
-+export const DOUBLE_TAP_SCALE = 2.5
-+
-+export type Point = { x: number; y: number }
-+
-+export type Box = { width: number; height: number }
-+
-+/** The painted picture at scale 1, and the viewport it is centred in. */
-+export type Frame = { content: Box; viewport: Box }
-+
-+export type Zoom = { scale: number; x: number; y: number }
-+
-+export const IDENTITY: Zoom = { scale: MIN_SCALE, x: 0, y: 0 }
-+
-+/**
-+ * The scale a gesture actually shows. Above the fitted size it clamps at the maximum; below it the
-+ * overshoot is damped, so the picture follows the pinch without collapsing, then springs back.
-+ */
-+export function resist(scale: number) {
-+  if (!Number.isFinite(scale)) return MIN_SCALE
-+  if (scale >= MIN_SCALE) return Math.min(MAX_SCALE, scale)
-+
-+  return MIN_SCALE - (MIN_SCALE - scale) * RUBBER_RESISTANCE
-+}
-+
-+/**
-+ * Keeps the picture from being dragged off screen. Once the scaled picture is wider (or taller)
-+ * than the viewport it may move by half the overflow; while it is narrower, that axis stays centred.
-+ */
-+export function clampTranslate(zoom: Zoom, frame: Frame): Zoom {
-+  const maxX = Math.max(0, (frame.content.width * zoom.scale - frame.viewport.width) / 2)
-+  const maxY = Math.max(0, (frame.content.height * zoom.scale - frame.viewport.height) / 2)
-+
-+  return {
-+    scale: zoom.scale,
-+    x: Math.min(maxX, Math.max(-maxX, zoom.x)),
-+    y: Math.min(maxY, Math.max(-maxY, zoom.y)),
-+  }
-+}
-+
-+/** Scales about `focal`, so the screen point under the fingers stays under the fingers. */
-+export function zoomAround(zoom: Zoom, nextScale: number, focal: Point, frame: Frame): Zoom {
-+  const scale = resist(nextScale)
-+
-+  if (scale === zoom.scale) return zoom
-+
-+  const ratio = scale / zoom.scale
-+
-+  return clampTranslate(
-+    {
-+      scale,
-+      x: focal.x - (focal.x - zoom.x) * ratio,
-+      y: focal.y - (focal.y - zoom.y) * ratio,
-+    },
-+    frame,
-+  )
-+}
-+
-+export function pan(zoom: Zoom, dx: number, dy: number, frame: Frame): Zoom {
-+  return clampTranslate({ scale: zoom.scale, x: zoom.x + dx, y: zoom.y + dy }, frame)
-+}
-+
-+/**
-+ * Where a released gesture rests: the scale is never below the fit, and the translation never runs
-+ * past the painted edge at that scale. A pinch below the fit therefore returns to the screen-filling
-+ * size.
-+ */
-+export function settle(zoom: Zoom, frame: Frame): Zoom {
-+  return clampTranslate(
-+    { scale: Math.min(MAX_SCALE, Math.max(MIN_SCALE, zoom.scale)), x: zoom.x, y: zoom.y },
-+    frame,
-+  )
-+}
-+
-+export function easeOut(t: number) {
-+  return 1 - (1 - t) ** 3
-+}
-+
-+export function lerp(from: Zoom, to: Zoom, t: number): Zoom {
-+  return {
-+    scale: from.scale + (to.scale - from.scale) * t,
-+    x: from.x + (to.x - from.x) * t,
-+    y: from.y + (to.y - from.y) * t,
-+  }
-+}
-+
-+export function distance(a: Point, b: Point) {
-+  return Math.hypot(a.x - b.x, a.y - b.y)
-+}
-+
-+export function midpoint(a: Point, b: Point): Point {
-+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-+}
-
-diff --git a/packages/ui/src/components/image-preview-zoom.test.ts b/packages/ui/src/components/image-preview-zoom.test.ts
-new file mode 100644
-index 0000000..0000000
---- /dev/null
-+++ b/packages/ui/src/components/image-preview-zoom.test.ts
-@@ -0,0 +1,105 @@
-+import { describe, expect, test } from "bun:test"
-+import {
-+  clampTranslate,
-+  DOUBLE_TAP_SCALE,
-+  easeOut,
-+  IDENTITY,
-+  lerp,
-+  MAX_SCALE,
-+  MIN_SCALE,
-+  midpoint,
-+  pan,
-+  resist,
-+  RUBBER_RESISTANCE,
-+  settle,
-+  zoomAround,
-+  type Frame,
-+} from "./image-preview-zoom"
-+
-+// A portrait photo (1080×1920) in a wide viewport (1280×770): at scale 1 it fills the height and
-+// leaves bands on the sides, so panning must bound by the painted picture, not the viewport.
-+const frame: Frame = {
-+  content: { width: 433, height: 770 },
-+  viewport: { width: 1280, height: 770 },
-+}
-+
-+describe("image preview zoom", () => {
-+  test("a focal zoom keeps the point under the fingers", () => {
-+    // A picture already larger than its viewport, so no axis stays centred.
-+    const wide: Frame = { content: { width: 400, height: 200 }, viewport: { width: 400, height: 200 } }
-+    const focal = { x: 100, y: 50 }
-+    const next = zoomAround(IDENTITY, 2, focal, wide)
-+
-+    expect(next.scale).toBe(2)
-+    expect((focal.x - next.x) / next.scale).toBeCloseTo(focal.x, 5)
-+    expect((focal.y - next.y) / next.scale).toBeCloseTo(focal.y, 5)
-+  })
-+
-+  test("a narrow picture stays centred while the zoom does not yet overflow", () => {
-+    // 433 * 2 = 866 is still narrower than the 1280 viewport, so the focal point cannot be honoured
-+    // on that axis: the picture stays centred instead of sliding out of view.
-+    const next = zoomAround(IDENTITY, 2, { x: 300, y: 0 }, frame)
-+
-+    expect(next.x).toBeCloseTo(0, 6)
-+  })
-+
-+  test("zoom in clamps at the maximum", () => {
-+    expect(zoomAround(IDENTITY, 99, { x: 0, y: 0 }, frame).scale).toBe(MAX_SCALE)
-+  })
-+
-+  test("a pinch below the fit is damped, not clamped, so it can spring back", () => {
-+    expect(resist(0.5)).toBeCloseTo(MIN_SCALE - (MIN_SCALE - 0.5) * RUBBER_RESISTANCE, 6)
-+    expect(resist(0.5)).toBeLessThan(MIN_SCALE)
-+    expect(resist(0.5)).toBeGreaterThan(0)
-+  })
-+
-+  test("release never rests below the fitted size", () => {
-+    expect(settle({ scale: 0.5, x: 0, y: 0 }, frame)).toEqual({ scale: MIN_SCALE, x: 0, y: 0 })
-+  })
-+
-+  test("a picture narrower than the screen stays horizontally centred", () => {
-+    // At 1x the photo is 433 wide in a 1280 viewport: no horizontal travel is legal.
-+    expect(clampTranslate({ scale: 1, x: 200, y: 0 }, frame)).toEqual({ scale: 1, x: 0, y: 0 })
-+    expect(clampTranslate({ scale: 2, x: 500, y: 500 }, frame)).toEqual({ scale: 2, x: 0, y: 385 })
-+  })
-+
-+  test("once the picture is wider than the screen it may pan by the overflow", () => {
-+    // 433 * 4 = 1732 wide, so (1732 - 1280) / 2 = 226 of travel each way.
-+    expect(clampTranslate({ scale: 4, x: 1000, y: 0 }, frame)).toEqual({ scale: 4, x: 226, y: 0 })
-+  })
-+
-+  test("panning and settling agree with the clamp", () => {
-+    const zoomed = zoomAround(IDENTITY, 3, { x: 0, y: 0 }, frame)
-+
-+    expect(pan(zoomed, 5000, 5000, frame)).toEqual(clampTranslate({ scale: 3, x: 5000, y: 5000 }, frame))
-+    expect(settle({ scale: 3, x: 5000, y: -5000 }, frame)).toEqual(clampTranslate({ scale: 3, x: 5000, y: -5000 }, frame))
-+  })
-+
-+  test("a zero-sized picture never produces a non-zero bound", () => {
-+    const empty: Frame = { content: { width: 0, height: 0 }, viewport: { width: 1280, height: 770 } }
-+    const zoomed = zoomAround(IDENTITY, 2, { x: 0, y: 0 }, empty)
-+
-+    expect(zoomed).toEqual({ scale: 2, x: 0, y: 0 })
-+  })
-+
-+  test("double tap alternates between the fit and the detail scale", () => {
-+    const zoomed = zoomAround(IDENTITY, DOUBLE_TAP_SCALE, { x: 0, y: 0 }, frame)
-+
-+    expect(zoomed.scale).toBe(DOUBLE_TAP_SCALE)
-+    expect(settle(zoomed, frame)).toEqual(zoomed)
-+  })
-+
-+  test("the ease-out spring covers the whole distance by the last frame", () => {
-+    const from = { scale: 0.6, x: 0, y: 0 }
-+    const to = { scale: 1, x: 0, y: 0 }
-+
-+    expect(easeOut(0)).toBe(0)
-+    expect(easeOut(1)).toBe(1)
-+    expect(lerp(from, to, 0)).toEqual(from)
-+    expect(lerp(from, to, 1)).toEqual(to)
-+  })
-+
-+  test("midpoint measures two pointers", () => {
-+    expect(midpoint({ x: 10, y: 20 }, { x: 30, y: 40 })).toEqual({ x: 20, y: 30 })
-+  })
-+})
