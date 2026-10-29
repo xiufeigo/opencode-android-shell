@@ -1,0 +1,679 @@
+diff --git a/packages/app/src/session/helpers.ts b/packages/app/src/session/helpers.ts
+index 1d8810b..d242112 100644
+--- a/packages/app/src/session/helpers.ts
++++ b/packages/app/src/session/helpers.ts
+@@ -21,6 +21,7 @@ export const createSizing = () => {
+       t = undefined
+     }
+ 
++    if (state.active) return
+     setState("active", true)
+   }
+ 
+@@ -38,7 +39,8 @@ export const createSizing = () => {
+     active: () => state.active,
+     start,
+     touch() {
+-      start()
++      if (t !== undefined) clearTimeout(t)
++      if (!state.active) setState("active", true)
+       t = window.setTimeout(stop, 120)
+     },
+   }
+diff --git a/packages/app/src/session/screen.tsx b/packages/app/src/session/screen.tsx
+index 0a0a044..e39ac80 100644
+--- a/packages/app/src/session/screen.tsx
++++ b/packages/app/src/session/screen.tsx
+@@ -202,9 +202,25 @@ function SessionScreenContent(props: {
+     setStore("timelineScrollbarHidden", false)
+   }
+ 
+-  createEffect(() => {
+-    if (screen.side.open()) setStore("sideMounted", true)
+-  })
++  createEffect(
++    on(
++      () => screen.side.open(),
++      (open, previous) => {
++        if (!open) return
++
++        // A panel that opens flies in, and mounting its content in the same frame would
++        // charge the click that starts the flight for the panel's first render. A panel
++        // that is already open, e.g. restored with the session, has no flight to start.
++        if (previous === false) {
++          const frame = requestAnimationFrame(() => setStore("sideMounted", true))
++          onCleanup(() => cancelAnimationFrame(frame))
++          return
++        }
++
++        setStore("sideMounted", true)
++      },
++    ),
++  )
+ 
+   const mobileView = attachment.mobile.current
+ 
+diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
+index 7510e42..1c4c5fa 100644
+--- a/packages/app/src/session/session-panel-width.test.ts
++++ b/packages/app/src/session/session-panel-width.test.ts
+@@ -8,6 +8,8 @@ test.each([
+   // Regression: the old cap was 45% of the window, forcing the review pane to at least 55%.
+   ["lets the chat panel take everything beyond the review pane minimum", 3440, 3440, false, false, 2960],
+   ["holds the chat panel minimum when there is no room for both", 1600, 700, true, false, 450],
++  // Regression: a narrow layout used to lock the divider at the chat panel's fit minimum.
++  ["leaves a usable drag range on a narrow split layout", 600, 994, true, false, 570],
+   ["never drops below the chat panel minimum on small windows", 1600, 0, false, false, 450],
+   ["skips clamping before the layout is measured", 1600, undefined, false, false, 1600],
+   ["lets a dragged width leave the side pane its hard minimum, split diffs included", 1600, 1700, true, true, 1380],
+diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
+index 9afe75e..26d6179 100644
+--- a/packages/app/src/session/session-panel-width.ts
++++ b/packages/app/src/session/session-panel-width.ts
+@@ -15,20 +15,45 @@ const REVIEW_PANE_WIDTH_FIT = 480
+ 
+ const REVIEW_PANE_WIDTH_FIT_SPLIT = 800
+ 
++/** Leave enough travel for the splitter; otherwise a narrow layout locks the chat width. */
++const SESSION_PANEL_WIDTH_RANGE_MIN = 120
++
++/**
++ * The width the review pane keeps before the user drags the divider: its preferred minimum, but never so much
++ * that the chat cannot travel, and never less than the pane's own hard minimum, which would leave it unusable on
++ * a tablet.
++ */
++function reviewPaneReserve(available: number, split: boolean) {
++  const preferred = split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
++
++  return Math.min(
++    preferred,
++    Math.max(
++      SIDE_PANE_WIDTH_MIN,
++      available - SESSION_PANEL_WIDTH_FIT - SESSION_PANEL_WIDTH_RANGE_MIN,
++    ),
++  )
++}
++
+ export function sessionPanelWidthMax(input: { available: number; split: boolean; resized: boolean }) {
+   if (input.resized) return Math.max(SESSION_PANEL_WIDTH_MIN, input.available - SIDE_PANE_WIDTH_MIN)
+-  const pane = input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
++  const reserve = reviewPaneReserve(input.available, input.split)
+ 
+-  return Math.max(SESSION_PANEL_WIDTH_FIT, input.available - pane)
++  return Math.max(SESSION_PANEL_WIDTH_FIT, input.available - reserve)
+ }
+ 
+ // The same limit in CSS, against the pane row's width less its 8px gap, so the chat panel follows the row on the frame
+ // it resizes, e.g. while the left sidebar moves, rather than after a ResizeObserver callback.
+ export function sessionPanelWidthCss(input: { width: number; split: boolean; resized: boolean }) {
+   const minimum = input.resized ? SESSION_PANEL_WIDTH_MIN : SESSION_PANEL_WIDTH_FIT
+-  const pane = input.resized ? SIDE_PANE_WIDTH_MIN : input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
+ 
+-  return `min(${input.width}px, max(${minimum}px, 100% - ${pane + 8}px))`
++  if (input.resized) return `min(${input.width}px, max(${minimum}px, 100% - ${SIDE_PANE_WIDTH_MIN + 8}px))`
++
++  const preferred = input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
++  // The same reserve as `reviewPaneReserve`, in percentages, so it follows the row as the row resizes.
++  const reserve = `min(${preferred}px, max(${SIDE_PANE_WIDTH_MIN}px, 100% - 8px - ${SESSION_PANEL_WIDTH_FIT}px - ${SESSION_PANEL_WIDTH_RANGE_MIN}px))`
++
++  return `min(${input.width}px, max(${minimum}px, calc(100% - 8px - ${reserve})))`
+ }
+ 
+ // `available` is undefined until the layout row is first measured; render the
+diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
+index 52e8c1f..2282728 100644
+--- a/packages/app/src/shell/shell.tsx
++++ b/packages/app/src/shell/shell.tsx
+@@ -26,6 +26,8 @@ import {
+ import { createPanelMotion, guardClosingFocus, panelOpacity } from "@/shell/panel-motion"
+ import { createSidebarPeek } from "@/shell/sidebar-peek"
+ import { windowDragEnabled } from "@/session/header/drag-area"
++// Injected by the Android build (frontend/android/sources.mjs); a no-op on every other platform.
++import { installAndroidBack } from "@/runtime/platform/android-back"
+ 
+ // How far Home steps along a peek's header to clear the collapsed toggle: to the toggle's end, from the sidebar's 18px
+ // start padding.
+@@ -36,6 +38,8 @@ type SidebarPose = { closed: number; peek: number | undefined }
+ export const sidebarToggleCommand = { id: "sidebar.toggle", keybind: "mod+shift+b" }
+ 
+ export default function Layout(props: ParentProps) {
++  // The Android host drives the system Back button through the app's own surfaces.
++  installAndroidBack()
+   const platform = usePlatform()
+   const settings = useSettingsSurface()
+   const preferences = useSettings()
+diff --git a/packages/gui-plugins/src/context/i18n/en.ts b/packages/gui-plugins/src/context/i18n/en.ts
+index 5ad0d90..0808c27 100644
+--- a/packages/gui-plugins/src/context/i18n/en.ts
++++ b/packages/gui-plugins/src/context/i18n/en.ts
+@@ -29,4 +29,7 @@ export default {
+   "export.success.description": "Saved session to {{filename}}",
+   "export.failed.title": "Failed to export session",
+   "export.failed.description": "An error occurred while exporting the session",
++  "history.loading": "Loading the full history…",
++  "history.failed": "Could not load the full history",
++  "history.retry": "Retry",
+ }
+diff --git a/packages/gui-plugins/src/context/i18n/zh.ts b/packages/gui-plugins/src/context/i18n/zh.ts
+index e35c175..d4db2f0 100644
+--- a/packages/gui-plugins/src/context/i18n/zh.ts
++++ b/packages/gui-plugins/src/context/i18n/zh.ts
+@@ -28,4 +28,7 @@ export default {
+   "export.success.description": "已将会话保存到 {{filename}}",
+   "export.failed.title": "导出会话失败",
+   "export.failed.description": "导出会话时发生错误",
++  "history.loading": "正在加载完整历史…",
++  "history.failed": "无法加载完整历史",
++  "history.retry": "重试",
+ }
+diff --git a/packages/gui-plugins/src/context/i18n/zht.ts b/packages/gui-plugins/src/context/i18n/zht.ts
+index 5b25681..0fb2503 100644
+--- a/packages/gui-plugins/src/context/i18n/zht.ts
++++ b/packages/gui-plugins/src/context/i18n/zht.ts
+@@ -28,4 +28,7 @@ export default {
+   "export.success.description": "已將工作階段儲存至 {{filename}}",
+   "export.failed.title": "匯出工作階段失敗",
+   "export.failed.description": "匯出工作階段時發生錯誤",
++  "history.loading": "正在載入完整歷史…",
++  "history.failed": "無法載入完整歷史",
++  "history.retry": "重試",
+ }
+diff --git a/packages/gui-plugins/src/context/tab.tsx b/packages/gui-plugins/src/context/tab.tsx
+index 8a331bf..9ce4d15 100644
+--- a/packages/gui-plugins/src/context/tab.tsx
++++ b/packages/gui-plugins/src/context/tab.tsx
+@@ -1,4 +1,4 @@
+-import { createMemo, on, onCleanup, onMount, For, Show } from "solid-js"
++import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js"
+ import type { JSX } from "solid-js"
+ import { checksum } from "@opencode/util/encode"
+ import { Icon } from "@opencode/ui/icon"
+@@ -100,6 +100,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+     { equals: same },
+   )
+ 
++  // The panel is the transcript view, so it reads the whole history rather than the timeline's first page: the
++  // last `system` notice (system prompt) and older frames sit before that page. `loadMore(all)` drains every page
++  // and publishes once; the recent page stays on screen while it runs, and a failure keeps it with a reason.
++  const [history, setHistory] = createSignal<"idle" | "loading" | "done" | "failed">("idle")
++  const [historyError, setHistoryError] = createSignal<string>()
++  // The raw-message list starts folded: after the full-history read it holds one row per message, and the section
++  // exists to inspect a row, not to render the whole transcript.
++  const [rawOpen, setRawOpen] = createSignal(false)
++  // The session this tab belongs to, and the one it already drained. `message.sync` resets the store's cursor on a
++  // transcript refresh, so "still has older pages" can turn true again; the marker keeps that from draining twice,
++  // and the explicit retry is the only second attempt. No abort: the client's `loadMore` joins an in-flight read,
++  // and a settled cursor is itself the "already drained" mark, so a rebuilt panel does not re-read either.
++  let historySession: string | undefined
++  let historyTried: string | undefined
++
++  const loadHistory = (id: string) => {
++    if (historyTried === id) return
++    historyTried = id
++    setHistory("loading")
++    setHistoryError(undefined)
++    const store = data().session
++    void store.message
++      .loadMore(id, { all: true })
++      .then(() => setHistory("done"))
++      .catch((error: unknown) => {
++        setHistory("failed")
++        setHistoryError(error instanceof Error ? error.message : String(error))
++      })
++  }
++
++  // Retry is explicit: a failed attempt leaves the reason on screen until this clears the marker.
++  const retryHistory = () => {
++    const id = props.session.id
++    if (!id) return
++    historyTried = undefined
++    loadHistory(id)
++  }
++
++  // Drain once per session, as soon as its first page is in the store and older pages remain. `messageLoading`
++  // belongs to the timeline's own paging, so it is deliberately not a trigger. The session-change reset happens in
++  // this same run, before the drain decision, so the two can never race into a second read.
++  createEffect(
++    on(
++      () => {
++        const id = props.session.id
++        if (!id) return
++        const store = data().session
++        return [id, store.message.list(id).length > 0, store.message.more(id)] as const
++      },
++      (value) => {
++        if (!value) return
++        const [id, ready, more] = value
++        if (historySession !== id) {
++          historySession = id
++          historyTried = undefined
++          setHistoryError(undefined)
++          setHistory("idle")
++        }
++        if (!ready || !more) return
++        if (historyTried === id) return
++        loadHistory(id)
++      },
++    ),
++  )
++
+   const usd = createMemo(
+     () =>
+       new Intl.NumberFormat(i18n.locale(), {
+@@ -292,10 +357,30 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+       onScroll={handleScroll}
+     >
+       <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
++        <Show when={historyError()}>
++          {(reason) => (
++            <div data-slot="session-context-history-error" class="flex flex-col gap-1 rounded-md border border-border-base bg-surface-base px-3 py-2">
++              <div class="text-12-regular text-text-danger-base">{ctx.t("history.failed")}</div>
++              <div class="text-12-regular text-text-weak">{reason()}</div>
++              <div>
++                <Button size="small" variant="ghost" class="px-2" onClick={retryHistory}>
++                  {ctx.t("history.retry")}
++                </Button>
++              </div>
++            </div>
++          )}
++        </Show>
++
+         <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
+           <For each={stats}>{(stat) => <Stat label={ctx.t(stat.label)} value={stat.value()} />}</For>
+         </div>
+ 
++        <Show when={history() === "loading"}>
++          <div data-slot="session-context-history-loading" class="text-12-regular text-text-weak">
++            {ctx.t("history.loading")}
++          </div>
++        </Show>
++
+         <Show when={systemPrompt()}>
+           {(prompt) => (
+             <div class="flex flex-col gap-2">
+@@ -309,7 +394,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+ 
+         <div class="flex flex-col gap-2">
+           <div class="flex items-center justify-between">
+-            <div class="text-12-regular text-text-weak">{ctx.t("rawMessages.title")}</div>
++            {/* Section-level fold: the raw rows are an inspection view, so the whole list mounts on demand instead
++                of rendering one accordion item per message (hundreds after the full-history read). */}
++            <button
++              type="button"
++              aria-expanded={rawOpen()}
++              aria-controls="session-context-raw-messages"
++              data-slot="session-context-raw-messages-toggle"
++              class="flex min-w-0 items-center gap-1 rounded-sm text-text-weak hover:text-text-base focus-visible:outline-none"
++              onClick={() => setRawOpen((open) => !open)}
++            >
++              <Icon name={rawOpen() ? "chevron-down" : "chevron-right"} size="small" class="shrink-0" />
++              <span class="truncate text-12-regular">{ctx.t("rawMessages.title")}</span>
++              <span class="shrink-0 text-12-regular text-text-faint tabular-nums">{messages().length}</span>
++            </button>
+             <Button
+               size="small"
+               variant="ghost"
+@@ -320,11 +418,15 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+               <span>{ctx.t("export.session")}</span>
+             </Button>
+           </div>
+-          <Accordion multiple>
+-            <For each={messages()}>
+-              {(message) => <RawMessage message={message} onRendered={restoreScroll} time={formatter().time} />}
+-            </For>
+-          </Accordion>
++          <Show when={rawOpen()}>
++            <div id="session-context-raw-messages">
++              <Accordion multiple>
++                <For each={messages()}>
++                  {(message) => <RawMessage message={message} onRendered={restoreScroll} time={formatter().time} />}
++                </For>
++              </Accordion>
++            </div>
++          </Show>
+         </div>
+       </div>
+     </div>
+diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
+index 880ba65..007382c 100644
+--- a/packages/ui/src/components/image-preview.tsx
++++ b/packages/ui/src/components/image-preview.tsx
+@@ -44,6 +44,14 @@ export interface ImagePreviewProps {
+ 
+ const STEP = Math.SQRT2
+ 
++// How long a second tap may follow the first, and how far apart the two may be, for them to count as
++// a double tap.
++const DOUBLE_TAP_WINDOW = 300
++const DOUBLE_TAP_DISTANCE = 24
++
++// How far a press may travel and still count as a tap.
++const TAP_SLOP = 8
++
+ // How far up from its bottom edge a video keeps its own controls, whose drag scrubs rather than pans.
+ const CONTROLS = 56
+ 
+@@ -92,6 +100,20 @@ export function ImagePreview(props: ImagePreviewProps) {
+   const [view, setView] = createSignal(FIT_VIEW)
+   const [fitRatio, setFitRatio] = createSignal(1)
+   const [drag, setDrag] = createSignal<{ id: number; x: number; y: number }>()
++  // The fingers on the body, in client coordinates: one drags the zoomed picture, two pinch it. The
++  // preview follows them from the first touch, so a pinch that starts at the fitted size reads too.
++  const pointers = new Map<number, { x: number; y: number }>()
++  // The zoom a pinch started from, and the spread between the fingers then, so the picture follows
++  // the fingers instead of jumping to the new spread.
++  let pinch: { distance: number; zoom: ZoomView } | undefined
++  // A press that is still down, so a press that travelled is not read as a tap.
++  let press: { id: number; x: number; y: number } | undefined
++  // A completed tap, used to recognise a double tap. Set on release, never on press: a pinch or a
++  // drag also starts with a press, and must not arm the second tap of a double tap.
++  let tap: { at: number; x: number; y: number } | undefined
++  // A double tap on a touch host also fires the browser's own double click, which would zoom the
++  // picture a second time; the tap owns the gesture and the click is skipped.
++  let tapped = false
+   // Whether the press that ends in a click began on the backdrop around the image and stayed put. A pan captures the
+   // pointer, so its click lands on the backdrop wherever it began.
+   let backdrop = false
+@@ -418,12 +440,18 @@ export function ImagePreview(props: ImagePreviewProps) {
+   )
+ 
+   // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
+-  const point = (event: MouseEvent) => {
++  // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
++  const anchor = (x: number, y: number) => {
+     const rect = (props.video ? image : viewport).getBoundingClientRect()
+ 
+-    return { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 }
++    return { x: x - rect.left - rect.width / 2, y: y - rect.top - rect.height / 2 }
+   }
+ 
++  const point = (event: MouseEvent) => anchor(event.clientX, event.clientY)
++
++  // The distance between two points, for the spread between the fingers of a pinch.
++  const spread = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
++
+   const measure = () => {
+     if (!natural().width || !image.offsetWidth) return
+     size = { width: image.offsetWidth, height: image.offsetHeight }
+@@ -449,12 +477,62 @@ export function ImagePreview(props: ImagePreviewProps) {
+   )
+ 
+   const detail = (event: MouseEvent) => {
++    // The browser's own double click follows a touch double tap, and would zoom the picture twice.
++    if (tapped) {
++      tapped = false
++
++      return
++    }
++
+     if (goal().scale > 1) return ease(FIT_VIEW)
+     ease(zoomAt(goal(), detailScale(fitRatio()), point(event), bounds()))
+   }
+ 
+   const grab = (event: PointerEvent, target: HTMLElement) => {
+-    if (event.button !== 0 || view().scale <= 1) return
++    if (event.button !== 0) return
++
++    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++    press = { id: event.pointerId, x: event.clientX, y: event.clientY }
++
++    // A second finger turns the gesture into a pinch: the picture scales about the fingers' midpoint.
++    if (pointers.size === 2) {
++      const [a, b] = [...pointers.values()]
++
++      pinch = { distance: spread(a, b), zoom: view() }
++      // The pinch owns the picture now, so the first finger's drag ends with it.
++      setDrag(undefined)
++      event.preventDefault()
++      target.setPointerCapture(event.pointerId)
++
++      return
++    }
++
++    // A second tap zooms the picture: a touch host has no double click of its own to rely on.
++    if (
++      event.pointerType !== "mouse" &&
++      tap &&
++      performance.now() - tap.at < DOUBLE_TAP_WINDOW &&
++      spread(tap, { x: event.clientX, y: event.clientY }) < DOUBLE_TAP_DISTANCE
++    ) {
++      tap = undefined
++      press = undefined
++      tapped = true
++      // The browser's own double click follows; it must not zoom the picture a second time.
++      window.setTimeout(() => (tapped = false), DOUBLE_TAP_WINDOW * 2)
++      event.preventDefault()
++      target.setPointerCapture(event.pointerId)
++
++      if (goal().scale > 1) ease(FIT_VIEW)
++      else ease(zoomAt(goal(), detailScale(fitRatio()), anchor(event.clientX, event.clientY), bounds()))
++
++      return
++    }
++
++    // A tap that is older than the double tap window cannot pair with the next one.
++    if (tap && performance.now() - tap.at >= DOUBLE_TAP_WINDOW) tap = undefined
++
++    if (view().scale <= 1) return
++
+     event.preventDefault()
+     target.setPointerCapture(event.pointerId)
+     setDrag({ id: event.pointerId, x: event.clientX, y: event.clientY })
+@@ -463,6 +541,38 @@ export function ImagePreview(props: ImagePreviewProps) {
+   const pan = (event: PointerEvent) => {
+     const current = drag()
+ 
++    if (pinch) {
++      // The pinch owns the picture: its spread drives the scale, about the fingers' midpoint.
++      const [a, b] = [...pointers.values()]
++
++      if (!a || !b || !pinch.distance) return
++
++      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++
++      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
++
++      follow(
++        zoomAt(
++          pinch.zoom,
++          pinch.zoom.scale * (spread(a, b) / pinch.distance),
++          anchor(midpoint.x, midpoint.y),
++          bounds(),
++        ),
++      )
++
++      return
++    }
++
++    if (!pointers.has(event.pointerId)) return
++
++    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++
++    // A press that travelled is not a tap, and the tap before it cannot pair with the next press.
++    if (press?.id === event.pointerId && spread(press, { x: event.clientX, y: event.clientY }) > TAP_SLOP) {
++      press = undefined
++      tap = undefined
++    }
++
+     if (current?.id !== event.pointerId) return
+     backdrop = false
+     panned = true
+@@ -471,7 +581,26 @@ export function ImagePreview(props: ImagePreviewProps) {
+   }
+ 
+   const release = (event: PointerEvent) => {
++    pointers.delete(event.pointerId)
++
+     if (drag()?.id === event.pointerId) setDrag(undefined)
++
++    // A press that stayed put is a tap, and two quick taps zoom the picture. A mouse has a double
++    // click of its own, so only a touch arms the next tap.
++    if (press?.id === event.pointerId) {
++      if (event.pointerType !== "mouse") tap = { at: performance.now(), x: event.clientX, y: event.clientY }
++      press = undefined
++    }
++
++    if (pointers.size < 2) {
++      pinch = undefined
++
++      // Dropping from two fingers to one continues the drag from where that finger is now.
++      const remaining = [...pointers.entries()][0]
++
++      if (remaining && view().scale > 1)
++        setDrag({ id: remaining[0], x: remaining[1].x, y: remaining[1].y })
++    }
+   }
+ 
+   if (props.video) {
+diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
+index 7ed8e6d..331f9c0 100644
+--- a/packages/ui/src/i18n/en.ts
++++ b/packages/ui/src/i18n/en.ts
+@@ -198,6 +198,7 @@ const source = {
+   "ui.textField.copied": "Copied",
+ 
+   "ui.imagePreview.alt": "Image preview",
++  "ui.imagePreview.reset": "Reset zoom",
+   "ui.imagePreview.zoomIn": "Zoom in",
+   "ui.imagePreview.zoomOut": "Zoom out",
+   "ui.imagePreview.zoomToFit": "Zoom to fit",
+diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
+index 16d623b..93ad246 100644
+--- a/packages/ui/src/i18n/zh.ts
++++ b/packages/ui/src/i18n/zh.ts
+@@ -143,6 +143,7 @@ export const dict = {
+   "ui.textField.copied": "已复制",
+ 
+   "ui.imagePreview.alt": "图片预览",
++  "ui.imagePreview.reset": "重置缩放",
+   "ui.scrollView.ariaLabel": "可滚动内容",
+ 
+   "ui.tool.read": "读取",
+diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
+index 1b55a97..7bdb332 100644
+--- a/packages/ui/src/i18n/zht.ts
++++ b/packages/ui/src/i18n/zht.ts
+@@ -143,6 +143,7 @@ export const dict = {
+   "ui.textField.copied": "已複製",
+ 
+   "ui.imagePreview.alt": "圖片預覽",
++  "ui.imagePreview.reset": "重設縮放",
+   "ui.scrollView.ariaLabel": "可捲動內容",
+ 
+   "ui.tool.read": "讀取",
+diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
+index 7ac8d8b..03cf46c 100644
+--- a/packages/app/src/shell/titlebar/titlebar.tsx
++++ b/packages/app/src/shell/titlebar/titlebar.tsx
+@@ -74,7 +74,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+   const location = useLocation()
+   const mobile = createMediaQuery("(max-width: 767px)")
+   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
+-  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
++  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
+ 
+   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
+   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
+@@ -171,7 +171,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       }}
+       style={{
+         height:
+-          platform.platform === "web"
++          platform.platform !== "desktop"
+             ? bottom()
+               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
+               : mobileTop()
+@@ -624,8 +624,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                   "ps-3.5": windows(),
+                 }}
+               >
+-                <Show when={windows() || linux()}>
+-                  <WindowsAppMenu command={command} platform={platform} />
++                <Show when={windows() || linux() || (platform.platform === "android" && !props.verticalTabs)}>
++                  <WindowsAppMenu
++                    command={command}
++                    platform={platform}
++                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
++                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
++                  />
+                 </Show>
+                 <Show when={windows() && props.verticalTabs}>
+                   <SidebarToggle />
+@@ -841,6 +846,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                                 <Show when={homeInSidebarHeader()} fallback={<div class="flex-1" />}>
+                                   <div class="min-w-0 flex-1">{homeButton(true)}</div>
+                                 </Show>
++                                <Show when={platform.platform === "android"}>
++                                  <WindowsAppMenu
++                                    command={command}
++                                    platform={platform}
++                                    menuPlatform="android"
++                                    actionEnabled={platform.androidMenuActionEnabled}
++                                  />
++                                </Show>
+                                 {/* Optically aligns the toggle's glyph with the selected session's end edge. */}
+                                 <div class="-me-0.5 flex shrink-0">
+                                   <SidebarToggle handoff="out" />
+diff --git a/packages/app/src/providers/models/provider-group.tsx b/packages/app/src/providers/models/provider-group.tsx
+index 3429e0b..2e94e9c 100644
+--- a/packages/app/src/providers/models/provider-group.tsx
++++ b/packages/app/src/providers/models/provider-group.tsx
+@@ -1,9 +1,8 @@
+ import { Badge } from "@opencode/ui/badge"
+ import { Icon } from "@opencode/ui/icon"
+ import { IconButton } from "@opencode/ui/icon-button"
+-import { iconNames, type IconName } from "@opencode/ui/icons/provider"
+ import { Menu } from "@opencode/ui/menu"
+-import { ProviderIcon } from "@opencode/ui/provider-icon"
++import { ProviderIcon, resolveProviderIcon } from "@opencode/ui/provider-icon"
+ import type { JSX } from "solid-js"
+ import { createMemo, For, Match, Show, Switch } from "solid-js"
+ import { consoleProviderGroup, consoleProviderName } from "@/providers/catalog/console"
+@@ -25,12 +24,7 @@ function CustomManagedProviderIcon(props: { class?: string }) {
+ }
+ 
+ export function ProviderModelIcon(props: { provider: ModelProvider; class?: string }) {
+-  const icon = () =>
+-    [
+-      props.provider.canonical,
+-      props.provider.canonical?.replace(/-token-plan$/, ""),
+-      props.provider.id.replace(/^console-/, ""),
+-    ].find((id): id is IconName => !!id && id !== "synthetic" && iconNames.includes(id as IconName))
++  const icon = () => resolveProviderIcon(props.provider.id, props.provider.canonical)
+ 
+   return (
+     <Switch>
+diff --git a/packages/ui/src/components/provider-icon.tsx b/packages/ui/src/components/provider-icon.tsx
+index d044147..726eb78 100644
+--- a/packages/ui/src/components/provider-icon.tsx
++++ b/packages/ui/src/components/provider-icon.tsx
+@@ -1,7 +1,10 @@
+ import type { Component, JSX } from "solid-js"
+ import { createMemo, splitProps } from "solid-js"
+ import sprite from "./provider-icons/sprite.svg"
+-import { iconNames, type IconName } from "./provider-icons/types"
++import extraSprite from "./provider-icons/extra.svg?no-inline"
++import { isExtraProviderIcon, resolveProviderIcon } from "./provider-icons/resolve"
++
++export { resolveProviderIcon } from "./provider-icons/resolve"
+ 
+ export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
+   id: string
+@@ -9,7 +12,7 @@ export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
+ 
+ export const ProviderIcon: Component<ProviderIconProps> = (props) => {
+   const [local, rest] = splitProps(props, ["id", "class", "classList"])
+-  const resolved = createMemo(() => (iconNames.includes(local.id as IconName) ? local.id : "synthetic"))
++  const resolved = createMemo(() => resolveProviderIcon(local.id))
+ 
+   return (
+     <svg
+@@ -20,7 +23,7 @@ export const ProviderIcon: Component<ProviderIconProps> = (props) => {
+         [local.class ?? ""]: !!local.class,
+       }}
+     >
+-      <use href={`${sprite}#${resolved()}`} />
++      <use href={`${isExtraProviderIcon(resolved()) ? extraSprite : sprite}#${resolved() ?? "synthetic"}`} />
+     </svg>
+   )
+ }

@@ -600,16 +600,18 @@ index 22472b0..b4931ff 100644
                directory={surface.ops.directory}
                ghostty={props.model.ghostty}
 diff --git a/packages/gui-plugins/src/terminal/renderer.tsx b/packages/gui-plugins/src/terminal/renderer.tsx
-index 805e2e9..350243a 100644
+index d9458dc..302751b 100644
 --- a/packages/gui-plugins/src/terminal/renderer.tsx
 +++ b/packages/gui-plugins/src/terminal/renderer.tsx
-@@ -1,4 +1,4 @@
+@@ -1,6 +1,6 @@
 -import { createMemo, lazy, on, onCleanup, Suspense } from "solid-js"
 +import { createMemo, lazy, onCleanup, Suspense } from "solid-js"
+ import { Icon } from "@opencode/ui/icon"
+ import { Menu } from "@opencode/ui/menu"
  import {
    Command,
    createKeyed,
-@@ -29,21 +29,6 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
+@@ -31,21 +31,6 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
    // The host withdraws the listener with the plugin.
    ctx.workspaces.on("remove", model.remove)
  
@@ -631,7 +633,7 @@ index 805e2e9..350243a 100644
    const routed = createMemo(() => !!sessions.current())
  
    const current = () => {
-@@ -192,7 +177,7 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
+@@ -204,7 +189,7 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
      },
    )
  
@@ -640,7 +642,7 @@ index 805e2e9..350243a 100644
      const terminal = () => model.load(workspace)
      const pty = () => terminal().byTab(id)
      const label = () => terminalTabLabel({ title: pty()?.title, titleNumber: pty()?.titleNumber, t: ctx.t })
-@@ -249,7 +234,7 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
+@@ -261,7 +246,7 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
  
        if (ids.length === 0) return []
  
@@ -981,3 +983,22 @@ index c8c8285..e6ae729 100644
      />
    )
  }
+diff --git a/packages/gui-plugins/src/renderer.ts b/packages/gui-plugins/src/renderer.ts
+index 5c131e2..59b3734 100644
+--- a/packages/gui-plugins/src/renderer.ts
++++ b/packages/gui-plugins/src/renderer.ts
+@@ -29,6 +29,8 @@ import sources from "./sources"
+ import sourcesRenderer from "./sources/renderer"
+ import goal from "./goal"
+ import goalRenderer from "./goal/renderer"
++import serverBrowser from "./remote-browser"
++import serverBrowserRenderer from "./remote-browser/renderer"
+ 
+ // The window renders once every built-in is active, so the small renderer entries load with the app, like the
+ // features they replaced. Heavy UI stays behind `lazy()` inside them.
+@@ -52,4 +54,5 @@ export const builtins = compose({
+   "microsoft-office": { ...microsoftOffice, windowEntry: eager(microsoftOfficeRenderer) },
+   sources: { ...sources, windowEntry: eager(sourcesRenderer) },
+   goal: { ...goal, windowEntry: eager(goalRenderer) },
++  "server-browser": { ...serverBrowser, windowEntry: eager(serverBrowserRenderer) },
+ })

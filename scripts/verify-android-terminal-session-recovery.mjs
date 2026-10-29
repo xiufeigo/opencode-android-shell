@@ -16,11 +16,11 @@ const root = new URL("../", import.meta.url)
 const out = path.join(fileURLToPath(root), "research/tmp/verify-android-terminal-session-recovery", new Date().toISOString().replace(/[:.]/g, "-"))
 fs.mkdirSync(out, { recursive: true })
 const report = { environment: "actual Android emulator APK WebView + ordinary OpenCode server", checks: [], errors: [], evidence: {} }
-const app = "com.xiufeigo.opencodeshell"
-const component = `${app}/${app}.web.WebHostActivity`
+const app = "com.xiufeigo.opencodeshell.debug"
+const component = `${app}/com.xiufeigo.opencodeshell.web.WebHostActivity`
 const native = args => execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8", windowsHide: true, timeout: 20000 })
 const auth = { authorization: `Basic ${Buffer.from(`opencode:${config.password}`).toString("base64")}` }
-const { _android } = await import(new URL("../_upstream/node_modules/.bun/playwright@1.59.1/node_modules/playwright/index.mjs", import.meta.url).href)
+const { _android } = await import(new URL("../plugins/server-browser/node_modules/playwright/index.mjs", import.meta.url).href)
 const sessions = []
 const ptys = new Map()
 const devices = []

@@ -2,7 +2,7 @@
 
 Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-官方 UI 固定为 **2.2.0**，提交 `1097e2668b1e08ad63bdf0b1c4860b9bc01e420c`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.26 / 54**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
+官方 UI 固定为 **2.2.1**，提交 `3ebcf9a32c7b28f658cfee80775448929361727a`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.27 / 55**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
 ## 与 Desktop 对齐
 
@@ -30,7 +30,7 @@ node frontend/android/build.mjs
 ./gradlew :webapp:testDebugUnitTest :webapp:assembleRelease
 ```
 
-Windows 使用 `gradlew.bat`。如果 PATH 中的 Bun 不是 1.4.4，通过 `BUN_BINARY` 指定对应可执行文件。源码构建在 `_scratch_root/desktop-parity/checkout` 的独立临时检出进行，不修改开发者的 `_upstream/`。补丁或类型检查失败会中止，只有构建成功才替换 APK 内嵌 UI。
+Windows 使用 `gradlew.bat`。如果 PATH 中的 Bun 不是 1.4.4，通过 `BUN_BINARY` 指定对应可执行文件。源码构建按上游提交和补丁内容使用 `_scratch_root/desktop-parity/checkout-*` 中的独立临时检出，不修改开发者的 `_upstream/` 和旧检出。补丁或类型检查失败会中止，只有构建成功才替换 APK 内嵌 UI。
 
 输出：`webapp/build/outputs/apk/release/webapp-release.apk`。调试设备使用 `:webapp:assembleDebug`。本机按 [AGENTS.md](AGENTS.md) 使用用户提供、与 CI 相同的签名密钥；仅通过本次构建进程的 `DEBUG_KEYSTORE_PATH` 等环境变量传入凭据。
 

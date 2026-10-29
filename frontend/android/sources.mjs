@@ -6,7 +6,7 @@ export async function applyAndroidSources(checkout, here) {
   // Git checkout restores tracked files but keeps files added by our previous
   // patch. Remove only that declared set so repeated builds start from the pin.
   const patches = await Promise.all(
-    ["upstream.patch", "sidebar.patch"].map((name) => fs.readFile(path.join(here, name), "utf8")),
+    ["upstream.patch", "ui.patch"].map((name) => fs.readFile(path.join(here, name), "utf8")),
   )
   for (const patch of patches) {
     for (const match of patch.matchAll(/^--- \/dev\/null\r?\n\+\+\+ b\/(.+)$/gm)) {
@@ -15,7 +15,7 @@ export async function applyAndroidSources(checkout, here) {
       await fs.rm(filename, { force: true })
     }
   }
-  for (const name of ["upstream.patch", "sidebar.patch"]) {
+  for (const name of ["upstream.patch", "ui.patch"]) {
     execFileSync("git", ["apply", "--check", path.join(here, name)], { cwd: checkout, stdio: "inherit" })
     execFileSync("git", ["apply", path.join(here, name)], { cwd: checkout, stdio: "inherit" })
   }
@@ -32,6 +32,9 @@ export async function applyAndroidSources(checkout, here) {
     ["../embedded-ui/server-state.mjs", "packages/app/src/runtime/platform/android-server-state.mjs"],
     ["../embedded-ui/resize-pointer.mjs", "packages/ui/src/components/android-resize-pointer.mjs"],
     ["../embedded-ui/resize-pointer.d.mts", "packages/ui/src/components/android-resize-pointer.d.mts"],
+    ["provider-icons.ts", "packages/ui/src/components/provider-icons/resolve.ts"],
+    ["provider-icons.test.ts", "packages/ui/src/components/provider-icons/resolve.test.ts"],
+    ["provider-icons-extra.svg", "packages/ui/src/components/provider-icons/extra.svg"],
     ["../terminal/panel-lifecycle.mjs", "packages/gui-plugins/src/terminal/android-handoffs.mjs"],
     ["../terminal/panel-lifecycle.d.mts", "packages/gui-plugins/src/terminal/android-handoffs.d.mts"],
     ["../terminal/session-model.test.ts", "packages/gui-plugins/src/terminal/session-model.test.ts"],
@@ -44,8 +47,11 @@ export async function applyAndroidSources(checkout, here) {
     "packages/app/src/settings/general/android-browser.tsx",
   ]) await fs.rm(path.join(checkout, filename), { force: true })
   await Promise.all(files.map(([from, to]) => fs.copyFile(path.join(here, from), path.join(checkout, to))))
-  // 2.2.0 rewrote the GUI SDK; the old Extension-based remote-browser plugin no longer compiles.
-  await fs.rm(path.join(checkout, "packages/gui-plugins/src/remote-browser"), { recursive: true, force: true })
+  const browser = path.join(checkout, "packages/gui-plugins/src/remote-browser")
+  await fs.rm(browser, { recursive: true, force: true })
+  await fs.cp(path.join(here, "../remote-browser"), browser, { recursive: true })
+  // One RPC contract is compiled into both the server plugin and the clients.
+  await fs.copyFile(path.join(here, "../../plugins/server-browser/src/rpc.ts"), path.join(browser, "rpc.ts"))
   for (const name of ["app", "gui-plugins"]) {
     await fs.writeFile(path.join(checkout, `packages/${name}/tsconfig.android.json`), JSON.stringify({
       extends: "./tsconfig.json", include: ["src", "package.json"], exclude: ["src/**/*.test.ts", "src/**/*.stories.tsx"],

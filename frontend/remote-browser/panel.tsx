@@ -1,15 +1,11 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js"
-import { Button } from "@opencode/ui/button"
-import { Icon } from "@opencode/ui/icon"
-import { IconButton } from "@opencode/ui/icon-button"
-import { Menu } from "@opencode/ui/menu"
-import { useExtension, usePanel, type MountedSession, type PanelTab } from "../sdk"
+import { usePanel, usePlugin, type MountedSession, type PanelTab } from "@opencode/plugin/gui"
 import type definition from "./index"
 import type { Model } from "./model"
 import type { Action, Tab } from "./rpc"
 
 export default function BrowserPanel(props: { model: Model; session: MountedSession; tab: PanelTab }) {
-  const ctx = useExtension<typeof definition>()
+  const ctx = usePlugin<typeof definition>()
   const panel = usePanel()
   const record = () => props.model.get(props.session)
   const selected = () => record().state.tabs.find(tab => tab.id === (props.tab.id === "main" ? record().state.focusedTabID : props.tab.id))
@@ -110,28 +106,25 @@ export default function BrowserPanel(props: { model: Model; session: MountedSess
       <div class="browser-mobile-tabs" role="tablist">
         <For each={record().state.tabs}>{tab => <div class="flex items-center">
           <button type="button" role="tab" aria-selected={record().state.focusedTabID === tab.id} onClick={() => perform({ type: "tabs.focus", tabID: tab.id })}>
-          <Icon name="globe" size="small" /><span class="truncate">{tab.url === "about:blank" ? ctx.t("new") : tab.title || tab.url}</span>
-          </button><IconButton icon={<Icon name="close" />} aria-label={ctx.t("close")} onClick={() => perform({ type: "tabs.close", tabID: tab.id })} />
+          <ctx.ui.Icon name="globe" size="small" /><span class="truncate">{tab.url === "about:blank" ? ctx.t("new") : tab.title || tab.url}</span>
+          </button><ctx.ui.IconButton icon="close" size="small" label={ctx.t("close")} onClick={() => perform({ type: "tabs.close", tabID: tab.id })} />
         </div>}</For>
-        <IconButton icon={<Icon name="plus" />} aria-label={ctx.t("new")} onClick={open} />
+        <ctx.ui.IconButton icon="plus" size="small" label={ctx.t("new")} onClick={open} />
       </div>
     </Show>
     <form class="browser-bar" onSubmit={event => { event.preventDefault(); void go() }}>
-      <IconButton variant="ghost-muted" icon={<Icon name="arrow-left" />} aria-label={ctx.t("back")} disabled={!current()?.canGoBack} onClick={() => target("back")} />
-      <IconButton variant="ghost-muted" icon={<Icon name="arrow-right" />} aria-label={ctx.t("forward")} disabled={!current()?.canGoForward} onClick={() => target("forward")} />
-      <IconButton variant="ghost-muted" icon={<Icon name={current()?.loading ? "close" : "outline-rotate-clockwise"} />} aria-label={ctx.t(current()?.loading ? "stop" : "reload")} disabled={!selected()} onClick={() => target(current()?.loading ? "stop" : "reload")} />
+      <ctx.ui.IconButton variant="ghost-muted" icon="arrow-left" label={ctx.t("back")} disabled={!current()?.canGoBack} onClick={() => target("back")} />
+      <ctx.ui.IconButton variant="ghost-muted" icon="arrow-right" label={ctx.t("forward")} disabled={!current()?.canGoForward} onClick={() => target("forward")} />
+      <ctx.ui.IconButton variant="ghost-muted" icon={current()?.loading ? "close" : "outline-rotate-clockwise"} label={ctx.t(current()?.loading ? "stop" : "reload")} disabled={!selected()} onClick={() => target(current()?.loading ? "stop" : "reload")} />
       <input ref={addressField} class="browser-address" aria-label={ctx.t("address")} placeholder={ctx.t("address")} disabled={panel.placement() !== "mobile" && !selected()} value={address()} onInput={event => setDraft({ source: addressSource(), text: event.currentTarget.value })} onFocus={event => event.currentTarget.select()} autocapitalize="off" spellcheck={false} />
-      <Menu gutter={4} modal={false} placement="bottom-end">
-        <Menu.Trigger as={IconButton} variant="ghost-muted" aria-label={ctx.t("options")} icon={<Icon name="outline-dots" />} />
-        <Menu.Portal><Menu.Content>
-          <Menu.Item onSelect={() => { if (selected()) void ctx.system.copy(selected()!.url).catch(error => props.model.fail(props.session, error)) }}>{ctx.t("copy")}</Menu.Item>
-          <Menu.Item onSelect={() => { if (selected()) ctx.system.openExternal(selected()!.url) }}>{ctx.t("external")}</Menu.Item>
-          <Menu.Item onSelect={() => { const tab = selected(); if (tab) perform({ type: "viewport", tabID: tab.id, width: Math.max(240, Math.min(2560, Math.round(surface.clientWidth))), height: Math.max(200, Math.min(1600, Math.round(surface.clientHeight))) }) }}>{ctx.t("fit")}</Menu.Item>
-          <Menu.Item onSelect={() => void showFiles()}>{ctx.t("files")}</Menu.Item>
-        </Menu.Content></Menu.Portal>
-      </Menu>
+      <ctx.ui.Menu label={ctx.t("options")} placement="bottom-end" items={[
+        { label: ctx.t("copy"), onSelect: () => { if (selected()) void ctx.system.copy(selected()!.url).catch(error => props.model.fail(props.session, error)) } },
+        { label: ctx.t("external"), onSelect: () => { if (selected()) ctx.system.openExternal(selected()!.url) } },
+        { label: ctx.t("fit"), onSelect: () => { const tab = selected(); if (tab) perform({ type: "viewport", tabID: tab.id, width: Math.max(240, Math.min(2560, Math.round(surface.clientWidth))), height: Math.max(200, Math.min(1600, Math.round(surface.clientHeight))) }) } },
+        { label: ctx.t("files"), onSelect: () => void showFiles() },
+      ]} />
     </form>
-    <Show when={record().error}><div class="browser-error" role="alert">{record().error}<Button size="small" onClick={() => void reconnect()}>{ctx.t("retry")}</Button></div></Show>
+    <Show when={record().error}><div class="browser-error" role="alert">{record().error}<ctx.ui.Button size="small" onClick={() => void reconnect()}>{ctx.t("retry")}</ctx.ui.Button></div></Show>
     <Show when={blank()} fallback={
       <div ref={surface} class="browser-surface" tabindex="0" onContextMenu={event => event.preventDefault()}>
         <Show when={image()}><img ref={img} src={image()} alt={current()?.title ?? ctx.t("title")} draggable={false}
@@ -178,12 +171,12 @@ export default function BrowserPanel(props: { model: Model; session: MountedSess
         <Show when={current()?.dialog}>{dialog => <div class="browser-dialog" role="dialog" aria-label={dialog().type}>
           <p>{dialog().message}</p>
           <Show when={dialog().type === "prompt"}><input aria-label="Prompt" value={prompt() || dialog().defaultValue} onInput={event => setPrompt(event.currentTarget.value)} /></Show>
-          <div class="flex gap-2"><Button onClick={() => { const tab = selected(); if (tab) perform({ type: "dialog", tabID: tab.id, action: "accept", promptText: prompt() }) }}>{ctx.t("accept")}</Button><Button variant="neutral" onClick={() => { const tab = selected(); if (tab) perform({ type: "dialog", tabID: tab.id, action: "dismiss" }) }}>{ctx.t("dismiss")}</Button></div>
+          <div class="flex gap-2"><ctx.ui.Button onClick={() => { const tab = selected(); if (tab) perform({ type: "dialog", tabID: tab.id, action: "accept", promptText: prompt() }) }}>{ctx.t("accept")}</ctx.ui.Button><ctx.ui.Button onClick={() => { const tab = selected(); if (tab) perform({ type: "dialog", tabID: tab.id, action: "dismiss" }) }}>{ctx.t("dismiss")}</ctx.ui.Button></div>
         </div>}</Show>
       </div>
     }>
       <div ref={surface} class="browser-home">
-        <Icon name="globe" size="large" /><strong>{record().error ? ctx.t("unavailable") : ctx.t("home")}</strong>
+        <ctx.ui.Icon name="globe" size="large" /><strong>{record().error ? ctx.t("unavailable") : ctx.t("home")}</strong>
         <p>{record().error ? ctx.t("install") : ctx.t("description")}</p>
       </div>
     </Show>

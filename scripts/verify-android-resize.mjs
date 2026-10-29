@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("../", import.meta.url))
 const output = path.join(root, "research/tmp/verify-android-resize", new Date().toISOString().replace(/[:.]/g, "-"))
 fs.mkdirSync(output, { recursive: true })
 const report = { scope: "packaged SPA, trusted CDP touch and mouse input; emulated native bridge, not an Android device", checks: [], output }
-let backend, uiServer, browser, page, client, horizontal, vertical
+let backend, uiServer, browser, page, client, horizontal
 const errors = []
 const visible = locator => locator.filter({ visible: true })
 const button = name => visible(page.getByRole("button", { name, exact: true })).first()
@@ -78,7 +78,6 @@ try {
     }, true)
   })
   horizontal = page.locator('[data-slot="session-chat-panel"] [data-component="resize-handle"][data-direction="horizontal"]')
-  vertical = visible(page.locator('[data-slot="session-side-panel-gap"] [data-component="resize-handle"], [data-slot="terminal-panel-presence"] [data-component="resize-handle"]')).first()
   await page.goto(`${ui}/server/${base64url(backend.origin)}/session/${backend.sessionId}`, { waitUntil: "domcontentloaded" })
   await button("Toggle review").waitFor()
   if (await button("Toggle review").getAttribute("aria-expanded") !== "true") await button("Toggle review").click()
@@ -93,14 +92,13 @@ try {
     return { before: before.chat, after: after.chat, events: after.events }
   })
   await page.keyboard.press("Control+Backquote")
-  await visible(page.locator('#terminal-panel[aria-hidden="false"]')).waitFor()
-  await vertical.waitFor()
-  for (const kind of ["mouse", "touch"]) await check(kind + "-terminal-height", async () => {
+  await visible(page.locator("#terminal-panel")).waitFor()
+  for (const kind of ["mouse", "touch"]) await check(kind + "-terminal-width", async () => {
     const before = await snapshot()
-    await drag(vertical, 0, kind === "mouse" ? -80 : 80, kind)
+    await drag(horizontal, kind === "mouse" ? 70 : -70, 0, kind)
     const after = await snapshot()
-    const delta = after.terminal.height - before.terminal.height
-    assert.ok(kind === "mouse" ? delta > 50 : delta < -50, `terminal height delta=${delta}`)
+    const delta = after.terminal.width - before.terminal.width
+    assert.ok(kind === "mouse" ? delta < -40 : delta > 40, `terminal width delta=${delta}`)
     assert.deepEqual(after.body, { userSelect: "", overflow: "" })
     return { before: before.terminal, after: after.terminal, events: after.events }
   })
@@ -126,51 +124,47 @@ try {
   })
   await check("touch-cancel-restores-styles-without-collapse", async () => {
     await page.evaluate(() => { document.body.style.userSelect = "text"; document.body.style.overflow = "clip" })
-    const box = await vertical.boundingBox()
+    const box = await horizontal.boundingBox()
     const point = { x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }
-    const before = await snapshot()
     await touch("touchStart", [point])
-    await touch("touchMove", [{ ...point, y: point.y + before.terminal.height - 20 }])
+    await touch("touchMove", [{ ...point, x: point.x + 80 }])
     await touch("touchCancel")
     const after = await snapshot()
     assert.deepEqual(after.body, { userSelect: "text", overflow: "clip" })
-    assert.equal(await page.locator("#terminal-panel").getAttribute("aria-hidden"), "false")
+    assert.equal(await page.locator("#terminal-panel").isVisible(), true)
     assert.ok(after.events.some(event => event.type === "pointercancel" && event.trusted))
     await page.evaluate(() => { document.body.style.userSelect = ""; document.body.style.overflow = "" })
-    return { terminalOpened: true, height: after.terminal.height, restored: after.body }
+    return { terminalOpened: true, width: after.terminal.width, restored: after.body }
   })
-  await check("terminal-height-limits", async () => {
-    await drag(vertical, 0, -900, "touch")
-    assert.ok(Math.abs((await snapshot()).terminal.height - 600) < 2)
-    await drag(vertical, 0, 450, "touch")
-    const after = await snapshot()
-    assert.ok(Math.abs(after.terminal.height - 150) < 2)
-    return { max: 600, height: after.terminal.height }
+  await check("terminal-width-limits", async () => {
+    await drag(horizontal, 1400, 0, "touch")
+    const narrowTerminal = await snapshot()
+    assert.ok(narrowTerminal.terminal.width >= 315 && narrowTerminal.terminal.width < 335)
+    await drag(horizontal, -1400, 0, "touch")
+    const narrowChat = await snapshot()
+    assert.ok(narrowChat.chat.width >= 315 && narrowChat.chat.width < 335)
+    return { narrowTerminal: narrowTerminal.terminal.width, narrowChat: narrowChat.chat.width }
   })
   await check("dimensions-persist-after-reload", async () => {
     const before = await snapshot()
     const panes = before.storage["opencode.window.browser.dat:tabs.panes"]
     const saved = Object.values(panes)[0]
     assert.ok(Math.abs(saved.sessionWidth - before.chat.width) < 2)
-    assert.ok(Math.abs(saved.terminalHeight - before.terminal.height) < 2)
     await page.reload({ waitUntil: "domcontentloaded" })
     await horizontal.waitFor()
-    await visible(page.locator('#terminal-panel[aria-hidden="false"]')).waitFor()
+    await visible(page.locator("#terminal-panel")).waitFor()
     await page.waitForTimeout(200)
     const after = await snapshot()
     assert.ok(Math.abs(after.chat.width - before.chat.width) < 2)
-    assert.ok(Math.abs(after.terminal.height - before.terminal.height) < 2)
-    return { saved, before: { chat: before.chat.width, terminal: before.terminal.height }, after: { chat: after.chat.width, terminal: after.terminal.height } }
+    assert.ok(Math.abs(after.terminal.width - before.terminal.width) < 2)
+    return { saved, before: { chat: before.chat.width, terminal: before.terminal.width }, after: { chat: after.chat.width, terminal: after.terminal.width } }
   })
-  await check("touch-collapse-and-reopen", async () => {
-    const before = await snapshot()
-    await drag(vertical, 0, before.terminal.height - 20, "touch")
-    await page.locator('#terminal-panel[aria-hidden="true"]').waitFor({ state: "attached" })
+  await check("terminal-hide-and-reopen", async () => {
     await page.keyboard.press("Control+Backquote")
-    await visible(page.locator('#terminal-panel[aria-hidden="false"]')).waitFor()
-    await drag(vertical, 0, -100, "touch")
-    assert.ok((await snapshot()).terminal.height > 170)
-    return { reopened: true, height: (await snapshot()).terminal.height }
+    await page.locator("#terminal-panel").waitFor({ state: "hidden" })
+    await page.keyboard.press("Control+Backquote")
+    await visible(page.locator("#terminal-panel")).waitFor()
+    return { reopened: true, width: (await snapshot()).terminal.width }
   })
   await check("no-page-errors", async () => { assert.deepEqual(errors, []); assert.equal(await page.evaluate(() => window.__ocHostError ?? null), null); return { errors } })
   await page.screenshot({ path: path.join(output, "tablet-resize.png"), fullPage: true })

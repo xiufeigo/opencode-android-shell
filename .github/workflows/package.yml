@@ -101,6 +101,9 @@ jobs:
       - name: Verify Android Back with packaged phone and tablet UI
         run: node scripts/verify-android-back.mjs
 
+      - name: Verify provider icons in the packaged UI
+        run: node scripts/verify-provider-icons.mjs
+
       - name: Build shared Web client and stage plugin distributions
         run: |
           node frontend/android/build.mjs --web

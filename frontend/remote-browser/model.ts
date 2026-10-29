@@ -1,8 +1,7 @@
 import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { Schema } from "effect"
-import type { Context, MountedSession } from "../sdk"
-import { Definition, State, type Action } from "./rpc"
+import type { Context, MountedSession } from "@opencode/plugin/gui"
+import { Definition, type Action, type State } from "./rpc"
 import { createInputQueue } from "./input"
 
 type Record = { state: State; error?: string; pending: boolean }
@@ -19,6 +18,8 @@ export function createBrowserModel(ctx: Context) {
   const dirty = new Set<string>()
   const inputs = new Map<string, ReturnType<typeof createInputQueue>>()
   const get = (session: MountedSession): Record => records[session.key] ?? { state: empty(), pending: true }
+  const state = (key: string): State => (records[key] ?? { state: empty() }).state
+  // The browser runs on the server the session belongs to, not necessarily the app's own server.
   const client = (session: MountedSession) => session.server.client.rpc(Definition)
   const options = (session: MountedSession) => ({ location: { directory: session.directory }, signal: ctx.signal })
   const fail = (session: MountedSession, error: unknown) => setRecords(session.key, { ...get(session), pending: false, error: errorMessage(error) })
@@ -38,7 +39,7 @@ export function createBrowserModel(ctx: Context) {
       let state: State
       do {
         dirty.delete(session.key)
-        state = Schema.decodeUnknownSync(State)(await client(session).state({ sessionID: session.id }, options(session)))
+        state = await client(session).state({ sessionID: session.id }, options(session))
         apply(session, state)
       } while (dirty.has(session.key))
       return state
@@ -60,6 +61,8 @@ export function createBrowserModel(ctx: Context) {
     return input(action)
   }
   const open = async (session: MountedSession) => {
+    // The panel opens first, before the server answers: a server without the browser plugin, or without Chromium, still
+    // shows the panel with its failure instead of nothing.
     ctx.layout.open(`${ctx.id}:main`, session)
     const value = await execute(session, { type: "tabs.open" }) as { id: string }
     ctx.layout.open(`${ctx.id}:${value.id}`, session, { tab: "select" })
@@ -73,5 +76,5 @@ export function createBrowserModel(ctx: Context) {
     }, { signal: ctx.signal })
     onCleanup(unsubscribe)
   })
-  return { get, fail, refresh, execute, open, client, options, apply }
+  return { get, state, fail, refresh, execute, open, client, options, apply }
 }

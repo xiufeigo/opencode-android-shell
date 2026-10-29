@@ -1,8 +1,8 @@
 # OpenCode 服务端浏览器插件
 
-Chromium 在 OpenCode **服务端**运行。Android（2.0.16 起，当前 2.0.25）和本仓库的适配 Web 界面显示同一会话的标签页，并发送真实网页操作。模型通过 `server_browser` 工具访问同一浏览器。`localhost` 指服务器本机。
+Chromium 在 OpenCode **服务端**运行。Android（2.0.16 起）和本仓库的适配 Web 界面显示同一会话的标签页，并发送真实网页操作。模型通过 `server_browser` 工具访问同一浏览器。`localhost` 指服务器本机。
 
-使用 OpenCode **v2 / 2.1.2** 插件接口，已在 Windows 的真实 2.1.2 服务上验证。`@opencode/plugin`、`@opencode/schema` 以 `^2.1.2` 范围声明，允许随 2.1.x 补丁更新而无需改代码；`effect` 跟随 SDK 的 4.0.x。不是 v1 插件。原来的 OpenCode URL、认证、4096 端口都继续使用；不启动 gateway，不增加浏览器配对或浏览器服务端口。
+使用 OpenCode **v2 / 2.1.2** 插件接口，已在 Windows 的真实 2.1.2 和 2.2.1 服务上验证。`@opencode/plugin`、`@opencode/schema` 以 `^2.1.2` 范围声明，允许随 2.1.x 补丁更新而无需改代码；`effect` 跟随 SDK 的 4.0.x。不是 v1 插件。原来的 OpenCode URL、认证、4096 端口都继续使用；不启动 gateway，不增加浏览器配对或浏览器服务端口。
 
 ## 安装 Release 插件包
 

@@ -1,8 +1,8 @@
-import { Extension } from "../sdk"
+import { builtinCatalog } from "@opencode/plugin/gui/builtin"
+import { Plugin } from "@opencode/plugin/gui"
 
-export default Extension.define({
-  id: "server-browser",
-  i18n: {
+export default Plugin.define({
+  i18n: builtinCatalog({
     en: {
       title: "Browser", new: "New tab", open: "Open browser", address: "Search or enter a URL",
       back: "Back", forward: "Forward", reload: "Reload", stop: "Stop", close: "Close tab",
@@ -21,5 +21,5 @@ export default Extension.define({
       keyboard: "网页键盘输入", accept: "确定", dismiss: "取消", options: "浏览器选项",
       copy: "复制链接", external: "在系统浏览器打开", fit: "将网页适配到面板", files: "下载与截图",
     },
-  },
+  }),
 })

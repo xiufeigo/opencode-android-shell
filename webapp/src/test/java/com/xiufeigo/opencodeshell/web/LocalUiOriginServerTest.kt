@@ -50,7 +50,8 @@ class LocalUiOriginServerTest {
         assertTrue("官方前端必须打进 assets/www/ui/（自带，不是由某台服务器提供）", uiRoot.isDirectory)
 
         // 官方前端入口：vite 产物的 index.html。
-        assertTrue("自带入口缺失：src/main/assets/www/ui/index.html", indexHtml.contains("<title>OpenCode</title>"))
+        assertTrue("官方前端标题缺失", Regex("<title\\b[^>]*>OpenCode</title>").containsMatchIn(indexHtml))
+        assertTrue("官方前端入口脚本缺失", indexHtml.contains("src=\"/_assets/"))
 
         // SPA 的 JS 产物目录必须一起进来，否则页面起来是空白。
         // ⚠️ 磁盘目录名是 `oa/` 而不是官方的 `_assets/`：AGP 资源合并会丢弃下划线开头的

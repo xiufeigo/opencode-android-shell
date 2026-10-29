@@ -12,8 +12,8 @@ fs.mkdirSync(output, { recursive: true })
 const { chromium, _android } = await import(new URL("../plugins/server-browser/node_modules/playwright/index.mjs", import.meta.url).href)
 const serial = process.env.ANDROID_SERIAL
 const adb = process.env.ADB || "adb"
-const app = "com.xiufeigo.opencodeshell"
-const component = `${app}/${app}.web.WebHostActivity`
+const app = "com.xiufeigo.opencodeshell.debug"
+const component = `${app}/com.xiufeigo.opencodeshell.web.WebHostActivity`
 const native = args => execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8" })
 const backend = await startBackend()
 backend.workspace = "C:\\workspace\\android-back-verification"
@@ -119,6 +119,43 @@ async function exercise(page, profile, pressBack) {
   await page.screenshot({ path: path.join(output, `${profile}-closed-tabs-home.png`) })
 }
 
+async function exerciseOfficialSidebar(browser, ui, mode) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, hasTouch: true })
+  contexts.push(context)
+  page = await context.newPage()
+  page.on("pageerror", error => errors.push({ profile: mode, error: error.stack }))
+  await page.addInitScript({ content: nativeBridgeSource() + ";" + ocHostLoaderSource(fs.readFileSync(path.join(root, "webapp/src/main/assets/www/oc-host.js"), "utf8")) })
+  await page.addInitScript(seed, { origin: backend.origin, ids })
+  await page.addInitScript(layout => {
+    localStorage.setItem("settings.v3", JSON.stringify({ appearance: { tabLayout: layout, sidebarOpen: true } }))
+  }, mode)
+  await page.goto(`http://127.0.0.1:${ui.address().port}/server/${base64url(backend.origin)}/session/${ids[0]}`)
+
+  const sidebar = page.locator('[data-slot="vertical-tabs-sidebar"]')
+  await sidebar.locator('[data-slot="sidebar-header"]').waitFor()
+  if (mode === "vertical") await sidebar.locator("[data-titlebar-tab-slot]").first().waitFor()
+  else await sidebar.locator('[data-slot="sidebar-inbox"]').waitFor()
+  assert.equal(await page.locator('[data-slot="project-sidebar"]').count(), 0)
+  await button(page, "OpenCode menu").click()
+  await visible(page.getByRole("menu")).first().waitFor()
+  assert.equal(await page.evaluate(() => window.__ocAndroid.onBack()), true)
+  await visible(page.getByRole("menu")).first().waitFor({ state: "hidden" })
+
+  await visible(sidebar.locator('button[aria-controls="vertical-tabs-sidebar"]')).click()
+  await sidebar.locator(':scope[data-state="closed"]').waitFor()
+  const reopen = visible(page.locator('[data-slot="collapsed-sidebar-toggle"] button[aria-controls="vertical-tabs-sidebar"]'))
+  await reopen.click()
+  await sidebar.locator(':scope[data-state="open"]').waitFor()
+  await page.waitForFunction(() => {
+    const aside = document.querySelector('[data-slot="vertical-tabs-sidebar"]')
+    const mount = aside?.querySelector('[data-slot="vertical-tabs-mount"]')
+    return aside && mount && aside.getBoundingClientRect().width >= mount.getBoundingClientRect().width - 1
+  })
+  await button(page, "OpenCode menu").waitFor()
+  pass(mode, "Official sidebar, Android menu and collapse/reopen work without the custom project tree")
+  await page.screenshot({ path: path.join(output, `${mode}-official-sidebar.png`) })
+}
+
 let browser, device, ui, page
 const contexts = []
 const keepAlive = setInterval(() => {}, 1_000)
@@ -147,14 +184,14 @@ try {
     const profile = await page.evaluate(() => innerWidth < 768 ? "Android-phone" : "Android-tablet")
     await exercise(page, profile, async () => { native(["shell", "input", "keyevent", "4"]) })
     const resumed = () => {
-      const lines = native(["shell", "dumpsys", "activity", "activities"]).split(/\r?\n/).filter(line => /mResumedActivity|topResumedActivity/.test(line))
-      assert.ok(lines.length, "Device does not report a recognizable resumed Activity")
-      return lines
+      return native(["shell", "dumpsys", "activity", "activities"]).split(/\r?\n/).filter(line => /mResumedActivity|topResumedActivity/.test(line))
     }
     assert.ok(resumed().some(line => line.includes(app)))
     native(["shell", "input", "keyevent", "4"])
     const deadline = Date.now() + 10_000
-    while (resumed().some(line => line.includes(app))) {
+    while (true) {
+      const activities = resumed()
+      if (activities.length && !activities.some(line => line.includes(app))) break
       if (Date.now() > deadline) throw new Error("Back at home did not leave the Android Activity")
       await new Promise(resolve => setTimeout(resolve, 100))
     }
@@ -190,14 +227,19 @@ try {
       await page.goto(`http://127.0.0.1:${ui.address().port}/server/${base64url(backend.origin)}/session/${ids[0]}`)
       await exercise(page, profile.name, async () => assert.equal(await page.evaluate(() => window.__ocAndroid.onBack()), true))
     }
+    for (const mode of ["vertical", "inbox"]) await exerciseOfficialSidebar(browser, ui, mode)
   }
   assert.deepEqual(errors, [])
   fs.writeFileSync(path.join(output, "report.json"), JSON.stringify({ scope: serial ? "actual Android debug APK, native system Back and packaged SPA; fixture backend" : "packaged SPA in Chromium with emulated Android host; fixture backend", serial, checks, errors }, null, 2))
   console.log("REPORT", output)
 } catch (error) {
-  if (page && !page.isClosed()) await page.screenshot({ path: path.join(output, "failure.png") })
-  fs.writeFileSync(path.join(output, "failure.json"), JSON.stringify({ error: error.stack, checks, errors, url: page?.url() }, null, 2))
-  if (page && !page.isClosed() && /^http/.test(page.url())) fs.writeFileSync(path.join(output, "state.json"), JSON.stringify(await page.evaluate(() => ({ text: document.body.innerText, layers: [...document.querySelectorAll('[role="menu"],[role="dialog"],[aria-expanded="true"]')].map(el => ({ html: el.outerHTML.slice(0, 800), rect: el.getBoundingClientRect().toJSON(), visibility: getComputedStyle(el).visibility, opacity: getComputedStyle(el).opacity, excluded: el.closest("[aria-hidden='true'],[inert],[data-closed]")?.outerHTML.slice(0, 180) })) })), null, 2))
+  const diagnostics = {}
+  try { if (page && !page.isClosed()) await page.screenshot({ path: path.join(output, "failure.png") }) }
+  catch (failure) { diagnostics.screenshot = failure.message }
+  try {
+    if (page && !page.isClosed() && /^http/.test(page.url())) fs.writeFileSync(path.join(output, "state.json"), JSON.stringify(await page.evaluate(() => ({ text: document.body.innerText, layers: [...document.querySelectorAll('[role="menu"],[role="dialog"],[aria-expanded="true"]')].map(el => ({ html: el.outerHTML.slice(0, 800), rect: el.getBoundingClientRect().toJSON(), visibility: getComputedStyle(el).visibility, opacity: getComputedStyle(el).opacity, excluded: el.closest("[aria-hidden='true'],[inert],[data-closed]")?.outerHTML.slice(0, 180) })) })), null, 2))
+  } catch (failure) { diagnostics.state = failure.message }
+  fs.writeFileSync(path.join(output, "failure.json"), JSON.stringify({ error: error.stack, checks, errors, url: page?.url(), diagnostics }, null, 2))
   throw error
 } finally {
   clearInterval(keepAlive)

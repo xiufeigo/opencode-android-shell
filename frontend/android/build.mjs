@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync, spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { applyAndroidSources } from "./sources.mjs"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -10,7 +11,12 @@ const pin = JSON.parse(await fs.readFile(path.join(here, "upstream.json"), "utf8
 const bun = process.env.BUN_BINARY ?? "bun"
 const bunVersion = execFileSync(bun, ["--version"], { encoding: "utf8" }).trim()
 if (bunVersion !== pin.bun) throw new Error(`Bun ${pin.bun} is required; found ${bunVersion}. Set BUN_BINARY to the pinned executable.`)
-const checkout = path.join(root, "_scratch_root/desktop-parity/checkout")
+// Different upstream or patch inputs must never reuse a checkout with obsolete generated sources.
+const sourceHash = createHash("sha256").update(pin.commit)
+for (const name of ["upstream.patch", "ui.patch", "sources.mjs"]) {
+  sourceHash.update(name).update(await fs.readFile(path.join(here, name)))
+}
+const checkout = path.join(root, "_scratch_root/desktop-parity", `checkout-${sourceHash.digest("hex").slice(0, 12)}`)
 const target = process.argv.includes("--web") ? "web" : "android"
 const assets = path.join(root, target === "android" ? "webapp/src/main/assets/www/ui" : "frontend/web/dist")
 // 2.2.0 split more packages out of session-ui; patchmark must stay in the sparse
@@ -39,6 +45,7 @@ try { await fs.access(path.join(checkout, ".git")) } catch {
 // Public files participate in asset hashes; Windows CRLF conversion would make
 // the checked-in UI differ from the Linux CI build of the same commit.
 await run("git", ["config", "--local", "core.autocrlf", "false"])
+if (process.platform === "win32") await run("git", ["config", "--local", "core.longpaths", "true"])
 // Tailwind scans available source, including packages added during an audit.
 // Fix the input scope on every build so cached and fresh checkouts agree.
 await run("git", ["sparse-checkout", "set", "patches", ...workspaces.map(name => `packages/${name}`), "packages/desktop/icons"])
@@ -63,8 +70,9 @@ await applyAndroidSources(checkout, here)
 await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", "@opencode/app"])
 // 2.1.3+ runs app unit tests through Solid's hyperscript preload. TSX in the
 // production graph (pairing, settings) has no Solid compiler pass under bun test.
-await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts"], path.join(checkout, "packages/app"))
-await run(bun, ["test", "--conditions=browser", "src/terminal/session-model.test.ts"], path.join(checkout, "packages/gui-plugins"))
+await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts", "src/session/session-panel-width.test.ts"], path.join(checkout, "packages/app"))
+await run(bun, ["test", "--conditions=browser", "src/terminal/session-model.test.ts", "src/remote-browser"], path.join(checkout, "packages/gui-plugins"))
+await run(bun, ["test", "--conditions=browser", "src/components/provider-icons/resolve.test.ts"], path.join(checkout, "packages/ui"))
 // Upstream 2.1.3+ typecheck is `bun check --no-script -b`, which reads the nearest
 // tsconfig and treats a bare extra argument as a source file. Android still
 // typechecks the production project (tests and Storybook excluded).

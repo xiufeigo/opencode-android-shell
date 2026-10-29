@@ -3,12 +3,17 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import http from "node:http"
 import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { chromium, _android } from "../plugins/server-browser/node_modules/playwright/index.mjs"
 
 const root = path.resolve(import.meta.dirname, "..")
 const config = JSON.parse(await fs.readFile(path.join(root, "_scratch_root/server-browser-test/connection.json"), "utf8"))
 const headers = { authorization: `Basic ${Buffer.from(`opencode:${config.password}`).toString("base64")}`, "content-type": "application/json" }
 const serial = process.env.ANDROID_SERIAL
+const app = "com.xiufeigo.opencodeshell.debug"
+const component = `${app}/com.xiufeigo.opencodeshell.web.WebHostActivity`
+const serverPort = new URL(config.url).port
+const webOrigin = process.env.SERVER_BROWSER_WEB_URL ?? "http://127.0.0.1:4175"
 const out = path.join(root, "research/tmp/verify-server-browser-ui", `${new Date().toISOString().replace(/[:.]/g, "-")}-${serial ? "android" : "web"}`)
 await fs.mkdir(out, { recursive: true })
 const report = { environment: serial ? "actual Android APK WebView + installed server plugin" : "built shared Web UI + installed server plugin", checks: [], errors: [], commands: [] }
@@ -18,7 +23,7 @@ const api = async (route, body) => {
   const url = new URL(`/api/${route}`, config.url)
   url.searchParams.set("location[directory]", config.directory)
   const response = await fetch(url, { method: body ? "POST" : "GET", headers, body: body && JSON.stringify(body) })
-  if (!response.ok) throw new Error(`API ${route} HTTP ${response.status}: ${await response.text()}`)
+  if (!response.ok) throw new Error(`API ${route} HTTP ${response.status}: ${(await response.text()).replaceAll(config.password, "[redacted]")}`)
   const value = await response.json()
   return value.data ?? value
 }
@@ -28,7 +33,7 @@ const fixture = http.createServer((request, response) => {
   response.end('<title>Shared browser fixture</title><style>body{font:20px sans-serif;padding:20px}input,button{font:inherit;padding:10px;margin:10px}</style><label>Name<input aria-label="Name"></label><button onclick="document.querySelector(\'output\').textContent=document.querySelector(\'input\').value">Submit</button><output>Ready</output><script>window.starts=1;setInterval(()=>document.body.dataset.progress=String(Number(document.body.dataset.progress||0)+1),100)</script>')
 })
 await new Promise(resolve => fixture.listen(0, "127.0.0.1", resolve))
-let session, browser, peerBrowser, device, page, origin
+let session, browser, peerBrowser, device, page, origin, reverseInstalled = false
 const adb = process.env.ADB ?? "C:/Users/xiufe/AppData/Local/Android/Sdk/platform-tools/adb.exe"
 const native = args => execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8", windowsHide: true, timeout: 20_000 })
 const until = async (check, label) => {
@@ -37,7 +42,7 @@ const until = async (check, label) => {
   throw new Error(`Timed out: ${label}`)
 }
 const attachAndroid = async () => {
-  const pid = native(["shell", "pidof", "com.xiufeigo.opencodeshell"]).trim()
+  const pid = native(["shell", "pidof", app]).trim()
   assert.match(pid, /^\d+$/)
   page = await (await device.webView({ socketName: `webview_devtools_remote_${pid}` })).page()
   return pid
@@ -53,9 +58,15 @@ try {
   session = await api("session", { title: `Shared browser ${serial ? "Android" : "Web"}` })
   if (serial) {
     assert.match(native(["emu", "avd", "name"]), /OC_Desktop_Parity_Phone|OC_Menu_Parity_Tablet/)
-    native(["reverse", "tcp:54106", "tcp:54106"])
-    native(["shell", "am", "force-stop", "com.xiufeigo.opencodeshell"])
-    native(["shell", "am", "start", "-W", "-n", "com.xiufeigo.opencodeshell/com.xiufeigo.opencodeshell.web.WebHostActivity"])
+    const apk = path.join(root, "webapp/build/outputs/apk/debug/webapp-debug.apk")
+    native(["install", "-r", apk])
+    const installed = native(["shell", "pm", "path", app]).trim().replace(/^package:/, "")
+    const hash = createHash("sha256").update(await fs.readFile(apk)).digest("hex")
+    assert.equal(native(["shell", "sha256sum", installed]).trim().split(/\s+/)[0], hash)
+    native(["reverse", `tcp:${serverPort}`, `tcp:${serverPort}`])
+    reverseInstalled = true
+    native(["shell", "am", "force-stop", app])
+    native(["shell", "am", "start", "-W", "-n", component])
     device = (await _android.devices()).find(value => value.serial() === serial)
     assert.ok(device)
     await until(async () => { try { return await attachAndroid() } catch { return false } }, "APK WebView")
@@ -63,7 +74,7 @@ try {
   } else {
     browser = await chromium.launch({ executablePath: process.env.SERVER_BROWSER_CHROMIUM })
     page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-    origin = "http://127.0.0.1:4175"
+    origin = webOrigin
     await page.goto(origin)
   }
   page.on("pageerror", error => report.errors.push(error.message))
@@ -128,12 +139,12 @@ try {
   await page.screenshot({ path: path.join(out, "browser.png") })
   const before = await remote("Number(document.body.dataset.progress)")
   if (serial) {
-    const oldPID = native(["shell", "pidof", "com.xiufeigo.opencodeshell"]).trim()
-    native(["shell", "am", "force-stop", "com.xiufeigo.opencodeshell"])
+    const oldPID = native(["shell", "pidof", app]).trim()
+    native(["shell", "am", "force-stop", app])
     await new Promise(resolve => setTimeout(resolve, 1500))
-    native(["shell", "am", "start", "-W", "-n", "com.xiufeigo.opencodeshell/com.xiufeigo.opencodeshell.web.WebHostActivity"])
+    native(["shell", "am", "start", "-W", "-n", component])
     await until(async () => { try { return await attachAndroid() } catch { return false } }, "restarted APK")
-    assert.notEqual(native(["shell", "pidof", "com.xiufeigo.opencodeshell"]).trim(), oldPID)
+    assert.notEqual(native(["shell", "pidof", app]).trim(), oldPID)
     await page.goto(route)
     await page.locator('[role="tab"][data-value="more"]').filter({ visible: true }).first().waitFor()
     await openPanel()
@@ -150,7 +161,7 @@ try {
     peerBrowser = await chromium.launch({ executablePath: process.env.SERVER_BROWSER_CHROMIUM })
     const peer = await peerBrowser.newPage({ viewport: { width: 1440, height: 900 } })
     peer.on("pageerror", error => report.errors.push(error.message))
-    const web = "http://127.0.0.1:4175"
+    const web = webOrigin
     await peer.goto(web)
     await peer.evaluate(config => {
       localStorage.setItem("opencode.global.dat:language", JSON.stringify({ locale: "en" }))
@@ -206,5 +217,6 @@ try {
   await browser?.close()
   await peerBrowser?.close()
   await device?.close()
+  if (reverseInstalled) native(["reverse", "--remove", `tcp:${serverPort}`])
   await new Promise(resolve => fixture.close(resolve))
 }

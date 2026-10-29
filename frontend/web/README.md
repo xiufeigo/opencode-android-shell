@@ -1,6 +1,6 @@
 # 适配 Web 客户端
 
-与 Android 使用同一份固定 OpenCode 2.1.4 UI 和 `frontend/remote-browser` 扩展。使用浏览器标准平台接口；Android 则必须连接原生平台桥，不存在自动降级。
+与 Android 使用同一份固定 OpenCode UI 和 `frontend/remote-browser` 扩展。使用浏览器标准平台接口；Android 则必须连接原生平台桥，不存在自动降级。官方 UI 版本以 `frontend/android/upstream.json` 为准。
 
 ```sh
 node frontend/android/build.mjs --web

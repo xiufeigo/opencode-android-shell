@@ -479,7 +479,7 @@ function startBackend() {
         "cache-control": "no-store",
         connection: "keep-alive",
       })
-      res.write(": open\n\n")
+      res.write(`data: ${JSON.stringify({ id: `evt_${crypto.randomUUID()}`, type: "server.connected", data: {} })}\n\n`)
       state.sse.add(res)
       req.on("close", () => state.sse.delete(res))
       return
@@ -498,22 +498,29 @@ function startBackend() {
       return
     }
     if (p === "/api/provider" || p === "/provider") {
-      send({ providers: [], default: {} })
+      send({ location: { directory: state.workspace }, data: [] })
       return
     }
     if (p === "/api/model" || p === "/model") {
-      send({ provider: {}, models: {} })
+      send({ location: { directory: state.workspace }, data: [] })
       return
     }
     if (p === "/api/agent" || p === "/agent") {
-      send([])
+      send({ location: { directory: state.workspace }, data: [] })
       return
     }
-    if (p === "/api/command" || p === "/command") send([])
-    else if (p === "/api/skill" || p === "/skill") send([])
-    else if (p === "/api/mcp" || p === "/mcp") send({})
-    else if (p === "/api/plugin" || p === "/plugin") send([])
-    else if (p === "/api/permission/request" || p === "/permission/request") send([])
+    if (["/api/command", "/command", "/api/skill", "/skill", "/api/mcp", "/mcp", "/api/plugin", "/plugin",
+      "/api/integration", "/api/shell", "/api/reference", "/api/form"].includes(p)) {
+      send({ location: { directory: state.workspace }, data: [] })
+    } else if (p === "/api/mcp/resource") {
+      send({ location: { directory: state.workspace }, data: { resources: [], templates: [] } })
+    } else if (p === "/api/vcs") {
+      send({ location: { directory: state.workspace }, data: { branch: {} } })
+    } else if (p === "/api/worktree" || p === "/worktree") {
+      send([])
+    } else if (p === "/api/worktree/refresh" && method === "POST") {
+      res.writeHead(204, cors).end()
+    } else if (p === "/api/permission/request" || p === "/permission/request") send([])
     else if (p === "/api/question/request" || p === "/question/request") send([])
     else if (p === "/api/vcs/status" || p === "/vcs/status") send({})
     else if (p === "/api/vcs/diff" || p === "/vcs/diff") send({ files: [] })
@@ -541,6 +548,8 @@ function startBackend() {
         state.sessionImports.push(data)
         send({ data: sessionInfo(state.sessionId, data.location.directory) })
       })
+    } else if (p === "/api/session/active" || p === "/session/active") {
+      send({ data: {} })
     } else if (p === "/api/session" || p === "/session") {
       if (method === "POST") {
         const id = state.sessionId || (state.sessionId = `ses_${crypto.randomUUID().slice(0, 12)}`)
@@ -3529,7 +3538,10 @@ function anchorProbe(anchorText) {
          * phone-shaped assumption.
          */
         const allTabs = [...(away.allTabs || []), ...(backAgain.allTabs || [])]
-        const hasMobileViewTabs = allTabs.some((v) => /^session|terminal/i.test(String(v || "")))
+        // Desktop side-panel tabs also have terminal:* values in 2.2; they are
+        // not the phone's session/terminal view switcher.
+        const hasMobileViewTabs = (await page.evaluate(() => innerWidth < 768)) &&
+          allTabs.some((v) => /^session|terminal/i.test(String(v || "")))
         const tabSetChanged = JSON.stringify(away.selectedAfter) !== JSON.stringify(backAgain.selectedAfter)
         const viewReallyChanged =
           !!away.left &&
