@@ -677,3 +677,515 @@ index d044147..726eb78 100644
      </svg>
    )
  }
+diff --git a/packages/app/component-tests/timeline-virtualizer.spec.ts b/packages/app/component-tests/timeline-virtualizer.spec.ts
+index b145ead..645d9ea 100644
+--- a/packages/app/component-tests/timeline-virtualizer.spec.ts
++++ b/packages/app/component-tests/timeline-virtualizer.spec.ts
+@@ -108,8 +108,8 @@ for (const input of [
+     await expect(content.locator("[data-timeline-key]")).toHaveCount(1)
+ 
+     if (input.name === "offset-only") {
+-      // Pinned to the end: the 600px row and the virtualizer's 82px tail, less the 180px viewport.
+-      await expect(root).toHaveAttribute("data-last-scroll-top", "502")
++      // Pinned to the end: the 600px row and the virtualizer's 56px tail, less the 180px viewport.
++      await expect(root).toHaveAttribute("data-last-scroll-top", "476")
+       await root.locator("[data-scrollable]").dispatchEvent("wheel", { deltaY: -1 })
+       await expect(root.getByTestId("timeline-controls")).toHaveAttribute("data-pinned", "false")
+     }
+diff --git a/packages/app/e2e/regression/settings.spec.ts b/packages/app/e2e/regression/settings.spec.ts
+index 133c22f..9eccc37 100644
+--- a/packages/app/e2e/regression/settings.spec.ts
++++ b/packages/app/e2e/regression/settings.spec.ts
+@@ -168,6 +168,8 @@ for (const locale of ["en", "ar"]) {
+     const panel = page.locator('[data-slot="session-activity-panel"]')
+     await expect(capsule).toBeVisible()
+     await expect(page.locator("html")).toHaveAttribute("dir", locale === "ar" ? "rtl" : "ltr")
++    const lane = page.locator('[data-component="session-composer-lane"]')
++    const laneHeight = await lane.evaluate((element) => element.getBoundingClientRect().height)
+ 
+     for (const value of ["Center", "Right", "Hidden", "Left", "Right"] as const) {
+       await page.keyboard.press("Control+,")
+@@ -184,6 +186,7 @@ for (const locale of ["en", "ar"]) {
+       if (value === "Hidden") {
+         await expect(capsule).toHaveCount(0)
+         await expect(panel).toHaveCount(0)
++        await expect.poll(() => lane.evaluate((element) => element.getBoundingClientRect().height)).toBe(laneHeight)
+         continue
+       }
+ 
+diff --git a/packages/app/e2e/regression/timeline-geometry.spec.ts b/packages/app/e2e/regression/timeline-geometry.spec.ts
+index 0ba5bcb..2d547de 100644
+--- a/packages/app/e2e/regression/timeline-geometry.spec.ts
++++ b/packages/app/e2e/regression/timeline-geometry.spec.ts
+@@ -633,7 +633,7 @@ async function captureCardEdges(page: Page, card: Locator) {
+   )
+ }
+ 
+-test("scrolls the timeline behind the composer region, fading at the card, and keeps its end above the region", async ({
++test("keeps the timeline clear of the activity lane while following and scrolling", async ({
+   page,
+ }) => {
+   await setupTimeline(page, {
+@@ -682,26 +682,38 @@ test("scrolls the timeline behind the composer region, fading at the card, and k
+       const card = region.querySelector('[data-component="composer"]')!.getBoundingClientRect()
+       const pill = region.querySelector('[data-slot="session-activity-chip"]')!.getBoundingClientRect()
+       const hint = viewport.querySelector('[data-component="session-background-hint-row"]')!.getBoundingClientRect()
++      const visible = document.querySelector('[data-slot="session-timeline-visible"]')!.getBoundingClientRect()
+       const parts = [...viewport.querySelectorAll("[data-timeline-part-id]")]
+-      const last = parts.find((element) => element.textContent?.includes("The last answer ends"))!
++      const last = parts.find((element) => element.textContent?.includes("The last answer ends"))
+ 
+       return {
+         // The scroll area runs on behind the composer region to the panel's bottom edge.
+         behind: Math.round(viewport.getBoundingClientRect().bottom - dock.bottom),
+         inset: Math.round(viewport.querySelector<HTMLElement>("[data-timeline-inset]")!.offsetHeight - dock.height),
+-        // Content fades out where the composer card starts.
++        // Content fades out at the start of the composer region, including its activity lane.
+         fade: Math.round(
+-          dock.bottom - card.top - parseFloat(getComputedStyle(viewport).getPropertyValue("--session-timeline-inset")),
++          dock.height - parseFloat(getComputedStyle(viewport).getPropertyValue("--session-timeline-inset")),
+         ),
+-        // The pill floats above the region out of flow, so it never changes the inset the timeline scrolls above.
+-        floats: pill.bottom <= dock.top,
+-        // It floats in the timeline's reserved tail, below the background hint and the last answer.
+-        reserved: hint.bottom <= pill.top && last.getBoundingClientRect().bottom <= hint.top,
++        // The capsule participates in the measured composer region rather than floating over the timeline.
++        inFlow: pill.top >= dock.top && pill.bottom <= card.top,
++        // The live status and last answer stay outside the full 20px fade above the capsule.
++        reserved: !!last && hint.bottom + 20 <= pill.top + 1 && last.getBoundingClientRect().bottom <= hint.top,
++        // Timeline content must stop above the capsule, including while reading older messages.
++        unobstructed: visible.bottom <= pill.top,
+         atEnd: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 1,
+       }
+     })
+ 
+-  const expected = { behind: 0, inset: 0, fade: 0, floats: true, reserved: true, atEnd: true }
++  const expected = { behind: 0, inset: 0, fade: 0, inFlow: true, reserved: true, unobstructed: true, atEnd: true }
++  await expect.poll(geometry).toEqual(expected)
++  const viewport = page.locator('[data-slot="session-timeline-scroll"] > .scroll-view__viewport')
++
++  await viewport.hover()
++  await page.mouse.wheel(0, -3000)
++  const latest = page.getByRole("button", { name: "Jump to latest" })
++  await expect(page.getByText("The last answer ends above the composer region.", { exact: true })).not.toBeInViewport()
++  await expect.poll(async () => (await geometry()).unobstructed).toBe(true)
++  await latest.click()
+   await expect.poll(geometry).toEqual(expected)
+   const before = (await dock.boundingBox())!.height
+ 
+diff --git a/packages/app/e2e/regression/timeline-stream.spec.ts b/packages/app/e2e/regression/timeline-stream.spec.ts
+index e1812ce..2a82626 100644
+--- a/packages/app/e2e/regression/timeline-stream.spec.ts
++++ b/packages/app/e2e/regression/timeline-stream.spec.ts
+@@ -909,6 +909,8 @@ test.describe("Working", () => {
+   for (const grouped of [false, true]) {
+     test(`uses ${grouped ? "grouped" : "standalone"} background shell presentation`, async ({ page }) => {
+       await setupTimeline(page, {
++        viewport: grouped ? { width: 1163, height: 760 } : undefined,
++        deviceScaleFactor: grouped ? 2.75 : undefined,
+         settings: { shellToolPartsExpanded: !grouped },
+         messages: [
+           userMessage(),
+@@ -954,6 +956,20 @@ test.describe("Working", () => {
+ 
+       await expect(trigger).toHaveAttribute("aria-expanded", "false")
+       await expect(working).toBeVisible()
++      const capsule = page.getByRole("button", { name: "1 shell", exact: true })
++      await expect(capsule).toBeVisible()
++      await expect
++        .poll(async () => {
++          const [status, pill, visible] = await Promise.all([
++            working.boundingBox(),
++            capsule.boundingBox(),
++            page.locator('[data-slot="session-timeline-visible"]').boundingBox(),
++          ])
++          if (!status || !pill || !visible) return false
++
++          return status.y + status.height + 20 <= pill.y + 1 && visible.y + visible.height <= pill.y + 1
++        })
++        .toBe(true)
+       await trigger.click()
+       await expect(trigger).toHaveAttribute("aria-expanded", "true")
+       await expect(working).toBeVisible()
+diff --git a/packages/app/src/index.css b/packages/app/src/index.css
+index 902fab9..2d552ed 100644
+--- a/packages/app/src/index.css
++++ b/packages/app/src/index.css
+@@ -76,8 +76,8 @@
+     visibility: hidden;
+   }
+ 
+-  /* The timeline scrolls on under the composer region, passing behind its floating pill, and fades out as it reaches
+-     the region's opaque card. A mask fades the content itself, so the edge works over any theme's background;
++  /* The timeline scrolls under the composer region and fades out before reaching its activity lane or opaque card.
++     A mask fades the content itself, so the edge works over any theme's background;
+      smoothstep stops avoid a visible horizon. */
+   [data-slot="session-timeline-scroll"] > .scroll-view__viewport {
+     --session-timeline-fade-start: var(--session-timeline-inset, 0px);
+diff --git a/packages/app/src/session/composer/composer-lane.tsx b/packages/app/src/session/composer/composer-lane.tsx
+index 820baa2..b9533dc 100644
+--- a/packages/app/src/session/composer/composer-lane.tsx
++++ b/packages/app/src/session/composer/composer-lane.tsx
+@@ -2,7 +2,7 @@ import { createMemo, type ParentProps } from "solid-js"
+ import { useLanguage } from "@/runtime/i18n/language"
+ import { useSettings } from "@/settings/model"
+ 
+-/** Where the floating pills above the composer sit, in logical terms, following the background activity setting. */
++/** Where the pills above the composer sit, in logical terms, following the background activity setting. */
+ export function useComposerLaneAlignment() {
+   const language = useLanguage()
+   const settings = useSettings()
+@@ -17,8 +17,8 @@ export function useComposerLaneAlignment() {
+   })
+ }
+ 
+-// The pills float out of flow in a lane the timeline reserves at its tail, so coming and going never resizes the
+-// composer region or moves the timeline. Every pill shares the lane's one row.
++// The lane belongs to the composer region, so the timeline's measured inset excludes it from the visible area.
++// Reserve the chip's height and bottom gap even while empty, so starting or finishing work does not move the timeline.
+ export function SessionComposerLane(props: ParentProps) {
+   const alignment = useComposerLaneAlignment()
+ 
+@@ -26,7 +26,7 @@ export function SessionComposerLane(props: ParentProps) {
+     <div
+       data-component="session-composer-lane"
+       data-alignment={alignment()}
+-      class="pointer-events-none absolute inset-x-0 bottom-full flex items-end gap-2 pb-2.5"
++      class="pointer-events-none flex min-h-[calc(9.5*var(--spacing))] items-end gap-2 pb-2.5"
+       classList={{
+         "justify-start": alignment() === "start",
+         "justify-center": alignment() === "center",
+diff --git a/packages/app/src/session/timeline/interaction.ts b/packages/app/src/session/timeline/interaction.ts
+index 9bc18cf..8073916 100644
+--- a/packages/app/src/session/timeline/interaction.ts
++++ b/packages/app/src/session/timeline/interaction.ts
+@@ -359,7 +359,7 @@ export function createSessionTimelineInteraction(session: SessionModel) {
+   createResizeObserver(
+     () => state.refs.dock,
+     (_rect, _element, entry) => {
+-      // The activity pill floats above the region out of flow, so only the docks, queue and composer count here.
++      // The activity lane, docks, queue and composer all contribute to the covered timeline area.
+       const dpr = window.devicePixelRatio || 1
+       const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
+ 
+diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
+index d80b2c1..048c22a 100644
+--- a/packages/app/src/session/timeline/message-timeline.tsx
++++ b/packages/app/src/session/timeline/message-timeline.tsx
+@@ -451,8 +451,8 @@ function MessageTimelineView(
+   const activityRow = createMemo(() => projection.rows().some((row) => Predicate.isTagged(row, "Activity")))
+ 
+   // The lane keeps its height while empty, so Working and the hint come and go without moving the rows around it.
+-  // The bottom lane also keeps its height while live status moves into the Activity row, so the tail the activity pill
+-  // floats in never closes and a pinned timeline does not shift when input waits.
++  // The bottom lane also keeps its height while live status moves into the Activity row, so a pinned timeline does not
++  // shift when input waits.
+   const activity = (live: () => boolean) => (
+     <div
+       classList={{
+@@ -460,7 +460,7 @@ function MessageTimelineView(
+         "md:max-w-session md:mx-auto": props.centered,
+       }}
+     >
+-      <div class={`flex h-9 items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
++      <div class={`flex h-[36px] items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
+         <Show when={live() && showWorking()}>
+           <div data-component="session-working" role="status">
+             <TextShimmer text={language.t("session.timeline.working")} active />
+diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
+index 281d427..6558dab 100644
+--- a/packages/app/src/session/timeline/virtualizer.tsx
++++ b/packages/app/src/session/timeline/virtualizer.tsx
+@@ -33,8 +33,8 @@ import { holdLandingWidth } from "@/shell/panel-motion"
+ 
+ const fallbackItemSize = 60
+ 
+-// Reserved below the last row: a 36px lane for the live status row and its background hint, an 8px gap, then a 28px
+-// activity pill and its 10px composer gap. Both come and go inside it, so neither moves the rows above.
+-const tailSize = 82
++// The activity lane is part of the composer inset. Keep the 36px live-status row and the 20px timeline fade clear
++// above it, even when background work starts or finishes.
++const tailSize = 56
+ 
+ const pendingMarkdown = '[data-component="markdown"]:not([data-markdown-ready])'
+diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
+index 7ffd4750..2ae0cbb8 100644
+--- a/packages/app/src/runtime/platform/platform.tsx
++++ b/packages/app/src/runtime/platform/platform.tsx
+@@ -33,6 +33,8 @@ export type FatalRendererErrorLog = {
+   os?: DesktopOS
+ }
+ 
++export type SystemFont = { id: string; name: string }
++
+ type PlatformBase = {
+   requestMicrophone?(): Promise<boolean>
+   setVoiceCallActive?(active: boolean): Promise<void>
+@@ -138,7 +140,14 @@ type PlatformBase = {
+ export type Platform = PlatformBase &
+   (
+     | { platform: "web"; os?: never; windowID?: never }
+-    | { platform: "android"; os?: never; windowID?: never }
++    | {
++        platform: "android"
++        os?: never
++        windowID?: never
++        systemFonts(): Promise<SystemFont[]>
++        loadSystemFont(id: string): Promise<void>
++        importSystemFont(file: File): Promise<SystemFont>
++      }
+     | {
+         platform: "desktop"
+         os?: DesktopOS
+diff --git a/packages/app/src/settings/appearance/appearance.tsx b/packages/app/src/settings/appearance/appearance.tsx
+index 1100ae2..64f4ac7 100644
+--- a/packages/app/src/settings/appearance/appearance.tsx
++++ b/packages/app/src/settings/appearance/appearance.tsx
+@@ -1,4 +1,5 @@
+-import { Component, Show } from "solid-js"
++import { Component, Show, createMemo, createResource, type Resource } from "solid-js"
++import { createStore } from "solid-js/store"
+ import { Select } from "@opencode/ui/select"
+ import { TextInput } from "@opencode/ui/text-input"
+ import { useLanguage } from "@/runtime/i18n/language"
+@@ -6,9 +7,13 @@ import { ExternalLink } from "@/runtime/platform/external-link"
+ import { SettingsList } from "@/settings/list"
+ import { SettingsRow } from "@/settings/row"
+ import { createAppearanceSettingsController, type AppearanceSettingsController } from "@/settings/general/controllers"
++import { usePlatform, type SystemFont } from "@/runtime/platform/platform"
++import { showToast } from "@/shell/notifications/toast"
+ import "@/settings/settings.css"
+ 
+ const schemeOptions: ("system" | "light" | "dark")[] = ["system", "light", "dark"]
++const defaultFont = "default"
++const importFont = "import"
+ 
+ const reduceMotionOptions = [
+   { value: "system" as const, label: "settings.appearance.row.reduceMotion.system" as const },
+@@ -43,27 +48,111 @@ const fontSettings = {
+ const FontSetting: Component<{
+   kind: "ui" | "code" | "terminal"
+   fonts: AppearanceSettingsController["fonts"]
++  systemFonts: Resource<SystemFont[] | undefined>
++  imported: SystemFont[]
++  onImported(font: SystemFont): void
+ }> = (props) => {
+   const language = useLanguage()
++  const platform = usePlatform()
+   const config = () => fontSettings[props.kind]
++  const options = createMemo(() => [
++    { id: defaultFont, name: language.t("common.default") },
++    { id: importFont, name: language.t("settings.appearance.font.import") },
++    ...(props.systemFonts.state === "ready" || props.systemFonts.state === "refreshing"
++      ? (props.systemFonts.latest ?? [])
++      : []),
++    ...props.imported,
++  ])
++  const [selection, setSelection] = createStore<{ sequence: number; pending?: string }>({ sequence: 0 })
++
++  const select = (font: { id: string } | null) => {
++    if (!font || platform.platform !== "android") return
++    const current = selection.sequence + 1
++    setSelection({ sequence: current, pending: font.id })
++    if (font.id === defaultFont) {
++      props.fonts[config().input]("")
++      setSelection("pending", undefined)
++      return
++    }
++    if (font.id === importFont) {
++      setSelection("pending", undefined)
++      if (!platform.openAttachmentPickerDialog || !platform.importSystemFont) {
++        showToast({ variant: "error", title: language.t("common.requestFailed") })
++        return
++      }
++      void platform
++        .openAttachmentPickerDialog({ extensions: ["ttf", "otf", "ttc", "otc"], multiple: false }, async (file) => {
++          const imported = await platform.importSystemFont(file)
++          props.onImported(imported)
++          if (current === selection.sequence) props.fonts[config().input](imported.id)
++        })
++        .catch(() =>
++          showToast({
++            variant: "error",
++            title: language.t("common.requestFailed"),
++            description: language.t("settings.appearance.font.importFailed"),
++          }),
++        )
++      return
++    }
++    void platform
++      .loadSystemFont(font.id)
++      .then(() => {
++        if (current !== selection.sequence) return
++        props.fonts[config().input](font.id)
++        setSelection("pending", undefined)
++      })
++      .catch((error) => {
++        if (current !== selection.sequence) return
++        setSelection("pending", undefined)
++        showToast({ variant: "error", title: language.t("common.requestFailed"), description: String(error) })
++      })
++  }
+ 
+   return (
+     <SettingsRow title={language.t(config().title)} description={language.t(config().description)}>
+-      <div class="w-full sm:w-[220px]">
+-        <TextInput
+-          data-action={config().action}
+-          type="text"
+-          appearance="base"
+-          value={props.fonts[config().font]().value}
+-          onInput={(event) => props.fonts[config().input](event.currentTarget.value)}
+-          placeholder={props.fonts[config().font]().placeholder}
+-          spellcheck={false}
+-          autocorrect="off"
+-          autocomplete="off"
+-          autocapitalize="off"
+-          aria-label={language.t(config().title)}
+-          style={{ "font-family": props.fonts[config().font]().family }}
+-        />
++      <div class="w-full sm:w-[220px] [&_[data-component=select-v2-root]]:!w-full">
++        <Show
++          when={platform.platform === "android"}
++          fallback={
++            <TextInput
++              data-action={config().action}
++              type="text"
++              appearance="base"
++              value={props.fonts[config().font]().value}
++              onInput={(event) => props.fonts[config().input](event.currentTarget.value)}
++              placeholder={props.fonts[config().font]().placeholder}
++              spellcheck={false}
++              autocorrect="off"
++              autocomplete="off"
++              autocapitalize="off"
++              aria-label={language.t(config().title)}
++              style={{ "font-family": props.fonts[config().font]().family }}
++            />
++          }
++        >
++          <Select
++            class="!w-full"
++            data-action={config().action}
++            aria-label={language.t(config().title)}
++            options={options()}
++            current={options().find(
++              (font) => font.id === (selection.pending ?? (props.fonts[config().font]().value || defaultFont)),
++            )}
++            placeholder={
++              props.systemFonts.error
++                ? language.t("common.requestFailed")
++                : props.systemFonts.loading
++                  ? language.t("common.loading")
++                  : props.fonts[config().font]().value
++            }
++            disabled={props.systemFonts.state !== "ready" && props.systemFonts.state !== "refreshing"}
++            value={(font) => font.id}
++            label={(font) => font.name}
++            valueClass="!text-end"
++            onSelect={select}
++          />
++        </Show>
+       </div>
+     </SettingsRow>
+   )
+@@ -71,7 +160,13 @@ const FontSetting: Component<{
+ 
+ export const SettingsAppearance: Component = () => {
+   const language = useLanguage()
++  const platform = usePlatform()
+   const appearance = createAppearanceSettingsController()
++  const [systemFonts] = createResource(() => (platform.platform === "android" ? platform.systemFonts() : undefined))
++  const [imported, setImported] = createStore<SystemFont[]>([])
++  const onImported = (font: SystemFont) => {
++    setImported((current) => [...current.filter((item) => item.id !== font.id), font])
++  }
+ 
+   return (
+     <>
+@@ -131,9 +226,34 @@ export const SettingsAppearance: Component = () => {
+               />
+             </SettingsRow>
+ 
+-            <FontSetting kind="ui" fonts={appearance.fonts} />
+-            <FontSetting kind="code" fonts={appearance.fonts} />
+-            <FontSetting kind="terminal" fonts={appearance.fonts} />
++            <Show when={systemFonts.error}>
++              {(error) => (
++                <p role="alert" class="text-12-regular text-text-danger-base">
++                  {String(error())}
++                </p>
++              )}
++            </Show>
++            <FontSetting
++              kind="ui"
++              fonts={appearance.fonts}
++              systemFonts={systemFonts}
++              imported={imported}
++              onImported={onImported}
++            />
++            <FontSetting
++              kind="code"
++              fonts={appearance.fonts}
++              systemFonts={systemFonts}
++              imported={imported}
++              onImported={onImported}
++            />
++            <FontSetting
++              kind="terminal"
++              fonts={appearance.fonts}
++              systemFonts={systemFonts}
++              imported={imported}
++              onImported={onImported}
++            />
+ 
+             <Show when={appearance.zoom.available()}>
+               <SettingsRow
+diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
+index 22a5658..90d9428 100644
+--- a/packages/app/src/settings/model.tsx
++++ b/packages/app/src/settings/model.tsx
+@@ -8,6 +8,7 @@ import { timelinePresets, type TimelineCategory, type TimelineDetail } from "@op
+ import { persisted } from "@/runtime/persistence/storage"
+ import { Persistence } from "@/runtime/persistence/schema"
+ import { ScopedKey, type ServerScope } from "@/runtime/server/scope"
++import { usePlatform } from "@/runtime/platform/platform"
+ 
+ export type Settings = typeof settingsSchema.Type
+ 
+@@ -328,6 +329,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+   gate: false,
+   init: () => {
+     const [store, setStore, , ready] = persisted({ key: "settings.v3" }, settingsPersistence, defaultSettings)
++    const platform = usePlatform()
+ 
+     const showCustomAgents = withFallback(
+       () => store.general?.showCustomAgents,
+@@ -345,5 +347,14 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+       void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
+     })
+ 
++    createEffect(() => {
++      if (platform.platform !== "android") return
++      const selected = new Set([store.appearance?.sans, store.appearance?.mono, store.appearance?.terminal])
++      for (const font of selected) {
++        if (!font?.startsWith("ocsys-")) continue
++        void platform.loadSystemFont(font).catch((error) => console.error("System font load failed", error))
++      }
++    })
++
+     const newIcons = withFallback(() => store.general?.newIcons, defaultSettings.general.newIcons)
+     createEffect(() => setNewIcons(newIcons()))
+diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
+index eedeb08..2b8c298 100644
+--- a/packages/app/src/runtime/i18n/en.ts
++++ b/packages/app/src/runtime/i18n/en.ts
+@@ -979,6 +979,8 @@ export const dict = {
+   "settings.general.row.terminalFont.description": "Customise the font used in the terminal",
+   "settings.general.row.uiFont.title": "UI Font",
+   "settings.general.row.uiFont.description": "Customise the font used throughout the interface",
++  "settings.appearance.font.import": "Import font file",
++  "settings.appearance.font.importFailed": "Unable to import this font file",
+   "settings.general.row.mobileTitlebarBottom.title": "Bottom navigation",
+   "settings.general.row.mobileTitlebarBottom.description": "Place the title bar at the bottom of the screen on mobile",
+   "settings.general.row.showCustomAgents.title": "Show agent",

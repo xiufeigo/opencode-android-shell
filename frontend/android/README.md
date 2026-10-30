@@ -55,6 +55,8 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 平台身份明确为 `android`；原生宿主提供的能力按接口接入，不声明 Electron 的 windowID 或电脑目录选择。`menu.ts` 为官方应用菜单提供编辑、重载、缩放及原生全屏/窗口动作；不支持的桌面动作明确禁用。菜单保存输入框焦点和选区，异步剪贴板期间编辑内容变化则明确拒绝操作。`files.mjs` 使用 WebView 标准文件 input，由 Android SAF 回传 URI，再顺序读取 `File`；官方会话导入因此可用，取消不导入、读取和校验失败继续抛错。保持原存储 namespace，升级不迁移或重置真实服务器。
 
+Android 字体选择器通过系统 `SystemFonts` 枚举通用字体，并额外读取 MIUI 当前 WebView 字体覆盖；过滤语言 fallback 和锁屏/主题资源，只显示可用于界面的字体。当前 MIUI 字体覆盖为 `MiSansVF.ttf` 时显示为 `MiSans`；同一 TTC 集合只显示一项并使用其第一面。字体按需加载，原生桥只返回不透明标识，WebView 拦截器只提供已枚举的系统字体，不开放任意文件路径。该系统 API 需要 Android 10 或更高版本，旧系统在设置页明确显示错误。`node scripts/verify-android-fonts.mjs` 验证三种字体角色、恢复默认和持久化；需安装 `plugins/server-browser` 的 Playwright 依赖及对应 Chromium。
+
 多服务器时，旧根级服务器标签在路由解析层归入偏好设置，移除会抢写新增目标页的库存变化导航 effect。根级和嵌套页共用一个新增动作，移动顶部和宽屏侧栏均可持续添加；构建同时运行官方设置路由测试与新增回归用例。
 
 触屏设备不具备悬停时，侧栏新增按钮常显。连接页使用的 `URL.parse` 在旧 Android WebView 中缺失，沿用上游 `runtime/polyfills.ts` 的 core-js 兼容入口，并在构建中验证原生 API 缺失的启动场景。

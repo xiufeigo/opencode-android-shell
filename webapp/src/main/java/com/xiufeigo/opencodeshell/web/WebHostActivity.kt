@@ -43,6 +43,7 @@ import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
+import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
@@ -121,6 +122,7 @@ class WebHostActivity : AppCompatActivity() {
     private lateinit var fileChooser: FileChooserHost
     private lateinit var insets: InsetsHost
     private lateinit var localUiServer: LocalUiOriginServer
+    private val systemFonts = SystemFontCatalog()
 
     private var pickedUri: Uri? = null
     private lateinit var platformHost: AndroidPlatformHost
@@ -459,7 +461,7 @@ class WebHostActivity : AppCompatActivity() {
         legacyChannel = LegacyBridgeChannel(bridge)
         webView.addJavascriptInterface(legacyChannel, WebHostBridge.INJECT_NAME)
         if (::platformHost.isInitialized) platformHost.close()
-        platformHost = AndroidPlatformHost(this, fileChooser)
+        platformHost = AndroidPlatformHost(this, fileChooser, systemFonts)
         if (localUiServer.boundPort != null && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             platformHost.install(webView)
         }
@@ -1241,7 +1243,20 @@ class WebHostActivity : AppCompatActivity() {
         override fun shouldInterceptRequest(
             view: WebView,
             request: WebResourceRequest,
-        ): WebResourceResponse? = loader(view.context).shouldInterceptRequest(request.url)
+        ): WebResourceResponse? {
+            val url = request.url
+            val path = url.path.orEmpty()
+            if (sameOrigin(url.toString(), LocalUiOriginServer.origin()) && path.startsWith(SystemFontCatalog.URL_PREFIX)) {
+                val id = path.removePrefix(SystemFontCatalog.URL_PREFIX)
+                val stream = if (request.method == "GET" && !request.isForMainFrame) systemFonts.open(id) else null
+                return if (stream == null) {
+                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
+                } else {
+                    WebResourceResponse("font/ttf", null, 200, "OK", mapOf("Cache-Control" to "no-store"), stream)
+                }
+            }
+            return loader(view.context).shouldInterceptRequest(url)
+        }
 
         // 参数用 `WebView?`：installFacade 的匿名子类里本来就有一个同签名的 override
         // （`view: WebView?`）。这里若声明成非空，那个匿名子类就会"overrides nothing"。

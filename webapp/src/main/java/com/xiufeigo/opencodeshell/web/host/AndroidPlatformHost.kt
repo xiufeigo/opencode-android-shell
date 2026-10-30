@@ -20,6 +20,7 @@ import java.util.concurrent.Executors
 class AndroidPlatformHost(
     private val activity: AppCompatActivity,
     private val files: FileChooserHost,
+    private val systemFonts: SystemFontCatalog,
 ) : AutoCloseable {
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile
@@ -79,6 +80,9 @@ class AndroidPlatformHost(
                         worker.execute {
                             try { respond(readImage(uri)) } catch (error: Exception) { respond(error = error) }
                         }
+                    }
+                    "listSystemFonts" -> worker.execute {
+                        try { respond(systemFonts.list()) } catch (error: Exception) { respond(error = error) }
                     }
                     "saveFile" -> files.launchSave(
                         payload.getString("name"), "text/markdown",

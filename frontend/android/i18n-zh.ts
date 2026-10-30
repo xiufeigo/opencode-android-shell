@@ -326,6 +326,8 @@ const android = {
   "settings.appearance.row.reduceMotion.off": "关闭",
   "settings.appearance.row.reduceMotion.on": "开启",
   "settings.appearance.row.reduceMotion.system": "跟随系统",
+  "settings.appearance.font.import": "导入字体文件",
+  "settings.appearance.font.importFailed": "无法导入字体文件",
   "settings.appearance.row.reduceMotion.title": "减少动态效果",
   "settings.appearance.row.zoom.description": "放大整个应用中的文字和控件",
   "settings.appearance.row.zoom.title": "缩放",
