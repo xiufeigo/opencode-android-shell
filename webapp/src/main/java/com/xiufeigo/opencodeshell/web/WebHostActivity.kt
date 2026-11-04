@@ -27,11 +27,13 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.xiufeigo.opencodeshell.web.host.AppUpdateChecker
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
 import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
@@ -43,6 +45,7 @@ import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
+import com.xiufeigo.opencodeshell.web.host.UpdateChecker
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
@@ -166,6 +169,19 @@ class WebHostActivity : AppCompatActivity() {
 
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上访问的跟踪器。 */
     fun roundActivityTracker(): RoundActivityTracker = roundTracker
+
+    /**
+     * 版本更新提醒的**一次性对话框**回调。
+     *
+     * 节流（同一远端版本只弹一次）在 [AppUpdateChecker] 那边做；
+     * 这里只回答"现在能不能弹"：Activity 活着、且**在前台**。
+     *
+     * ⚠️ 必须成对注册/注销（[onCreate] / [onDestroy]）——否则进程还活着时
+     * 下一次启动会拿到一个已经销毁的 Activity 引用。
+     */
+    private val updateListener = AppUpdateChecker.UpdateListener { offer ->
+        showUpdateDialog(offer)
+    }
 
     /**
      * P7 · 当前 `onPause` 是否走了「回合保活路径」。
@@ -369,7 +385,34 @@ class WebHostActivity : AppCompatActivity() {
         installBackHandler()
         consumeNotificationIntent(intent)
         consumeDebugEval(intent)
+        // 版本更新：订阅"发现新版"的回调（检查本身在 [WebHostApp] 里排程，
+        // 延迟 5s 才发请求，不跟首屏抢网络）。
+        AppUpdateChecker.addListener(updateListener)
         PerfMarks.mark("G.onCreate.exit")
+    }
+
+    /**
+     * 弹"发现新版本"的一次性对话框。
+     *
+     * 落点优先 `.apk` 直链（[UpdateChecker.Offer.downloadUrl]），
+     * 没有就退回 Release 页；点"去下载"用外部浏览器/下载器打开。
+     *
+     * 不弹的情况：Activity 正在销毁 / 已被销毁 / **不在前台**（切后台时弹框
+     * 会挡住别的 App，用户回来时框已经没了 ⇒ 等价于没提醒）。
+     */
+    private fun showUpdateDialog(offer: UpdateChecker.Offer) {
+        if (isFinishing || isDestroyed) return
+        if (!foreground) return
+        if (!::platformHost.isInitialized) return
+        val url = offer.downloadUrl ?: offer.htmlUrl ?: return
+        AlertDialog.Builder(this)
+            .setTitle("发现新版本 ${offer.version.normalized}")
+            .setMessage(
+                "当前版本 ${BuildConfig.VERSION_NAME}，可更新到 ${offer.version.normalized}。",
+            )
+            .setPositiveButton("去下载") { _, _ -> openExternalLink(url) }
+            .setNegativeButton("稍后", null)
+            .show()
     }
 
     /**
@@ -1211,6 +1254,8 @@ class WebHostActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (::fileChooser.isInitialized) fileChooser.close()
+        // 版本更新：注销回调（必须与 onCreate 的注册成对，否则回调打到死 Activity 上）。
+        AppUpdateChecker.removeListener(updateListener)
         // P6：销毁时也清一次（窗口虽马上就没了，但 flag 泄漏会在 `onSaveInstanceState`
         // 重建路径上被观察到；清掉是零成本的）。
         clearKeepScreenOnOnBackground()
