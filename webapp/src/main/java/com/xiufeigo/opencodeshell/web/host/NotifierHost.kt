@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -29,8 +30,23 @@ object NotifierHost {
     private const val TAG = "OcWebHost/Notify"
 
     const val CHANNEL_TURNS = "oc_turns"
+
+    /**
+     * 更新提醒渠道（与"回合完成"分开，用户可以单独关掉更新提醒）。
+     *
+     * 为什么单独一个渠道：回合完成是"有事发生"，更新提醒是"有事可以做"，
+     * 两者混在一个渠道里，用户为了让回合提醒安静就把更新提醒也一起关了。
+     */
+    const val CHANNEL_UPDATES = "oc_updates"
+
     const val EXTRA_SESSION_ID = "oc_session_id"
     const val EXTRA_FROM_NOTIFICATION = "oc_from_notification"
+
+    /** 更新提醒的通知 id（固定一条 ⇒ 同版本覆盖，不会堆一排）。 */
+    const val UPDATE_NOTIFY_ID = 0x0C7A
+
+    /** 更新提醒的 PendingIntent requestCode（与回合通知分开，避免互相覆盖）。 */
+    private const val UPDATE_REQUEST_CODE = 0x0C7B
 
     /**
      * N1：点击通知 ⇒ 回到会话 的**纯函数**契约。
@@ -167,6 +183,71 @@ object NotifierHost {
         }
         runCatching { nm.createNotificationChannel(channel) }
             .onFailure { Log.w(TAG, "createNotificationChannel failed", it) }
+        // 更新提醒单独一个渠道（用户可单独关掉"有新版"而不牺牲回合提醒）。
+        val updateChannel = NotificationChannel(
+            CHANNEL_UPDATES,
+            "版本更新",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "发现新版本时提醒"
+            enableLights(true)
+            setShowBadge(true)
+        }
+        runCatching { nm.createNotificationChannel(updateChannel) }
+            .onFailure { Log.w(TAG, "createNotificationChannel(updates) failed", it) }
+    }
+
+    /**
+     * 发一条"发现新版本"的系统通知，点击打开 [url]。
+     *
+     * 与 [postTurnFinished] 分开：这条的点击**不回会话**，而是用 `ACTION_VIEW`
+     * 把浏览器（或下载器）拉起来打开 Release 页 / APK 直链。
+     *
+     * @param url 落点 URL（优先 `.apk` 的 `browser_download_url`）
+     * @return 0=成功，-1=没权限（Android 13+），-2=其它失败。
+     */
+    fun postUpdateAvailable(context: Context, title: String, body: String, url: String): Int {
+        ensureChannels(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return -1
+        }
+
+        // 点击 ⇒ 用浏览器打开下载链接（隐式 Intent，交给系统挑能处理的 App）。
+        val viewIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pending = PendingIntent.getActivity(
+            context,
+            UPDATE_REQUEST_CODE,
+            viewIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .build()
+
+        return try {
+            NotificationManagerCompat.from(context).notify(UPDATE_NOTIFY_ID, notification)
+            0
+        } catch (t: SecurityException) {
+            Log.w(TAG, "update notify denied", t)
+            -1
+        } catch (t: Throwable) {
+            Log.w(TAG, "update notify failed", t)
+            -2
+        }
     }
 
     /** @return 0=成功，-1=没权限（Android 13+），-2=其它失败。 */

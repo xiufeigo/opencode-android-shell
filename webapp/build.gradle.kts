@@ -176,6 +176,14 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         // 且窗口背景按模式给（values/colors.xml + values-night/colors.xml 成对存在）。
         "src/main/res/values/colors.xml",
         "src/main/res/values-night/colors.xml",
+        // App 内更新检查绊线：`UpdateWiringTest` 的「接线契约层」要读这四个文件
+        // （NotifierHost 的更新渠道/落点、AppUpdateChecker 的排程与网络、
+        //  UpdateChecker 的纯决策、JsonLite 的 JSON 解析）。
+        // 不声明的话，撤回任一处接线都会让任务被判 UP-TO-DATE 而"假绿"。
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/UpdateChecker.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/JsonLite.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/AppUpdateChecker.kt",
     ).forEach { rel ->
         inputs.file(layout.projectDirectory.file(rel))
             .withPropertyName("contractAsset_$rel")
