@@ -83,7 +83,7 @@ index 90e7792..aad3a22 100644
    de: () => merge(import("@/runtime/i18n/de"), import("@opencode/ui/i18n/de")),
    es: () => merge(import("@/runtime/i18n/es"), import("@opencode/ui/i18n/es")),
 diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
-index ecbf0b2..7ffd475 100644
+index 38a1233..f68d926 100644
 --- a/packages/app/src/runtime/platform/platform.tsx
 +++ b/packages/app/src/runtime/platform/platform.tsx
 @@ -21,7 +21,7 @@ type OpenFilePathPickerOptions = { title?: string; multiple?: boolean; extension
@@ -95,7 +95,16 @@ index ecbf0b2..7ffd475 100644
  
  type DesktopOS = "macos" | "windows" | "linux"
  
-@@ -60,7 +60,7 @@ type PlatformBase = {
+@@ -33,6 +33,8 @@ export type FatalRendererErrorLog = {
+   os?: DesktopOS
+ }
+ 
++export type SystemFont = { id: string; name: string }
++
+ type PlatformBase = {
+   requestMicrophone?(): Promise<boolean>
+   setVoiceCallActive?(active: boolean): Promise<void>
+@@ -60,7 +62,7 @@ type PlatformBase = {
    /** Send a system notification */
    notify(title: string, description?: string, onClick?: () => void): Promise<void>
  
@@ -104,7 +113,7 @@ index ecbf0b2..7ffd475 100644
    openAttachmentPickerDialog?<Value>(
      opts: OpenAttachmentPickerOptions,
      onFile: (file: File) => Promise<Value>,
-@@ -75,7 +75,7 @@ type PlatformBase = {
+@@ -75,7 +77,7 @@ type PlatformBase = {
    /** Observe native drag cancellation that does not reach the renderer event loop. */
    onDragCancel?(callback: () => void): () => void
  
@@ -113,9 +122,9 @@ index ecbf0b2..7ffd475 100644
    saveFile?(opts: SaveFilePickerOptions, content: string): Promise<boolean>
  
    /** Storage mechanism, defaults to localStorage */
-@@ -108,8 +108,10 @@ type PlatformBase = {
-   /** Allow native pinch/Ctrl-scroll zoom gestures (desktop only) */
-   setPinchZoomEnabled?(enabled: boolean): Promise<void> | void
+@@ -114,8 +116,10 @@ type PlatformBase = {
+   /** Turn the native spellchecker on or off (desktop only) */
+   setSpellcheckEnabled?(enabled: boolean): Promise<void>
  
 -  /** Run a desktop-only menu action from the app chrome */
 +  /** Run a host menu action from the app chrome. */
@@ -125,11 +134,18 @@ index ecbf0b2..7ffd475 100644
  
    /** Check if an editor app exists (desktop only) */
    checkAppExists?(appName: string): Promise<boolean>
-@@ -136,6 +138,7 @@ type PlatformBase = {
+@@ -142,6 +146,14 @@ type PlatformBase = {
  export type Platform = PlatformBase &
    (
      | { platform: "web"; os?: never; windowID?: never }
-+    | { platform: "android"; os?: never; windowID?: never }
++    | {
++        platform: "android"
++        os?: never
++        windowID?: never
++        systemFonts(): Promise<SystemFont[]>
++        loadSystemFont(id: string): Promise<void>
++        importSystemFont(file: File): Promise<SystemFont>
++      }
      | {
          platform: "desktop"
          os?: DesktopOS
@@ -245,10 +261,10 @@ index 21f54fb..9a66afd 100644
                when={camera.available.latest || camera.available.loading}
                fallback={<p>{language.t(cameraHint())}</p>}
 diff --git a/packages/app/src/settings/settings.css b/packages/app/src/settings/settings.css
-index 8fffd4c..44de76d 100644
+index 9b3c963..afeff77 100644
 --- a/packages/app/src/settings/settings.css
 +++ b/packages/app/src/settings/settings.css
-@@ -155,6 +155,12 @@
+@@ -200,6 +200,12 @@
    background: var(--v2-background-bg-layer-03);
  }
  
@@ -262,7 +278,7 @@ index 8fffd4c..44de76d 100644
    .settings-nav-group-header:hover {
      background: var(--v2-background-bg-layer-03);
 diff --git a/packages/app/src/shell/commands/desktop-menu.ts b/packages/app/src/shell/commands/desktop-menu.ts
-index d519eea..dc56638 100644
+index d256a42..cc9aaa0 100644
 --- a/packages/app/src/shell/commands/desktop-menu.ts
 +++ b/packages/app/src/shell/commands/desktop-menu.ts
 @@ -1,6 +1,6 @@
@@ -410,51 +426,32 @@ index 20661ce..f7b0613 100644
                .map(async (entry) => ({
                ...entry,
                // A revision labels a cache entry; integrity rejects mixed deployments
+diff --git a/packages/gui-plugins/src/renderer.ts b/packages/gui-plugins/src/renderer.ts
+index 5c131e2..59b3734 100644
+--- a/packages/gui-plugins/src/renderer.ts
++++ b/packages/gui-plugins/src/renderer.ts
+@@ -29,6 +29,8 @@ import sources from "./sources"
+ import sourcesRenderer from "./sources/renderer"
+ import goal from "./goal"
+ import goalRenderer from "./goal/renderer"
++import serverBrowser from "./remote-browser"
++import serverBrowserRenderer from "./remote-browser/renderer"
+ 
+ // The window renders once every built-in is active, so the small renderer entries load with the app, like the
+ // features they replaced. Heavy UI stays behind `lazy()` inside them.
+@@ -52,4 +54,5 @@ export const builtins = compose({
+   "microsoft-office": { ...microsoftOffice, windowEntry: eager(microsoftOfficeRenderer) },
+   sources: { ...sources, windowEntry: eager(sourcesRenderer) },
+   goal: { ...goal, windowEntry: eager(goalRenderer) },
++  "server-browser": { ...serverBrowser, windowEntry: eager(serverBrowserRenderer) },
+ })
 diff --git a/packages/gui-plugins/src/terminal/model.ts b/packages/gui-plugins/src/terminal/model.ts
-index 21660c8..d341345 100644
+index 71f724d..9bccc48 100644
 --- a/packages/gui-plugins/src/terminal/model.ts
 +++ b/packages/gui-plugins/src/terminal/model.ts
-@@ -1,15 +1,24 @@
--import { batch, createMemo, createRoot, getOwner, onCleanup, untrack } from "solid-js"
-+import { batch, createMemo, createRoot, getOwner, onCleanup, runWithOwner, untrack } from "solid-js"
- import { createStore } from "solid-js/store"
- import {
-   createKeyed,
-   type Mutable,
-+  type Persisted,
-   type Storage,
-   type ServerRef,
-   type MountedSession,
-   type Sessions,
- } from "@opencode/plugin/gui"
--import { MAX_TERMINAL_SESSIONS, numberFromTitle, TerminalState, terminalTab, type LocalPTY } from "./state"
-+import {
-+  MAX_TERMINAL_SESSIONS,
-+  numberFromTitle,
-+  TerminalState,
-+  WorkspaceTerminalState,
-+  terminalTab,
-+  type LocalPTY,
-+} from "./state"
- import { defaultTitle } from "./title"
-+import { createTerminalHandoffs } from "./android-handoffs.mjs"
+@@ -29,7 +29,12 @@ export type TerminalSession = ReturnType<TerminalModel["load"]>
  
- const STORE = "terminals"
- 
-@@ -20,16 +29,21 @@ const HANDOFF_MAX = 40
- 
- export type TerminalModel = ReturnType<typeof createTerminalModel>
- 
--export type TerminalWorkspace = ReturnType<typeof createWorkspace>
-+export type TerminalWorkspace = ReturnType<typeof createSession>
- 
- type CacheEntry = {
--  value: TerminalWorkspace
-+  value: ReturnType<typeof createWorkspace>
-   dispose: VoidFunction
- }
- 
- type FocusRequest = { request: number; id?: string; pending: boolean }
+ type FocusRequest = { key: string; request: number; id?: string; pending: boolean }
  
 -const importGhostty = () => import("ghostty-web").then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
 +// The Android build ships its own terminal engine, served from a fixed path.
@@ -466,317 +463,11 @@ index 21660c8..d341345 100644
  
  /** The one ghostty-web load the window's terminals share; a failed load is retried by the next terminal. */
  type Ghostty = { shared?: ReturnType<typeof importGhostty> }
-@@ -64,8 +78,9 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
-   }
- 
-   return {
--    load(session: Pick<MountedSession, "server" | "directory">) {
--      // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
-+    handoffs: createTerminalHandoffs(),
-+    load(session: Pick<MountedSession, "id" | "server" | "directory">) {
-+      // Keep durable PTY ownership separate from the host's prunable layout cache.
-       const key = workspaceKey(session.server.id, session.directory)
-       const existing = cache.get(key)
- 
-@@ -73,7 +88,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
-         cache.delete(key)
-         cache.set(key, existing)
- 
--        return existing.value
-+        return existing.value.session(session.id)
-       }
- 
-       // A cached workspace keeps talking to its own server after the route moves on.
-@@ -91,7 +106,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
-       cache.set(key, entry)
-       prune()
- 
--      return entry.value
-+      return entry.value.session(session.id)
-     },
-     ghostty() {
-       if (ghostty.shared) return ghostty.shared
-@@ -136,14 +151,63 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
- }
- 
- function createWorkspace(input: { storage: Storage; server: ServerRef; directory: string; key: string }) {
--  const location = { directory: input.directory }
--
-   const stored = input.storage.store(STORE, {
--    schema: TerminalState,
--    initial: { all: [] },
-+    schema: WorkspaceTerminalState,
-+    initial: { sessions: {} },
-     scope: { server: input.server.id, directory: input.directory },
-     from: LEGACY,
-   })
-+  const owner = getOwner()
-+  const sessions = new Map<string, TerminalWorkspace>()
-+
-+  return {
-+    clear: () => stored.set({ sessions: Object.fromEntries([...sessions.keys()].map((id) => [id, { all: [] }])) }),
-+    session(id: string) {
-+      const existing = sessions.get(id)
-+      if (existing) return existing
-+
-+      const value = runWithOwner(owner, () => createSession({ ...input, id, stored }))!
-+      sessions.set(id, value)
-+      return value
-+    },
-+  }
-+}
-+
-+function createSession(input: {
-+  server: ServerRef
-+  directory: string
-+  key: string
-+  id: string
-+  stored: Persisted<typeof WorkspaceTerminalState.Type>
-+}) {
-+  const location = { directory: input.directory }
-+  const workspace = input.stored
-+
-+  createKeyed(workspace.ready, () => {
-+    workspace.update((draft) => {
-+      if (draft.sessions[input.id]) return
-+      // The first opened session claims the old shared tabs once; other sessions start independently.
-+      draft.sessions[input.id] = draft.unassigned ?? { all: [] }
-+      draft.unassigned = undefined
-+    })
-+  })
-+
-+  const stored = {
-+    get value() {
-+      return workspace.value?.sessions[input.id]
-+    },
-+    ready: () => workspace.ready() && !!workspace.value?.sessions[input.id],
-+    update(mutate: (draft: Mutable<typeof TerminalState.Type>) => void) {
-+      workspace.update((draft) => {
-+        mutate(draft.sessions[input.id] ??= { all: [] })
-+      })
-+    },
-+    set(next: typeof TerminalState.Type) {
-+      workspace.update((draft) => {
-+        draft.sessions[input.id] = { ...next, all: next.all.map((pty) => ({ ...pty })) }
-+      })
-+    },
-+  }
- 
-   // Empty until the stored terminals load; changes made before then apply over them in order.
-   const all = createMemo(() => stored.value?.all ?? [])
-@@ -308,7 +372,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
-   }
- 
-   return {
--    key: input.key,
-+    key: `${input.key}\0${input.id}`,
-     // An accessor, so storing the workspace in a Solid store never unwraps the host's server data.
-     server: () => input.server,
-     directory: input.directory,
-@@ -364,11 +428,6 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
-         trimTerminal(draft.all[index])
-       })
-     },
--    trimAll() {
--      stored.update((draft) => {
--        draft.all.forEach(trimTerminal)
--      })
--    },
-     clone,
-     /** The terminal whose side panel tab has this id. */
-     byTab: (tab: string) => all().find((pty) => terminalTab(pty) === tab),
-diff --git a/packages/gui-plugins/src/terminal/panel.tsx b/packages/gui-plugins/src/terminal/panel.tsx
-index 22472b0..b4931ff 100644
---- a/packages/gui-plugins/src/terminal/panel.tsx
-+++ b/packages/gui-plugins/src/terminal/panel.tsx
-@@ -262,7 +262,8 @@ export default function TerminalPanel(props: {
-             }}
-           >
-             <Terminal
--              pty={surface.pty}
-+              pty={surface.ops.all().find((pty) => pty.id === surface.pty.id) ?? surface.pty}
-+              handoffs={props.model.handoffs}
-               server={surface.ops.server()}
-               directory={surface.ops.directory}
-               ghostty={props.model.ghostty}
-diff --git a/packages/gui-plugins/src/terminal/renderer.tsx b/packages/gui-plugins/src/terminal/renderer.tsx
-index d9458dc..302751b 100644
---- a/packages/gui-plugins/src/terminal/renderer.tsx
-+++ b/packages/gui-plugins/src/terminal/renderer.tsx
-@@ -1,6 +1,6 @@
--import { createMemo, lazy, on, onCleanup, Suspense } from "solid-js"
-+import { createMemo, lazy, onCleanup, Suspense } from "solid-js"
- import { Icon } from "@opencode/ui/icon"
- import { Menu } from "@opencode/ui/menu"
- import {
-   Command,
-   createKeyed,
-@@ -31,21 +31,6 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
-   // The host withdraws the listener with the plugin.
-   ctx.workspaces.on("remove", model.remove)
- 
--  // The routed session's workspace stays loaded while no panel renders it, like the session route did.
--  const workspace = createMemo<TerminalWorkspace | undefined>((previous) => {
--    const session = sessions.current()
--
--    return session ? model.load(session) : previous
--  })
--
--  // The workspace each later route change leaves.
--  const left = createMemo(
--    on(workspace, (next, previous) => (previous && next !== previous ? previous : undefined), { defer: true }),
--  )
--
--  // A workspace the route leaves drops its restore buffers.
--  createKeyed(left, (previous) => previous.trimAll())
--
-   const routed = createMemo(() => !!sessions.current())
- 
-   const current = () => {
-@@ -204,7 +189,7 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
-     },
-   )
- 
--  const tab = (workspace: Pick<MountedSession, "server" | "directory">, id: string): PanelTab => {
-+  const tab = (workspace: Pick<MountedSession, "id" | "server" | "directory">, id: string): PanelTab => {
-     const terminal = () => model.load(workspace)
-     const pty = () => terminal().byTab(id)
-     const label = () => terminalTabLabel({ title: pty()?.title, titleNumber: pty()?.titleNumber, t: ctx.t })
-@@ -261,7 +246,7 @@ const setup: Plugin.Setup<typeof Terminal> = (ctx) => {
- 
-       if (ids.length === 0) return []
- 
--      const workspace = { server: input.session.server, directory: input.session.directory }
-+      const workspace = { id: input.session.id, server: input.session.server, directory: input.session.directory }
-       const cacheKey = `${input.session.key}\0${terminal.key}`
-       const cache = tabs.get(cacheKey) ?? new Map<string, PanelTab>()
-       tabs.set(cacheKey, cache)
-diff --git a/packages/gui-plugins/src/terminal/state.ts b/packages/gui-plugins/src/terminal/state.ts
-index bbfffb2..3747dc7 100644
---- a/packages/gui-plugins/src/terminal/state.ts
-+++ b/packages/gui-plugins/src/terminal/state.ts
-@@ -81,3 +81,16 @@ export const TerminalState = State.pipe(
-     encode: SchemaGetter.transform((value) => value),
-   }),
- )
-+
-+const Workspace = Schema.Struct({
-+  sessions: Schema.Record(Schema.String, TerminalState),
-+  unassigned: optional(TerminalState),
-+})
-+
-+// Existing workspace state cannot identify its original chat; preserve it until one session claims it.
-+export const WorkspaceTerminalState = Schema.Union([Workspace, TerminalState]).pipe(
-+  Schema.decodeTo(Schema.toType(Workspace), {
-+    decode: SchemaGetter.transform((value) => "sessions" in value ? value : { sessions: {}, unassigned: value }),
-+    encode: SchemaGetter.transform((value) => value),
-+  }),
-+)
 diff --git a/packages/gui-plugins/src/terminal/terminal.tsx b/packages/gui-plugins/src/terminal/terminal.tsx
-index f559a8d..8536163 100644
+index 7726dbf..d830af5 100644
 --- a/packages/gui-plugins/src/terminal/terminal.tsx
 +++ b/packages/gui-plugins/src/terminal/terminal.tsx
-@@ -24,11 +24,18 @@ import { TerminalQuote, type TerminalQuoteTarget } from "./quote"
- // terminal keeps its full 10k scrollback while mounted.
- const persistedScrollbackRows = 2_000
- 
-+/** The handoff barrier is an Android-only detail; a host that does not pass one still renders. */
-+const EMPTY_HANDOFFS: TerminalModel["handoffs"] = {
-+  wait: () => undefined,
-+  begin: () => () => {},
-+}
-+
- export interface TerminalProps extends ComponentProps<"div"> {
-   pty: LocalPTY
-   server: ServerRef
-   directory: string
-   ghostty: TerminalModel["ghostty"]
-+  handoffs?: TerminalModel["handoffs"]
-   /** Where selected output can be quoted to. */
-   quote?: TerminalQuoteTarget
-   autoFocus?: boolean
-@@ -197,6 +204,7 @@ export const Terminal = (props: TerminalProps) => {
-     "server",
-     "directory",
-     "ghostty",
-+    "handoffs",
-     "quote",
-     "class",
-     "classList",
-@@ -210,22 +218,33 @@ export const Terminal = (props: TerminalProps) => {
-   // cached surface belongs to one workspace.
-   const server = local.server
-   const directory = local.directory
-+  const handoffs = () => local.handoffs ?? EMPTY_HANDOFFS
-   const id = local.pty.id
--  const restore = local.pty.buffer ?? ""
--  const stored = { cols: local.pty.cols, rows: local.pty.rows }
--
--  const restoreSize =
--    restore &&
--    stored.cols !== undefined &&
--    Number.isSafeInteger(stored.cols) &&
--    stored.cols > 0 &&
--    stored.rows !== undefined &&
--    Number.isSafeInteger(stored.rows) &&
--    stored.rows > 0
--      ? { cols: stored.cols, rows: stored.rows }
--      : undefined
--
--  const scrollY = local.pty.scrollY
-+  const handoffKey = `${server.id}\0${directory}\0${id}`
-+  let restore = ""
-+  let stored: { cols?: number; rows?: number } = {}
-+  let restoreSize: { cols: number; rows: number } | undefined
-+  let scrollY: number | undefined
-+
-+  const captureRestore = () => {
-+    restore = local.pty.buffer ?? ""
-+    stored = { cols: local.pty.cols, rows: local.pty.rows }
-+    restoreSize =
-+      restore &&
-+      stored.cols !== undefined &&
-+      Number.isSafeInteger(stored.cols) &&
-+      stored.cols > 0 &&
-+      stored.rows !== undefined &&
-+      Number.isSafeInteger(stored.rows) &&
-+      stored.rows > 0
-+        ? { cols: stored.cols, rows: stored.rows }
-+        : undefined
-+
-+    scrollY = local.pty.scrollY
-+    const start = local.pty.cursor !== undefined && Number.isSafeInteger(local.pty.cursor) ? local.pty.cursor : undefined
-+    cursor = start ?? 0
-+    seek = start !== undefined ? start : restore ? -1 : 0
-+  }
-   let ws: WebSocket | undefined
-   let term: Term | undefined
-   let serializeAddon: SerializeAddon
-@@ -238,10 +257,8 @@ export const Terminal = (props: TerminalProps) => {
-   let disposed = false
-   const cleanups: VoidFunction[] = []
- 
--  const start = local.pty.cursor !== undefined && Number.isSafeInteger(local.pty.cursor) ? local.pty.cursor : undefined
--
--  let cursor = start ?? 0
--  let seek = start !== undefined ? start : restore ? -1 : 0
-+  let cursor = 0
-+  let seek = 0
-   let output: ReturnType<typeof terminalWriter> | undefined
-   let drop: VoidFunction | undefined
-   let reconn: ReturnType<typeof setTimeout> | undefined
-@@ -433,8 +450,10 @@ export const Terminal = (props: TerminalProps) => {
-   onMount(() => {
-     const run = async () => {
-       const loaded = await local.ghostty()
-+      await handoffs().wait(handoffKey)
- 
-       if (disposed) return
-+      captureRestore()
- 
-       const mod = loaded.mod
-       const g = loaded.ghostty
-@@ -447,7 +466,7 @@ export const Terminal = (props: TerminalProps) => {
+@@ -412,7 +412,7 @@ export const Terminal = (props: TerminalProps) => {
          fontSize: 14,
          fontFamily: appearance.font("mono"),
          allowTransparency: false,
@@ -785,62 +476,6 @@ index f559a8d..8536163 100644
          theme: terminalColors(),
          scrollback: 10_000,
          ghostty: g,
-@@ -538,10 +557,6 @@ export const Terminal = (props: TerminalProps) => {
-         cleanups.push(() => clearTimeout(timer))
-       }
- 
--      if (typeof document !== "undefined" && document.fonts) {
--        void document.fonts.ready.then(scheduleFit)
--      }
--
-       const onResize = t.onResize((size) => {
-         scheduleSize(size.cols, size.rows)
-       })
-@@ -563,6 +578,9 @@ export const Terminal = (props: TerminalProps) => {
-       cleanups.push(() => disposeIfDisposable(onKey))
- 
-       const startResize = () => {
-+        if (typeof document !== "undefined" && document.fonts) {
-+          void document.fonts.ready.then(scheduleFit)
-+        }
-         fit.observeResize()
-         handleResize = scheduleFit
-         window.addEventListener("resize", handleResize)
-@@ -584,10 +602,9 @@ export const Terminal = (props: TerminalProps) => {
-       if (restore && restoreSize) {
-         await write(restore)
-         reveal()
-+        if (scrollY !== undefined) t.scrollToLine(scrollY)
-         fit.fit()
-         scheduleSize(t.cols, t.rows)
--
--        if (scrollY !== undefined) t.scrollToLine(scrollY)
-         startResize()
-       } else {
-         fit.fit()
-@@ -779,6 +796,7 @@ export const Terminal = (props: TerminalProps) => {
-   })
- 
-   onCleanup(() => {
-+    const complete = handoffs().begin(handoffKey)
-     disposed = true
- 
-     if (fitFrame !== undefined) cancelAnimationFrame(fitFrame)
-@@ -791,8 +809,12 @@ export const Terminal = (props: TerminalProps) => {
-     if (ws && ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) ws.close(1000)
- 
-     const finalize = () => {
--      persistTerminal({ term, addon: serializeAddon, cursor, id, onCleanup: props.onCleanup })
--      cleanup()
-+      try {
-+        persistTerminal({ term, addon: serializeAddon, cursor, id, onCleanup: props.onCleanup })
-+      } finally {
-+        cleanup()
-+        complete()
-+      }
-     }
- 
-     if (!output) {
 diff --git a/packages/plugin/src/gui/core.ts b/packages/plugin/src/gui/core.ts
 index 3d048e6..185e8e3 100644
 --- a/packages/plugin/src/gui/core.ts
@@ -983,22 +618,3 @@ index c8c8285..e6ae729 100644
      />
    )
  }
-diff --git a/packages/gui-plugins/src/renderer.ts b/packages/gui-plugins/src/renderer.ts
-index 5c131e2..59b3734 100644
---- a/packages/gui-plugins/src/renderer.ts
-+++ b/packages/gui-plugins/src/renderer.ts
-@@ -29,6 +29,8 @@ import sources from "./sources"
- import sourcesRenderer from "./sources/renderer"
- import goal from "./goal"
- import goalRenderer from "./goal/renderer"
-+import serverBrowser from "./remote-browser"
-+import serverBrowserRenderer from "./remote-browser/renderer"
- 
- // The window renders once every built-in is active, so the small renderer entries load with the app, like the
- // features they replaced. Heavy UI stays behind `lazy()` inside them.
-@@ -52,4 +54,5 @@ export const builtins = compose({
-   "microsoft-office": { ...microsoftOffice, windowEntry: eager(microsoftOfficeRenderer) },
-   sources: { ...sources, windowEntry: eager(sourcesRenderer) },
-   goal: { ...goal, windowEntry: eager(goalRenderer) },
-+  "server-browser": { ...serverBrowser, windowEntry: eager(serverBrowserRenderer) },
- })

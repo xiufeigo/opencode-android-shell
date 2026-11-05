@@ -41,9 +41,11 @@ android {
         // 54 官方 UI 升到 2.2.0（gui-extensions 更名 gui-plugins、SDK 迁到 @opencode/plugin/gui、
         //    官方自带竖排标签/侧栏收起与 peek），Android 侧栏在 2.2.0 的 shell 上重新接线。
         // 56 系统字体导入、MIUI 字体过滤、字体选择器对齐及后台活动遮挡修复。
-        versionCode = 56
+        // 57 官方 UI 升到 2.2.5（服务端常驻 PTY、flat input、worktree 选择器、评论引用等），
+        //    Android 侧改为跟随官方服务端终端模型，并重放/适配 upstream.patch 与 ui.patch。
+        versionCode = 57
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.28"
+        versionName = "2.0.29"
     }
 
     signingConfigs {

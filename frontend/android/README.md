@@ -12,7 +12,7 @@ node frontend/android/build.mjs
 
 Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执行 `frontend/terminal` 的 `npm ci && npm test && npm run build`。最终 APK 通过 `:webapp:assembleRelease` 构建。
 
-源码补丁涉及：官方入口的平台提供者和路由恢复；服务器设置的导航状态及持续添加入口；终端稳定模块入口及旧实例快照交接；共享 ResizeHandle 的触屏生命周期和点击范围；应用菜单的 Android 平台动作；官方中文词典的缺口填充。业务 API、会话状态、PTY、文件、设置和主题继续由官方实现负责。
+源码补丁涉及：官方入口的平台提供者和路由恢复；服务器设置的导航状态及持续添加入口；终端模块入口改用本仓库自带引擎；共享 ResizeHandle 的触屏生命周期和点击范围；应用菜单的 Android 平台动作；官方中文词典的缺口填充。业务 API、会话状态、PTY、文件、设置和主题继续由官方实现负责。
 
 `ui.patch` 保留 Android 返回和菜单接线、触屏面板拖动、上下文页全历史以及图片预览缩放。竖排与 inbox 侧栏使用官方的标签列表、导航和收起行为，不再替换为项目树。Android 菜单保留在官方侧栏头部；收起后可展开侧栏访问。
 
@@ -28,7 +28,7 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 2.1.4 的新界面文案上游仍没有中文：`session.elicitation.selectPlaceholder` 已由本仓库补齐。免费额度 UI 仍依赖服务端 ≥2.1.2 的 `provider.free-limit`；MCP 表单依赖服务端发出 `session.form` 请求。未读徽标仍依赖服务端 `time.viewed`。
 
-当前 UI 基准为官方 v2.2.1（`3ebcf9a`），Bun 仍是 **1.4.4**。按官方 app 和 ui 词典比对，本仓库补齐了 2.2.1 新增的 28 条简繁中文缺口。
+当前 UI 基准为官方 v2.2.5（`9bbb8ce`），Bun 仍是 **1.4.4**。按官方 app 和 ui 词典比对，本仓库补齐了 2.2.5 新增的 49 条简繁中文缺口。
 
 2.2.0 把官方 UI 从 2.1.4（`68bc26b`）升到正式 tag v2.2.0（`1097e266`）。上游结构变化有三处，本仓库逐一跟进：
 
@@ -40,6 +40,13 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 `build.mjs` 的工作区列表新增 `patchmark`：2.2.0 把 `packages/session-ui` 依赖的补丁渲染包拆成独立工作区，稀疏检出缺它时 bun 无法解析工作区图。
 
+
+2.2.5 把官方 UI 从 2.2.1（`3ebcf9a`）升到正式 tag v2.2.5（`9bbb8ce`）。上游把终端整体搬到了服务端常驻 PTY，本仓库的终端接线随之改写：
+
+- `packages/gui-plugins/src/terminal/model.ts` 不再 `import("ghostty-web")`，改从 `/oc-terminal.js` 载入本仓库自带的 xterm 引擎；`terminal.tsx` 保持 `convertEol: true`，让裸 `\n` 也回到行首。
+- 旧的“旧实例快照交接”（`frontend/terminal/panel-lifecycle.mjs`）随本地快照一起消失：PTY 状态改由服务端持有，新实例用 `takeover` 直接接管，旧实例断开不会结束进程。该交接条与配套单测一并删除。
+- `frontend/terminal/terminal.js` 的适配改为跟随官方的量测入口：官方 2.2.5 只调用 `FitAddon.proposeDimensions()`、不再调用 `fit()`（网格尺寸只认服务端下发的规范尺寸），因此本地布局（帧高、跟随贴底、横向滚动归零）改挂在 `proposeDimensions()` 上，`fit()` 只刷新布局、不再本地改网格。
+- `session-model.test.ts` 按 2.2.5 的终端模型重写：同一目录下两个会话各自持有自己的终端、冷启动后仍能从服务端列回运行中的终端、关掉一个会话的终端不影响另一个会话、旧本地 `terminals` 存储被清除。该用例仍是 UI 构建的必跑检查。
 
 2.0.15 将终端标签按会话分组持久化，复用官方工作目录存储，避免运行中的 PTY 归属被会话布局缓存裁剪。旧目录共享的标签由首次打开终端的会话一次性接收。`session-model.test.ts` 直接测试真实终端模型及持久化器，并加入 UI 构建的必跑检查。
 
