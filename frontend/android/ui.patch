@@ -1,3 +1,223 @@
+diff --git a/packages/app/component-tests/timeline-virtualizer.spec.ts b/packages/app/component-tests/timeline-virtualizer.spec.ts
+index bece9cd..240e7da 100644
+--- a/packages/app/component-tests/timeline-virtualizer.spec.ts
++++ b/packages/app/component-tests/timeline-virtualizer.spec.ts
+@@ -147,8 +147,8 @@ for (const input of [
+     await expect(content.locator("[data-timeline-key]")).toHaveCount(1)
+ 
+     if (input.name === "offset-only") {
+-      // Pinned to the end: the 600px row and the virtualizer's 86px tail, less the 180px viewport.
+-      await expect(root).toHaveAttribute("data-last-scroll-top", "506")
++// Pinned to the end: the 600px row and the virtualizer's 56px tail, less the 180px viewport.
++      await expect(root).toHaveAttribute("data-last-scroll-top", "476")
+       await root.locator("[data-scrollable]").dispatchEvent("wheel", { deltaY: -1 })
+       await expect(root.getByTestId("timeline-controls")).toHaveAttribute("data-pinned", "false")
+     }
+diff --git a/packages/app/e2e/regression/settings.spec.ts b/packages/app/e2e/regression/settings.spec.ts
+index 25a431e..88ee78b 100644
+--- a/packages/app/e2e/regression/settings.spec.ts
++++ b/packages/app/e2e/regression/settings.spec.ts
+@@ -310,6 +310,8 @@ for (const locale of ["en", "ar"]) {
+     const panel = page.locator('[data-slot="session-activity-panel"]')
+     await expect(capsule).toBeVisible()
+     await expect(page.locator("html")).toHaveAttribute("dir", locale === "ar" ? "rtl" : "ltr")
++    const lane = page.locator('[data-component="session-composer-lane"]')
++    const laneHeight = await lane.evaluate((element) => element.getBoundingClientRect().height)
+ 
+     for (const value of ["Center", "Right", "Hidden", "Left", "Right"] as const) {
+       await page.keyboard.press("Control+,")
+@@ -326,6 +328,7 @@ for (const locale of ["en", "ar"]) {
+       if (value === "Hidden") {
+         await expect(capsule).toHaveCount(0)
+         await expect(panel).toHaveCount(0)
++        await expect.poll(() => lane.evaluate((element) => element.getBoundingClientRect().height)).toBe(laneHeight)
+         continue
+       }
+ 
+diff --git a/packages/app/e2e/regression/timeline-geometry.spec.ts b/packages/app/e2e/regression/timeline-geometry.spec.ts
+index e1d41a7..2bf8b83 100644
+--- a/packages/app/e2e/regression/timeline-geometry.spec.ts
++++ b/packages/app/e2e/regression/timeline-geometry.spec.ts
+@@ -633,7 +633,7 @@ async function captureCardEdges(page: Page, card: Locator) {
+   )
+ }
+ 
+-test("scrolls the timeline behind the composer region, fading at the card, and keeps its end above the region", async ({
++test("keeps the timeline clear of the activity lane while following and scrolling", async ({
+   page,
+ }) => {
+   await setupTimeline(page, {
+@@ -682,26 +682,38 @@ test("scrolls the timeline behind the composer region, fading at the card, and k
+       const card = region.querySelector('[data-component="composer"]')!.getBoundingClientRect()
+       const pill = region.querySelector('[data-slot="session-activity-chip"]')!.getBoundingClientRect()
+       const hint = viewport.querySelector('[data-component="session-background-hint-row"]')!.getBoundingClientRect()
++      const visible = document.querySelector('[data-slot="session-timeline-visible"]')!.getBoundingClientRect()
+       const parts = [...viewport.querySelectorAll("[data-timeline-part-id]")]
+-      const last = parts.find((element) => element.textContent?.includes("The last answer ends"))!
++      const last = parts.find((element) => element.textContent?.includes("The last answer ends"))
+ 
+       return {
+         // The scroll area runs on behind the composer region to the panel's bottom edge.
+         behind: Math.round(viewport.getBoundingClientRect().bottom - dock.bottom),
+         inset: Math.round(viewport.querySelector<HTMLElement>("[data-timeline-inset]")!.offsetHeight - dock.height),
+-        // Content fades out where the composer card starts.
++        // Content fades out at the start of the composer region, including its activity lane.
+         fade: Math.round(
+-          dock.bottom - card.top - parseFloat(getComputedStyle(viewport).getPropertyValue("--session-timeline-inset")),
++          dock.height - parseFloat(getComputedStyle(viewport).getPropertyValue("--session-timeline-inset")),
+         ),
+-        // The pill floats above the region out of flow, so it never changes the inset the timeline scrolls above.
+-        floats: pill.bottom <= dock.top,
+-        // It floats in the timeline's reserved tail, below the background hint and the last answer.
+-        reserved: hint.bottom <= pill.top && last.getBoundingClientRect().bottom <= hint.top,
++        // The capsule participates in the measured composer region rather than floating over the timeline.
++        inFlow: pill.top >= dock.top && pill.bottom <= card.top,
++        // The live status and last answer stay outside the full 20px fade above the capsule.
++        reserved: !!last && hint.bottom + 20 <= pill.top + 1 && last.getBoundingClientRect().bottom <= hint.top,
++        // Timeline content must stop above the capsule, including while reading older messages.
++        unobstructed: visible.bottom <= pill.top,
+         atEnd: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 1,
+       }
+     })
+ 
+-  const expected = { behind: 0, inset: 0, fade: 0, floats: true, reserved: true, atEnd: true }
++  const expected = { behind: 0, inset: 0, fade: 0, inFlow: true, reserved: true, unobstructed: true, atEnd: true }
++  await expect.poll(geometry).toEqual(expected)
++  const viewport = page.locator('[data-slot="session-timeline-scroll"] > .scroll-view__viewport')
++
++  await viewport.hover()
++  await page.mouse.wheel(0, -3000)
++  const latest = page.getByRole("button", { name: "Jump to latest" })
++  await expect(page.getByText("The last answer ends above the composer region.", { exact: true })).not.toBeInViewport()
++  await expect.poll(async () => (await geometry()).unobstructed).toBe(true)
++  await latest.click()
+   await expect.poll(geometry).toEqual(expected)
+   const before = (await dock.boundingBox())!.height
+ 
+diff --git a/packages/app/e2e/regression/timeline-stream.spec.ts b/packages/app/e2e/regression/timeline-stream.spec.ts
+index 2d4ff7b..4dba798 100644
+--- a/packages/app/e2e/regression/timeline-stream.spec.ts
++++ b/packages/app/e2e/regression/timeline-stream.spec.ts
+@@ -912,6 +912,8 @@ test.describe("Working", () => {
+   for (const grouped of [false, true]) {
+     test(`uses ${grouped ? "grouped" : "standalone"} background shell presentation`, async ({ page }) => {
+       await setupTimeline(page, {
++        viewport: grouped ? { width: 1163, height: 760 } : undefined,
++        deviceScaleFactor: grouped ? 2.75 : undefined,
+         settings: { shellToolPartsExpanded: !grouped },
+         messages: [
+           userMessage(),
+@@ -957,6 +959,20 @@ test.describe("Working", () => {
+ 
+       await expect(trigger).toHaveAttribute("aria-expanded", "false")
+       await expect(working).toBeVisible()
++      const capsule = page.getByRole("button", { name: "1 shell", exact: true })
++      await expect(capsule).toBeVisible()
++      await expect
++        .poll(async () => {
++          const [status, pill, visible] = await Promise.all([
++            working.boundingBox(),
++            capsule.boundingBox(),
++            page.locator('[data-slot="session-timeline-visible"]').boundingBox(),
++          ])
++          if (!status || !pill || !visible) return false
++
++          return status.y + status.height + 20 <= pill.y + 1 && visible.y + visible.height <= pill.y + 1
++        })
++        .toBe(true)
+       await trigger.click()
+       await expect(trigger).toHaveAttribute("aria-expanded", "true")
+       await expect(working).toBeVisible()
+diff --git a/packages/app/src/index.css b/packages/app/src/index.css
+index 18f99a1..e0fdec9 100644
+--- a/packages/app/src/index.css
++++ b/packages/app/src/index.css
+@@ -90,8 +90,8 @@
+     visibility: hidden;
+   }
+ 
+-  /* The timeline scrolls on under the composer region, passing behind its floating pill, and fades out as it reaches
+-     the region's opaque card. A mask fades the content itself, so the edge works over any theme's background;
++  /* The timeline scrolls under the composer region and fades out before reaching its activity lane or opaque card.
++     A mask fades the content itself, so the edge works over any theme's background;
+      smoothstep stops avoid a visible horizon. */
+   [data-slot="session-timeline-scroll"] > .scroll-view__viewport {
+     --session-timeline-fade-start: var(--session-timeline-inset, 0px);
+diff --git a/packages/app/src/providers/models/provider-group.tsx b/packages/app/src/providers/models/provider-group.tsx
+index 3429e0b..2e94e9c 100644
+--- a/packages/app/src/providers/models/provider-group.tsx
++++ b/packages/app/src/providers/models/provider-group.tsx
+@@ -1,9 +1,8 @@
+ import { Badge } from "@opencode/ui/badge"
+ import { Icon } from "@opencode/ui/icon"
+ import { IconButton } from "@opencode/ui/icon-button"
+-import { iconNames, type IconName } from "@opencode/ui/icons/provider"
+ import { Menu } from "@opencode/ui/menu"
+-import { ProviderIcon } from "@opencode/ui/provider-icon"
++import { ProviderIcon, resolveProviderIcon } from "@opencode/ui/provider-icon"
+ import type { JSX } from "solid-js"
+ import { createMemo, For, Match, Show, Switch } from "solid-js"
+ import { consoleProviderGroup, consoleProviderName } from "@/providers/catalog/console"
+@@ -25,12 +24,7 @@ function CustomManagedProviderIcon(props: { class?: string }) {
+ }
+ 
+ export function ProviderModelIcon(props: { provider: ModelProvider; class?: string }) {
+-  const icon = () =>
+-    [
+-      props.provider.canonical,
+-      props.provider.canonical?.replace(/-token-plan$/, ""),
+-      props.provider.id.replace(/^console-/, ""),
+-    ].find((id): id is IconName => !!id && id !== "synthetic" && iconNames.includes(id as IconName))
++  const icon = () => resolveProviderIcon(props.provider.id, props.provider.canonical)
+ 
+   return (
+     <Switch>
+diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
+index c55e0b1..8a9fde7 100644
+--- a/packages/app/src/runtime/i18n/en.ts
++++ b/packages/app/src/runtime/i18n/en.ts
+@@ -1010,6 +1010,8 @@ export const dict = {
+   "settings.general.row.terminalFont.description": "Customise the font used in the terminal",
+   "settings.general.row.uiFont.title": "UI Font",
+   "settings.general.row.uiFont.description": "Customise the font used throughout the interface",
++  "settings.appearance.font.import": "Import font file",
++  "settings.appearance.font.importFailed": "Unable to import this font file",
+   "settings.general.row.mobileTitlebarBottom.title": "Bottom navigation",
+   "settings.general.row.mobileTitlebarBottom.description": "Place the title bar at the bottom of the screen on mobile",
+   "settings.general.row.showCustomAgents.title": "Show agent",
+diff --git a/packages/app/src/session/composer/composer-lane.tsx b/packages/app/src/session/composer/composer-lane.tsx
+index 540b622..8b3f0a2 100644
+--- a/packages/app/src/session/composer/composer-lane.tsx
++++ b/packages/app/src/session/composer/composer-lane.tsx
+@@ -3,7 +3,7 @@ import { useLanguage } from "@/runtime/i18n/language"
+ import { useSettings } from "@/settings/model"
+ import "./composer-lane.css"
+ 
+-/** Where the floating pills above the composer sit, in logical terms, following the background activity setting. */
++/** Where the pills above the composer sit, in logical terms, following the background activity setting. */
+ export function useComposerLaneAlignment() {
+   const language = useLanguage()
+   const settings = useSettings()
+@@ -23,8 +23,8 @@ export function composerLanePlacement(alignment: "center" | "start" | "end") {
+   return ({ center: "top", start: "top-start", end: "top-end" } as const)[alignment]
+ }
+ 
+-// The pills float out of flow in a lane the timeline reserves at its tail, so coming and going never resizes the
+-// composer region or moves the timeline. Every pill shares the lane's one row.
++// The lane belongs to the composer region, so the timeline's measured inset excludes it from the visible area.
++// Reserve the chip's height and bottom gap even while empty, so starting or finishing work does not move the timeline.
+ export function SessionComposerLane(props: ParentProps) {
+   const alignment = useComposerLaneAlignment()
+ 
+@@ -32,7 +32,7 @@ export function SessionComposerLane(props: ParentProps) {
+     <div
+       data-component="session-composer-lane"
+       data-alignment={alignment()}
+-      class="pointer-events-none absolute inset-x-0 bottom-full flex items-end gap-2 pb-2.5"
++      class="pointer-events-none flex min-h-[calc(9.5*var(--spacing))] items-end gap-2 pb-2.5"
+       classList={{
+         "justify-start": alignment() === "start",
+         "justify-center": alignment() === "center",
 diff --git a/packages/app/src/session/helpers.ts b/packages/app/src/session/helpers.ts
 index 1d8810b..d242112 100644
 --- a/packages/app/src/session/helpers.ts
@@ -21,10 +241,10 @@ index 1d8810b..d242112 100644
      },
    }
 diff --git a/packages/app/src/session/screen.tsx b/packages/app/src/session/screen.tsx
-index 0a0a044..e39ac80 100644
+index f32fb24..abc5251 100644
 --- a/packages/app/src/session/screen.tsx
 +++ b/packages/app/src/session/screen.tsx
-@@ -202,9 +202,25 @@ function SessionScreenContent(props: {
+@@ -208,9 +208,25 @@ function SessionScreenContent(props: {
      setStore("timelineScrollbarHidden", false)
    }
  
@@ -54,7 +274,7 @@ index 0a0a044..e39ac80 100644
    const mobileView = attachment.mobile.current
  
 diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
-index 7510e42..1c4c5fa 100644
+index 938a906..fe2ad88 100644
 --- a/packages/app/src/session/session-panel-width.test.ts
 +++ b/packages/app/src/session/session-panel-width.test.ts
 @@ -8,6 +8,8 @@ test.each([
@@ -67,10 +287,10 @@ index 7510e42..1c4c5fa 100644
    ["skips clamping before the layout is measured", 1600, undefined, false, false, 1600],
    ["lets a dragged width leave the side pane its hard minimum, split diffs included", 1600, 1700, true, true, 1380],
 diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
-index 9afe75e..26d6179 100644
+index e4c5f3c..270500f 100644
 --- a/packages/app/src/session/session-panel-width.ts
 +++ b/packages/app/src/session/session-panel-width.ts
-@@ -15,20 +15,45 @@ const REVIEW_PANE_WIDTH_FIT = 480
+@@ -16,21 +16,47 @@ const REVIEW_PANE_WIDTH_FIT = 480
  
  const REVIEW_PANE_WIDTH_FIT_SPLIT = 800
  
@@ -109,17 +329,313 @@ index 9afe75e..26d6179 100644
    const minimum = input.resized ? SESSION_PANEL_WIDTH_MIN : SESSION_PANEL_WIDTH_FIT
 -  const pane = input.resized ? SIDE_PANE_WIDTH_MIN : input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
  
--  return `min(${input.width}px, max(${minimum}px, 100% - ${pane + 8}px))`
-+  if (input.resized) return `min(${input.width}px, max(${minimum}px, 100% - ${SIDE_PANE_WIDTH_MIN + 8}px))`
+   // The outer floor raises a width stored below the minimum, e.g. dragged before it rose.
+-  return `max(${SESSION_PANEL_WIDTH_MIN}px, min(${input.width}px, max(${minimum}px, 100% - ${pane + 8}px)))`
++  if (input.resized)
++    return `max(${SESSION_PANEL_WIDTH_MIN}px, min(${input.width}px, max(${minimum}px, 100% - ${SIDE_PANE_WIDTH_MIN + 8}px)))`
 +
 +  const preferred = input.split ? REVIEW_PANE_WIDTH_FIT_SPLIT : REVIEW_PANE_WIDTH_FIT
 +  // The same reserve as `reviewPaneReserve`, in percentages, so it follows the row as the row resizes.
 +  const reserve = `min(${preferred}px, max(${SIDE_PANE_WIDTH_MIN}px, 100% - 8px - ${SESSION_PANEL_WIDTH_FIT}px - ${SESSION_PANEL_WIDTH_RANGE_MIN}px))`
 +
-+  return `min(${input.width}px, max(${minimum}px, calc(100% - 8px - ${reserve})))`
++  return `max(${SESSION_PANEL_WIDTH_MIN}px, min(${input.width}px, max(${minimum}px, calc(100% - 8px - ${reserve}))))`
  }
  
  // `available` is undefined until the layout row is first measured; render the
+diff --git a/packages/app/src/session/timeline/interaction.ts b/packages/app/src/session/timeline/interaction.ts
+index d1c5d92..7c91ddc 100644
+--- a/packages/app/src/session/timeline/interaction.ts
++++ b/packages/app/src/session/timeline/interaction.ts
+@@ -362,7 +362,7 @@ export function createSessionTimelineInteraction(session: SessionModel) {
+   createResizeObserver(
+     () => state.refs.dock,
+     (_rect, _element, entry) => {
+-      // The activity pill floats above the region out of flow, so only the docks, queue and composer count here.
++      // The activity lane, docks, queue and composer all contribute to the covered timeline area.
+       const dpr = window.devicePixelRatio || 1
+       const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
+ 
+diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
+index 122e286..0ecb9cc 100644
+--- a/packages/app/src/session/timeline/message-timeline.tsx
++++ b/packages/app/src/session/timeline/message-timeline.tsx
+@@ -458,8 +458,8 @@ function MessageTimelineView(
+   const activityRow = createMemo(() => projection.rows().some((row) => Predicate.isTagged(row, "Activity")))
+ 
+   // The lane keeps its height while empty, so Working and the hint come and go without moving the rows around it.
+-  // The bottom lane also keeps its height while live status moves into the Activity row, so the tail the activity pill
+-  // floats in never closes and a pinned timeline does not shift when input waits.
++  // The bottom lane also keeps its height while live status moves into the Activity row, so a pinned timeline does not
++  // shift when input waits.
+   const activity = (live: () => boolean) => (
+     <div
+       classList={{
+@@ -467,7 +467,7 @@ function MessageTimelineView(
+         "md:max-w-session md:mx-auto": props.centered,
+       }}
+     >
+-      <div class={`flex h-9 items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
++      <div class={`flex h-[36px] items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
+         <Show when={live() && showWorking()}>
+           <div data-component="session-working" role="status">
+             <TextShimmer text={language.t("session.timeline.working")} active />
+diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
+index 201caf3..74d5d50 100644
+--- a/packages/app/src/session/timeline/virtualizer.tsx
++++ b/packages/app/src/session/timeline/virtualizer.tsx
+@@ -33,9 +33,9 @@ import { holdLandingWidth } from "@/shell/panel-motion"
+ 
+ const fallbackItemSize = 60
+ 
+-// Reserved below the last row: a 36px lane for the live status row and its background hint, an 8px gap, then a 32px
+-// activity pill and its 10px composer gap. Both come and go inside it, so neither moves the rows above.
+-const tailSize = 86
++// The activity lane is part of the composer inset. Keep the 36px live-status row and the 20px timeline fade clear
++// above it, even when background work starts or finishes.
++const tailSize = 56
+ 
+ const pendingMarkdown = '[data-component="markdown"]:not([data-markdown-ready])'
+ 
+diff --git a/packages/app/src/settings/appearance/appearance.tsx b/packages/app/src/settings/appearance/appearance.tsx
+index 1100ae2..64f4ac7 100644
+--- a/packages/app/src/settings/appearance/appearance.tsx
++++ b/packages/app/src/settings/appearance/appearance.tsx
+@@ -1,4 +1,5 @@
+-import { Component, Show } from "solid-js"
++import { Component, Show, createMemo, createResource, type Resource } from "solid-js"
++import { createStore } from "solid-js/store"
+ import { Select } from "@opencode/ui/select"
+ import { TextInput } from "@opencode/ui/text-input"
+ import { useLanguage } from "@/runtime/i18n/language"
+@@ -6,9 +7,13 @@ import { ExternalLink } from "@/runtime/platform/external-link"
+ import { SettingsList } from "@/settings/list"
+ import { SettingsRow } from "@/settings/row"
+ import { createAppearanceSettingsController, type AppearanceSettingsController } from "@/settings/general/controllers"
++import { usePlatform, type SystemFont } from "@/runtime/platform/platform"
++import { showToast } from "@/shell/notifications/toast"
+ import "@/settings/settings.css"
+ 
+ const schemeOptions: ("system" | "light" | "dark")[] = ["system", "light", "dark"]
++const defaultFont = "default"
++const importFont = "import"
+ 
+ const reduceMotionOptions = [
+   { value: "system" as const, label: "settings.appearance.row.reduceMotion.system" as const },
+@@ -43,27 +48,111 @@ const fontSettings = {
+ const FontSetting: Component<{
+   kind: "ui" | "code" | "terminal"
+   fonts: AppearanceSettingsController["fonts"]
++  systemFonts: Resource<SystemFont[] | undefined>
++  imported: SystemFont[]
++  onImported(font: SystemFont): void
+ }> = (props) => {
+   const language = useLanguage()
++  const platform = usePlatform()
+   const config = () => fontSettings[props.kind]
++  const options = createMemo(() => [
++    { id: defaultFont, name: language.t("common.default") },
++    { id: importFont, name: language.t("settings.appearance.font.import") },
++    ...(props.systemFonts.state === "ready" || props.systemFonts.state === "refreshing"
++      ? (props.systemFonts.latest ?? [])
++      : []),
++    ...props.imported,
++  ])
++  const [selection, setSelection] = createStore<{ sequence: number; pending?: string }>({ sequence: 0 })
++
++  const select = (font: { id: string } | null) => {
++    if (!font || platform.platform !== "android") return
++    const current = selection.sequence + 1
++    setSelection({ sequence: current, pending: font.id })
++    if (font.id === defaultFont) {
++      props.fonts[config().input]("")
++      setSelection("pending", undefined)
++      return
++    }
++    if (font.id === importFont) {
++      setSelection("pending", undefined)
++      if (!platform.openAttachmentPickerDialog || !platform.importSystemFont) {
++        showToast({ variant: "error", title: language.t("common.requestFailed") })
++        return
++      }
++      void platform
++        .openAttachmentPickerDialog({ extensions: ["ttf", "otf", "ttc", "otc"], multiple: false }, async (file) => {
++          const imported = await platform.importSystemFont(file)
++          props.onImported(imported)
++          if (current === selection.sequence) props.fonts[config().input](imported.id)
++        })
++        .catch(() =>
++          showToast({
++            variant: "error",
++            title: language.t("common.requestFailed"),
++            description: language.t("settings.appearance.font.importFailed"),
++          }),
++        )
++      return
++    }
++    void platform
++      .loadSystemFont(font.id)
++      .then(() => {
++        if (current !== selection.sequence) return
++        props.fonts[config().input](font.id)
++        setSelection("pending", undefined)
++      })
++      .catch((error) => {
++        if (current !== selection.sequence) return
++        setSelection("pending", undefined)
++        showToast({ variant: "error", title: language.t("common.requestFailed"), description: String(error) })
++      })
++  }
+ 
+   return (
+     <SettingsRow title={language.t(config().title)} description={language.t(config().description)}>
+-      <div class="w-full sm:w-[220px]">
+-        <TextInput
+-          data-action={config().action}
+-          type="text"
+-          appearance="base"
+-          value={props.fonts[config().font]().value}
+-          onInput={(event) => props.fonts[config().input](event.currentTarget.value)}
+-          placeholder={props.fonts[config().font]().placeholder}
+-          spellcheck={false}
+-          autocorrect="off"
+-          autocomplete="off"
+-          autocapitalize="off"
+-          aria-label={language.t(config().title)}
+-          style={{ "font-family": props.fonts[config().font]().family }}
+-        />
++      <div class="w-full sm:w-[220px] [&_[data-component=select-v2-root]]:!w-full">
++        <Show
++          when={platform.platform === "android"}
++          fallback={
++            <TextInput
++              data-action={config().action}
++              type="text"
++              appearance="base"
++              value={props.fonts[config().font]().value}
++              onInput={(event) => props.fonts[config().input](event.currentTarget.value)}
++              placeholder={props.fonts[config().font]().placeholder}
++              spellcheck={false}
++              autocorrect="off"
++              autocomplete="off"
++              autocapitalize="off"
++              aria-label={language.t(config().title)}
++              style={{ "font-family": props.fonts[config().font]().family }}
++            />
++          }
++        >
++          <Select
++            class="!w-full"
++            data-action={config().action}
++            aria-label={language.t(config().title)}
++            options={options()}
++            current={options().find(
++              (font) => font.id === (selection.pending ?? (props.fonts[config().font]().value || defaultFont)),
++            )}
++            placeholder={
++              props.systemFonts.error
++                ? language.t("common.requestFailed")
++                : props.systemFonts.loading
++                  ? language.t("common.loading")
++                  : props.fonts[config().font]().value
++            }
++            disabled={props.systemFonts.state !== "ready" && props.systemFonts.state !== "refreshing"}
++            value={(font) => font.id}
++            label={(font) => font.name}
++            valueClass="!text-end"
++            onSelect={select}
++          />
++        </Show>
+       </div>
+     </SettingsRow>
+   )
+@@ -71,7 +160,13 @@ const FontSetting: Component<{
+ 
+ export const SettingsAppearance: Component = () => {
+   const language = useLanguage()
++  const platform = usePlatform()
+   const appearance = createAppearanceSettingsController()
++  const [systemFonts] = createResource(() => (platform.platform === "android" ? platform.systemFonts() : undefined))
++  const [imported, setImported] = createStore<SystemFont[]>([])
++  const onImported = (font: SystemFont) => {
++    setImported((current) => [...current.filter((item) => item.id !== font.id), font])
++  }
+ 
+   return (
+     <>
+@@ -131,9 +226,34 @@ export const SettingsAppearance: Component = () => {
+               />
+             </SettingsRow>
+ 
+-            <FontSetting kind="ui" fonts={appearance.fonts} />
+-            <FontSetting kind="code" fonts={appearance.fonts} />
+-            <FontSetting kind="terminal" fonts={appearance.fonts} />
++            <Show when={systemFonts.error}>
++              {(error) => (
++                <p role="alert" class="text-12-regular text-text-danger-base">
++                  {String(error())}
++                </p>
++              )}
++            </Show>
++            <FontSetting
++              kind="ui"
++              fonts={appearance.fonts}
++              systemFonts={systemFonts}
++              imported={imported}
++              onImported={onImported}
++            />
++            <FontSetting
++              kind="code"
++              fonts={appearance.fonts}
++              systemFonts={systemFonts}
++              imported={imported}
++              onImported={onImported}
++            />
++            <FontSetting
++              kind="terminal"
++              fonts={appearance.fonts}
++              systemFonts={systemFonts}
++              imported={imported}
++              onImported={onImported}
++            />
+ 
+             <Show when={appearance.zoom.available()}>
+               <SettingsRow
+diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
+index 5e8f8f1..c59daf4 100644
+--- a/packages/app/src/settings/model.tsx
++++ b/packages/app/src/settings/model.tsx
+@@ -8,6 +8,7 @@ import { timelinePresets, type TimelineCategory, type TimelineDetail } from "@op
+ import { persisted } from "@/runtime/persistence/storage"
+ import { Persistence } from "@/runtime/persistence/schema"
+ import { ScopedKey, type ServerScope } from "@/runtime/server/scope"
++import { usePlatform } from "@/runtime/platform/platform"
+ 
+ export type Settings = typeof settingsSchema.Type
+ 
+@@ -336,6 +337,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+   gate: false,
+   init: () => {
+     const [store, setStore, , ready] = persisted({ key: "settings.v3" }, settingsPersistence, defaultSettings)
++    const platform = usePlatform()
+ 
+     const showCustomAgents = withFallback(
+       () => store.general?.showCustomAgents,
+@@ -353,6 +355,15 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+       void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
+     })
+ 
++    createEffect(() => {
++      if (platform.platform !== "android") return
++      const selected = new Set([store.appearance?.sans, store.appearance?.mono, store.appearance?.terminal])
++      for (const font of selected) {
++        if (!font?.startsWith("ocsys-")) continue
++        void platform.loadSystemFont(font).catch((error) => console.error("System font load failed", error))
++      }
++    })
++
+     const newIcons = withFallback(() => store.general?.newIcons, defaultSettings.general.newIcons)
+     createEffect(() => setNewIcons(newIcons()))
+ 
 diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
 index 52e8c1f..2282728 100644
 --- a/packages/app/src/shell/shell.tsx
@@ -142,6 +658,59 @@ index 52e8c1f..2282728 100644
    const platform = usePlatform()
    const settings = useSettingsSurface()
    const preferences = useSettings()
+diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
+index 96995e4..13570bc 100644
+--- a/packages/app/src/shell/titlebar/titlebar.tsx
++++ b/packages/app/src/shell/titlebar/titlebar.tsx
+@@ -75,7 +75,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+   const location = useLocation()
+   const mobile = createMediaQuery("(max-width: 767px)")
+   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
+-  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
++  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
+ 
+   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
+   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
+@@ -172,7 +172,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+       }}
+       style={{
+         height:
+-          platform.platform === "web"
++          platform.platform !== "desktop"
+             ? bottom()
+               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
+               : mobileTop()
+@@ -633,8 +633,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                   "ps-3.5": windows(),
+                 }}
+               >
+-                <Show when={windows() || linux()}>
+-                  <WindowsAppMenu command={command} platform={platform} />
++                <Show when={windows() || linux() || (platform.platform === "android" && !props.verticalTabs)}>
++                  <WindowsAppMenu
++                    command={command}
++                    platform={platform}
++                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
++                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
++                  />
+                 </Show>
+                 <Show when={windows() && props.verticalTabs}>
+                   <SidebarToggle />
+@@ -845,6 +850,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                                 <Show when={homeInSidebarHeader()} fallback={<div class="flex-1" />}>
+                                   <div class="min-w-0 flex-1">{homeButton(true)}</div>
+                                 </Show>
++                                <Show when={platform.platform === "android"}>
++                                  <WindowsAppMenu
++                                    command={command}
++                                    platform={platform}
++                                    menuPlatform="android"
++                                    actionEnabled={platform.androidMenuActionEnabled}
++                                  />
++                                </Show>
+                                 {/* Optically aligns the toggle's glyph with the selected session's end edge. */}
+                                 <div class="-me-0.5 flex shrink-0">
+                                   <SidebarToggle handoff="out" />
 diff --git a/packages/gui-plugins/src/context/i18n/en.ts b/packages/gui-plugins/src/context/i18n/en.ts
 index 5ad0d90..0808c27 100644
 --- a/packages/gui-plugins/src/context/i18n/en.ts
@@ -335,7 +904,7 @@ index 8a331bf..9ce4d15 100644
        </div>
      </div>
 diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
-index 880ba65..007382c 100644
+index 42d1bd9..45082b1 100644
 --- a/packages/ui/src/components/image-preview.tsx
 +++ b/packages/ui/src/components/image-preview.tsx
 @@ -44,6 +44,14 @@ export interface ImagePreviewProps {
@@ -374,7 +943,7 @@ index 880ba65..007382c 100644
    // Whether the press that ends in a click began on the backdrop around the image and stayed put. A pan captures the
    // pointer, so its click lands on the backdrop wherever it began.
    let backdrop = false
-@@ -418,12 +440,18 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -422,12 +444,18 @@ export function ImagePreview(props: ImagePreviewProps) {
    )
  
    // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
@@ -395,7 +964,7 @@ index 880ba65..007382c 100644
    const measure = () => {
      if (!natural().width || !image.offsetWidth) return
      size = { width: image.offsetWidth, height: image.offsetHeight }
-@@ -449,12 +477,62 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -453,12 +481,62 @@ export function ImagePreview(props: ImagePreviewProps) {
    )
  
    const detail = (event: MouseEvent) => {
@@ -459,7 +1028,7 @@ index 880ba65..007382c 100644
      event.preventDefault()
      target.setPointerCapture(event.pointerId)
      setDrag({ id: event.pointerId, x: event.clientX, y: event.clientY })
-@@ -463,6 +541,38 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -467,6 +545,38 @@ export function ImagePreview(props: ImagePreviewProps) {
    const pan = (event: PointerEvent) => {
      const current = drag()
  
@@ -498,7 +1067,7 @@ index 880ba65..007382c 100644
      if (current?.id !== event.pointerId) return
      backdrop = false
      panned = true
-@@ -471,7 +581,26 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -475,7 +585,26 @@ export function ImagePreview(props: ImagePreviewProps) {
    }
  
    const release = (event: PointerEvent) => {
@@ -525,124 +1094,6 @@ index 880ba65..007382c 100644
    }
  
    if (props.video) {
-diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
-index 7ed8e6d..331f9c0 100644
---- a/packages/ui/src/i18n/en.ts
-+++ b/packages/ui/src/i18n/en.ts
-@@ -198,6 +198,7 @@ const source = {
-   "ui.textField.copied": "Copied",
- 
-   "ui.imagePreview.alt": "Image preview",
-+  "ui.imagePreview.reset": "Reset zoom",
-   "ui.imagePreview.zoomIn": "Zoom in",
-   "ui.imagePreview.zoomOut": "Zoom out",
-   "ui.imagePreview.zoomToFit": "Zoom to fit",
-diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
-index 16d623b..93ad246 100644
---- a/packages/ui/src/i18n/zh.ts
-+++ b/packages/ui/src/i18n/zh.ts
-@@ -143,6 +143,7 @@ export const dict = {
-   "ui.textField.copied": "已复制",
- 
-   "ui.imagePreview.alt": "图片预览",
-+  "ui.imagePreview.reset": "重置缩放",
-   "ui.scrollView.ariaLabel": "可滚动内容",
- 
-   "ui.tool.read": "读取",
-diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
-index 1b55a97..7bdb332 100644
---- a/packages/ui/src/i18n/zht.ts
-+++ b/packages/ui/src/i18n/zht.ts
-@@ -143,6 +143,7 @@ export const dict = {
-   "ui.textField.copied": "已複製",
- 
-   "ui.imagePreview.alt": "圖片預覽",
-+  "ui.imagePreview.reset": "重設縮放",
-   "ui.scrollView.ariaLabel": "可捲動內容",
- 
-   "ui.tool.read": "讀取",
-diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index 7ac8d8b..03cf46c 100644
---- a/packages/app/src/shell/titlebar/titlebar.tsx
-+++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -74,7 +74,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-   const location = useLocation()
-   const mobile = createMediaQuery("(max-width: 767px)")
-   const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
--  const mobileTop = createMemo(() => platform.platform === "web" && mobile() && !bottom())
-+  const mobileTop = createMemo(() => platform.platform !== "desktop" && mobile() && !bottom())
- 
-   const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
-   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -171,7 +171,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-       }}
-       style={{
-         height:
--          platform.platform === "web"
-+          platform.platform !== "desktop"
-             ? bottom()
-               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
-               : mobileTop()
-@@ -624,8 +624,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                   "ps-3.5": windows(),
-                 }}
-               >
--                <Show when={windows() || linux()}>
--                  <WindowsAppMenu command={command} platform={platform} />
-+                <Show when={windows() || linux() || (platform.platform === "android" && !props.verticalTabs)}>
-+                  <WindowsAppMenu
-+                    command={command}
-+                    platform={platform}
-+                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
-+                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
-+                  />
-                 </Show>
-                 <Show when={windows() && props.verticalTabs}>
-                   <SidebarToggle />
-@@ -841,6 +846,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                                 <Show when={homeInSidebarHeader()} fallback={<div class="flex-1" />}>
-                                   <div class="min-w-0 flex-1">{homeButton(true)}</div>
-                                 </Show>
-+                                <Show when={platform.platform === "android"}>
-+                                  <WindowsAppMenu
-+                                    command={command}
-+                                    platform={platform}
-+                                    menuPlatform="android"
-+                                    actionEnabled={platform.androidMenuActionEnabled}
-+                                  />
-+                                </Show>
-                                 {/* Optically aligns the toggle's glyph with the selected session's end edge. */}
-                                 <div class="-me-0.5 flex shrink-0">
-                                   <SidebarToggle handoff="out" />
-diff --git a/packages/app/src/providers/models/provider-group.tsx b/packages/app/src/providers/models/provider-group.tsx
-index 3429e0b..2e94e9c 100644
---- a/packages/app/src/providers/models/provider-group.tsx
-+++ b/packages/app/src/providers/models/provider-group.tsx
-@@ -1,9 +1,8 @@
- import { Badge } from "@opencode/ui/badge"
- import { Icon } from "@opencode/ui/icon"
- import { IconButton } from "@opencode/ui/icon-button"
--import { iconNames, type IconName } from "@opencode/ui/icons/provider"
- import { Menu } from "@opencode/ui/menu"
--import { ProviderIcon } from "@opencode/ui/provider-icon"
-+import { ProviderIcon, resolveProviderIcon } from "@opencode/ui/provider-icon"
- import type { JSX } from "solid-js"
- import { createMemo, For, Match, Show, Switch } from "solid-js"
- import { consoleProviderGroup, consoleProviderName } from "@/providers/catalog/console"
-@@ -25,12 +24,7 @@ function CustomManagedProviderIcon(props: { class?: string }) {
- }
- 
- export function ProviderModelIcon(props: { provider: ModelProvider; class?: string }) {
--  const icon = () =>
--    [
--      props.provider.canonical,
--      props.provider.canonical?.replace(/-token-plan$/, ""),
--      props.provider.id.replace(/^console-/, ""),
--    ].find((id): id is IconName => !!id && id !== "synthetic" && iconNames.includes(id as IconName))
-+  const icon = () => resolveProviderIcon(props.provider.id, props.provider.canonical)
- 
-   return (
-     <Switch>
 diff --git a/packages/ui/src/components/provider-icon.tsx b/packages/ui/src/components/provider-icon.tsx
 index d044147..726eb78 100644
 --- a/packages/ui/src/components/provider-icon.tsx
@@ -677,3 +1128,39 @@ index d044147..726eb78 100644
      </svg>
    )
  }
+diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
+index 7b3b9ef..71eff50 100644
+--- a/packages/ui/src/i18n/en.ts
++++ b/packages/ui/src/i18n/en.ts
+@@ -199,6 +199,7 @@ const source = {
+   "ui.textField.copied": "Copied",
+ 
+   "ui.imagePreview.alt": "Image preview",
++  "ui.imagePreview.reset": "Reset zoom",
+   "ui.imagePreview.zoomIn": "Zoom in",
+   "ui.imagePreview.zoomOut": "Zoom out",
+   "ui.imagePreview.zoomToFit": "Zoom to fit",
+diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
+index b6c00e7..f03f1cb 100644
+--- a/packages/ui/src/i18n/zh.ts
++++ b/packages/ui/src/i18n/zh.ts
+@@ -140,6 +140,7 @@ export const dict = {
+   "ui.textField.copied": "已复制",
+ 
+   "ui.imagePreview.alt": "图片预览",
++  "ui.imagePreview.reset": "重置缩放",
+   "ui.scrollView.ariaLabel": "可滚动内容",
+ 
+   "ui.tool.read": "读取",
+diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
+index de7b083..8e38048 100644
+--- a/packages/ui/src/i18n/zht.ts
++++ b/packages/ui/src/i18n/zht.ts
+@@ -140,6 +140,7 @@ export const dict = {
+   "ui.textField.copied": "已複製",
+ 
+   "ui.imagePreview.alt": "圖片預覽",
++  "ui.imagePreview.reset": "重設縮放",
+   "ui.scrollView.ariaLabel": "可捲動內容",
+ 
+   "ui.tool.read": "讀取",

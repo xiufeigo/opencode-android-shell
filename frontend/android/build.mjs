@@ -68,6 +68,7 @@ const pkg = JSON.parse(await fs.readFile(path.join(checkout, "packages/app/packa
 if (pkg.version !== pin.version) throw new Error("Pinned OpenCode version does not match source")
 await applyAndroidSources(checkout, here)
 await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", "@opencode/app"])
+await run(process.execPath, ["--test", path.join(here, "system-fonts.test.mjs")], root)
 // 2.1.3+ runs app unit tests through Solid's hyperscript preload. TSX in the
 // production graph (pairing, settings) has no Solid compiler pass under bun test.
 await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts", "src/session/session-panel-width.test.ts"], path.join(checkout, "packages/app"))

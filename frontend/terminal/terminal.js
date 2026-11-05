@@ -150,12 +150,19 @@ export class Terminal extends Xterm {
     this.resizeAnchor = anchor
     cancelAnimationFrame(this.viewportFrame)
     super.resize(cols, rows)
-    if (!anchor) return
+    // The grid is now the server's canonical size. A resize can leave it
+    // scrolled sideways, so put it back to the left edge.
+    this.resetHorizontalScroll()
+    if (!anchor) {
+      this.layoutFrame()
+      return
+    }
     // xterm 6 synchronizes its pixel viewport during the next render. Calling
     // scrollToLine before that sync computes a delta against stale pixels.
     this.viewportFrame = requestAnimationFrame(() => {
       if (!anchor.isDisposed) this.scrollToBufferLine(anchor.line)
       this.clearResizeAnchor()
+      this.layoutFrame()
     })
   }
 
@@ -453,6 +460,10 @@ export class FitAddon extends XtermFit {
     terminal.mobileFit = this
   }
 
+  // Upstream asks for the grid it wants and lets the server decide the canonical
+  // size; it never calls `fit()`, which would resize the emulator locally. The
+  // measurement therefore also carries the local layout work: the frame height,
+  // the follow-to-bottom state and the horizontal scroll reset.
   proposeDimensions() {
     const frame = this.mobileTerminal?.mobileFrame
     if (!frame) return super.proposeDimensions()
@@ -460,27 +471,33 @@ export class FitAddon extends XtermFit {
     frame.style.height = "100%"
     const dimensions = super.proposeDimensions()
     frame.style.height = previous
+    this.applyLayout()
     return dimensions
   }
 
+  // The emulator only ever takes the server's canonical size, so a local fit
+  // refreshes the layout and never resizes the grid.
   fit() {
+    this.applyLayout()
+  }
+
+  applyLayout() {
     const terminal = this.mobileTerminal
     if (!terminal?.element || !terminal.mobileContainer?.isConnected) return
-    terminal.mobileLayoutReady = true
-    // A hidden / not-yet-laid-out container measures 0x0. Fitting it would ask
-    // the PTY to adopt a 1x1 grid and rewrite the child shell's window size,
-    // so wait until the terminal is genuinely visible again.
+    // A hidden / not-yet-laid-out container measures 0x0. Laying out against it
+    // would size the grid for a 1x1 pane, so wait until the terminal is
+    // genuinely visible again.
     const rect = terminal.mobileContainer.getBoundingClientRect?.()
     if (!rect || rect.width <= 0 || rect.height <= 0) return
+    terminal.mobileLayoutReady = true
     const fontSize = terminal.baseFontSize * scale()
     if (terminal.options.fontSize !== fontSize) terminal.options.fontSize = fontSize
     const buffer = terminal.buffer.active
     const follow = !terminal.resizeAnchor && buffer.viewportY >= buffer.baseY
-    super.fit()
     if (follow) terminal.scrollToBottom()
     terminal.layoutFrame()
-    // Remember the width this grid was fitted to, so the settle pass can tell
-    // whether the container moved again while the panel was animating.
+    // Remember the width this grid was laid out against, so the settle pass can
+    // tell whether the container moved again while the panel was animating.
     terminal.fittedWidth = rect.width
     // A refit can leave the grid scrolled sideways; put it back to the left
     // edge so the text is not painted shifted.

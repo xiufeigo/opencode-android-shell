@@ -2,6 +2,7 @@ import type { Platform } from "./platform"
 import { createNativeRpc } from "./android-rpc.mjs"
 import { openAttachmentPickerDialog } from "./android-files.mjs"
 import { createAndroidMenu } from "./android-menu"
+import { createSystemFonts } from "./android-system-fonts.mjs"
 
 type NativeChannel = {
   postMessage(message: string): void
@@ -20,11 +21,15 @@ export function createAndroidPlatform(web: Extract<Platform, { platform: "web" }
   const events = new EventTarget()
   native.onmessage = event => events.dispatchEvent(new MessageEvent("message", { data: event.data }))
   const request = createNativeRpc(native, events)
+  const fonts = createSystemFonts(() => request("listSystemFonts"), document.fonts, FontFace, indexedDB)
   return {
     ...web,
     platform: "android",
     ...createAndroidMenu(request),
     openAttachmentPickerDialog,
+    systemFonts: fonts.list,
+    loadSystemFont: fonts.load,
+    importSystemFont: fonts.import,
     openExternal(url) {
       void request("openExternal", { url }).catch(error => console.error("openExternal", error))
     },

@@ -486,6 +486,10 @@ function startBackend() {
     }
 
     // --- config / provider / model -------------------------------------
+    if (p === "/api/rpc/xiufeigo.server-browser/state" && method === "POST") {
+      send({ output: { version: 1, tabs: [], focusedTabID: null } })
+      return
+    }
     // config.list() feeds a store that the app calls .findLast() on, so this MUST
     // be an array. Returning an object here crashes the whole session route with
     // "o(...)?.findLast is not a function".

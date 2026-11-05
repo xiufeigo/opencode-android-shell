@@ -45,11 +45,11 @@ Ghostty 的 scrollback 位置是**从最新输出往回数**的；xterm buffer �
 xterm 6 的 `scrollToLine()` 在 resize 后会用尚未同步的像素视口计算相对位移，因此
 adapter 用两次同步的公共 `scrollLines()` 完成绝对定位；中间位置不会绘制。
 
-手机旋转跨越 768px 断点会重建面板。`frontend/android/upstream.patch` 在官方源码中
-接入 `panel-lifecycle.mjs`：等旧实例 flush、将快照写入原 store 后，再读取最新快照；先在原
-行列下恢复滚动位置，再 fit。交接 Map 只存等待中的 Promise，不保存另一份历史。
-同一 PTY 的连续交接会串联等待，较早的 cleanup 不会覆盖或删除较新的交接。
-上游源码变化导致补丁不能应用时明确报错；不修改开发者的 `_upstream/`。
+手机旋转跨越 768px 断点会重建面板。官方 UI 2.2.5 起把终端搬到服务端常驻 PTY：
+新实例用 `takeover` 直接接管，旧实例断开不会结束进程，缓冲区快照也由服务端下发。
+因此本地不再需要“等旧实例 flush 再读快照”的交接条（`panel-lifecycle.mjs` 及其单测
+已随该模型一并删除）。上游源码变化导致补丁不能应用时明确报错；不修改开发者的
+`_upstream/`。
 
 ## 字号比例 scale()
 
@@ -76,8 +76,10 @@ xterm 的垂直滚动条布局和触摸命中区固定为 14 CSS px，`FitAddon`
   option 的同步更新触发重测，再重新 fit；保存的字号和最终字号均不变。
   `visibilitychange` 只在 `visible` 时 fit（旧 WebView 拿不到该状态时按可见处理），
   `pageshow` 覆盖 bfcache 恢复。
-- `fit()` 先量 container 的 `getBoundingClientRect()`，`width` 或 `height` 为 0 就直接
-  返回：隐藏 / 尚未布局的容器量出 0x0，硬 fit 会把 PTY 缩成 1x1 并改写子 shell 的窗口尺寸。
+- 官方 2.2.5 只调用 `FitAddon.proposeDimensions()`：网格尺寸只认服务端下发的规范尺寸，
+  所以本地 `fit()` 不再改网格，只刷新布局（帧高、跟随贴底、横向滚动归零）。
+- 本地布局（`applyLayout()`）先量 container 的 `getBoundingClientRect()`，`width` 或
+  `height` 为 0 就直接返回：隐藏 / 尚未布局的容器量出 0x0，按它布局等于按 1x1 排版。
 - `FitAddon.proposeDimensions()` 临时把 frame 撑到 `100%` 再量尺寸，量完恢复，
   所以测量永远针对整屏高度而不是被压缩过的 frame。
 - `FitAddon.observeResize()` 用 `ResizeObserver` 观察 container 并转成 `scheduleFit()`。
