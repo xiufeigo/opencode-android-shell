@@ -1,5 +1,5 @@
 diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
-index b9760dd..33119b5 100644
+index 969f506..80c15f2 100644
 --- a/packages/app/src/entry.tsx
 +++ b/packages/app/src/entry.tsx
 @@ -7,6 +7,8 @@ import { AppBaseProviders, AppInterface } from "@/app"
@@ -11,29 +11,17 @@ index b9760dd..33119b5 100644
  import { isStandalone, PwaRoutePersistence, restorePwaRoute } from "@/runtime/platform/pwa"
  import { KeyboardInsets } from "@/runtime/platform/keyboard"
  import en from "@/runtime/i18n/en"
-@@ -50,8 +52,11 @@ const clearAuthToken = () => {
- }
+@@ -51,6 +53,9 @@ const clearAuthToken = () => {
  
- const web = createWebPlatform(pkg.version)
+ // package.json carries the last stable version on every channel, so the server's build passes its own release.
+ const web = createWebPlatform(import.meta.env.VITE_OPENCODE_VERSION ?? pkg.version)
 +const android = import.meta.env.VITE_OPENCODE_PLATFORM === "android"
 +if (android) prepareEmbeddedServerStorage(localStorage, location.origin)
 +const platform = android ? createAndroidPlatform(web.platform) : web.platform
  
--if (import.meta.env.PROD && "serviceWorker" in navigator) {
-+if (import.meta.env.PROD && !window.__ocPlatform && "serviceWorker" in navigator) {
+ if (import.meta.env.PROD && "serviceWorker" in navigator) {
    window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
- }
- 
-@@ -80,7 +85,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
-   void loadInitialLocale().then((locale) => {
-     const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
-     clearAuthToken()
--    const standalone = isStandalone()
-+    const standalone = !!window.__ocPlatform || isStandalone()
-     root.dataset.standalone = String(standalone)
- 
-     if (standalone) restorePwaRoute()
-@@ -98,7 +103,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+@@ -99,7 +104,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
  
      render(
        () => (
@@ -43,10 +31,10 @@ index b9760dd..33119b5 100644
              <AppInterface
                canonicalLocalServer={server ? ServerConnection.key(server) : undefined}
 diff --git a/packages/app/src/home/sessions/controller.tsx b/packages/app/src/home/sessions/controller.tsx
-index 571beee..e951602 100644
+index 20840c5..ba93512 100644
 --- a/packages/app/src/home/sessions/controller.tsx
 +++ b/packages/app/src/home/sessions/controller.tsx
-@@ -96,7 +96,7 @@ export function createHomeSessionsController(home: HomeController) {
+@@ -306,7 +306,7 @@ export function createHomeSessionsController(home: HomeController) {
    }
  
    const syncLocations = (record?: HomeSessionRecord) => {
@@ -55,7 +43,7 @@ index 571beee..e951602 100644
      const ctx = home.server.focusedContext()
  
      if (!ctx) return
-@@ -302,7 +302,7 @@ export function createHomeSessionsController(home: HomeController) {
+@@ -536,7 +536,7 @@ export function createHomeSessionsController(home: HomeController) {
        searchRecords: allRecords,
      },
      platform: {
@@ -65,10 +53,10 @@ index 571beee..e951602 100644
      location: {
        value: location,
 diff --git a/packages/app/src/runtime/i18n/language.tsx b/packages/app/src/runtime/i18n/language.tsx
-index 90e7792..aad3a22 100644
+index 4100d35..59c959c 100644
 --- a/packages/app/src/runtime/i18n/language.tsx
 +++ b/packages/app/src/runtime/i18n/language.tsx
-@@ -105,8 +105,11 @@ const merge = (app: Promise<Source>, ui: Promise<Source>) =>
+@@ -114,8 +114,11 @@ const merge = (app: Promise<Source>, ui: Promise<Source>) =>
    Promise.all([app, ui]).then(([a, b]) => ({ ...base, ...a.dict, ...b.dict }) as Dictionary)
  
  const loaders: Record<Exclude<Locale, "en">, () => Promise<Dictionary>> = {
@@ -221,50 +209,24 @@ index edf61c8..d0636a5 100644
 +    }
 +  }
 +}
-diff --git a/packages/app/src/servers/connect/camera.ts b/packages/app/src/servers/connect/camera.ts
-index 1f3adf1..ae37c2f 100644
---- a/packages/app/src/servers/connect/camera.ts
-+++ b/packages/app/src/servers/connect/camera.ts
-@@ -3,7 +3,7 @@ import { usePlatform } from "@/runtime/platform/platform"
+diff --git a/packages/app/src/servers/connect/controller.ts b/packages/app/src/servers/connect/controller.ts
+index f801b0d..de65259 100644
+--- a/packages/app/src/servers/connect/controller.ts
++++ b/packages/app/src/servers/connect/controller.ts
+@@ -189,7 +189,7 @@ export function createServerConnectController(options: ServerConnectControllerOp
+ }
  
- export function createCameraAvailability() {
-   const platform = usePlatform()
--  const supported = platform.platform === "web" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
-+  const supported = platform.platform !== "desktop" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
+ function cameraSupport(platform: string): ServerCameraSupport {
+-  if (platform !== "web") return "none"
++  if (platform === "desktop") return "none"
  
-   const [available, actions] = createResource(
-     async () => {
-diff --git a/packages/app/src/servers/connect/dialog.tsx b/packages/app/src/servers/connect/dialog.tsx
-index b4573f4..d37cef2 100644
---- a/packages/app/src/servers/connect/dialog.tsx
-+++ b/packages/app/src/servers/connect/dialog.tsx
-@@ -218,7 +218,7 @@ export const DialogServer: Component<{
-                 </span>
-               </div>
-             </Show>
--            <Show when={form.state.method() === "link" && platform.platform === "web"}>
-+            <Show when={form.state.method() === "link" && platform.platform !== "desktop"}>
-               <Show
-                 when={camera.available.latest || camera.available.loading}
-                 fallback={<span class="settings-server-dialog-hint">{language.t(cameraHint())}</span>}
-diff --git a/packages/app/src/servers/connect/screen.tsx b/packages/app/src/servers/connect/screen.tsx
-index 21f54fb..9a66afd 100644
---- a/packages/app/src/servers/connect/screen.tsx
-+++ b/packages/app/src/servers/connect/screen.tsx
-@@ -223,7 +223,7 @@ export function ConnectServerScreen(props: { url?: string } = {}) {
-               {language.t(request.isPending ? "dialog.server.add.checking" : "server.connect.button")}
-             </Button>
-           </form>
--          <Show when={state.method === "link" && platform.platform === "web"}>
-+          <Show when={state.method === "link" && platform.platform !== "desktop"}>
-             <Show
-               when={camera.available.latest || camera.available.loading}
-               fallback={<p>{language.t(cameraHint())}</p>}
+   if (!window.isSecureContext) return "insecure"
+ 
 diff --git a/packages/app/src/settings/settings.css b/packages/app/src/settings/settings.css
-index 9b3c963..afeff77 100644
+index 7e871fd..4e36319 100644
 --- a/packages/app/src/settings/settings.css
 +++ b/packages/app/src/settings/settings.css
-@@ -200,6 +200,12 @@
+@@ -212,6 +212,12 @@
    background: var(--v2-background-bg-layer-03);
  }
  
@@ -278,7 +240,7 @@ index 9b3c963..afeff77 100644
    .settings-nav-group-header:hover {
      background: var(--v2-background-bg-layer-03);
 diff --git a/packages/app/src/shell/commands/desktop-menu.ts b/packages/app/src/shell/commands/desktop-menu.ts
-index d256a42..cc9aaa0 100644
+index b85a79a..bfefddc 100644
 --- a/packages/app/src/shell/commands/desktop-menu.ts
 +++ b/packages/app/src/shell/commands/desktop-menu.ts
 @@ -1,6 +1,6 @@
@@ -299,10 +261,10 @@ index d256a42..cc9aaa0 100644
        {
          type: "item",
 diff --git a/packages/app/src/shell/errors/error.tsx b/packages/app/src/shell/errors/error.tsx
-index ee381c4..c4d72c8 100644
+index 176b01c..ecea660 100644
 --- a/packages/app/src/shell/errors/error.tsx
 +++ b/packages/app/src/shell/errors/error.tsx
-@@ -355,7 +355,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
+@@ -427,7 +427,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
          />
          <div class="flex flex-row items-center justify-center gap-3 flex-wrap max-w-64">
            <Button size="large" onClick={platform.restart}>
@@ -310,7 +272,7 @@ index ee381c4..c4d72c8 100644
 +            {language.t(platform.platform === "desktop" ? "error.page.action.restart" : "error.page.action.reload")}
            </Button>
            <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
-             <Button size="large" variant="ghost" onClick={exportDebugLogs}>
+             <Button
 diff --git a/packages/app/src/shell/titlebar/windows-menu.tsx b/packages/app/src/shell/titlebar/windows-menu.tsx
 index c5325b2..3ac4e92 100644
 --- a/packages/app/src/shell/titlebar/windows-menu.tsx
@@ -446,12 +408,12 @@ index 5c131e2..59b3734 100644
 +  "server-browser": { ...serverBrowser, windowEntry: eager(serverBrowserRenderer) },
  })
 diff --git a/packages/gui-plugins/src/terminal/model.ts b/packages/gui-plugins/src/terminal/model.ts
-index 71f724d..9bccc48 100644
+index 0098cfa..9bda4c4 100644
 --- a/packages/gui-plugins/src/terminal/model.ts
 +++ b/packages/gui-plugins/src/terminal/model.ts
-@@ -29,7 +29,12 @@ export type TerminalSession = ReturnType<TerminalModel["load"]>
- 
- type FocusRequest = { key: string; request: number; id?: string; pending: boolean }
+@@ -49,7 +49,12 @@ const OVERLAYS = '[role="dialog"], [role="menu"]'
+ // How often a new terminal checks whether the server finished creating its session.
+ const SESSION_POLL_MS = 250
  
 -const importGhostty = () => import("ghostty-web").then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
 +// The Android build ships its own terminal engine, served from a fixed path.
@@ -464,18 +426,18 @@ index 71f724d..9bccc48 100644
  /** The one ghostty-web load the window's terminals share; a failed load is retried by the next terminal. */
  type Ghostty = { shared?: ReturnType<typeof importGhostty> }
 diff --git a/packages/gui-plugins/src/terminal/terminal.tsx b/packages/gui-plugins/src/terminal/terminal.tsx
-index 7726dbf..d830af5 100644
+index 9a4bf61..3954d08 100644
 --- a/packages/gui-plugins/src/terminal/terminal.tsx
 +++ b/packages/gui-plugins/src/terminal/terminal.tsx
-@@ -412,7 +412,7 @@ export const Terminal = (props: TerminalProps) => {
-         fontSize: 14,
-         fontFamily: appearance.font("mono"),
-         allowTransparency: false,
--        convertEol: false,
-+        convertEol: true,
-         theme: terminalColors(),
-         scrollback: 10_000,
-         ghostty: g,
+@@ -439,7 +439,7 @@ export const Terminal = (props: TerminalProps) => {
+       fontSize: 14,
+       fontFamily: appearance.font("mono"),
+       allowTransparency: false,
+-      convertEol: false,
++      convertEol: true,
+       theme: terminalColors(),
+       scrollback: 10_000,
+       ghostty: loaded.ghostty,
 diff --git a/packages/plugin/src/gui/core.ts b/packages/plugin/src/gui/core.ts
 index 3d048e6..185e8e3 100644
 --- a/packages/plugin/src/gui/core.ts
@@ -520,101 +482,3 @@ index 1a8cbbb..662a683 100644
 +    inset: -8px 0;
 +  }
 +}
-diff --git a/packages/ui/src/components/resize-handle.tsx b/packages/ui/src/components/resize-handle.tsx
-index c8c8285..e6ae729 100644
---- a/packages/ui/src/components/resize-handle.tsx
-+++ b/packages/ui/src/components/resize-handle.tsx
-@@ -1,4 +1,5 @@
--import { splitProps, type JSX } from "solid-js"
-+import { onCleanup, splitProps, type JSX } from "solid-js"
-+import { createResizePointerHandler } from "./android-resize-pointer.mjs"
- 
- export interface ResizeHandleProps extends Omit<JSX.HTMLAttributes<HTMLDivElement>, "onResize"> {
-   direction: "horizontal" | "vertical"
-@@ -28,76 +29,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
-     "classList",
-   ])
- 
--  const handleMouseDown = (e: MouseEvent) => {
--    if (e.detail > 1) return
--    e.preventDefault()
--    const handle = e.currentTarget instanceof HTMLElement ? e.currentTarget : undefined
--    const edge = local.edge ?? (local.direction === "vertical" ? "start" : "end")
--    const start = local.direction === "horizontal" ? e.clientX : e.clientY
--
--    const rtl =
--      local.direction === "horizontal" &&
--      e.currentTarget instanceof Element &&
--      getComputedStyle(e.currentTarget).direction === "rtl"
--
--    const startSize = local.size
--    const min = local.min
--    const max = local.max
--    const threshold = local.collapseThreshold ?? 0
--    const onResize = local.onResize
--    const onCollapse = local.onCollapse
--    const onCollapseChange = local.onCollapseChange
--    let current = startSize
--    let collapsed = false
--
--    document.body.style.userSelect = "none"
--    document.body.style.overflow = "hidden"
--    document.body.style.cursor = local.direction === "horizontal" ? "col-resize" : "row-resize"
--    handle?.setAttribute("data-dragging", "")
--
--    const onMouseMove = (moveEvent: MouseEvent) => {
--      const pos = local.direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY
--
--      const delta =
--        local.direction === "vertical"
--          ? edge === "end"
--            ? pos - start
--            : start - pos
--          : (edge === "start") !== rtl
--            ? start - pos
--            : pos - start
--
--      current = startSize + delta
--      const nextCollapsed = threshold > 0 && current < threshold
--
--      if (nextCollapsed !== collapsed) {
--        collapsed = nextCollapsed
--        onCollapseChange?.(collapsed)
--      }
--
--      onResize(Math.min(max, Math.max(min, current)))
--    }
--
--    const onMouseUp = () => {
--      document.body.style.userSelect = ""
--      document.body.style.overflow = ""
--      document.body.style.cursor = ""
--      handle?.removeAttribute("data-dragging")
--      document.removeEventListener("mousemove", onMouseMove)
--      document.removeEventListener("mouseup", onMouseUp)
--
--      if (collapsed) {
--        onCollapse?.()
--
--        return
--      }
--
--      onCollapseChange?.(false)
--    }
--
--    document.addEventListener("mousemove", onMouseMove)
--    document.addEventListener("mouseup", onMouseUp)
--  }
-+  const handlePointerDown = createResizePointerHandler(local, onCleanup)
- 
-   return (
-     <div
-@@ -109,7 +41,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
-         ...local.classList,
-         [local.class ?? ""]: !!local.class,
-       }}
--      onMouseDown={handleMouseDown}
-+      onPointerDown={handlePointerDown}
-     />
-   )
- }

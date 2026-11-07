@@ -32,8 +32,6 @@ export async function applyAndroidSources(checkout, here) {
     ["system-fonts.mjs", "packages/app/src/runtime/platform/android-system-fonts.mjs"],
     ["system-fonts.d.mts", "packages/app/src/runtime/platform/android-system-fonts.d.mts"],
     ["../embedded-ui/server-state.mjs", "packages/app/src/runtime/platform/android-server-state.mjs"],
-    ["../embedded-ui/resize-pointer.mjs", "packages/ui/src/components/android-resize-pointer.mjs"],
-    ["../embedded-ui/resize-pointer.d.mts", "packages/ui/src/components/android-resize-pointer.d.mts"],
     ["provider-icons.ts", "packages/ui/src/components/provider-icons/resolve.ts"],
     ["provider-icons.test.ts", "packages/ui/src/components/provider-icons/resolve.test.ts"],
     ["provider-icons-extra.svg", "packages/ui/src/components/provider-icons/extra.svg"],
