@@ -28,7 +28,10 @@ export function installAndroidBack() {
       return true
     }
     if (settings.active()) {
-      if (settings.search.back()) return true
+      if (settings.search.canReturn()) {
+        settings.search.back()
+        return true
+      }
       if (settings.view().subtab) settings.subtab(undefined)
       else if (settings.view().type !== "root") settings.back()
       else {

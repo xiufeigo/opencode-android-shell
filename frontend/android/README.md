@@ -28,7 +28,7 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 2.1.4 的新界面文案上游仍没有中文：`session.elicitation.selectPlaceholder` 已由本仓库补齐。免费额度 UI 仍依赖服务端 ≥2.1.2 的 `provider.free-limit`；MCP 表单依赖服务端发出 `session.form` 请求。未读徽标仍依赖服务端 `time.viewed`。
 
-当前 UI 基准为官方 v2.2.5（`9bbb8ce`），Bun 仍是 **1.4.4**。按官方 app 和 ui 词典比对，本仓库补齐了 2.2.5 新增的 49 条简繁中文缺口。
+当前 UI 基准为官方 v2.2.6（`dc2ffcf`），Bun 仍是 **1.4.4**。按官方 app 和 ui 词典比对，本仓库补齐了 2.2.6 新增的 48 条简繁中文缺口。
 
 2.2.0 把官方 UI 从 2.1.4（`68bc26b`）升到正式 tag v2.2.0（`1097e266`）。上游结构变化有三处，本仓库逐一跟进：
 
@@ -40,6 +40,16 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 `build.mjs` 的工作区列表新增 `patchmark`：2.2.0 把 `packages/session-ui` 依赖的补丁渲染包拆成独立工作区，稀疏检出缺它时 bun 无法解析工作区图。
 
+
+2.2.6 把官方 UI 从 2.2.5（`9bbb8ce`）升到正式 tag v2.2.6（`dc2ffcf`）。旧补丁无法直接 `git apply`，本仓库在纯净 v2.2.6 上重做等价的 Android 改动后重新导出两份补丁：
+
+- `packages/app/src/servers/connect/camera.ts` 上游已删除，相机可用性判断改到 `packages/app/src/servers/connect/controller.ts` 的 `cameraSupport()`：Android 放行（只屏蔽 `desktop`）。
+- `packages/app/src/session/helpers.ts` 的 `createSizing` 改由上游的 sizing 状态机实现，重复按下已被上游忽略，本仓库不再重复打补丁。
+- `packages/app/src/session/screen.tsx` 的 `sideMounted` 延迟挂载改由上游的 `content-visibility` 方案承担。
+- `packages/ui/src/components/resize-handle.tsx` 上游已原生使用 Pointer Events，`touch-action: none` 与 24px 触屏命中区保留在本仓库补丁的 CSS 里；旧的 `resize-pointer.mjs` 适配层随之删除。
+- `packages/ui/src/components/image-preview.tsx` 上游改为 zoom 状态机，本仓库把双指捏合与双击缩放重写到新接口上（`zoomAt` / `follow` / `ease`）。
+- `packages/app/src/entry.tsx` 跟随上游改用 `import.meta.env.VITE_OPENCODE_VERSION`，`PlatformProvider` 改用 Android 平台实现。
+- `frontend/android/back.ts` 的设置搜索返回判断跟随上游改为 `canReturn()` + `back()`。
 
 2.2.5 把官方 UI 从 2.2.1（`3ebcf9a`）升到正式 tag v2.2.5（`9bbb8ce`）。上游把终端整体搬到了服务端常驻 PTY，本仓库的终端接线随之改写：
 

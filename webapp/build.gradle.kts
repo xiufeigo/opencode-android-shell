@@ -43,9 +43,11 @@ android {
         // 56 系统字体导入、MIUI 字体过滤、字体选择器对齐及后台活动遮挡修复。
         // 57 官方 UI 升到 2.2.5（服务端常驻 PTY、flat input、worktree 选择器、评论引用等），
         //    Android 侧改为跟随官方服务端终端模型，并重放/适配 upstream.patch 与 ui.patch。
-        versionCode = 57
+        // 58 官方 UI 升到 2.2.6（侧边栏分组、标签页批量关闭、MCP 登录、插件加载、会话导入等），
+        //    Android 侧在纯净 2.2.6 上重做 upstream.patch 与 ui.patch，并补齐 48 条新中文。
+        versionCode = 58
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.29"
+        versionName = "2.0.30"
     }
 
     signingConfigs {

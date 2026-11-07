@@ -1,23 +1,23 @@
 diff --git a/packages/app/component-tests/timeline-virtualizer.spec.ts b/packages/app/component-tests/timeline-virtualizer.spec.ts
-index bece9cd..240e7da 100644
+index af213ad..7f07362 100644
 --- a/packages/app/component-tests/timeline-virtualizer.spec.ts
 +++ b/packages/app/component-tests/timeline-virtualizer.spec.ts
-@@ -147,8 +147,8 @@ for (const input of [
+@@ -187,8 +187,8 @@ for (const input of [
      await expect(content.locator("[data-timeline-key]")).toHaveCount(1)
  
      if (input.name === "offset-only") {
--      // Pinned to the end: the 600px row and the virtualizer's 86px tail, less the 180px viewport.
--      await expect(root).toHaveAttribute("data-last-scroll-top", "506")
-+// Pinned to the end: the 600px row and the virtualizer's 56px tail, less the 180px viewport.
+-      // Pinned to the end: the 600px row and the virtualizer's 92px tail, less the 180px viewport.
+-      await expect(root).toHaveAttribute("data-last-scroll-top", "512")
++      // Pinned to the end: the 600px row and the virtualizer's 56px tail, less the 180px viewport.
 +      await expect(root).toHaveAttribute("data-last-scroll-top", "476")
        await root.locator("[data-scrollable]").dispatchEvent("wheel", { deltaY: -1 })
        await expect(root.getByTestId("timeline-controls")).toHaveAttribute("data-pinned", "false")
      }
 diff --git a/packages/app/e2e/regression/settings.spec.ts b/packages/app/e2e/regression/settings.spec.ts
-index 25a431e..88ee78b 100644
+index c4260f2..1a24c91 100644
 --- a/packages/app/e2e/regression/settings.spec.ts
 +++ b/packages/app/e2e/regression/settings.spec.ts
-@@ -310,6 +310,8 @@ for (const locale of ["en", "ar"]) {
+@@ -347,6 +347,8 @@ for (const locale of ["en", "ar"]) {
      const panel = page.locator('[data-slot="session-activity-panel"]')
      await expect(capsule).toBeVisible()
      await expect(page.locator("html")).toHaveAttribute("dir", locale === "ar" ? "rtl" : "ltr")
@@ -26,7 +26,7 @@ index 25a431e..88ee78b 100644
  
      for (const value of ["Center", "Right", "Hidden", "Left", "Right"] as const) {
        await page.keyboard.press("Control+,")
-@@ -326,6 +328,7 @@ for (const locale of ["en", "ar"]) {
+@@ -363,6 +365,7 @@ for (const locale of ["en", "ar"]) {
        if (value === "Hidden") {
          await expect(capsule).toHaveCount(0)
          await expect(panel).toHaveCount(0)
@@ -35,67 +35,87 @@ index 25a431e..88ee78b 100644
        }
  
 diff --git a/packages/app/e2e/regression/timeline-geometry.spec.ts b/packages/app/e2e/regression/timeline-geometry.spec.ts
-index e1d41a7..2bf8b83 100644
+index 4e19574..1dd63c6 100644
 --- a/packages/app/e2e/regression/timeline-geometry.spec.ts
 +++ b/packages/app/e2e/regression/timeline-geometry.spec.ts
-@@ -633,7 +633,7 @@ async function captureCardEdges(page: Page, card: Locator) {
-   )
- }
+@@ -742,9 +742,7 @@ for (const input of [
+   test.describe(`with ${input.name}`, () => {
+     test.use({ hasTouch: input.touch, isMobile: input.touch })
  
--test("scrolls the timeline behind the composer region, fading at the card, and keeps its end above the region", async ({
-+test("keeps the timeline clear of the activity lane while following and scrolling", async ({
-   page,
- }) => {
-   await setupTimeline(page, {
-@@ -682,26 +682,38 @@ test("scrolls the timeline behind the composer region, fading at the card, and k
-       const card = region.querySelector('[data-component="composer"]')!.getBoundingClientRect()
+-    test("scrolls the timeline behind the composer region, fading at the card, and keeps its end above the region", async ({
+-      page,
+-    }) => {
++    test("keeps the timeline clear of the activity lane while following and scrolling", async ({ page }) => {
+       await scrollsBehindComposerRegion(page, input)
+     })
+   })
+@@ -802,8 +800,7 @@ async function scrollsBehindComposerRegion(
        const pill = region.querySelector('[data-slot="session-activity-chip"]')!.getBoundingClientRect()
-       const hint = viewport.querySelector('[data-component="session-background-hint-row"]')!.getBoundingClientRect()
+       const row = viewport.querySelector('[data-component="session-background-hint-row"]')!
+       const hint = row.getBoundingClientRect()
+-      // The live status lane that holds Working and the background hint.
+-      const lane = row.parentElement!.getBoundingClientRect()
 +      const visible = document.querySelector('[data-slot="session-timeline-visible"]')!.getBoundingClientRect()
        const parts = [...viewport.querySelectorAll("[data-timeline-part-id]")]
--      const last = parts.find((element) => element.textContent?.includes("The last answer ends"))!
-+      const last = parts.find((element) => element.textContent?.includes("The last answer ends"))
+       const last = parts.find((element) => element.textContent?.includes("The last answer ends"))!
  
-       return {
+@@ -811,16 +808,17 @@ async function scrollsBehindComposerRegion(
          // The scroll area runs on behind the composer region to the panel's bottom edge.
          behind: Math.round(viewport.getBoundingClientRect().bottom - dock.bottom),
          inset: Math.round(viewport.querySelector<HTMLElement>("[data-timeline-inset]")!.offsetHeight - dock.height),
 -        // Content fades out where the composer card starts.
-+        // Content fades out at the start of the composer region, including its activity lane.
++        // Content fades out at the start of the composer region, including the activity lane it holds.
          fade: Math.round(
 -          dock.bottom - card.top - parseFloat(getComputedStyle(viewport).getPropertyValue("--session-timeline-inset")),
 +          dock.height - parseFloat(getComputedStyle(viewport).getPropertyValue("--session-timeline-inset")),
          ),
 -        // The pill floats above the region out of flow, so it never changes the inset the timeline scrolls above.
 -        floats: pill.bottom <= dock.top,
--        // It floats in the timeline's reserved tail, below the background hint and the last answer.
--        reserved: hint.bottom <= pill.top && last.getBoundingClientRect().bottom <= hint.top,
-+        // The capsule participates in the measured composer region rather than floating over the timeline.
++        // The capsule takes part in the measured composer region rather than floating over the timeline.
 +        inFlow: pill.top >= dock.top && pill.bottom <= card.top,
-+        // The live status and last answer stay outside the full 20px fade above the capsule.
+         pill: Math.round(pill.height),
+-        // It floats in the timeline's reserved tail, a clear gap below the live status lane and the last answer.
+-        clearance: Math.round(pill.top - lane.bottom),
+-        reserved: lane.top <= hint.top && last.getBoundingClientRect().bottom <= hint.top,
++        // The live status and the last answer stay outside the full 20px fade above the capsule.
 +        reserved: !!last && hint.bottom + 20 <= pill.top + 1 && last.getBoundingClientRect().bottom <= hint.top,
 +        // Timeline content must stop above the capsule, including while reading older messages.
 +        unobstructed: visible.bottom <= pill.top,
          atEnd: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 1,
        }
      })
+@@ -829,10 +827,10 @@ async function scrollsBehindComposerRegion(
+     behind: 0,
+     inset: 0,
+     fade: 0,
+-    floats: true,
++    inFlow: true,
+     pill: input.pill,
+-    clearance: 14,
+     reserved: true,
++    unobstructed: true,
+     atEnd: true,
+   }
  
--  const expected = { behind: 0, inset: 0, fade: 0, floats: true, reserved: true, atEnd: true }
-+  const expected = { behind: 0, inset: 0, fade: 0, inFlow: true, reserved: true, unobstructed: true, atEnd: true }
-+  await expect.poll(geometry).toEqual(expected)
-+  const viewport = page.locator('[data-slot="session-timeline-scroll"] > .scroll-view__viewport')
+@@ -849,6 +847,16 @@ async function scrollsBehindComposerRegion(
+ 
+   await expect.poll(async () => (await dock.boundingBox())!.height).toBeGreaterThan(before + 40)
+   await expect.poll(geometry).toEqual(expected)
 +
-+  await viewport.hover()
++  // Reading older messages must not slide the content under the capsule.
++  const scroll = page.locator('[data-slot="session-timeline-scroll"] > *')
++
++  await scroll.hover()
 +  await page.mouse.wheel(0, -3000)
-+  const latest = page.getByRole("button", { name: "Jump to latest" })
 +  await expect(page.getByText("The last answer ends above the composer region.", { exact: true })).not.toBeInViewport()
 +  await expect.poll(async () => (await geometry()).unobstructed).toBe(true)
-+  await latest.click()
-   await expect.poll(geometry).toEqual(expected)
-   const before = (await dock.boundingBox())!.height
++  await page.getByRole("button", { name: "Jump to latest" }).click()
++  await expect.poll(geometry).toEqual(expected)
+ }
  
+ test("groups consecutive sent prompts under the last one's meta line, with each bubble's actions beside it", async ({
 diff --git a/packages/app/e2e/regression/timeline-stream.spec.ts b/packages/app/e2e/regression/timeline-stream.spec.ts
-index 2d4ff7b..4dba798 100644
+index 6443010..13c0d32 100644
 --- a/packages/app/e2e/regression/timeline-stream.spec.ts
 +++ b/packages/app/e2e/regression/timeline-stream.spec.ts
 @@ -912,6 +912,8 @@ test.describe("Working", () => {
@@ -129,7 +149,7 @@ index 2d4ff7b..4dba798 100644
        await expect(trigger).toHaveAttribute("aria-expanded", "true")
        await expect(working).toBeVisible()
 diff --git a/packages/app/src/index.css b/packages/app/src/index.css
-index 18f99a1..e0fdec9 100644
+index 19ecf51..c833a66 100644
 --- a/packages/app/src/index.css
 +++ b/packages/app/src/index.css
 @@ -90,8 +90,8 @@
@@ -173,10 +193,10 @@ index 3429e0b..2e94e9c 100644
    return (
      <Switch>
 diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
-index c55e0b1..8a9fde7 100644
+index 369faac..585ad54 100644
 --- a/packages/app/src/runtime/i18n/en.ts
 +++ b/packages/app/src/runtime/i18n/en.ts
-@@ -1010,6 +1010,8 @@ export const dict = {
+@@ -1053,6 +1053,8 @@ export const dict = {
    "settings.general.row.terminalFont.description": "Customise the font used in the terminal",
    "settings.general.row.uiFont.title": "UI Font",
    "settings.general.row.uiFont.description": "Customise the font used throughout the interface",
@@ -218,61 +238,6 @@ index 540b622..8b3f0a2 100644
        classList={{
          "justify-start": alignment() === "start",
          "justify-center": alignment() === "center",
-diff --git a/packages/app/src/session/helpers.ts b/packages/app/src/session/helpers.ts
-index 1d8810b..d242112 100644
---- a/packages/app/src/session/helpers.ts
-+++ b/packages/app/src/session/helpers.ts
-@@ -21,6 +21,7 @@ export const createSizing = () => {
-       t = undefined
-     }
- 
-+    if (state.active) return
-     setState("active", true)
-   }
- 
-@@ -38,7 +39,8 @@ export const createSizing = () => {
-     active: () => state.active,
-     start,
-     touch() {
--      start()
-+      if (t !== undefined) clearTimeout(t)
-+      if (!state.active) setState("active", true)
-       t = window.setTimeout(stop, 120)
-     },
-   }
-diff --git a/packages/app/src/session/screen.tsx b/packages/app/src/session/screen.tsx
-index f32fb24..abc5251 100644
---- a/packages/app/src/session/screen.tsx
-+++ b/packages/app/src/session/screen.tsx
-@@ -208,9 +208,25 @@ function SessionScreenContent(props: {
-     setStore("timelineScrollbarHidden", false)
-   }
- 
--  createEffect(() => {
--    if (screen.side.open()) setStore("sideMounted", true)
--  })
-+  createEffect(
-+    on(
-+      () => screen.side.open(),
-+      (open, previous) => {
-+        if (!open) return
-+
-+        // A panel that opens flies in, and mounting its content in the same frame would
-+        // charge the click that starts the flight for the panel's first render. A panel
-+        // that is already open, e.g. restored with the session, has no flight to start.
-+        if (previous === false) {
-+          const frame = requestAnimationFrame(() => setStore("sideMounted", true))
-+          onCleanup(() => cancelAnimationFrame(frame))
-+          return
-+        }
-+
-+        setStore("sideMounted", true)
-+      },
-+    ),
-+  )
- 
-   const mobileView = attachment.mobile.current
- 
 diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
 index 938a906..fe2ad88 100644
 --- a/packages/app/src/session/session-panel-width.test.ts
@@ -287,7 +252,7 @@ index 938a906..fe2ad88 100644
    ["skips clamping before the layout is measured", 1600, undefined, false, false, 1600],
    ["lets a dragged width leave the side pane its hard minimum, split diffs included", 1600, 1700, true, true, 1380],
 diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
-index e4c5f3c..270500f 100644
+index 172cef4..fa27335 100644
 --- a/packages/app/src/session/session-panel-width.ts
 +++ b/packages/app/src/session/session-panel-width.ts
 @@ -16,21 +16,47 @@ const REVIEW_PANE_WIDTH_FIT = 480
@@ -341,12 +306,12 @@ index e4c5f3c..270500f 100644
 +  return `max(${SESSION_PANEL_WIDTH_MIN}px, min(${input.width}px, max(${minimum}px, calc(100% - 8px - ${reserve}))))`
  }
  
- // `available` is undefined until the layout row is first measured; render the
+ // A panel with a side width of its own: the chat panel takes the rest of the row, keeping at least its minimum.
 diff --git a/packages/app/src/session/timeline/interaction.ts b/packages/app/src/session/timeline/interaction.ts
-index d1c5d92..7c91ddc 100644
+index 92e80d2..64490c3 100644
 --- a/packages/app/src/session/timeline/interaction.ts
 +++ b/packages/app/src/session/timeline/interaction.ts
-@@ -362,7 +362,7 @@ export function createSessionTimelineInteraction(session: SessionModel) {
+@@ -387,7 +387,7 @@ export function createSessionTimelineInteraction(session: SessionModel, visible:
    createResizeObserver(
      () => state.refs.dock,
      (_rect, _element, entry) => {
@@ -356,10 +321,10 @@ index d1c5d92..7c91ddc 100644
        const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
  
 diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
-index 122e286..0ecb9cc 100644
+index 81a5163..f9c37f7 100644
 --- a/packages/app/src/session/timeline/message-timeline.tsx
 +++ b/packages/app/src/session/timeline/message-timeline.tsx
-@@ -458,8 +458,8 @@ function MessageTimelineView(
+@@ -401,8 +401,8 @@ function MessageTimelineView(
    const activityRow = createMemo(() => projection.rows().some((row) => Predicate.isTagged(row, "Activity")))
  
    // The lane keeps its height while empty, so Working and the hint come and go without moving the rows around it.
@@ -370,7 +335,7 @@ index 122e286..0ecb9cc 100644
    const activity = (live: () => boolean) => (
      <div
        classList={{
-@@ -467,7 +467,7 @@ function MessageTimelineView(
+@@ -410,7 +410,7 @@ function MessageTimelineView(
          "md:max-w-session md:mx-auto": props.centered,
        }}
      >
@@ -380,24 +345,26 @@ index 122e286..0ecb9cc 100644
            <div data-component="session-working" role="status">
              <TextShimmer text={language.t("session.timeline.working")} active />
 diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
-index 201caf3..74d5d50 100644
+index faf429a..ddaddd4 100644
 --- a/packages/app/src/session/timeline/virtualizer.tsx
 +++ b/packages/app/src/session/timeline/virtualizer.tsx
-@@ -33,9 +33,9 @@ import { holdLandingWidth } from "@/shell/panel-motion"
- 
- const fallbackItemSize = 60
- 
--// Reserved below the last row: a 36px lane for the live status row and its background hint, an 8px gap, then a 32px
--// activity pill and its 10px composer gap. Both come and go inside it, so neither moves the rows above.
--const tailSize = 86
-+// The activity lane is part of the composer inset. Keep the 36px live-status row and the 20px timeline fade clear
-+// above it, even when background work starts or finishes.
-+const tailSize = 56
- 
- const pendingMarkdown = '[data-component="markdown"]:not([data-markdown-ready])'
- 
+@@ -145,11 +145,9 @@ export function createTimelineVirtualizer(input: Input) {
+   const active = () => input.active?.() !== false
+   const isDesktop = createMediaQuery("(min-width: 768px)")
+   const topOffset = () => (input.showHeader() ? 64 : isDesktop() ? 0 : 16)
+-  // Reserved below the last row: a 36px lane for the live status row and its background hint, a 14px gap, then the
+-  // activity pill and its 10px composer gap. Without hover the pill grows from 32px to its 44px touch size
+-  // (composer-lane.css), and the tail grows with it. Both come and go inside it, so neither moves the rows above.
+-  const touch = createMediaQuery("(hover: none)")
+-  const tailSize = () => (touch() ? 104 : 92)
++  // The activity lane is part of the composer inset. Keep the 36px live-status row and the 20px timeline fade clear
++  // above it, even when background work starts or finishes.
++  const tailSize = () => 56
+   const ownerSessionKey = input.sessionKey()
+   const entry = cache.get(ownerSessionKey)
+   const cached = entry?.presentationKey === input.presentationKey?.() ? entry : undefined
 diff --git a/packages/app/src/settings/appearance/appearance.tsx b/packages/app/src/settings/appearance/appearance.tsx
-index 1100ae2..64f4ac7 100644
+index c406494..69cc2f6 100644
 --- a/packages/app/src/settings/appearance/appearance.tsx
 +++ b/packages/app/src/settings/appearance/appearance.tsx
 @@ -1,4 +1,5 @@
@@ -601,7 +568,7 @@ index 1100ae2..64f4ac7 100644
              <Show when={appearance.zoom.available()}>
                <SettingsRow
 diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
-index 5e8f8f1..c59daf4 100644
+index 6df3823..5c78f89 100644
 --- a/packages/app/src/settings/model.tsx
 +++ b/packages/app/src/settings/model.tsx
 @@ -8,6 +8,7 @@ import { timelinePresets, type TimelineCategory, type TimelineDetail } from "@op
@@ -612,7 +579,7 @@ index 5e8f8f1..c59daf4 100644
  
  export type Settings = typeof settingsSchema.Type
  
-@@ -336,6 +337,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+@@ -338,6 +339,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
    gate: false,
    init: () => {
      const [store, setStore, , ready] = persisted({ key: "settings.v3" }, settingsPersistence, defaultSettings)
@@ -620,7 +587,7 @@ index 5e8f8f1..c59daf4 100644
  
      const showCustomAgents = withFallback(
        () => store.general?.showCustomAgents,
-@@ -353,6 +355,15 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+@@ -355,6 +357,15 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
        void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
      })
  
@@ -637,19 +604,18 @@ index 5e8f8f1..c59daf4 100644
      createEffect(() => setNewIcons(newIcons()))
  
 diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
-index 52e8c1f..2282728 100644
+index 0312e34..5909013 100644
 --- a/packages/app/src/shell/shell.tsx
 +++ b/packages/app/src/shell/shell.tsx
-@@ -26,6 +26,8 @@ import {
- import { createPanelMotion, guardClosingFocus, panelOpacity } from "@/shell/panel-motion"
+@@ -26,12 +26,16 @@ import {
+ import { createPanelMotion, guardClosingFocus, panelOpacity, setPanelResizing } from "@/shell/panel-motion"
  import { createSidebarPeek } from "@/shell/sidebar-peek"
  import { windowDragEnabled } from "@/session/header/drag-area"
 +// Injected by the Android build (frontend/android/sources.mjs); a no-op on every other platform.
 +import { installAndroidBack } from "@/runtime/platform/android-back"
  
- // How far Home steps along a peek's header to clear the collapsed toggle: to the toggle's end, from the sidebar's 18px
- // start padding.
-@@ -36,6 +38,8 @@ type SidebarPose = { closed: number; peek: number | undefined }
+ type SidebarPose = { closed: number; peek: number | undefined }
+ 
  export const sidebarToggleCommand = { id: "sidebar.toggle", keybind: "mod+shift+b" }
  
  export default function Layout(props: ParentProps) {
@@ -659,10 +625,10 @@ index 52e8c1f..2282728 100644
    const settings = useSettingsSurface()
    const preferences = useSettings()
 diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index 96995e4..13570bc 100644
+index 114b395..075b7ab 100644
 --- a/packages/app/src/shell/titlebar/titlebar.tsx
 +++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -75,7 +75,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -79,7 +79,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
    const location = useLocation()
    const mobile = createMediaQuery("(max-width: 767px)")
    const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
@@ -671,17 +637,17 @@ index 96995e4..13570bc 100644
  
    const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
    const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -172,7 +172,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -168,7 +168,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
        }}
        style={{
          height:
 -          platform.platform === "web"
 +          platform.platform !== "desktop"
              ? bottom()
-               ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
+               ? "calc(28px + max(8px, var(--shell-safe-area-bottom, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))))"
                : mobileTop()
-@@ -633,8 +633,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                   "ps-3.5": windows(),
+@@ -565,8 +565,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                   "ps-3.5": windows() && !props.verticalTabs,
                  }}
                >
 -                <Show when={windows() || linux()}>
@@ -696,7 +662,7 @@ index 96995e4..13570bc 100644
                  </Show>
                  <Show when={windows() && props.verticalTabs}>
                    <SidebarToggle />
-@@ -845,6 +850,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -775,6 +780,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                                  <Show when={homeInSidebarHeader()} fallback={<div class="flex-1" />}>
                                    <div class="min-w-0 flex-1">{homeButton(true)}</div>
                                  </Show>
@@ -708,9 +674,9 @@ index 96995e4..13570bc 100644
 +                                    actionEnabled={platform.androidMenuActionEnabled}
 +                                  />
 +                                </Show>
-                                 {/* Optically aligns the toggle's glyph with the selected session's end edge. */}
-                                 <div class="-me-0.5 flex shrink-0">
-                                   <SidebarToggle handoff="out" />
+                                 <SidebarToggle handoff="out" />
+                               </div>
+                             </Show>
 diff --git a/packages/gui-plugins/src/context/i18n/en.ts b/packages/gui-plugins/src/context/i18n/en.ts
 index 5ad0d90..0808c27 100644
 --- a/packages/gui-plugins/src/context/i18n/en.ts
@@ -748,16 +714,16 @@ index 5b25681..0fb2503 100644
 +  "history.retry": "重試",
  }
 diff --git a/packages/gui-plugins/src/context/tab.tsx b/packages/gui-plugins/src/context/tab.tsx
-index 8a331bf..9ce4d15 100644
+index de49dc7..545b0ee 100644
 --- a/packages/gui-plugins/src/context/tab.tsx
 +++ b/packages/gui-plugins/src/context/tab.tsx
 @@ -1,4 +1,4 @@
--import { createMemo, on, onCleanup, onMount, For, Show } from "solid-js"
-+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js"
+-import { createMemo, createSignal, on, onCleanup, For, Show } from "solid-js"
++import { createEffect, createMemo, createSignal, on, onCleanup, For, Show } from "solid-js"
  import type { JSX } from "solid-js"
+ import { makeEventListener } from "@solid-primitives/event-listener"
  import { checksum } from "@opencode/util/encode"
- import { Icon } from "@opencode/ui/icon"
-@@ -100,6 +100,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -107,6 +107,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
      { equals: same },
    )
  
@@ -829,8 +795,8 @@ index 8a331bf..9ce4d15 100644
    const usd = createMemo(
      () =>
        new Intl.NumberFormat(i18n.locale(), {
-@@ -292,10 +357,30 @@ export default function SessionContextTab(props: { session: MountedSession }) {
-       onScroll={handleScroll}
+@@ -395,10 +460,30 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+       }
      >
        <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
 +        <Show when={historyError()}>
@@ -860,7 +826,7 @@ index 8a331bf..9ce4d15 100644
          <Show when={systemPrompt()}>
            {(prompt) => (
              <div class="flex flex-col gap-2">
-@@ -309,7 +394,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -412,7 +497,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
  
          <div class="flex flex-col gap-2">
            <div class="flex items-center justify-between">
@@ -882,20 +848,24 @@ index 8a331bf..9ce4d15 100644
              <Button
                size="small"
                variant="ghost"
-@@ -320,11 +418,15 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -426,13 +524,17 @@ export default function SessionContextTab(props: { session: MountedSession }) {
                <span>{ctx.t("export.session")}</span>
              </Button>
            </div>
 -          <Accordion multiple>
 -            <For each={messages()}>
--              {(message) => <RawMessage message={message} onRendered={restoreScroll} time={formatter().time} />}
+-              {(message) => (
+-                <RawMessage message={message} onRendered={() => dispatchScroll(contentChanged)} time={formatter().time} />
+-              )}
 -            </For>
 -          </Accordion>
 +          <Show when={rawOpen()}>
 +            <div id="session-context-raw-messages">
 +              <Accordion multiple>
 +                <For each={messages()}>
-+                  {(message) => <RawMessage message={message} onRendered={restoreScroll} time={formatter().time} />}
++                  {(message) => (
++                    <RawMessage message={message} onRendered={() => dispatchScroll(contentChanged)} time={formatter().time} />
++                  )}
 +                </For>
 +              </Accordion>
 +            </div>
@@ -904,10 +874,10 @@ index 8a331bf..9ce4d15 100644
        </div>
      </div>
 diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
-index 42d1bd9..45082b1 100644
+index f61a189..3580162 100644
 --- a/packages/ui/src/components/image-preview.tsx
 +++ b/packages/ui/src/components/image-preview.tsx
-@@ -44,6 +44,14 @@ export interface ImagePreviewProps {
+@@ -68,6 +68,14 @@ export interface ImagePreviewProps {
  
  const STEP = Math.SQRT2
  
@@ -922,33 +892,33 @@ index 42d1bd9..45082b1 100644
  // How far up from its bottom edge a video keeps its own controls, whose drag scrubs rather than pans.
  const CONTROLS = 56
  
-@@ -92,6 +100,20 @@ export function ImagePreview(props: ImagePreviewProps) {
-   const [view, setView] = createSignal(FIT_VIEW)
-   const [fitRatio, setFitRatio] = createSignal(1)
-   const [drag, setDrag] = createSignal<{ id: number; x: number; y: number }>()
+@@ -142,6 +150,21 @@ export function ImagePreview(props: ImagePreviewProps) {
+   const followEvent = { type: "follow" as const, zoomed: false }
+   const movedEvent = { type: "pointer.moved" as const, pointerId: 0 }
+ 
 +  // The fingers on the body, in client coordinates: one drags the zoomed picture, two pinch it. The
 +  // preview follows them from the first touch, so a pinch that starts at the fitted size reads too.
-+  const pointers = new Map<number, { x: number; y: number }>()
++  const pointers = new Map<number, { id: number; x: number; y: number }>()
 +  // The zoom a pinch started from, and the spread between the fingers then, so the picture follows
 +  // the fingers instead of jumping to the new spread.
 +  let pinch: { distance: number; zoom: ZoomView } | undefined
 +  // A press that is still down, so a press that travelled is not read as a tap.
-+  let press: { id: number; x: number; y: number } | undefined
++  let pressed: { id: number; x: number; y: number } | undefined
 +  // A completed tap, used to recognise a double tap. Set on release, never on press: a pinch or a
 +  // drag also starts with a press, and must not arm the second tap of a double tap.
 +  let tap: { at: number; x: number; y: number } | undefined
 +  // A double tap on a touch host also fires the browser's own double click, which would zoom the
 +  // picture a second time; the tap owns the gesture and the click is skipped.
 +  let tapped = false
-   // Whether the press that ends in a click began on the backdrop around the image and stayed put. A pan captures the
-   // pointer, so its click lands on the backdrop wherever it began.
-   let backdrop = false
-@@ -422,12 +444,18 @@ export function ImagePreview(props: ImagePreviewProps) {
++
+   const percent = createMemo(() => new Intl.NumberFormat(i18n.locale(), { style: "percent", maximumFractionDigits: 0 }))
+ 
+   const dispatchFlight = (event: PreviewFlightEvent) => {
+@@ -535,12 +558,17 @@ export function ImagePreview(props: ImagePreviewProps) {
    )
  
    // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
 -  const point = (event: MouseEvent) => {
-+  // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
 +  const anchor = (x: number, y: number) => {
      const rect = (props.video ? image : viewport).getBoundingClientRect()
  
@@ -962,12 +932,12 @@ index 42d1bd9..45082b1 100644
 +  const spread = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
 +
    const measure = () => {
-     if (!natural().width || !image.offsetWidth) return
-     size = { width: image.offsetWidth, height: image.offsetHeight }
-@@ -453,12 +481,62 @@ export function ImagePreview(props: ImagePreviewProps) {
-   )
- 
+     natural.width = image instanceof HTMLImageElement ? image.naturalWidth : image.width
+     natural.height = image instanceof HTMLImageElement ? image.naturalHeight : image.height
+@@ -581,12 +609,60 @@ export function ImagePreview(props: ImagePreviewProps) {
    const detail = (event: MouseEvent) => {
+     if (!interactive()) return
+ 
 +    // The browser's own double click follows a touch double tap, and would zoom the picture twice.
 +    if (tapped) {
 +      tapped = false
@@ -975,16 +945,15 @@ index 42d1bd9..45082b1 100644
 +      return
 +    }
 +
-     if (goal().scale > 1) return ease(FIT_VIEW)
-     ease(zoomAt(goal(), detailScale(fitRatio()), point(event), bounds()))
+     if (scaleSpring.target > 1) return ease(FIT_VIEW)
+     ease(zoomAt(goal(), detailScale(fitRatio), point(event), bounds))
    }
  
-   const grab = (event: PointerEvent, target: HTMLElement) => {
--    if (event.button !== 0 || view().scale <= 1) return
-+    if (event.button !== 0) return
+   const press = (event: PointerEvent, target: PanTarget | "content", onBackdrop: boolean) => {
+     if (!interactive()) return
 +
-+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
-+    press = { id: event.pointerId, x: event.clientX, y: event.clientY }
++    pointers.set(event.pointerId, { id: event.pointerId, x: event.clientX, y: event.clientY })
++    pressed = { id: event.pointerId, x: event.clientX, y: event.clientY }
 +
 +    // A second finger turns the gesture into a pinch: the picture scales about the fingers' midpoint.
 +    if (pointers.size === 2) {
@@ -992,9 +961,9 @@ index 42d1bd9..45082b1 100644
 +
 +      pinch = { distance: spread(a, b), zoom: view() }
 +      // The pinch owns the picture now, so the first finger's drag ends with it.
-+      setDrag(undefined)
++      dispatchZoom({ type: "pointer.cancel", pointerId: a.id })
 +      event.preventDefault()
-+      target.setPointerCapture(event.pointerId)
++      panElement(target === "content" ? "viewport" : target).setPointerCapture(event.pointerId)
 +
 +      return
 +    }
@@ -1007,15 +976,15 @@ index 42d1bd9..45082b1 100644
 +      spread(tap, { x: event.clientX, y: event.clientY }) < DOUBLE_TAP_DISTANCE
 +    ) {
 +      tap = undefined
-+      press = undefined
++      pressed = undefined
 +      tapped = true
 +      // The browser's own double click follows; it must not zoom the picture a second time.
 +      window.setTimeout(() => (tapped = false), DOUBLE_TAP_WINDOW * 2)
 +      event.preventDefault()
-+      target.setPointerCapture(event.pointerId)
++      panElement(target === "content" ? "viewport" : target).setPointerCapture(event.pointerId)
 +
 +      if (goal().scale > 1) ease(FIT_VIEW)
-+      else ease(zoomAt(goal(), detailScale(fitRatio()), anchor(event.clientX, event.clientY), bounds()))
++      else ease(zoomAt(goal(), detailScale(fitRatio), anchor(event.clientX, event.clientY), bounds))
 +
 +      return
 +    }
@@ -1023,63 +992,57 @@ index 42d1bd9..45082b1 100644
 +    // A tap that is older than the double tap window cannot pair with the next one.
 +    if (tap && performance.now() - tap.at >= DOUBLE_TAP_WINDOW) tap = undefined
 +
-+    if (view().scale <= 1) return
-+
-     event.preventDefault()
-     target.setPointerCapture(event.pointerId)
-     setDrag({ id: event.pointerId, x: event.clientX, y: event.clientY })
-@@ -467,6 +545,38 @@ export function ImagePreview(props: ImagePreviewProps) {
-   const pan = (event: PointerEvent) => {
-     const current = drag()
+     dispatchZoom({
+       type: "pointer.down",
+       pointerId: event.pointerId,
+@@ -604,6 +680,33 @@ export function ImagePreview(props: ImagePreviewProps) {
  
+   // The hot path of a pan: no layout reads, and no Solid writes once the pan has moved.
+   const pan = (event: PointerEvent) => {
 +    if (pinch) {
 +      // The pinch owns the picture: its spread drives the scale, about the fingers' midpoint.
 +      const [a, b] = [...pointers.values()]
 +
 +      if (!a || !b || !pinch.distance) return
 +
-+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
++      pointers.set(event.pointerId, { id: event.pointerId, x: event.clientX, y: event.clientY })
 +
 +      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-+
-+      follow(
-+        zoomAt(
-+          pinch.zoom,
-+          pinch.zoom.scale * (spread(a, b) / pinch.distance),
-+          anchor(midpoint.x, midpoint.y),
-+          bounds(),
-+        ),
++      const next = zoomAt(
++        pinch.zoom,
++        pinch.zoom.scale * (spread(a, b) / pinch.distance),
++        anchor(midpoint.x, midpoint.y),
++        bounds,
 +      )
++
++      follow(next.scale, next.x, next.y)
 +
 +      return
 +    }
 +
-+    if (!pointers.has(event.pointerId)) return
-+
-+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
-+
 +    // A press that travelled is not a tap, and the tap before it cannot pair with the next press.
-+    if (press?.id === event.pointerId && spread(press, { x: event.clientX, y: event.clientY }) > TAP_SLOP) {
-+      press = undefined
++    if (pressed?.id === event.pointerId && spread(pressed, { x: event.clientX, y: event.clientY }) > TAP_SLOP) {
++      pressed = undefined
 +      tap = undefined
 +    }
 +
-     if (current?.id !== event.pointerId) return
-     backdrop = false
-     panned = true
-@@ -475,7 +585,26 @@ export function ImagePreview(props: ImagePreviewProps) {
+     if (!selectPanPointer(untrack(zoom), event.pointerId)) return
+ 
+     // The button came up without a pointerup reaching the preview, so this is a hover, not a drag.
+@@ -624,8 +727,46 @@ export function ImagePreview(props: ImagePreviewProps) {
+     )
    }
  
-   const release = (event: PointerEvent) => {
+-  const release = (event: PointerEvent) => dispatchZoom({ type: "pointer.up", pointerId: event.pointerId })
+-  const cancel = (event: PointerEvent) => dispatchZoom({ type: "pointer.cancel", pointerId: event.pointerId })
++  const release = (event: PointerEvent) => {
 +    pointers.delete(event.pointerId)
-+
-     if (drag()?.id === event.pointerId) setDrag(undefined)
 +
 +    // A press that stayed put is a tap, and two quick taps zoom the picture. A mouse has a double
 +    // click of its own, so only a touch arms the next tap.
-+    if (press?.id === event.pointerId) {
++    if (pressed?.id === event.pointerId) {
 +      if (event.pointerType !== "mouse") tap = { at: performance.now(), x: event.clientX, y: event.clientY }
-+      press = undefined
++      pressed = undefined
 +    }
 +
 +    if (pointers.size < 2) {
@@ -1088,12 +1051,33 @@ index 42d1bd9..45082b1 100644
 +      // Dropping from two fingers to one continues the drag from where that finger is now.
 +      const remaining = [...pointers.entries()][0]
 +
-+      if (remaining && view().scale > 1)
-+        setDrag({ id: remaining[0], x: remaining[1].x, y: remaining[1].y })
++      if (remaining && view().scale > 1) {
++        dispatchZoom({
++          type: "pointer.down",
++          pointerId: remaining[0],
++          button: 0,
++          target: props.video ? "video" : "viewport",
++          onBackdrop: false,
++          zoomed: true,
++        })
++        cursor.x = remaining[1].x
++        cursor.y = remaining[1].y
++      }
 +    }
-   }
++
++    dispatchZoom({ type: "pointer.up", pointerId: event.pointerId })
++  }
++  const cancel = (event: PointerEvent) => {
++    pointers.delete(event.pointerId)
++
++    if (pressed?.id === event.pointerId) pressed = undefined
++    if (pointers.size < 2) pinch = undefined
++
++    dispatchZoom({ type: "pointer.cancel", pointerId: event.pointerId })
++  }
  
    if (props.video) {
+     const video = props.video
 diff --git a/packages/ui/src/components/provider-icon.tsx b/packages/ui/src/components/provider-icon.tsx
 index d044147..726eb78 100644
 --- a/packages/ui/src/components/provider-icon.tsx
@@ -1129,10 +1113,10 @@ index d044147..726eb78 100644
    )
  }
 diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
-index 7b3b9ef..71eff50 100644
+index 19335dd..7a7f8c5 100644
 --- a/packages/ui/src/i18n/en.ts
 +++ b/packages/ui/src/i18n/en.ts
-@@ -199,6 +199,7 @@ const source = {
+@@ -202,6 +202,7 @@ const source = {
    "ui.textField.copied": "Copied",
  
    "ui.imagePreview.alt": "Image preview",
