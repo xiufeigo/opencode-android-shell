@@ -4,6 +4,8 @@
 
 `build.mjs` 创建独立 sparse checkout，每次构建固定工作区及 Desktop 图标目录范围，校验版本，应用可审核的源码补丁，冻结安装官方 lockfile，再执行 app 和 GUI 扩展的生产源码类型检查与 Vite 构建。核对上游时临时加入其他包也不能污染下一次构建的 Tailwind 扫描。类型检查排除上游测试和 Storybook 示例，它们依赖未纳入 Android 构建的测试工作区。Windows 会把 Git 的文本 symlink 还原为目标字节。
 
+浏览器以官方 `@opencode/plugin-browser` 和 [browse](https://github.com/anomalyco/browse) 为准。`plugins/server-browser` 已废弃，构建仍会把 `frontend/remote-browser` 拷进检出，只为已经加载该插件的服务器保留旧面板。
+
 只需要运行：
 
 ```sh

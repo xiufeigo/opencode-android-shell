@@ -1,3 +1,5 @@
+// Deprecated. Kept so servers that already list this package keep the same RPC.
+// New installs use @opencode/plugin-browser and https://github.com/anomalyco/browse.
 import { Plugin } from "@opencode/plugin"
 import { Schema } from "effect"
 import { chromium } from "playwright"

@@ -1,7 +1,7 @@
 {
   "name": "opencode-server-browser",
   "version": "0.1.0",
-  "description": "Session browsers hosted by an OpenCode v2 server, shared by Android and web clients",
+  "description": "Deprecated session browser for servers that already list this package. New installs use @opencode/plugin-browser and https://github.com/anomalyco/browse.",
   "type": "module",
   "license": "MIT",
   "engines": { "node": ">=22" },
