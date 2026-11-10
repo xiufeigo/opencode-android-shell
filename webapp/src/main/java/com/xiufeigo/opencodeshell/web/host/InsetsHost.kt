@@ -76,6 +76,20 @@ class InsetsHost(
     private var pendingImePx = 0
     private var pendingNavPx = 0
 
+    /**
+     * 系统导航形态的运行期快照：设置值在 Activity 存活期不变，读到一次即缓存；
+     * 一直 UNKNOWN（读不到系统设置的设备）时靠 [gesturalObserved] 锁存判定。
+     */
+    private var navMode = NavigationBarMode.UNKNOWN
+
+    /**
+     * UNKNOWN 设备的手势证据锁存：一旦某次 insets 给出 `nav>0 && tappable<=0`，
+     * 说明设备确实是手势导航；此后部分交付帧瞬态抄过来的 tappable>0 不再翻案
+     * 成 3 键（否则 ime==0 的即时提交会把视口压矮整条导航带，且没有下一次
+     * insets 就一直悬空 —— 切会话时实测形态）。
+     */
+    private var gesturalObserved = false
+
     private val commitResizeRunnable = Runnable {
         val pad = pendingPadPx
         if (pad >= 0) commitResize(pad, pendingImePx, pendingNavPx, "settled")
@@ -183,12 +197,16 @@ class InsetsHost(
         val tappableBottom = insets.getInsetsIgnoringVisibility(
             WindowInsetsCompat.Type.tappableElement(),
         ).bottom
-        val navBottom = NavigationBarVisual.insetPx(
-            bars.bottom,
-            tappableBottom,
-            d,
-            NavigationBarMode.read(root.context),
-        )
+        // 形态缓存 + 手势证据锁存：系统设置读不到时，靠已观察到的
+        // `nav>0 && tappable<=0` 钉住手势判定，挡住生命周期中段的瞬态假 3 键。
+        if (navMode == NavigationBarMode.UNKNOWN) navMode = NavigationBarMode.read(root.context)
+        if (NavigationBarVisual.isGesturalEvidence(bars.bottom, tappableBottom)) gesturalObserved = true
+        val effectiveMode = when {
+            navMode != NavigationBarMode.UNKNOWN -> navMode
+            gesturalObserved -> NavigationBarMode.GESTURAL
+            else -> NavigationBarMode.UNKNOWN
+        }
+        val navBottom = NavigationBarVisual.insetPx(bars.bottom, tappableBottom, d, effectiveMode)
 
         val dark = systemIsDark()
         val payload = JSONObject().apply {

@@ -69,4 +69,16 @@ object NavigationBarVisual {
         val margin = (SHELL_BOTTOM_MARGIN_DP * density).toInt()
         return (handleTop - margin).coerceIn(0, navBottomPx)
     }
+
+    /**
+     * `nav>0 && tappable<=0` 是手势导航的**决定性证据**，出现即可锁存：
+     * 3 键 / 2 键的按钮带必然有可点元素（tappable>0）；
+     * 部分交付帧的瞬态只会把整条 `navigationBars` **抄给** tappable（>0），
+     * 不会反向抄成 0。系统设置读不到（[NavigationBarMode.UNKNOWN]）的设备靠它
+     * 挡住生命周期中段的瞬态假 3 键 —— 否则会话切换时一次部分交付就把
+     * 视口压矮整条导航带，且没有下一次 insets 就一直悬空（点内容触发
+     * 焦点/IME 评估重发 insets 才回落，实测形态）。
+     */
+    fun isGesturalEvidence(navBottomPx: Int, tappableBottomPx: Int): Boolean =
+        navBottomPx > 0 && tappableBottomPx <= 0
 }

@@ -74,6 +74,20 @@ class NavigationBarVisualTest {
     }
 
     @Test
+    fun `UNKNOWN 设备锁存手势证据后 瞬态 tappable 不再翻案成 3 键`() {
+        // 系统设置读不到的设备：某次 insets 给出 nav>0 && tappable==0（手势的决定性证据），
+        // 此后切会话时部分交付帧把 tappable 瞬态抄成整条导航带，也必须仍按手势让位。
+        assertTrue(NavigationBarVisual.isGesturalEvidence(navPx, 0))
+        assertFalse("3 键：tappable>0 不是手势证据", NavigationBarVisual.isGesturalEvidence(navPx, navPx))
+        assertFalse("没有导航带时谈不上手势证据", NavigationBarVisual.isGesturalEvidence(0, 0))
+        // 锁存后 effectiveMode=GESTURAL ⇒ 同一帧瞬态 tappable 得到手柄让位量而非整条。
+        assertEquals(
+            20,
+            NavigationBarVisual.insetPx(navPx, navPx, density, NavigationBarMode.GESTURAL),
+        )
+    }
+
+    @Test
     fun `没有导航栏时不产生留白`() {
         assertEquals(0, NavigationBarVisual.insetPx(0, 0, density))
         assertEquals("负值（异常读数）按 0 处理", 0, NavigationBarVisual.insetPx(-1, 0, density))
@@ -121,6 +135,11 @@ class NavigationBarVisualTest {
         assertTrue(
             "必须读 navigation_mode，才能在首帧 tappable 假抄整条导航带时仍按手势让位",
             insetsHost.contains("NavigationBarMode.read(root.context)"),
+        )
+        assertTrue(
+            "UNKNOWN 设备必须锁存手势证据，否则切会话的瞬态 tappable 会再翻案成 3 键",
+            insetsHost.contains("NavigationBarVisual.isGesturalEvidence(bars.bottom, tappableBottom)") &&
+                insetsHost.contains("gesturalObserved = true"),
         )
         assertTrue(
             "首帧 layout 后必须再 refresh 一次（decor 高度 / tappable 这时才稳）",
