@@ -6,9 +6,9 @@ Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode
 
 ## 与 Desktop 对齐
 
-会话、流式消息、权限与表单、模型及代理选择、附件、工作区文件、差异审查、设置、主题、语言和扩展的前端直接来自同一官方源码。Android 适配提供系统文件选择与 Markdown 保存、外链、剪贴板、通知、二维码相机、触屏面板和终端输入。
+会话、流式消息、权限与表单、模型及代理选择、附件、工作区文件、差异审查、设置、主题、语言和扩展的前端直接来自同一官方源码。Android 适配提供系统文件选择与 Markdown 保存、外链、剪贴板、通知、二维码相机、触屏面板和终端输入。手机会话底部的智能体/模型行和 `+ / @ / ! / 发送` 触摸条都来自这份官方 composer（触屏媒体查询）。
 
-服务端浏览器通过 [OpenCode v2 插件](plugins/server-browser/README.md)提供：安装一次后，Android 和本仓库的[适配 Web](frontend/web/README.md)可操作同一会话的 Chromium。保持原服务地址、认证和端口，不需要 gateway 或配对。安装插件不会自动修改官方客户端的可视界面；未改造的客户端可通过模型使用浏览器工具。完整对比和剩余差异见 [research/desktop-parity/REPORT.md](research/desktop-parity/REPORT.md)。
+浏览器跟随官方。OpenCode 2.2.6 的核心已经带上 `@opencode/plugin-browser`，桌面面板在官方 `packages/gui-plugins/src/browser`（只在桌面端挂载）。模型要操作你自己的浏览器时，使用官方 [browse](https://github.com/anomalyco/browse)。本仓库的 [服务端浏览器插件](plugins/server-browser/README.md) 已废弃，新环境不要把它写进 `opencode.json`。已经写在服务器配置里的旧安装可以继续留着，应用不会在首次启动时自动添加它。
 
 电脑本地引擎启动、WSL、桌面更新器和电脑文件系统不在 Android 宿主内运行；工作区和终端由连接的 OpenCode 服务提供。当前 UI 使用 v2 服务协议。
 
@@ -44,7 +44,7 @@ APK 自带 UI 由 `http://127.0.0.1:4173` 提供；该端点只服务静态文�
 
 ## 验证
 
-左上角复用官方应用菜单：文件、编辑、视图、转到、窗口、帮助。编辑接系统剪贴板，视图提供缩放、重载与 Android 全屏，窗口可最小化或关闭 Android 任务；新桌面窗口、最大化与 Electron 开发者工具明确禁用。右侧审查栏“＋”提供“打开文件／浏览器”；手机使用“更多 → 浏览器”，外接键盘支持 Ctrl+Shift+B。未安装插件时显示明确错误及安装提示。升级继续清除旧 gateway 配对凭据，保留服务器设置。
+左上角复用官方应用菜单：文件、编辑、视图、转到、窗口、帮助。编辑接系统剪贴板，视图提供缩放、重载与 Android 全屏，窗口可最小化或关闭 Android 任务；新桌面窗口、最大化与 Electron 开发者工具明确禁用。右侧审查栏“＋”里的“浏览器”和手机“更多 → 浏览器”是已废弃服务端插件的旧面板，只在服务器仍加载该插件时有画面；新服务器请用官方 browse，不要按面板里的旧安装提示去装 `plugins/server-browser`。升级继续清除旧 gateway 配对凭据，保留服务器设置。
 
 ```sh
 node scripts/verify-android-navigation.mjs
@@ -64,7 +64,7 @@ node scripts/verify-android-terminal-release.mjs
 
 `verify-android-menus-device.mjs` 验证真实 APK 的应用菜单、原生剪贴板、全屏、宽屏加号菜单，以及浏览器入口不使用旧配对。仅在独立模拟器上运行；设置 `MENU_TEST_PROFILE=phone` 或 `tablet`、对应屏幕的 `ANDROID_SERIAL`、可选 `ADB` 与 `MENU_TEST_SERVER_CONFIG`（自己的 OpenCode `{url,password}` 文件）。不输出凭据，创建并清理自己的测试会话。
 
-服务端浏览器验收见 [SERVER-BROWSER.md](research/desktop-parity/SERVER-BROWSER.md)。`scripts/start-server-browser-test.mjs` 启动隔离的真实 OpenCode 测试服务；`verify-server-browser.mjs` 验证认证与 RPC；`verify-server-browser-ui.mjs` 验证适配 Web，配置 `ANDROID_SERIAL` 则验证实际 debug APK 的点击、中文输入和强杀重连。
+已废弃的服务端浏览器仍可用 [SERVER-BROWSER.md](research/desktop-parity/SERVER-BROWSER.md) 里的旧验收脚本核对：`scripts/start-server-browser-test.mjs` 启动隔离的真实 OpenCode 测试服务；`verify-server-browser.mjs` 验证认证与 RPC；`verify-server-browser-ui.mjs` 验证适配 Web，配置 `ANDROID_SERIAL` 则验证实际 debug APK 的点击、中文输入和强杀重连。这些脚本服务旧安装，不是新环境的安装步骤。
 
 ## 安全边界
 
@@ -78,8 +78,8 @@ node scripts/verify-android-terminal-release.mjs
 - `frontend/android/`：官方源码版本、源码补丁、平台接口和构建工具。
 - `frontend/terminal/`：固定 xterm 终端适配及测试。
 - `frontend/embedded-ui/`：服务器迁移和触屏拖动的共享逻辑。
-- `plugins/server-browser/`：OpenCode 服务端 Chromium 插件与共享 RPC 契约。
-- `frontend/remote-browser/`、`frontend/web/`：Android/Web 共用浏览器面板与 Web 分发。
+- `plugins/server-browser/`：已废弃的服务端 Chromium 插件，只留给已经写进 `opencode.json` 的服务器。新安装使用官方 `@opencode/plugin-browser` 和 [browse](https://github.com/anomalyco/browse)。
+- `frontend/remote-browser/`：上述旧插件的会话面板，构建时仍拷进官方 UI，避免已有安装打开后变成空白。`frontend/web/` 是适配 Web 分发。
 - `app/`、`frontend/patches/`、`frontend/OPENCODE_APP_VERSION`：旧原生/旧 WebView 方案，不驱动当前发布。
 - `research/desktop-parity/`：本轮对比、实现范围和验证记录。
 

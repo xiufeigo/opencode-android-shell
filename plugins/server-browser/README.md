@@ -1,6 +1,10 @@
-# OpenCode 服务端浏览器插件
+# 已废弃：OpenCode 服务端浏览器插件
 
-Chromium 在 OpenCode **服务端**运行。Android（2.0.16 起）和本仓库的适配 Web 界面显示同一会话的标签页，并发送真实网页操作。模型通过 `server_browser` 工具访问同一浏览器。`localhost` 指服务器本机。
+新环境不要安装这个插件，也不要把它写进 `opencode.json`。OpenCode 2.2.6 的核心已经内置 `@opencode/plugin-browser`。桌面端的可视面板是官方 `packages/gui-plugins/src/browser`，并且只在桌面端挂载。模型要操作你自己的浏览器时，使用官方 [browse](https://github.com/anomalyco/browse)（MCP 与 Chromium 扩展）。
+
+已经出现在服务器配置里的旧安装可以继续留着。下面的步骤只说明这些旧安装如何保持原样运行：应用首次启动不会自动写入该插件，客户端也不会在升级时删掉已有配置。本仓库仍随构建带上对应的会话面板，避免旧服务器打开浏览器后变成空白。官方桌面浏览器和这个旧面板使用不同的 RPC，已有安装不会被官方 browse 覆盖掉。
+
+Chromium 在 OpenCode **服务端**运行。仍加载本插件时，Android（2.0.16 起）和本仓库的适配 Web 界面显示同一会话的标签页，并发送真实网页操作。模型通过 `server_browser` 工具访问同一浏览器。`localhost` 指服务器本机。
 
 使用 OpenCode **v2 / 2.1.2** 插件接口，已在 Windows 的真实 2.1.2 和 2.2.1 服务上验证。`@opencode/plugin`、`@opencode/schema` 以 `^2.1.2` 范围声明，允许随 2.1.x 补丁更新而无需改代码；`effect` 跟随 SDK 的 4.0.x。不是 v1 插件。原来的 OpenCode URL、认证、4096 端口都继续使用；不启动 gateway，不增加浏览器配对或浏览器服务端口。
 
