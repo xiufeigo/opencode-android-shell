@@ -647,6 +647,9 @@ const android = {
   "ui.message.undoMessage": "復原",
   "ui.sessionTurn.diffs.failed": "無法顯示差異",
   "ui.sessionTurn.diffs.retry": "重試",
+  "command.tab.closeSession": "關閉工作階段分頁",
+  "session.markRead": "標為已讀",
+  "session.markUnread": "標為未讀",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }
