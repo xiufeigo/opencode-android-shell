@@ -158,12 +158,19 @@ class InsetsHost(
         val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
         val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
         val imeBottom = if (imeVisible) imeInsets.bottom else 0
+        // 手势导航上报的是整条上滑热区，只有中间那根小白条可见；
+        // 整条让出会在面板下方留一条纯背景带（见 NavigationBarVisual）。
+        val navBottom = NavigationBarVisual.insetPx(
+            bars.bottom,
+            insets.getInsets(WindowInsetsCompat.Type.tappableElement()).bottom,
+            d,
+        )
 
         val dark = systemIsDark()
         val payload = JSONObject().apply {
             // 1:1 px→CSS px（=dp），见类注释。
             put("safeTop", (bars.top / d).css())
-            put("safeBottom", (bars.bottom / d).css())
+            put("safeBottom", (navBottom / d).css())
             put("safeLeft", (bars.left / d).css())
             put("safeRight", (bars.right / d).css())
             put("imeBottom", (imeBottom / d).css())
@@ -181,7 +188,7 @@ class InsetsHost(
             put("scheme", if (dark) "dark" else "light")
         }
 
-        applyResize(imeBottom, bars.bottom)
+        applyResize(imeBottom, navBottom)
 
         if (payload.toString() != last?.toString()) {
             last = payload

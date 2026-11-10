@@ -84,4 +84,6 @@ APK 内的 `ui/opencode-build.json` 记录来源；`/_assets/` 在磁盘映射�
 
 内置 UI 不注册官方 service worker：`upstream.patch` 在 `entry.tsx` 把注册条件改成 `!android`，Web 分发（`platform: web`）保持官方 PWA 行为。原因是 Android 的页面由本机 127.0.0.1 提供，workbox 预缓存没有收益；而 `skipWaiting: false` 会让**上一版 APK** 的 worker 在覆盖安装后继续接管导航，页面可能拿到旧 `index.html` 与已随旧包删除的 chunk（出现过整页 `ReferenceError` 白屏）。`oc-host.js` 在文档开始（早于页面脚本）反注册所有 worker、删除 Cache Storage，并在当前文档仍被旧 worker 接管时重载一次（`sessionStorage` 标记防循环）。`EmbeddedUiServiceWorkerTest` 钉住三件事与防止撤回，`platform: web` 的注册行必须保留。
 
+底部导航让位按**可见的**小白条算，不再整条让出：手势导航下 `navigationBars` 上报的是整条上滑热区（Pixel Tablet 实测 64px = 32 CSS px），系统只在正中画 4dp 手柄。整条让出会让会话面板底边离手柄 23 CSS px，看着像悬空（用户 2026-11-10 报障）。`NavigationBarVisual` 用 `tappableElement` 区分形态：3 键导航（有可点按钮）仍整条让出，手势导航只让到「手柄上沿 + 空隙 − 面板 8px 外边距」，面板底边贴住手柄；`InsetsHost` 把这个量同时用于 `--oc-safe-bottom` 与 IME 视口压矮。`NavigationBarVisualTest` 钉住两种形态、极端带宽与宿主接线，并把 `NavigationBarVisual.kt` 声明成测试任务输入，避免 UP-TO-DATE 假绿。
+
 升级上游时先更新 pin、审核源补丁及 SDK 合同，完成类型检查、Android 单测、构建、手机/平板回归后再发布。

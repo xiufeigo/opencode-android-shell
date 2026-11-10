@@ -47,9 +47,10 @@ android {
         //    Android 侧在纯净 2.2.6 上重做 upstream.patch 与 ui.patch，并补齐 48 条新中文。
         // 59 平板/手机统一桌面输入框（关闭官方触屏操作栏，去掉底部多出的一行）；
         //    内置 UI 不再注册 service worker，并在文档开始清理旧包遗留的 worker 与预缓存。
-        versionCode = 59
+        // 60 手势导航下只让出小白条所在的半条导航带，会话面板底边贴住手柄。
+        versionCode = 60
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.31"
+        versionName = "2.0.32"
     }
 
     signingConfigs {
@@ -178,6 +179,9 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         // （断言 replay() 存在）与新纯函数件本身。撤回任一处修法都必须能反向变红。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",
         "src/main/java/com/xiufeigo/opencodeshell/web/host/PhoneFormDefect.kt",
+        // 底部留白绊线：`NavigationBarVisualTest` 断言语义让位量与宿主接线；
+        // 不改 .kt 时任务会被判 UP-TO-DATE ⇒ 绊线假绿，所以显式声明为输入。
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/NavigationBarVisual.kt",
         // UX4 绊线：`Ux4ThemeTripwireTest` 断言面板不硬编码深色（oc-host.js 已在上列）
         // 且窗口背景按模式给（values/colors.xml + values-night/colors.xml 成对存在）。
         "src/main/res/values/colors.xml",
