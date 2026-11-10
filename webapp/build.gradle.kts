@@ -48,10 +48,15 @@ android {
         // 59 平板/手机统一桌面输入框（关闭官方触屏操作栏，去掉底部多出的一行）；
         //    内置 UI 不再注册 service worker，并在文档开始清理旧包遗留的 worker 与预缓存。
         // 60 手势导航下只让出小白条所在的半条导航带，会话面板底边贴住手柄。
-        // 61 面板底边直接对齐手柄上沿，并在手势导航下收紧输入框 dock 内边距。
-        versionCode = 61
+        // 61 曾把官方 composer dock 底内边距从 12px 收到 4px，输入区与会话区被挤在一起。
+        // 62 撤回 dock 覆盖，只让白色会话底框对齐手势小白条上沿。
+        // 63 手势导航首帧不再误判成 3 键：用 navigation_mode 立刻让位，避免点进会话先悬空再落下。
+        // 64 用 WebView 实高钉死官方 h-dvh：Android WebView 的 100dvh 在父层压矮后要点击才更新。
+        // 65 Pixel Tablet 实测：AppCompat content 冲掉 padding，WebView 仍整屏，官方 env(safe-area-inset-bottom)=32
+        //    再垫一层；要点击才把 env 收掉。改成自有 viewportHost + 写死 WebView 高度，并把官方安全区变量钉 0。
+        versionCode = 65
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.33"
+        versionName = "2.0.37"
     }
 
     signingConfigs {
@@ -183,6 +188,7 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         // 底部留白绊线：`NavigationBarVisualTest` 断言语义让位量与宿主接线；
         // 不改 .kt 时任务会被判 UP-TO-DATE ⇒ 绊线假绿，所以显式声明为输入。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/NavigationBarVisual.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/NavigationBarMode.kt",
         // UX4 绊线：`Ux4ThemeTripwireTest` 断言面板不硬编码深色（oc-host.js 已在上列）
         // 且窗口背景按模式给（values/colors.xml + values-night/colors.xml 成对存在）。
         "src/main/res/values/colors.xml",

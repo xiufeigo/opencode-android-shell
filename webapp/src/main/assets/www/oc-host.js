@@ -18,6 +18,10 @@
   var N = window.__ocAndroidNative;
   if (!N) return;
   window.__ocTerminalEngine = "xterm";
+  // 宿主默认 ImeMode.RESIZE。官方 <main> 在属性落到 doApply 之前就会读
+  // env(safe-area-inset-bottom)；Android WebView 给的是整条导航带（32 CSS），
+  // 不是 0。先钉成 resize，让下面的 CSS 在首帧就把官方变量盖成 0。
+  try { document.documentElement.setAttribute("data-oc-ime-mode", "resize"); } catch (e) {}
 
   // ======================================================================
   // 内置 UI 的 service worker 清理（APK 升级路径）
@@ -191,6 +195,11 @@
   // 选根容器而不是 header 自身：根容器是 h-dvh + box-sizing:border-box，
   // 垫 padding-top 后**总高仍是视口高**（内容区等量收缩、不溢出、不出滚动条）；
   // 若垫在 header 上则会把它顶下去而下方内容不动，形态更差。
+  //
+  // 高度不能继续靠官方的 `h-dvh`（100dvh）：Android WebView 在父层 padding
+  // 把控件压矮之后，dvh 经常仍是压矮前的值，要点击页面才会重算。
+  // 会话面板是 #root 里的 flex-1，根节点偏矮 ⇒ 白色底框悬空。
+  // 改用宿主量到的 WebView 实高 `--oc-view-height`（没有读数时退回 100%）。
   // ======================================================================
   var TOP_STYLE_ID = "oc-top-inset";
 
@@ -199,40 +208,29 @@
     var css = [
       // 边到边下 env() 恒为 0；取两者较大值，与底部 --oc-safe-bottom-eff 同一口径。
       ":root{--oc-safe-top-eff:max(var(--oc-safe-top,0px),env(safe-area-inset-top,0px));}",
+      // 官方 shell 读 --shell-safe-area-bottom / --safe-area-inset-bottom / env()。
+      // WebView 的 env(safe-area-inset-bottom) 是整条导航带；宿主已经用父层 padding
+      // 让位，这里必须钉 0，否则 <main> 再垫 32px，白底框悬空，要点击才把 env 收掉。
+      "html[data-oc-ime-mode=\"resize\"]{",
+      "--safe-area-inset-bottom:0px !important;",
+      "--shell-safe-area-bottom:0px !important;",
+      "}",
+      // 官方 <main> 内联 padding-bottom 走 env(safe-area-inset-bottom)。
+      // WebView 给的是整条导航带 32 CSS；变量钉 0 后仍可能算出 32（max(10px, env())）。
+      "html[data-oc-ime-mode=\"resize\"] main{",
+      "padding-bottom:0px !important;",
+      "}",
+      "html,body{height:100%;}",
       // 应用根容器：#root 是上游挂载点，body>div 是它在 DOM 上的语义形态。
       // 两者同指一个元素；写成两条是为了上游改 id 时不至于整条修法失效。
       "#root,body>div:first-of-type{",
       "padding-top:var(--oc-safe-top-eff,0px);",
+      "height:var(--oc-view-height,100%);",
       "box-sizing:border-box;",
       "}",
     ].join("\n");
     var st = document.createElement("style");
     st.id = TOP_STYLE_ID;
-    st.textContent = css;
-    (document.head || document.documentElement).appendChild(st);
-  }
-
-  // ======================================================================
-  // 底部手势手柄（2026-11-10 第二轮）
-  //
-  // 2.0.32 已把面板底边收窄到「手柄上沿 + 2px」，但会话输入框在面板里还要再让
-  // 12px（上游 `session-composer-dock` 的 `pb-3`）⇒ 输入框底边距手柄 15px，
-  // 看起来仍然空。这里在手势导航下把 dock 的底内边距收到 4px，
-  // 面板底边与手柄上沿对齐后，输入框就贴着手柄上方。
-  //
-  // 只在手势导航生效：3 键导航下这条带里是可点按钮，收内边距会让按钮压住输入框。
-  // ======================================================================
-  var BOTTOM_STYLE_ID = "oc-bottom-inset";
-
-  function installBottomInsetStyle() {
-    if (document.getElementById(BOTTOM_STYLE_ID)) return;
-    var css = [
-      'html[data-oc-gesture-handle="1"] [data-component="session-composer-dock"]{',
-      "padding-bottom:4px;",
-      "}",
-    ].join("\n");
-    var st = document.createElement("style");
-    st.id = BOTTOM_STYLE_ID;
     st.textContent = css;
     (document.head || document.documentElement).appendChild(st);
   }
@@ -362,11 +360,32 @@
     var s = el.style;
     s.setProperty("--oc-safe-top", d.safeTop + "px");
     s.setProperty("--oc-safe-bottom", d.safeBottom + "px");
+    if ((d.imeMode || "vars") === "resize") {
+      s.setProperty("--safe-area-inset-bottom", "0px");
+      s.setProperty("--shell-safe-area-bottom", "0px");
+    } else {
+      s.setProperty("--safe-area-inset-bottom", d.safeBottom + "px");
+      s.setProperty("--shell-safe-area-bottom", d.safeBottom + "px");
+    }
     s.setProperty("--oc-safe-left", d.safeLeft + "px");
     s.setProperty("--oc-safe-right", d.safeRight + "px");
     s.setProperty("--oc-ime-bottom", d.imeBottom + "px");
     s.setProperty("--oc-window-height", d.windowHeight + "px");
     s.setProperty("--oc-ime-visible", d.imeVisible ? "1" : "0");
+    if (d.viewHeight != null && d.viewHeight !== "") {
+      var nextH = d.viewHeight + "px";
+      var prevH = s.getPropertyValue("--oc-view-height");
+      s.setProperty("--oc-view-height", nextH);
+      // 内联高度压过后续才注入的官方样式，避免仍走要点击才更新的 100dvh。
+      var rootNode = document.getElementById("root") || document.querySelector("body > div");
+      if (rootNode) rootNode.style.setProperty("height", nextH);
+      // 官方会话虚拟列表听 window.resize；dvh 不更新时靠这条把 flex 子项重排。
+      if (nextH !== prevH && typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(function () {
+          try { window.dispatchEvent(new Event("resize")); } catch (e) {}
+        });
+      }
+    }
     s.setProperty("--oc-scheme", d.scheme);
     // 让浏览器自带的表单控件/滚动条也跟着深浅色走
     s.colorScheme = d.scheme;
@@ -376,9 +395,6 @@
     // 宿主是"压矮视口"还是"只发变量"——决定页面侧还要不要自己垫 IME（见 IME 抬升段）：
     // resize 模式下视口已经变矮，再垫一次 = 双倍留白（composer 会飘到半空）。
     el.setAttribute("data-oc-ime-mode", d.imeMode || "vars");
-    // 手势导航：页面可以把输入区再往下收一点（见 BOTTOM_STYLE_ID）。
-    // 3 键导航时这条带里是可点按钮，不能收。
-    el.setAttribute("data-oc-gesture-handle", d.gestureHandle ? "1" : "0");
   }
 
   var oc = {
@@ -801,7 +817,6 @@
       function () {
         installImeLiftStyle();
         installTopInsetStyle();
-        installBottomInsetStyle();
         if (lastInsets) doApply(lastInsets);
         window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
       },
@@ -810,7 +825,6 @@
   } else {
     installImeLiftStyle();
     installTopInsetStyle();
-    installBottomInsetStyle();
     window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
   }
   // focusin 委托：composer 是 SPA 动态挂载的，不能只绑一次。

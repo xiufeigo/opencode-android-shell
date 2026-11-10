@@ -7,21 +7,21 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 底部留白绊线：**会话面板要贴住手势小白条**，但 3 键导航不能被压住。
+ * 底部留白绊线：**白色会话底框要贴住手势小白条**，但官方输入区布局不能动。
  *
- * ### 两轮缺陷（Pixel Tablet 实测，density 2）
+ * ### 缺陷（Pixel Tablet 实测，density 2）
  *
  * | 版本 | `--oc-safe-bottom` | 视口高 | 面板底边 | 手柄上沿 | 空隙 |
  * | --- | --- | --- | --- | --- | --- |
  * | 2.0.31（整条让出） | 32 CSS px | 768 | 759 | 782 | **23** |
  * | 2.0.32（+2px 空隙） | 12 CSS px | 788 | 779 | 782 | 3 |
- * | 2.0.33（对齐手柄） | 10 CSS px | 790 | **782** | 782 | **0** |
+ * | 2.0.34（对齐手柄） | 10 CSS px | 790 | **782** | 782 | **0** |
  *
- * 2.0.32 之后用户仍觉得"留的空隙太大"：面板本身贴住了，但会话输入框在面板里
- * 还有 12px 的 dock 内边距 ⇒ 输入框底边离手柄 15px。所以 2.0.33 同时做两件事：
+ * 2.0.35：让位量不变，但首帧改用 `navigation_mode`。
+ * 2.0.36：官方 `#root.h-dvh` 在 Android WebView 里要点击才更新；改用 WebView 实高钉死。
  *
- * 1. [NavigationBarVisual] 不再为手柄保留额外空隙，面板底边直接对齐手柄上沿；
- * 2. `oc-host.js` 在手势导航下把 dock 的底内边距收到 4px（仅手势，3 键导航不动）。
+ * 只收「小白条 ↔ 白色会话底框」这一段。2.0.33 曾把 `session-composer-dock` 的
+ * `pb-3`（12px）改成 4px，等于改了 OpenCode 官方输入框和会话区的缝隙；2.0.34 撤回。
  */
 class NavigationBarVisualTest {
 
@@ -52,8 +52,25 @@ class NavigationBarVisualTest {
         // 3 键导航：tappableElement 底部 inset 等于导航栏高度。
         assertEquals("有可点按钮时必须整条让出", navPx, NavigationBarVisual.insetPx(navPx, navPx, density))
         assertEquals(96, NavigationBarVisual.insetPx(96, 72, density))
-        assertFalse("3 键导航没有手势手柄", NavigationBarVisual.hasGestureHandle(navPx))
-        assertTrue("手势导航才有手柄", NavigationBarVisual.hasGestureHandle(0))
+        assertEquals(
+            "系统设置是 3 键时，即使 tappable 还是 0 也要整条让出",
+            navPx,
+            NavigationBarVisual.insetPx(navPx, 0, density, NavigationBarMode.THREE_BUTTON),
+        )
+    }
+
+    @Test
+    fun `手势导航首帧 tappable 假抄整条导航带 仍按手柄让位`() {
+        // 首帧 tappableElement 经常等于 navigationBars，看起来像 3 键。
+        // 系统 navigation_mode=GESTURAL 必须盖过这帧假读数，否则会话面板先悬空再掉下来。
+        val inset = NavigationBarVisual.insetPx(navPx, navPx, density, NavigationBarMode.GESTURAL)
+        assertEquals(20, inset)
+        assertTrue("不得退回整条导航带", inset < navPx)
+        assertEquals(
+            "2 键同样整条让出",
+            navPx,
+            NavigationBarVisual.insetPx(navPx, 0, density, NavigationBarMode.TWO_BUTTON),
+        )
     }
 
     @Test
@@ -98,8 +115,20 @@ class NavigationBarVisualTest {
             insetsHost.contains("put(\"safeBottom\", (navBottom / d).css())"),
         )
         assertTrue(
-            "必须读 tappableElement 才能区分 3 键 / 手势导航",
+            "必须读 tappableElement 才能在系统设置缺失时区分 3 键 / 手势导航",
             insetsHost.contains("WindowInsetsCompat.Type.tappableElement()"),
+        )
+        assertTrue(
+            "必须读 navigation_mode，才能在首帧 tappable 假抄整条导航带时仍按手势让位",
+            insetsHost.contains("NavigationBarMode.read(root.context)"),
+        )
+        assertTrue(
+            "首帧 layout 后必须再 refresh 一次（decor 高度 / tappable 这时才稳）",
+            insetsHost.contains("addOnLayoutChangeListener(firstLayoutRefresh)"),
+        )
+        assertTrue(
+            "窗口高度还是 0 时不得把 pad=0 写成已提交",
+            insetsHost.contains("imeMode == ImeMode.RESIZE && windowH <= 0"),
         )
         assertTrue(
             "视口压矮也要用同一个量（否则面板与视口不同步）",
@@ -109,20 +138,50 @@ class NavigationBarVisualTest {
     }
 
     @Test
-    fun `手势导航标志透给页面 且只在手势导航收 dock 内边距`() {
+    fun `不得改写官方 composer dock 内边距`() {
+        assertFalse(
+            "不得再给页面发 gestureHandle：那是 2.0.33 用来改官方 pb-3 的通道",
+            insetsHost.contains("gestureHandle"),
+        )
+        assertFalse(
+            "oc-host.js 不得按手势导航改 session-composer-dock（官方 pb-3 必须保留）",
+            facade.contains("session-composer-dock"),
+        )
+        assertFalse("不得再安装 dock 底内边距覆盖", facade.contains("installBottomInsetStyle"))
+        assertFalse("不得再写 data-oc-gesture-handle", facade.contains("data-oc-gesture-handle"))
+    }
+
+    @Test
+    fun `根节点高度钉 WebView 实高 不靠要点击才更新的 100dvh`() {
         assertTrue(
-            "InsetsHost 必须把 hasGestureHandle 结果放进 payload",
-            insetsHost.contains("put(\"gestureHandle\", NavigationBarVisual.hasGestureHandle(tappableBottom))"),
+            "padding 落地后必须把 WebView 高度补发给页面",
+            insetsHost.contains("root.post { pushViewHeight() }"),
         )
         assertTrue(
-            "页面必须消费这个标志（写成 html 属性供 CSS 用）",
-            facade.contains("setAttribute(\"data-oc-gesture-handle\""),
+            "WebView 高度变化时也要补发（父层 padding 后的那一帧）",
+            insetsHost.contains("if (v.height > 0 && v.height != oldBottom - oldTop) pushViewHeight()"),
+        )
+        assertTrue("payload 必须带 viewHeight", insetsHost.contains("put(\"viewHeight\""))
+        assertTrue(
+            "页面必须用 --oc-view-height 盖过官方 h-dvh",
+            facade.contains("height:var(--oc-view-height,100%);"),
+        )
+        assertTrue("必须写入 CSS 变量 --oc-view-height", facade.contains("\"--oc-view-height\""))
+        assertTrue("必须给 #root 写内联高度，避免官方样式后到把 dvh 盖回来", facade.contains("rootNode.style.setProperty(\"height\", nextH)"))
+        assertTrue("viewHeight 变化时要派 resize，让会话 flex 子项跟上", facade.contains("dispatchEvent(new Event(\"resize\"))"))
+        assertTrue(
+            "resize 模式下必须把官方 --safe-area-inset-bottom 钉成 0（WebView env 是整条导航带）",
+            facade.contains("--safe-area-inset-bottom:0px"),
         )
         assertTrue(
-            "dock 内边距必须在手势导航下才收（3 键导航收会被按钮压住）",
-            facade.contains("html[data-oc-gesture-handle=\"1\"] [data-component=\"session-composer-dock\"]"),
+            "必须盖掉官方 <main> 按 env() 垫的 32px 底内边距",
+            facade.contains("resize\\\"] main{") &&
+                facade.contains("padding-bottom:0px !important;"),
         )
-        assertTrue("收内边距必须在文档开始时安装", facade.contains("installBottomInsetStyle();"))
+        assertTrue(
+            "同样钉死 --shell-safe-area-bottom，否则 <main> 仍会垫 32px",
+            facade.contains("--shell-safe-area-bottom:0px"),
+        )
     }
 
     @Test

@@ -13,6 +13,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -366,6 +367,9 @@ class WebHostActivity : AppCompatActivity() {
         val restored = savedInstanceState?.getString(STATE_URL)
         restoredUrlOrNull = restored
 
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         setupWebViewAndLoad()
 
         installBackHandler()
@@ -453,7 +457,19 @@ class WebHostActivity : AppCompatActivity() {
                 false
             }
         }
-        setContentView(webView)
+        // AppCompat 的 ContentFrameLayout 会按系统栏把 padding 改回 0 或整条导航带，
+        // 若把 WebView 直接交给 Activity 的 content，InsetsHost 写的 20px 留不住，
+        // WebView 仍是整屏 1600px，官方 env(safe-area-inset-bottom) 就按 32 CSS 再垫一次。
+        // 自己包一层，padding 落在这层上，系统栏改不到。
+        val viewportHost = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            setBackgroundColor(0xFF080808.toInt())
+        }
+        viewportHost.addView(webView)
+        setContentView(viewportHost)
         PerfMarks.mark("C.webviewCreated+setContentView")
 
         configureSettings(webView.settings)

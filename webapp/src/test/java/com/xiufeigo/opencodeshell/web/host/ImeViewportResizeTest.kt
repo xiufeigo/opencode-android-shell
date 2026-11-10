@@ -94,7 +94,20 @@ class ImeViewportResizeTest {
         val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         assertTrue("必须按 max(ime, nav) 压矮", src.contains("ImeResize.bottomPadPx("))
         assertTrue("必须作用在真正那一层上（WebView 的父）", src.contains("val p = root.parent"))
+        val activity = read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        assertTrue(
+            "必须自己包一层 viewportHost：AppCompat content 会冲掉 padding，WebView 仍是整屏",
+            activity.contains("viewportHost.addView(webView)"),
+        )
+        assertFalse(
+            "不得再把 WebView 直接塞进 AppCompat content",
+            Regex("""setContentView\(\s*webView\s*\)""").containsMatchIn(activity),
+        )
         assertTrue("必须真的下 padding", src.contains("layer.setPadding("))
+        assertTrue(
+            "WebView 必须写像素高度：父层 padding 在 Pixel Tablet 上留不住，整屏 env 仍是 32 CSS",
+            src.contains("lp.height = wantH") || src.contains("root.layoutParams"),
+        )
         assertFalse(
             "旧实现的坑：findViewById(android.R.id.content) 往下找永远找不到（content 是祖先）⇒ 恒 null ⇒ 修法从未生效",
             src.contains("findViewById<View>(android.R.id.content)"),
@@ -123,6 +136,10 @@ class ImeViewportResizeTest {
         assertTrue("新的上报必须撤掉上一个挂起的提交", src.contains("removeCallbacks(commitResizeRunnable)"))
         assertTrue("值回到已提交值时不得多压一次", src.contains("if (want == committedPadPx)"))
         assertTrue("首次必须立即生效（启动时 inset 是静态读数，等窗口没意义）", src.contains("if (committedPadPx < 0)"))
+        assertTrue(
+            "窗口高度还是 0 时不得把 pad=0 写成已提交（否则点进会话才突然让位）",
+            src.contains("imeMode == ImeMode.RESIZE && windowH <= 0"),
+        )
         assertTrue("真正落 padding 的只有一个地方", Regex("""layer\.setPadding\(""").findAll(src).count() == 1)
     }
 
