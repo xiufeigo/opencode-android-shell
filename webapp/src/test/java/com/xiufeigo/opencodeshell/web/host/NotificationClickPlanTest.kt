@@ -123,7 +123,7 @@ class NotificationClickPlanTest {
         val arg = NotifierHost.clickPlan("n1-session-777").pageArg()
 
         assertEquals(
-            "N1: 页面拿到的不该是再包一层的 JSON 串。facade 的 onOpenSession(sessionId) 把入参" +
+            "N1: 页面拿到的不该是再包一层的 JSON 串。facade 把入参" +
                 "当**裸会话 id**用；包一层 JSON 的话页面拿到 '{\"sessionId\":\"...\"}'，" +
                 "拿它当 session id 查会话必然查不到 ⇒ 点击回不到会话。" +
                 "（真机证据：research/web/NOTIFICATION_CLICK_CLOSE.md §4）",

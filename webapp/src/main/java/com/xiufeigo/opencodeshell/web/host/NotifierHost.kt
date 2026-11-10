@@ -23,7 +23,7 @@ import java.util.Base64
  *   ⇒ 已在栈里就复用同一实例并回调 `onNewIntent`，**不会**叠一层新的；
  *   这点对"从通知直接落到某个 sessionId"是必需的，否则每点一次通知多一个 Activity。
  * - 目标 sessionId 放在 extra `EXTRA_SESSION_ID`，由 `onNewIntent`/`onCreate` 取出
- *   后交给页面（`window.__ocAndroid.onOpenSession(sessionId)`）。
+ *   后交给页面（`window.__ocAndroid.__openSessionByRoute(route, sessionId)`）。
  */
 object NotifierHost {
     private const val TAG = "OcWebHost/Notify"
@@ -54,12 +54,10 @@ object NotifierHost {
         val requestCode: Int,
     ) {
         /**
-         * 交给页面的 `window.__ocAndroid.onOpenSession(…)` 的**参数原文**。
+         * 交给页面的 `window.__ocAndroid.__openSessionByRoute(route, …)` 的**参数原文**。
          *
          * 必须是 sessionId **本身**，不是 `{"sessionId":"…"}` 这种再包一层的 JSON 串：
-         * facade 的 `onOpenSession(sessionId)` 把入参当**裸字符串**用
-         * （`oc-host.js:282-291`：`sessionHandler(sessionId)` +
-         * `new CustomEvent("oc:openSession", { detail: { sessionId: sessionId } })`），
+         * facade 把入参当**裸字符串**记进 `__lastOpenSessionId` 并导航到路由，
          * 页面侧拿到的因此应当直接就是 `n1-session-777`。
          * 多包一层 ⇒ 页面拿到 `'{"sessionId":"n1-session-777"}'`，
          * 拿它去当 session id 用必然查不到会话。
@@ -124,8 +122,8 @@ object NotifierHost {
     /**
      * 点击通知时页面应当去到的**路径**（纯函数，可在单测里断言）。
      *
-     * @return null 表示"造不出可导航的路由"（缺后端 URL 或缺会话 id）⇒ 宿主保持旧行为
-     *         （仍然派发 `oc:openSession` 事件），不硬造一条必然 404 的路径。
+     * @return null 表示"造不出可导航的路由"（缺后端 URL 或缺会话 id）⇒ 宿主不导航，
+     *         不硬造一条必然 404 的路径。
      */
     fun sessionRoutePath(serverUrl: String?, sessionId: String?): String? {
         val key = serverKeyOf(serverUrl) ?: return null

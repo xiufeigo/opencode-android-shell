@@ -194,8 +194,8 @@ class NotificationSessionRouteTest {
             src.contains("SecretStore.KEY_BACKEND_URL"),
         )
         assertTrue(
-            "N2: 造不出路由时必须退回旧行为（只派发事件），不能硬造一条必然失败的路径。",
-            src.contains("if (route != null)") && src.contains("onOpenSession("),
+            "N2: 造不出路由时不许硬造一条必然失败的路径（route == null 即不发导航）。",
+            src.contains("route == null"),
         )
     }
 
@@ -213,10 +213,6 @@ class NotificationSessionRouteTest {
             "N2: facade 必须真的导航（location.assign），不能只派发事件。",
             Regex("""__openSessionByRoute[\s\S]{0,900}?location\.assign\(""").containsMatchIn(src),
         )
-        // 保留旧入口：不许为了修这条把已有监听者（事件）一起弄没了。
-        assertTrue(
-            "N2: onOpenSession 事件入口必须保留（谁监听了它都不该被这次修复弄坏）。",
-            src.contains("onOpenSession:") && src.contains("oc:openSession"),
-        )
+        // oc:openSession 事件入口已删：上游 SPA 从无监听者，属死代码清理的一部分。
     }
 }

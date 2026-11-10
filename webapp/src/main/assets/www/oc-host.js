@@ -9,10 +9,6 @@
  * 就成了自问自答。所以：
  *   - 原生对象注入名  = __ocAndroidNative（Kotlin: WebHostBridge）
  *   - 页面侧 facade   = window.__ocAndroid（本文件）
- *
- * 另附两个上游已约定的兼容入口（见 frontend/patches/android-webview-z-native-proxy.patch
- * 里的 packages/app/src/utils/android-proxy.ts）：window.OpenCodeAndroid.proxyOrigin/proxyPrefix
- * 与 window.__ocAndroidProxy。原生对象上确实实现了这两个方法，所以能对上。
  */
 (function () {
   var N = window.__ocAndroidNative;
@@ -81,9 +77,6 @@
 
   var backHandler = null;
   var insetHandler = null;
-  var fileHandler = null;
-  var saveHandler = null;
-  var sessionHandler = null;
 
   // insets 可能在 documentElement 就绪前到达，先存住，DOMContentLoaded 再补一次。
   var lastInsets = null;
@@ -429,41 +422,6 @@
       }
     },
 
-    // ---- 3. 文件 -------------------------------------------------------
-    // 选完会 dispatch 'oc:filePicked'；要字节再调 readPickedFile()。
-    pickFile: function (accept, multiple) {
-      try {
-        N.pickFile(String(accept || ""), !!multiple);
-      } catch (e) {}
-    },
-    readPickedFile: function () {
-      try {
-        return N.readPickedFile();
-      } catch (e) {
-        return '{"error":"readPickedFile failed"}';
-      }
-    },
-    // base64 直存：宿主弹 CREATE_DOCUMENT，用户选完写入。
-    saveContent: function (name, mime, base64) {
-      try {
-        N.saveContent(String(name || "download"), String(mime || "application/octet-stream"), String(base64 || ""));
-      } catch (e) {}
-    },
-    clearPickedFile: function () {
-      try {
-        N.clearPickedFile();
-      } catch (e) {}
-    },
-
-    // ---- 4. 分享 -------------------------------------------------------
-    share: function (text, title) {
-      try {
-        return N.share(String(text || ""), String(title || ""));
-      } catch (e) {
-        return false;
-      }
-    },
-
     // ---- 5. 凭据 -------------------------------------------------------
     getSecret: function (key) {
       try {
@@ -563,20 +521,6 @@
     },
 
     // ---- 通知点击回会话 ------------------------------------------------
-    onOpenSession: function (sessionId) {
-      if (typeof sessionHandler === "function") {
-        try {
-          sessionHandler(sessionId);
-        } catch (e) {}
-      }
-      window.dispatchEvent(
-        new CustomEvent("oc:openSession", { detail: { sessionId: sessionId } })
-      );
-    },
-    setOpenSessionHandler: function (fn) {
-      sessionHandler = typeof fn === "function" ? fn : null;
-    },
-
     /**
      * N2：真的把页面切到那个会话 —— 导航，不是派发事件。
      *
@@ -588,7 +532,7 @@
      * 上游自己的 openNotificationSession() 做的也是 navigate(tabHref(tab))。
      *
      * 路径由宿主算好传进来（NotifierHost.sessionRoutePath，纯函数、单测可断言），
-     * 页面侧只负责执行；事件仍然照发，不破坏任何已有监听者。
+     * 页面侧只负责执行。
      */
     __openSessionByRoute: function (route, sessionId) {
       try {
@@ -598,30 +542,6 @@
           window.location.assign(route);
         }
       } catch (e) {}
-      return oc.onOpenSession(sessionId);
-    },
-
-    onFilePicked: function (fn) {
-      fileHandler = typeof fn === "function" ? fn : null;
-    },
-    _emitFilePicked: function (payload) {
-      if (typeof fileHandler === "function") {
-        try {
-          fileHandler(payload);
-        } catch (e) {}
-      }
-      window.dispatchEvent(new CustomEvent("oc:filePicked", { detail: payload }));
-    },
-    onFileSaved: function (fn) {
-      saveHandler = typeof fn === "function" ? fn : null;
-    },
-    _emitFileSaved: function (payload) {
-      if (typeof saveHandler === "function") {
-        try {
-          saveHandler(payload);
-        } catch (e) {}
-      }
-      window.dispatchEvent(new CustomEvent("oc:fileSaved", { detail: payload }));
     },
   };
 
@@ -786,30 +706,6 @@
   window.__ocSetBackground = function (v) {
     ocBackgrounded = !!v;
   };
-
-  // 上游兼容入口（android-proxy.ts 会读这两个）
-  window.OpenCodeAndroid = {
-    proxyOrigin: function () {
-      try {
-        return N.proxyOrigin();
-      } catch (e) {
-        return "";
-      }
-    },
-    proxyPrefix: function () {
-      try {
-        return N.proxyPrefix();
-      } catch (e) {
-        return "";
-      }
-    },
-  };
-  try {
-    window.__ocAndroidProxy = {
-      origin: window.OpenCodeAndroid.proxyOrigin(),
-      prefix: window.OpenCodeAndroid.proxyPrefix(),
-    };
-  } catch (e) {}
 
   if (document.readyState === "loading") {
     document.addEventListener(

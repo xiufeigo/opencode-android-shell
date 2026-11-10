@@ -16,16 +16,9 @@ class LegacyBridgeChannel(private val bridge: WebHostBridge) {
     @Volatile private var active = true
     private val methods = mapOf<String, (JSONArray) -> Any?>(
         "hostInfo" to { bridge.hostInfo() },
-        "proxyOrigin" to { bridge.proxyOrigin() },
-        "proxyPrefix" to { bridge.proxyPrefix() },
         "hasNotificationPermission" to { bridge.hasNotificationPermission() },
         "requestNotificationPermission" to { bridge.requestNotificationPermission(); null },
         "postMessage" to { args -> bridge.postMessage(args.text(0), args.text(1), args.text(2)) },
-        "pickFile" to { args -> bridge.pickFile(args.text(0), args.getBoolean(1)); null },
-        "readPickedFile" to { bridge.readPickedFile() },
-        "clearPickedFile" to { bridge.clearPickedFile(); null },
-        "saveContent" to { args -> bridge.saveContent(args.text(0), args.text(1), args.text(2)); null },
-        "share" to { args -> bridge.share(args.text(0), args.text(1)) },
         "getSecret" to { args -> bridge.getSecret(args.text(0)) },
         "setSecret" to { args -> bridge.setSecret(args.text(0), args.text(1)) },
         "setKeepScreenOn" to { args -> bridge.setKeepScreenOn(args.getBoolean(0)); null },

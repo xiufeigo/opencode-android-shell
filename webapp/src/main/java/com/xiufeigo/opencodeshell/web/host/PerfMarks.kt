@@ -29,12 +29,4 @@ object PerfMarks {
     fun mark(name: String, detail: String) {
         Log.i(TAG, "$name t=${ms}ms $detail")
     }
-
-    /** 计时开关：默认开（debug 壳），`oc_perf=0` 可关。 */
-    @Volatile
-    var enabled: Boolean = true
-
-    fun markIfEnabled(name: String, detail: String = "") {
-        if (enabled) Log.i(TAG, "$name t=${ms}ms $detail")
-    }
 }

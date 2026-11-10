@@ -121,10 +121,10 @@ class NotificationShimTest {
             "监听器必须与 `window.Notification = ShimNotification` 在同一垫片安装块内",
             listen > install,
         )
-        // 垫片安装块在其后遇到 OpenCodeAndroid 兼容入口即结束。
-        val compat = src.indexOf("window.OpenCodeAndroid = {", install)
+        // 垫片安装块在其后遇到 DOMContentLoaded 安装块即结束。
+        val compat = src.indexOf("if (document.readyState === \"loading\")", install)
         assertTrue(
-            "监听器跑到垫片安装块之外了（应在 OpenCodeAndroid 兼容入口之前）",
+            "监听器跑到垫片安装块之外了（应在 DOMContentLoaded 安装块之前）",
             compat >= 0 && listen < compat,
         )
     }

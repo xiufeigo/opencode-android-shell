@@ -155,7 +155,6 @@ dependencies {
     // EncryptedSharedPreferences（宿主偏好不许明文落盘）
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     // UX6：回环代理已删，OkHttp 不再是依赖（WebView 自己直连后端）。
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     testImplementation("junit:junit:4.13.2")
 }
 

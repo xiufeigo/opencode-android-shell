@@ -8,5 +8,4 @@
       applyThemeCss：浅色 backgroundColor "#fafafa"），深浅都与页面协调。
     -->
     <color name="oc_host_bg">#FFFAFAFA</color>
-    <color name="ic_launcher_background">#FF080808</color>
 </resources>

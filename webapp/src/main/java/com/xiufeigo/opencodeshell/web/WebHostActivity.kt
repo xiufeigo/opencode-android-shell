@@ -72,12 +72,11 @@ class WebHostActivity : AppCompatActivity() {
          */
         const val LEGACY_PLACEHOLDER_URL = "https://$ASSET_DOMAIN$ASSET_PREFIX/www/index.html"
         private const val STATE_URL = "oc_web_url"
-        private const val STATE_SCROLL_Y = "oc_web_scroll_y"
 
         /**
          * BR1 验收用的**调试**注入通道：`--es oc_debug_eval "<js>"` 让宿主把一段 JS
          * 丢进当前页面（`evaluateJavascript`），结果打进 logcat 的 `OcWebHost/Eval`。
-         * 官方 UI 自己不会主动调 `postMessage`/`pickFile`/`share` 这些桥，没有这个
+         * 官方 UI 自己不会主动调 `postMessage`/`getSecret` 这些桥，没有这个
          * 通道就只能从 UI 点，测不到它们。
          *
          * 只在 `BuildConfig.DEBUG` 生效（release 构建直接忽略），且不写文件、不回显口令。
@@ -125,10 +124,8 @@ class WebHostActivity : AppCompatActivity() {
     private lateinit var localUiServer: LocalUiOriginServer
     private val systemFonts = SystemFontCatalog()
 
-    private var pickedUri: Uri? = null
     private lateinit var platformHost: AndroidPlatformHost
     private lateinit var legacyChannel: LegacyBridgeChannel
-    private var pendingPageScrollY: Int = 0
     private var pageReportedDark: Boolean? = null
 
     /**
@@ -300,12 +297,6 @@ class WebHostActivity : AppCompatActivity() {
             "window.dispatchEvent(new CustomEvent('oc:notifyPerm'," +
                 "{detail:'${if (granted) "granted" else "denied"}'}));"
         )
-        // 结果回给页面：onRequestResult 约定 {"notificationPermission":true|false}
-        evaluateJs(
-            "window.__ocAndroid && window.__ocAndroid.hostInfo &&" +
-                "window.dispatchEvent(new CustomEvent('oc:permission'," +
-                "{detail:{permission:'notifications',granted:$granted}}));"
-        )
     }
 
     /**
@@ -361,7 +352,6 @@ class WebHostActivity : AppCompatActivity() {
         localUiServer = (application as WebHostApp).localUiServer.also { it.start() }
         PerfMarks.mark("B2.localUiOrigin", "bound=${localUiServer.boundPort}")
 
-        pendingPageScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0) ?: 0
         // UX6：冷启动 = 直接加载真实服务器地址（官方前端由后端自托管）。
         // 恢复态的旧 URL 直接沿用（origin 现在是稳定的后端地址，不像代理端口每次必变）。
         val restored = savedInstanceState?.getString(STATE_URL)
@@ -848,52 +838,6 @@ class WebHostActivity : AppCompatActivity() {
         }, EVAL_SETTLE_MS)
     }
 
-    // ---- 文件 ------------------------------------------------------------
-    fun launchOpenFile(accept: String?, multiple: Boolean) {
-        pickedUri = null
-        val mime = accept?.substringBefore(',')?.trim().orEmpty()
-        val intent = Intent(if (multiple) Intent.ACTION_OPEN_DOCUMENT else Intent.ACTION_GET_CONTENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = if (mime.isNotEmpty()) mime else "*/*"
-            if (mime.isNotEmpty() && accept!!.contains(',')) {
-                putExtra(Intent.EXTRA_MIME_TYPES, accept.split(',').map { it.trim() }.toTypedArray())
-            }
-        }
-        fileChooser.launchOpen(intent) { uris ->
-            val first = uris.firstOrNull()
-            if (first == null) {
-                bridge.emitFilePicked(JSONObject().put("cancelled", true))
-                return@launchOpen
-            }
-            pickedUri = first
-            bridge.emitFilePicked(fileChooser.describe(first).put("multiple", multiple).put("count", uris.size))
-        }
-    }
-
-    /** 桥的 `readPickedFile()`：消费掉待读 Uri 并把内容 inline 成 base64 回给页面。 */
-    fun readPickedInline(): String {
-        val uri = consumePickedUri()
-            ?: return JSONObject().put("error", "no pending file").toString()
-        return fileChooser.readInline(uri).toString()
-    }
-
-    fun consumePickedUri(): Uri? {
-        val u = pickedUri
-        pickedUri = null
-        return u
-    }
-
-    fun clearPickedUri() {
-        pickedUri = null
-    }
-
-    fun launchSave(name: String?, mime: String?, base64: String?) {
-        val b64 = base64.orEmpty()
-        fileChooser.launchSave(name?.takeIf { it.isNotBlank() } ?: "download", mime?.takeIf { it.isNotBlank() } ?: "application/octet-stream", b64) { result ->
-            bridge.emitFileSaved(result)
-        }
-    }
-
     // ---- 杂项 ------------------------------------------------------------
     fun evaluateJs(js: String) {
         if (!::webView.isInitialized) return
@@ -905,7 +849,6 @@ class WebHostActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         if (::webView.isInitialized) {
             outState.putString(STATE_URL, webView.url ?: bootUrl())
-            outState.putInt(STATE_SCROLL_Y, webView.scrollY)
         }
     }
 
@@ -1070,7 +1013,7 @@ class WebHostActivity : AppCompatActivity() {
      * 比"启动即弹"合理得多（后者既突兀又与用户心智无关）。
      *
      * 复用既有链：[requestNotificationPermission] → 同一个 `notificationPermission`
-     * launcher（:238）→ 同一个结果回调（打日志 + 派 `oc:permission`）。**没有新造申请链。**
+     * launcher（:238）→ 同一个结果回调（打日志 + 派 `oc:notifyPerm`）。**没有新造申请链。**
      * 上游闸门里那条 `requestPermission()` 路径保持不变（shim 会短路成 granted）。
      */
     fun requestNotificationPermissionOnRoundStart() {
@@ -1428,7 +1371,7 @@ class WebHostActivity : AppCompatActivity() {
             params: FileChooserParams,
         ): Boolean {
             // 自己拿 Uri[]，因此不用 callback.onReceiveValue 的标准 parseResult 路径，
-            // 而是让 SAF 结果走 bridge → JS 的 `oc:filePicked` 事件。
+            // 而是由 fileChooser 统一收 SAF 结果后回灌标准 callback。
             val intent = params.createIntent().apply {
                 if (params.acceptTypes.isNotEmpty()) {
                     val types = params.acceptTypes.filter { it.isNotBlank() }

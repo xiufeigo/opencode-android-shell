@@ -1,12 +1,9 @@
 package com.xiufeigo.opencodeshell.web.host
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.util.Log
-import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import androidx.core.content.ContextCompat
 import com.xiufeigo.opencodeshell.web.WebHostActivity
@@ -39,25 +36,7 @@ class WebHostBridge(
             SecretStore.getSecret(ctx, SecretStore.KEY_BACKEND_URL)
         }.getOrNull() ?: SecretStore.DEFAULT_BACKEND_URL)
         put("scheme", "WebHostSkeleton/1")
-        put("proxyOrigin", PROXY_ORIGIN)
-        put("proxyPrefix", PROXY_PREFIX)
-        put("maxInlineBytes", FileChooserHost.MAX_INLINE_BYTES)
     }.toString()
-
-    // 上游 android-proxy.ts 约定：把真实后端 URL 改写到应用内回环代理上。
-    //
-    // UX6：回环代理已删，这里恒返回空串 —— 打了补丁的上游前端
-    // （frontend/patches/android-webview-z-native-proxy.patch 的 readAndroidProxyConfig）
-    // 要求 origin 与 prefix **都非空**才改写；两者皆空 ⇒ 前端用真实 URL 直连，
-    // 正好是本架构（页面 origin == 后端 origin）的行为。
-    private val PROXY_ORIGIN: String get() = ""
-    private val PROXY_PREFIX = ""
-
-    @JavascriptInterface
-    fun proxyOrigin(): String = PROXY_ORIGIN
-
-    @JavascriptInterface
-    fun proxyPrefix(): String = PROXY_PREFIX
 
     // ---- 1. 通知 ---------------------------------------------------------
     /** @return 1=已授权 0=未授权 -1=Android 13+ 不可用 */
@@ -86,45 +65,6 @@ class WebHostBridge(
 
     // ---- 2. 返回（宿主用 evaluateJavascript 调 __ocAndroid.onBack()）------
     // 这里不放 onBack：它是"问页面"的回调，facade 里定义。见 oc-host.js。
-
-    // ---- 3. 文件 ---------------------------------------------------------
-    @JavascriptInterface
-    fun pickFile(accept: String?, multiple: Boolean) {
-        ctx.runOnUiThread { ctx.launchOpenFile(accept, multiple) }
-    }
-
-    /** @return JSON：{uri,name,size,base64,truncated} 或 {error} */
-    @JavascriptInterface
-    fun readPickedFile(): String = ctx.readPickedInline()
-
-    @JavascriptInterface
-    fun clearPickedFile() {
-        ctx.clearPickedUri()
-    }
-
-    @JavascriptInterface
-    fun saveContent(name: String?, mime: String?, base64: String?) {
-        ctx.runOnUiThread { ctx.launchSave(name, mime, base64) }
-    }
-
-    // ---- 4. 分享 ---------------------------------------------------------
-    @JavascriptInterface
-    fun share(text: String?, title: String?): Boolean {
-        val t = text.orEmpty()
-        if (t.isBlank()) return false
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, t)
-            title?.takeIf { it.isNotBlank() }?.let { putExtra(Intent.EXTRA_SUBJECT, it) }
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val chooser = Intent.createChooser(send, title?.takeIf { it.isNotBlank() } ?: "分享").apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        return runCatching { ctx.startActivity(chooser); true }
-            .onFailure { Log.w(TAG, "share failed", it) }
-            .getOrDefault(false)
-    }
 
     // ---- 5. 宿主偏好 -------------------------------------------------------
     // ⚠ UX6：这里**没有**任何口令读写。回环代理已删，宿主不持有凭据；
@@ -233,9 +173,7 @@ class WebHostBridge(
      *
      * 🔴 N1 修掉的 bug：原先这里把 sessionId **再包一层 JSON** 才发给页面——
      * `JSONObject().put("sessionId", id).toString()` 得到 `'{"sessionId":"n1-x"}'`，
-     * 于是 `onOpenSession()` 收到的入参是这个**字符串**而不是会话 id 本身。
-     * facade 的 `onOpenSession(sessionId)` 把入参当裸 id 用
-     * （`oc-host.js:282-291`），页面最终拿到
+     * 于是页面侧收到的入参是这个**字符串**而不是会话 id 本身：
      * `e.detail.sessionId === '{"sessionId":"n1-session-777"}'`，
      * 拿它当 session id 去查会话必然查不到 ⇒ **"点击回到会话"名存实亡**。
      *
@@ -247,8 +185,7 @@ class WebHostBridge(
      * `openNotificationSession()`（`shell/notifications/notification.tsx:54-59`）
      * 做的也正是 `navigate(tabHref(tab))` —— **导航，而不是派发事件**。
      *
-     * 所以这里改成：**宿主自己算出目标路由，让 facade 去导航**；
-     * 事件仍然照发（不破坏任何可能已经监听了它的东西）。
+     * 所以这里改成：**宿主自己算出目标路由，让 facade 去导航**。
      * 路径由 [NotifierHost.sessionRoutePath] 纯函数产出，可在单测里断言。
      * 真机证据见 `research/web/NOTIFICATION_CLICK_ROOTCAUSE.md`。
      */
@@ -257,34 +194,15 @@ class WebHostBridge(
         val backendUrl = runCatching {
             SecretStore.getSecret(ctx, SecretStore.KEY_BACKEND_URL)
         }.getOrNull() ?: SecretStore.DEFAULT_BACKEND_URL
-        // 造得出路由就导航（真回会话）；造不出就退回旧行为（只派发事件，不硬造 404 路径）。
+        // 造得出路由就导航（真回会话）；造不出就不硬造一条必然 404 的路径。
         val route = NotifierHost.sessionRoutePath(backendUrl, arg)
         Log.i(TAG, "deliverOpenSession session=$arg route=${route ?: "<none>"}")
+        if (route == null) return
         ctx.runOnUiThread {
-            if (route != null) {
-                ctx.evaluateJs(
-                    "window.__ocAndroid && window.__ocAndroid.__openSessionByRoute(" +
-                        "${quote(route)}, ${quote(arg)});"
-                )
-            } else {
-                ctx.evaluateJs(
-                    "window.__ocAndroid && window.__ocAndroid.onOpenSession(${quote(arg)});"
-                )
-            }
-        }
-    }
-
-    fun emitFilePicked(payload: JSONObject) {
-        val p = payload.toString()
-        ctx.runOnUiThread {
-            ctx.evaluateJs("window.__ocAndroid && window.__ocAndroid._emitFilePicked(${quote(p)});")
-        }
-    }
-
-    fun emitFileSaved(payload: JSONObject) {
-        val p = payload.toString()
-        ctx.runOnUiThread {
-            ctx.evaluateJs("window.__ocAndroid && window.__ocAndroid._emitFileSaved(${quote(p)});")
+            ctx.evaluateJs(
+                "window.__ocAndroid && window.__ocAndroid.__openSessionByRoute(" +
+                    "${quote(route)}, ${quote(arg)});"
+            )
         }
     }
 

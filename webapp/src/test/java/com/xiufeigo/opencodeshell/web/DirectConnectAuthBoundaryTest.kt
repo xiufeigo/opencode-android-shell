@@ -191,11 +191,12 @@ class DirectConnectAuthBoundaryTest {
 
     @Test
     fun bridgeCarriesNoProxyOrigin() {
-        assertTrue(
-            "桥上的 proxyOrigin/proxyPrefix 必须恒空串（打了补丁的上游前端" +
-                "要求 origin 与 prefix 都非空才改写；恒空 ⇒ 前端直连真实 URL）",
-            bridgeSrc.contains("private val PROXY_ORIGIN: String get() = \"\"") &&
-                bridgeSrc.contains("private val PROXY_PREFIX = \"\""),
+        // 代理兼容面已整体删除（消费它的上游 patch 从不被应用，打包 UI 内零引用）：
+        // 桥上不应再出现 proxyOrigin/proxyPrefix 的任何形态。
+        assertFalse(
+            "代理兼容面已删：桥上不应再出现 proxyOrigin/proxyPrefix（含 PROXY_* 常量）",
+            bridgeSrc.contains("proxyOrigin") || bridgeSrc.contains("proxyPrefix") ||
+                bridgeSrc.contains("PROXY_ORIGIN") || bridgeSrc.contains("PROXY_PREFIX"),
         )
     }
 
