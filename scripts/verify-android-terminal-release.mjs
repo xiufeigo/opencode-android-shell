@@ -334,8 +334,12 @@ class MockPtySocket {
       else if (opcode === 0x8) {
         this.socket?.end()
         return
-      } else if (opcode === 0x1) this.received.push(payload.toString("utf8"))
+      } else this.handleFrame(opcode, payload)
     }
+  }
+  /** The legacy pty protocol only sends text frames; the persistent one sends framed binary. */
+  handleFrame(opcode, payload) {
+    if (opcode === 0x1) this.received.push(payload.toString("utf8"))
   }
   send(text) {
     if (!this.socket || this.socket.destroyed) return false
@@ -388,6 +392,48 @@ class MockPtySocket {
   }
 }
 
+/**
+ * A persistent-PTY connection (the v2.2.7 terminal protocol, read from
+ * packages/client/src/solid/pty.ts and packages/gui-plugins/src/terminal/
+ * connection-machine.ts):
+ *   server -> client output: raw binary websocket frames,
+ *   server -> client control: JSON text frames ({type:"attached"|"replay_complete"|...}),
+ *   client -> server: binary frames [op:u8][cols:u16][rows:u16][data] where op 1
+ *   carries input bytes and op 0 is a size/takeover frame.
+ * The client fails the attach with "outdated" unless `inputProtocol` is 1.
+ */
+class MockPersistentPtySocket extends MockPtySocket {
+  constructor(id, log, info) {
+    super(id, log)
+    this.info = info
+  }
+  /** Terminal output goes out as a binary frame; the client routes ArrayBuffers to the screen. */
+  write(text) {
+    if (!this.socket || this.socket.destroyed) return false
+    this.socket.write(wsFrame(Buffer.from(String(text), "utf8"), 0x2))
+    return true
+  }
+  /** JSON control message (attached / replay_complete / resized / ...). */
+  sendControl(message) {
+    const text = JSON.stringify(message)
+    this.sent.push(text)
+    if (!this.socket || this.socket.destroyed) return false
+    this.socket.write(wsFrame(text, 0x1))
+    return true
+  }
+  handleFrame(opcode, payload) {
+    if (opcode === 0x1) {
+      this.received.push(payload.toString("utf8"))
+      return
+    }
+    if (opcode !== 0x2 || payload.length < 5) return
+    const cols = payload.readUInt16BE(1)
+    const rows = payload.readUInt16BE(3)
+    if (cols > 0 && rows > 0) this.info.size = { cols, rows }
+    if (payload[0] === 1) this.received.push(payload.subarray(5).toString("utf8"))
+  }
+}
+
 function corsHeaders(req) {
   const origin = req.headers.origin || "*"
   return {
@@ -408,6 +454,8 @@ function startBackend() {
     workspace: null,
     sessionId: null,
     ptys: new Map(),
+    // Persistent PTYs (v2.2.7 terminal protocol), keyed by id.
+    persistentPtys: new Map(),
     sockets: new Map(),
     // Every socket ever opened per PTY: a reconnect must not erase what the
     // previous connection pushed, or "how many times did the backend send the
@@ -648,6 +696,74 @@ function startBackend() {
       send({ location: { directory: state.workspace }, data: pty })
     }
 
+    // --- persistent PTY (the v2.2.7 terminal protocol) -----------------------
+    // Paths and envelopes mirror packages/client/src/promise/generated/client.ts
+    // persistentPty.*: list/create return { data }, remove/shutdown are 204-empty,
+    // handoff is the raw { handoff } body. Without these the panel's create call
+    // falls into the permissive tail, decodes [] instead of an info object, and
+    // the terminal strip never opens.
+    else if (/^\/api\/experimental\/session\/[^/]+\/terminal\/read$/.test(p)) {
+      send({ data: null })
+    } else if (/^\/api\/experimental\/session\/[^/]+\/terminal$/.test(p)) {
+      const sessionID = decodeURIComponent(p.split("/")[4])
+      if (method === "POST") {
+        bodyJson(req, (body) => {
+          const id = `pty_${crypto.randomUUID().slice(0, 10)}`
+          state.ptyLogs.set(id, newPtyLog())
+          const patch = { cwd: typeof body.cwd === "string" ? body.cwd : state.workspace }
+          if (typeof body.title === "string") patch.title = body.title
+          if (typeof body.command === "string") patch.command = body.command
+          if (Array.isArray(body.args)) patch.args = body.args
+          if (body.size?.cols > 0 && body.size?.rows > 0) patch.size = { cols: body.size.cols, rows: body.size.rows }
+          const info = persistentPtyInfo(id, sessionID, patch)
+          state.persistentPtys.set(id, info)
+          sseEmit(state, { type: "persistent-pty.added", data: { sessionID, terminal: info } })
+          send({ data: info })
+        })
+        return
+      }
+      send({ data: [...state.persistentPtys.values()].filter((pty) => pty.sessionID === sessionID) })
+    } else if (p === "/api/experimental/persistent-pty/shutdown" && method === "POST") {
+      res.writeHead(204, cors)
+      res.end()
+    } else if (p === "/api/experimental/persistent-pty/handoff" && method === "POST") {
+      send({ handoff: null })
+    } else if (/^\/api\/experimental\/persistent-pty\/[^/]+\/connect-token$/.test(p) && method === "POST") {
+      send({ data: { ticket: crypto.randomUUID(), expires_in: 60 } })
+    } else if (/^\/api\/experimental\/persistent-pty\/[^/]+\/snapshot$/.test(p)) {
+      const id = decodeURIComponent(p.split("/")[4])
+      const log = state.ptyLogs.get(id) || newPtyLog()
+      state.ptyLogs.set(id, log)
+      const info = state.persistentPtys.get(id) || persistentPtyInfo(id, state.sessionId, { cwd: state.workspace })
+      info.output = { head: log.bufferCursor, tail: log.cursor }
+      state.persistentPtys.set(id, info)
+      send({ data: { info, text: log.history, checkpoint: "", cursor: { x: 0, y: 0 } } })
+    } else if (/^\/api\/experimental\/persistent-pty\/[^/]+$/.test(p)) {
+      const id = decodeURIComponent(p.split("/").pop())
+      const info = state.persistentPtys.get(id)
+      if (!info) {
+        send({ error: `persistent pty ${id} not found` }, 404)
+        return
+      }
+      if (method === "DELETE") {
+        state.persistentPtys.delete(id)
+        sseEmit(state, { type: "persistent-pty.removed", data: { sessionID: info.sessionID, ptyID: id } })
+        res.writeHead(204, cors)
+        res.end()
+        return
+      }
+      if (method === "PUT" || method === "PATCH") {
+        bodyJson(req, (body) => {
+          if (typeof body.title === "string") info.title = body.title
+          if (body.size?.cols > 0 && body.size?.rows > 0) info.size = { cols: body.size.cols, rows: body.size.rows }
+          sseEmit(state, { type: "persistent-pty.updated", data: { sessionID: info.sessionID, terminal: info } })
+          send({ data: info })
+        })
+        return
+      }
+      send({ data: info })
+    }
+
     // Permissive tail: the UI treats most sync endpoints as optional, so an
     // empty-but-valid { data: [] } envelope keeps the shell alive instead of
     // hard-failing. A bare {} trips the generated schema decoder and drops the
@@ -657,7 +773,8 @@ function startBackend() {
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url || "/", "http://127.0.0.1")
-    const match = /^\/(?:api\/)?pty\/([^/]+)\/connect$/.exec(url.pathname)
+    const experimental = /^\/api\/experimental\/persistent-pty\/([^/]+)\/connect$/.exec(url.pathname)
+    const match = experimental || /^\/(?:api\/)?pty\/([^/]+)\/connect$/.exec(url.pathname)
     if (!match) {
       socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
       socket.destroy()
@@ -680,6 +797,34 @@ function startBackend() {
       ].join("\r\n"),
     )
     const id = match[1]
+    if (experimental) {
+      const info = state.persistentPtys.get(id) || persistentPtyInfo(id, state.sessionId, { cwd: state.workspace })
+      state.persistentPtys.set(id, info)
+      const log = state.ptyLogs.get(id) || newPtyLog()
+      state.ptyLogs.set(id, log)
+      const sock = new MockPersistentPtySocket(id, log, info)
+      state.sockets.set(id, sock)
+      if (!state.socketLog.has(id)) state.socketLog.set(id, [])
+      state.socketLog.get(id).push(sock)
+      record({ path: url.pathname, status: 101, via: "backend:persistent-pty-ws" })
+      sock.attach(socket)
+      // attached must arrive before output so the state machine leaves "restoring";
+      // inputProtocol 1 is the only version the client accepts.
+      sock.sendControl({ type: "attached", inputProtocol: 1, info: { size: info.size }, role: "controller" })
+      const requested = Number(url.searchParams.get("cursor"))
+      const replay = sock.replayFrom(Number.isSafeInteger(requested) ? requested : 0)
+      sock.sendControl({ type: "replay_complete" })
+      state.replays.push({
+        ptyId: id,
+        protocol: "persistent",
+        requestedCursor: Number.isSafeInteger(requested) ? requested : null,
+        from: replay.from,
+        replayBytes: replay.bytes,
+        endCursor: log.cursor,
+      })
+      if (head && head.length) socket.unshift(head)
+      return
+    }
     /* Cursor protocol, read from the real client and server:
      *   client  packages/app/src/session/terminal/terminal.tsx:225
      *            `seek = start !== undefined ? start : restore ? -1 : 0`
@@ -762,6 +907,45 @@ function ptyInfo(id, patch = {}) {
     pid: 4242,
     ...patch,
   }
+}
+
+// Schema-exact against generated PersistentPtyInfo: adds sessionID, userTitle,
+// foregroundProcess, size and output cursors to the Pty.Info fields.
+function persistentPtyInfo(id, sessionID, patch = {}) {
+  return {
+    id,
+    title: "Terminal 1",
+    command: "/bin/sh",
+    args: [],
+    cwd: "",
+    status: "running",
+    pid: 4242,
+    sessionID,
+    userTitle: null,
+    foregroundProcess: null,
+    size: { cols: 80, rows: 24 },
+    output: { head: 0, tail: 0 },
+    ...patch,
+  }
+}
+
+/** Broadcasts a {id, created, type, data} event envelope to every SSE subscriber. */
+function sseEmit(state, event) {
+  const line = `data: ${JSON.stringify({ id: `evt_${crypto.randomUUID()}`, created: Date.now(), ...event })}\n\n`
+  for (const res of state.sse) res.write(line)
+}
+
+/** Reads a JSON request body once; always calls back with an object. */
+function bodyJson(req, cb) {
+  const chunks = []
+  req.on("data", (c) => chunks.push(c))
+  req.on("end", () => {
+    let body = {}
+    try {
+      body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
+    } catch {}
+    cb(body && typeof body === "object" ? body : {})
+  })
 }
 
 function listen(server) {
