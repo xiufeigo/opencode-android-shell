@@ -19,6 +19,62 @@
   if (!N) return;
   window.__ocTerminalEngine = "xterm";
 
+  // ======================================================================
+  // 内置 UI 的 service worker 清理（APK 升级路径）
+  //
+  // 官方 Web 产物在 load 后注册 /sw.js，把整套 chunk 预缓存起来。Android 的 UI
+  // 就在 APK 里、由本机 127.0.0.1 提供，预缓存没有收益；而 `skipWaiting: false`
+  // 会让**旧包**的 worker 在升级后继续接管导航，直到所有旧页面关闭 —— 期间页面
+  // 可能拿到上一版的 index.html 与已删除的 chunk（实测出现过整页报错白屏）。
+  //
+  // 这里在文档开始（早于页面脚本）做一次性清理：
+  //   1. 反注册所有 service worker（含旧版本遗留的）；
+  //   2. 删除 Cache Storage 里的预缓存，释放磁盘；
+  //   3. 若**当前文档**正被旧 worker 接管，重载一次，让 APK 里的新页面重新出图。
+  // 用 sessionStorage 标记避免重载循环；页面自身不再注册 SW（见
+  // frontend/android/upstream.patch 的 entry.tsx：`!android && ...`）。
+  // ======================================================================
+  (function purgeEmbeddedUiCache() {
+    var marker = "oc.android.embeddedUiCache";
+    try {
+      if (sessionStorage.getItem(marker) === "purged") return;
+    } catch (e) {}
+    var controlled = false;
+    try {
+      controlled = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+    } catch (e) {}
+    var work = [];
+    try {
+      if (navigator.serviceWorker) {
+        work.push(navigator.serviceWorker.getRegistrations().then(function (list) {
+          return Promise.all(list.map(function (registration) {
+            try {
+              return registration.unregister();
+            } catch (e) {
+              return false;
+            }
+          }));
+        }));
+      }
+    } catch (e) {}
+    try {
+      if (window.caches) {
+        work.push(caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (key) {
+            return caches.delete(key);
+          }));
+        }));
+      }
+    } catch (e) {}
+    if (!work.length) return;
+    Promise.all(work).then(function () {
+      try {
+        sessionStorage.setItem(marker, "purged");
+      } catch (e) {}
+      if (controlled) location.reload();
+    }, function () {});
+  })();
+
   var backHandler = null;
   var insetHandler = null;
   var fileHandler = null;

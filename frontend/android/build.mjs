@@ -56,7 +56,7 @@ await run("git", ["checkout", "--force", "--detach", pin.commit])
 // --eol reads blobs: scanning excluded workspaces would defeat partial clone.
 const sourcePaths = [":(top,glob)*", "patches", ...workspaces.map(name => `packages/${name}`), "packages/desktop/icons"]
 console.log("[android-ui] Verify checked-out source line endings")
-const converted = execFileSync("git", ["ls-files", "--eol", "-z", "--", ...sourcePaths], { cwd: checkout, encoding: "utf8" })
+const converted = execFileSync("git", ["ls-files", "--eol", "-z", "--", ...sourcePaths], { cwd: checkout, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
   .split("\0").filter(row => /^i\/lf\s+w\/(crlf|mixed)\s/.test(row)).map(row => row.split("\t")[1])
 for (const name of converted) {
   const filename = path.resolve(checkout, name)

@@ -45,9 +45,11 @@ android {
         //    Android 侧改为跟随官方服务端终端模型，并重放/适配 upstream.patch 与 ui.patch。
         // 58 官方 UI 升到 2.2.6（侧边栏分组、标签页批量关闭、MCP 登录、插件加载、会话导入等），
         //    Android 侧在纯净 2.2.6 上重做 upstream.patch 与 ui.patch，并补齐 48 条新中文。
-        versionCode = 58
+        // 59 平板/手机统一桌面输入框（关闭官方触屏操作栏，去掉底部多出的一行）；
+        //    内置 UI 不再注册 service worker，并在文档开始清理旧包遗留的 worker 与预缓存。
+        versionCode = 59
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.30"
+        versionName = "2.0.31"
     }
 
     signingConfigs {

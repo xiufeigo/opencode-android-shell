@@ -1148,3 +1148,21 @@ index de7b083..8e38048 100644
    "ui.scrollView.ariaLabel": "可捲動內容",
  
    "ui.tool.read": "讀取",
+diff --git a/packages/app/src/composer/editor/editor.tsx b/packages/app/src/composer/editor/editor.tsx
+index ee7d835..836dc03 100644
+--- a/packages/app/src/composer/editor/editor.tsx
++++ b/packages/app/src/composer/editor/editor.tsx
+@@ -110,8 +110,11 @@ export function ComposerEditor(props: ComposerEditorProps) {
+   const [overflow, setOverflow] = createStore({ start: false, end: false })
+   // A history preview holds the composer at the height it had when the list opened.
+   const historyHeight = createMemo(() => composerHistoryPreviewHeight(state))
+-  // Phones and tablets, whatever their width: a narrow desktop window keeps the desktop composer.
+-  const touch = createMediaQuery("(hover: none) and (pointer: coarse)")
++  // Android: the WebView reports `pointer: coarse` for touch, which would select the
++  // docked touch action bar and portal it below the session as an extra row. The
++  // desktop layout (inline composer actions) ships on every Android device, so this
++  // stays off unconditionally. Upstream: "(hover: none) and (pointer: coarse)".
++  const touch = () => false
+   // The shell's slot at the bottom of the screen; without one (a story), the touch bar stays under the composer.
+   const [dock, setDock] = createSignal<HTMLElement>()
+ 

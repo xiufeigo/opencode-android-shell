@@ -2,6 +2,8 @@
 
 `upstream.json` 是当前 Android UI 唯一版本来源：官方仓库、提交 SHA、UI 版本、Bun 版本。`OPENCODE_APP_VERSION` 仅描述旧 `app/` 资产，不用于 `webapp/`。
 
+升级基线只取官方**正式 release tag**，不使用 `dev` 分支。原因是该仓库 `dev` 频繁 rebase，同一改动会以多个提交重复出现，提交标题无法当作变更清单（`--first-parent` 三天内可达上千个提交），既不能作为 diff 基线也不能作为发版依据。`upstream.json` 的 `commit` 必须是某个正式 tag 的提交；历史上 2.0.26 → 2.2.6 每一轮都是如此，且不追求每个 tag 都跟（允许跳过中间版本）。核对上游增量时若临时参考 `dev`，只用于观察趋势，不写入 `upstream.json`、不据此改补丁。
+
 `build.mjs` 创建独立 sparse checkout，每次构建固定工作区及 Desktop 图标目录范围，校验版本，应用可审核的源码补丁，冻结安装官方 lockfile，再执行 app 和 GUI 扩展的生产源码类型检查与 Vite 构建。核对上游时临时加入其他包也不能污染下一次构建的 Tailwind 扫描。类型检查排除上游测试和 Storybook 示例，它们依赖未纳入 Android 构建的测试工作区。Windows 会把 Git 的文本 symlink 还原为目标字节。
 
 只需要运行：
@@ -79,5 +81,7 @@ Android 字体选择器通过系统 `SystemFonts` 枚举通用字体，并额外
 触屏设备不具备悬停时，侧栏新增按钮常显。连接页使用的 `URL.parse` 在旧 Android WebView 中缺失，沿用上游 `runtime/polyfills.ts` 的 core-js 兼容入口，并在构建中验证原生 API 缺失的启动场景。
 
 APK 内的 `ui/opencode-build.json` 记录来源；`/_assets/` 在磁盘映射为 `oa/`，避免 Android 资产合并过滤下划线目录。构建完全成功后才替换资产。CI 检查修改、删除和未跟踪的生成文件，避免漏提交新 chunk。
+
+内置 UI 不注册官方 service worker：`upstream.patch` 在 `entry.tsx` 把注册条件改成 `!android`，Web 分发（`platform: web`）保持官方 PWA 行为。原因是 Android 的页面由本机 127.0.0.1 提供，workbox 预缓存没有收益；而 `skipWaiting: false` 会让**上一版 APK** 的 worker 在覆盖安装后继续接管导航，页面可能拿到旧 `index.html` 与已随旧包删除的 chunk（出现过整页 `ReferenceError` 白屏）。`oc-host.js` 在文档开始（早于页面脚本）反注册所有 worker、删除 Cache Storage，并在当前文档仍被旧 worker 接管时重载一次（`sessionStorage` 标记防循环）。`EmbeddedUiServiceWorkerTest` 钉住三件事与防止撤回，`platform: web` 的注册行必须保留。
 
 升级上游时先更新 pin、审核源补丁及 SDK 合同，完成类型检查、Android 单测、构建、手机/平板回归后再发布。

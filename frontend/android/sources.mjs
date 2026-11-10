@@ -58,7 +58,7 @@ export async function applyAndroidSources(checkout, here) {
   // Windows Git can check symlinks out as plain text. Resolve the tracked link
   // graph explicitly so type declarations and public images remain real files.
   if (process.platform !== "win32") return
-  const links = new Map(execFileSync("git", ["ls-files", "--stage", "-z"], { cwd: checkout, encoding: "utf8" })
+  const links = new Map(execFileSync("git", ["ls-files", "--stage", "-z"], { cwd: checkout, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
     .split("\0").filter(row => row.startsWith("120000 ")).map(row => [row.split("\t")[1], row.split(" ")[1]]))
   const bytes = async name => {
     const hash = links.get(name)

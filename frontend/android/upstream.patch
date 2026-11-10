@@ -1,5 +1,5 @@
 diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
-index 969f506..80c15f2 100644
+index 969f506..8ad0e2a 100644
 --- a/packages/app/src/entry.tsx
 +++ b/packages/app/src/entry.tsx
 @@ -7,6 +7,8 @@ import { AppBaseProviders, AppInterface } from "@/app"
@@ -11,17 +11,25 @@ index 969f506..80c15f2 100644
  import { isStandalone, PwaRoutePersistence, restorePwaRoute } from "@/runtime/platform/pwa"
  import { KeyboardInsets } from "@/runtime/platform/keyboard"
  import en from "@/runtime/i18n/en"
-@@ -51,6 +53,9 @@ const clearAuthToken = () => {
+@@ -51,8 +53,15 @@ const clearAuthToken = () => {
  
  // package.json carries the last stable version on every channel, so the server's build passes its own release.
  const web = createWebPlatform(import.meta.env.VITE_OPENCODE_VERSION ?? pkg.version)
+-
+-if (import.meta.env.PROD && "serviceWorker" in navigator) {
 +const android = import.meta.env.VITE_OPENCODE_PLATFORM === "android"
 +if (android) prepareEmbeddedServerStorage(localStorage, location.origin)
 +const platform = android ? createAndroidPlatform(web.platform) : web.platform
- 
- if (import.meta.env.PROD && "serviceWorker" in navigator) {
++
++// Android ships the UI inside the APK and hosts it on the loopback origin, so a
++// precache outlives an upgrade: the previous worker (skipWaiting is off) keeps
++// answering navigations from the old build, and its chunks vanish with the next
++// APK. The host clears that worker at document start; never register it again.
++if (!android && import.meta.env.PROD && "serviceWorker" in navigator) {
    window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
-@@ -99,7 +104,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+ }
+ 
+@@ -99,7 +108,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
  
      render(
        () => (
