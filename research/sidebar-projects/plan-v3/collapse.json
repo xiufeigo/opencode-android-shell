@@ -1,4 +1,0 @@
-[
-  { "click": "[data-action=vertical-sidebar-collapse]" },
-  { "wait": 500 }
-]

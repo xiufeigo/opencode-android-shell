@@ -1,6 +1,6 @@
 # 官方源码构建
 
-`upstream.json` 是当前 Android UI 唯一版本来源：官方仓库、提交 SHA、UI 版本、Bun 版本。`OPENCODE_APP_VERSION` 仅描述旧 `app/` 资产，不用于 `webapp/`。
+`upstream.json` 是当前 Android UI 唯一版本来源：官方仓库、提交 SHA、UI 版本、Bun 版本。旧 `app/` 资产链（`frontend/OPENCODE_APP_VERSION`、`frontend/patches/`）已随旧模块删除。
 
 升级基线只取官方**正式 release tag**，不使用 `dev` 分支。原因是该仓库 `dev` 频繁 rebase，同一改动会以多个提交重复出现，提交标题无法当作变更清单（`--first-parent` 三天内可达上千个提交），既不能作为 diff 基线也不能作为发版依据。`upstream.json` 的 `commit` 必须是某个正式 tag 的提交；历史上 2.0.26 → 2.2.6 每一轮都是如此，且不追求每个 tag 都跟（允许跳过中间版本）。核对上游增量时若临时参考 `dev`，只用于观察趋势，不写入 `upstream.json`、不据此改补丁。
 

@@ -1,1 +1,0 @@
-(function(){var e=new KeyboardEvent("keydown",{key:"`",code:"Backquote",ctrlKey:true,bubbles:true,cancelable:true,composed:true});document.dispatchEvent(e);return "dispatched ctrl+backquote keydown"})()

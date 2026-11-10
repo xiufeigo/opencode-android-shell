@@ -80,7 +80,7 @@ node scripts/verify-android-terminal-release.mjs
 - `frontend/embedded-ui/`：服务器迁移和触屏拖动的共享逻辑。
 - `plugins/server-browser/`：OpenCode 服务端 Chromium 插件与共享 RPC 契约。
 - `frontend/remote-browser/`、`frontend/web/`：Android/Web 共用浏览器面板与 Web 分发。
-- `app/`、`frontend/patches/`、`frontend/OPENCODE_APP_VERSION`：旧原生/旧 WebView 方案，不驱动当前发布。
+- `app/`、`frontend/patches/` 旧原生/旧 WebView 方案已删除，历史见 tag `archive/pre-cleanup-2.0.37`。
 - `research/desktop-parity/`：本轮对比、实现范围和验证记录。
 
 MIT。复用的 OpenCode 源码遵循其仓库许可证。

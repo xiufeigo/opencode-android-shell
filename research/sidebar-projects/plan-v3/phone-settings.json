@@ -1,4 +1,0 @@
-[
-  { "click": "[data-action=mobile-settings]" },
-  { "wait": 800 }
-]

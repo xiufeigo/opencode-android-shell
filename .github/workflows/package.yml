@@ -116,11 +116,9 @@ jobs:
             (cd "$folder" && zip -rq "$archive" .)
           done
 
-      # The product is the web shell (:webapp). The legacy native shell
-      # (:app) is intentionally NOT tested here: dozens of its tests depend
-      # on gitignored device-capture fixtures (research/v97_verify/**) that
-      # do not exist on a clean checkout and fail by design. Build it locally
-      # if you need it.
+      # The product is the only module: the web shell (:webapp). The legacy
+      # native shell (:app) was removed from the build; its history lives on
+      # tag archive/pre-cleanup-2.0.37.
       - name: Unit tests
         env:
           DEBUG_KEYSTORE_PATH: ${{ github.workspace }}/.ci-debug.keystore

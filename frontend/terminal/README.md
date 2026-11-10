@@ -141,8 +141,7 @@ tab 列表并存，只按旧选择器点击会点到被 `transform` 移出屏幕
 `getBoundingClientRect()` 真正在视口内、且点击前后 tab/engine 状态可观测的候选）。
 
 设备脚本 `verify-android-terminal-device.mjs` 与分隔线脚本共用 release runner 的
-`startBackend` / `seedScript` / `base64url`。旧 `verify-android-terminal.mjs` 是历史验证入口，
-不用于当前版本验收。release 版写
+`startBackend` / `seedScript` / `base64url`。旧 `verify-android-terminal.mjs` 已随历史验证链删除。release 版写
 `research/tmp/verify-android-terminal-release-ready/<UTC时间戳>-<随机标识>/`。每次保留独立报告，
 不覆盖旧失败证据。`history-restore` 分别验证页签切换、折叠/重开保留实例，以及整页
 刷新后新 realm、新实例和后端实际 PTY marker 重放；`adapter-lifecycle` 单独验证

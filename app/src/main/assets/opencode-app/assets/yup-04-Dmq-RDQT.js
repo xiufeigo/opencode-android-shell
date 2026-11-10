@@ -1,1 +1,0 @@
-const a=""+new URL("yup-04-C7yadpJT.aac",import.meta.url).href;export{a as default};

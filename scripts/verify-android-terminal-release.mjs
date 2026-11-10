@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-android-terminal.mjs — real-production verification of the Android
+ * verify-android-terminal-release.mjs — real-production verification of the Android
  * packaged terminal.
  *
  * ## What this runner actually does
@@ -37,10 +37,10 @@
  *
  * ## Usage
  *
- *     node scripts/verify-android-terminal.mjs
- *     VERIFY_TERMINAL_FILTER=drag  node scripts/verify-android-terminal.mjs
- *     VERIFY_TERMINAL_NO_SHOTS=1   node scripts/verify-android-terminal.mjs
- *     VERIFY_TERMINAL_MODE=boot    node scripts/verify-android-terminal.mjs
+ *     node scripts/verify-android-terminal-release.mjs
+ *     VERIFY_TERMINAL_FILTER=drag  node scripts/verify-android-terminal-release.mjs
+ *     VERIFY_TERMINAL_NO_SHOTS=1   node scripts/verify-android-terminal-release.mjs
+ *     VERIFY_TERMINAL_MODE=boot    node scripts/verify-android-terminal-release.mjs
  *
  * `MODE=boot` stops right after the production SPA mounts and dumps the request
  * log + console output; it is the diagnostic to run when the replacement module

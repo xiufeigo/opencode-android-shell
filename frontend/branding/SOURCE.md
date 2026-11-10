@@ -23,14 +23,10 @@ and `frontend/branding/launcher-squircle-white.png`.
 
 ## How the Android bitmaps are built
 
-`scripts/generate-launcher-icons.py`:
+The generator/checker scripts (`generate-launcher-icons.py`, `check-apk-launcher-icon.py`) were retired with the legacy `app/` module (see tag `archive/pre-cleanup-2.0.37`). The shipped `webapp` icons `res/mipmap-*/ic_launcher_web*.png` are static copies produced by that pipeline:
 
-- `mipmap-*/ic_launcher.png` — opaque official mark
-- `mipmap-*/ic_launcher_round.png` — **identical** opaque bytes (not a circular hole)
-
-Regenerate: `python3 scripts/generate-launcher-icons.py`
-
-After assemble: `python3 scripts/check-apk-launcher-icon.py app/build/outputs/apk/debug/app-debug.apk`
+- `mipmap-*/ic_launcher_web.png` — opaque official mark
+- `mipmap-*/ic_launcher_web_round.png` — **identical** opaque bytes (not a circular hole)
 
 ## HyperOS cache
 
