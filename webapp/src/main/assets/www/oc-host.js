@@ -213,6 +213,31 @@
   }
 
   // ======================================================================
+  // 底部手势手柄（2026-11-10 第二轮）
+  //
+  // 2.0.32 已把面板底边收窄到「手柄上沿 + 2px」，但会话输入框在面板里还要再让
+  // 12px（上游 `session-composer-dock` 的 `pb-3`）⇒ 输入框底边距手柄 15px，
+  // 看起来仍然空。这里在手势导航下把 dock 的底内边距收到 4px，
+  // 面板底边与手柄上沿对齐后，输入框就贴着手柄上方。
+  //
+  // 只在手势导航生效：3 键导航下这条带里是可点按钮，收内边距会让按钮压住输入框。
+  // ======================================================================
+  var BOTTOM_STYLE_ID = "oc-bottom-inset";
+
+  function installBottomInsetStyle() {
+    if (document.getElementById(BOTTOM_STYLE_ID)) return;
+    var css = [
+      'html[data-oc-gesture-handle="1"] [data-component="session-composer-dock"]{',
+      "padding-bottom:4px;",
+      "}",
+    ].join("\n");
+    var st = document.createElement("style");
+    st.id = BOTTOM_STYLE_ID;
+    st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  // ======================================================================
   // BACK：只关闭真正显示在视口内的浮层；常驻展开区域不是返回层级。
   // 手机抽屉预挂载在视口外，关闭或退出动画中的节点不应吞掉返回键。
   // ======================================================================
@@ -351,6 +376,9 @@
     // 宿主是"压矮视口"还是"只发变量"——决定页面侧还要不要自己垫 IME（见 IME 抬升段）：
     // resize 模式下视口已经变矮，再垫一次 = 双倍留白（composer 会飘到半空）。
     el.setAttribute("data-oc-ime-mode", d.imeMode || "vars");
+    // 手势导航：页面可以把输入区再往下收一点（见 BOTTOM_STYLE_ID）。
+    // 3 键导航时这条带里是可点按钮，不能收。
+    el.setAttribute("data-oc-gesture-handle", d.gestureHandle ? "1" : "0");
   }
 
   var oc = {
@@ -773,6 +801,7 @@
       function () {
         installImeLiftStyle();
         installTopInsetStyle();
+        installBottomInsetStyle();
         if (lastInsets) doApply(lastInsets);
         window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
       },
@@ -781,6 +810,7 @@
   } else {
     installImeLiftStyle();
     installTopInsetStyle();
+    installBottomInsetStyle();
     window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
   }
   // focusin 委托：composer 是 SPA 动态挂载的，不能只绑一次。

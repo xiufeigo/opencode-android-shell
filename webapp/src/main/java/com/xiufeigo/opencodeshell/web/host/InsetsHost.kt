@@ -160,17 +160,16 @@ class InsetsHost(
         val imeBottom = if (imeVisible) imeInsets.bottom else 0
         // 手势导航上报的是整条上滑热区，只有中间那根小白条可见；
         // 整条让出会在面板下方留一条纯背景带（见 NavigationBarVisual）。
-        val navBottom = NavigationBarVisual.insetPx(
-            bars.bottom,
-            insets.getInsets(WindowInsetsCompat.Type.tappableElement()).bottom,
-            d,
-        )
+        val tappableBottom = insets.getInsets(WindowInsetsCompat.Type.tappableElement()).bottom
+        val navBottom = NavigationBarVisual.insetPx(bars.bottom, tappableBottom, d)
 
         val dark = systemIsDark()
         val payload = JSONObject().apply {
             // 1:1 px→CSS px（=dp），见类注释。
             put("safeTop", (bars.top / d).css())
             put("safeBottom", (navBottom / d).css())
+            // 手势导航时页面可以把输入区再往下收一点；3 键导航不能收（会被按钮压住）。
+            put("gestureHandle", NavigationBarVisual.hasGestureHandle(tappableBottom))
             put("safeLeft", (bars.left / d).css())
             put("safeRight", (bars.right / d).css())
             put("imeBottom", (imeBottom / d).css())
