@@ -90,6 +90,9 @@ class InsetsHost(
      */
     private var gesturalObserved = false
 
+    /** 上一条原始读数日志（去重）：两次误判都卡在日志里没有平台原始值。 */
+    private var lastReading = ""
+
     private val commitResizeRunnable = Runnable {
         val pad = pendingPadPx
         if (pad >= 0) commitResize(pad, pendingImePx, pendingNavPx, "settled")
@@ -205,8 +208,11 @@ class InsetsHost(
                 WindowInsetsCompat.Type.displayCutout()
         )
         val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
-        val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-        val imeBottom = if (imeVisible) imeInsets.bottom else 0
+        val imeRawBottom = if (insets.isVisible(WindowInsetsCompat.Type.ime())) imeInsets.bottom else 0
+        // IME 窗口可见 ≠ 屏幕上有键盘：只占系统导航带的读数（实体键盘）不算键盘，
+        // 在源头归一，payload 与视口压矮共用同一个值（见 ImeResize.occludingImePx）。
+        val imeBottom = ImeResize.occludingImePx(imeRawBottom, bars.bottom)
+        val imeVisible = imeBottom > 0
         // 手势导航上报的是整条上滑热区，只有中间那根小白条可见；
         // 整条让出会在面板下方留一条纯背景带（见 NavigationBarVisual）。
         val tappableBottom = insets.getInsetsIgnoringVisibility(
@@ -222,6 +228,11 @@ class InsetsHost(
             else -> NavigationBarMode.UNKNOWN
         }
         val navBottom = NavigationBarVisual.insetPx(bars.bottom, tappableBottom, d, effectiveMode)
+        val reading = "nav=${bars.bottom} tappable=$tappableBottom imeRaw=$imeRawBottom mode=$navMode latched=$gesturalObserved -> safe=$navBottom ime=$imeBottom"
+        if (reading != lastReading) {
+            lastReading = reading
+            Log.i(TAG, "insets $reading")
+        }
 
         val dark = systemIsDark()
         val payload = JSONObject().apply {

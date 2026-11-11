@@ -81,6 +81,30 @@ class ImeViewportResizeTest {
         assertTrue("压矮量必须 < 窗口高（实测 $pad）", pad < 1000)
     }
 
+    @Test
+    fun `IME 只占系统导航带时不算键盘 实体键盘聚焦不抬高视口`() {
+        // 实体键盘：IME 窗口可见但不画键盘，上报值 = 导航带高度。
+        assertEquals(0, ImeResize.occludingImePx(64, 64))
+        assertEquals(0, ImeResize.occludingImePx(30, 30))
+        assertEquals("低于导航带同理", 0, ImeResize.occludingImePx(20, 64))
+        assertEquals("IME 不可见", 0, ImeResize.occludingImePx(0, 64))
+        // 真键盘：高出导航带，原值返回。
+        assertEquals(phoneImePx, ImeResize.occludingImePx(phoneImePx, phoneNavPx))
+        assertEquals("高出 1px 也算遮挡", 65, ImeResize.occludingImePx(65, 64))
+        assertEquals("没有导航带的设备", 40, ImeResize.occludingImePx(40, 0))
+    }
+
+    @Test
+    fun `手势导航加实体键盘 聚焦前后压矮量一致`() {
+        // Pixel Tablet：导航带 64px、density 2 ⇒ 手势可视让位 20px。
+        val navVisual = NavigationBarVisual.insetPx(64, 0, 2f, NavigationBarMode.GESTURAL)
+        assertEquals(20, navVisual)
+        val blurred = ImeResize.bottomPadPx(1600, ImeResize.occludingImePx(0, 64), navVisual)
+        val focused = ImeResize.bottomPadPx(1600, ImeResize.occludingImePx(64, 64), navVisual)
+        assertEquals("聚焦（IME 读数 = 导航带）不得把让位量顶回整条导航带", blurred, focused)
+        assertEquals(20, focused)
+    }
+
     // ---- 2. 宿主契约层 -----------------------------------------------------
 
     private fun read(relative: String): String {
@@ -141,6 +165,17 @@ class ImeViewportResizeTest {
             src.contains("imeMode == ImeMode.RESIZE && windowH <= 0"),
         )
         assertTrue("真正落 padding 的只有一个地方", Regex("""layer\.setPadding\(""").findAll(src).count() == 1)
+    }
+
+    @Test
+    fun `IME 读数在源头归一 payload 与压矮共用同一个值`() {
+        val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        assertTrue("必须经 occludingImePx 归一", src.contains("ImeResize.occludingImePx(imeRawBottom, bars.bottom)"))
+        assertTrue("imeVisible 必须由归一后的值推出", src.contains("val imeVisible = imeBottom > 0"))
+        assertFalse(
+            "不得再把平台 isVisible 直接当成键盘可见",
+            src.contains("val imeVisible = insets.isVisible("),
+        )
     }
 
     // ---- 3. 注入层契约层（防"双倍留白"） -----------------------------------

@@ -36,6 +36,26 @@ object ImeResize {
     const val COMMIT_DELAY_MS = 80L
 
     /**
+     * **真正遮挡页面**的 IME 高度（px）；`0` = 屏幕上没有键盘。
+     *
+     * 平台的 `ime()` inset 量的是"IME 窗口占到哪"，不是"键盘画到哪"。IME 窗口可见
+     * 但不画键盘时（接了实体键盘：MIUI/澎湃只浮一个"拼/英"状态角标），上报值
+     * 不超过系统导航带高度。这段高度本来就归系统导航带，页面按
+     * [NavigationBarVisual] 已经让过位；照 `max(ime, nav)` 再压一次，手势导航下
+     * 视口就从"让到手柄上沿"变成"让出整条导航带" —— 输入框一拿焦点（进会话自动
+     * 聚焦 / 点输入框）面板就抬高，点会话内容失焦才落回
+     * （2026-11-11 MIUI 平板 + 实体键盘报单形态）。
+     *
+     * 判据：IME 没有高出系统导航带（`ime <= navBar`）⇒ 导航带以上没有任何键盘
+     * 界面 ⇒ 按没有键盘处理。
+     *
+     * @param imeBottomPx 平台上报的 IME 底部 inset（不可见时传 0）
+     * @param navBarBottomPx 系统导航带**整条**的底部 inset（不是可视让位量）
+     */
+    fun occludingImePx(imeBottomPx: Int, navBarBottomPx: Int): Int =
+        if (imeBottomPx > navBarBottomPx) imeBottomPx else 0
+
+    /**
      * 视口底部要让出的 px。`0` = 不动（IME 收起 / 读数不可信 / 几何无效）。
      *
      * 取 `max(ime, nav)`：键盘一定比导航条高，两者重叠时导航条已经被键盘盖住。
