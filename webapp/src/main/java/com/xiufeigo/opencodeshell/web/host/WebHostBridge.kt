@@ -140,6 +140,15 @@ class WebHostBridge(
         ctx.runOnUiThread { ctx.applyPageTheme(dark) }
     }
 
+    /**
+     * 页面把自己解析后的表面底色（`getComputedStyle().backgroundColor`）报上来，
+     * 宿主拿它刷视口压矮后露出的那条带子 —— 条带跟页面主题走，与系统模式脱钩。
+     */
+    @JavascriptInterface
+    fun reportSurfaceColor(cssColor: String?) {
+        ctx.runOnUiThread { ctx.applySurfaceColor(cssColor) }
+    }
+
     // ---- 9. 诊断页重试 + 首屏内容信号（G1）--------------------------------
     /**
      * `assets/www/oc-preflight.js` 回报「首屏真的有内容了」⇒ 解除宿主看门狗。

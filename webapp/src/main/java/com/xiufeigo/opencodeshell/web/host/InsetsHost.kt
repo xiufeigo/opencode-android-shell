@@ -162,6 +162,21 @@ class InsetsHost(
             Configuration.UI_MODE_NIGHT_YES
 
     /**
+     * 视口压矮后露出的那条带子 = [resizeTarget] 的 padding 区，显示的是它自己的
+     * 背景。它默认没有背景 → 透出 decor 的 `windowBackground`（`oc_host_bg`，
+     * DayNight **跟系统模式**走）—— 页面主题与系统不一致时（系统深色 + 页面
+     * 浅色）那条带子就是一整块黑色，"小白条所在位置直接全黑"（MIUI 平板浅色
+     * 主题实测）。
+     *
+     * 页面把解析后的表面色通过 `reportSurfaceColor` 推上来，由这里钉在露出层上：
+     * 条带跟**页面主题**走，与系统模式彻底脱钩；手势小白条浮在同色带上，
+     * 观感 = 页面延伸到底（Chrome 等边到边应用同款做法）。
+     */
+    fun setSurfaceColor(color: Int) {
+        resizeTarget().setBackgroundColor(color)
+    }
+
+    /**
      * 让系统栏图标跟着页面的 `data-color-scheme` 走：深色 UI → 浅色图标。
      * 只在 window 真正创建后调。
      */

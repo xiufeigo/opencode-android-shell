@@ -54,9 +54,9 @@ android {
         // 64 用 WebView 实高钉死官方 h-dvh：Android WebView 的 100dvh 在父层压矮后要点击才更新。
         // 65 Pixel Tablet 实测：AppCompat content 冲掉 padding，WebView 仍整屏，官方 env(safe-area-inset-bottom)=32
         //    再垫一层；要点击才把 env 收掉。改成自有 viewportHost + 写死 WebView 高度，并把官方安全区变量钉 0。
-        versionCode = 66
+        versionCode = 67
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.38"
+        versionName = "2.0.39"
     }
 
     signingConfigs {

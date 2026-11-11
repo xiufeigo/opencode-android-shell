@@ -44,6 +44,7 @@ import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
+import com.xiufeigo.opencodeshell.web.host.SurfaceColor
 import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
@@ -776,6 +777,13 @@ class WebHostActivity : AppCompatActivity() {
         pageReportedDark = dark
         systemDark = dark
         applySystemBarTheme()
+    }
+
+    /** 页面报上来的表面底色 → 视口压矮后露出的条带（见 InsetsHost.setSurfaceColor）。 */
+    fun applySurfaceColor(css: String?) {
+        if (!::insets.isInitialized) return
+        val color = SurfaceColor.parse(css) ?: return
+        insets.setSurfaceColor(color)
     }
 
     private fun applySystemBarTheme() {

@@ -25,6 +25,7 @@ class LegacyBridgeChannel(private val bridge: WebHostBridge) {
         "setImeMode" to { args -> bridge.setImeMode(args.text(0)); null },
         "getImeMode" to { bridge.getImeMode() },
         "reportTheme" to { args -> bridge.reportTheme(args.getBoolean(0)); null },
+        "reportSurfaceColor" to { args -> bridge.reportSurfaceColor(args.text(0)); null },
         "onFirstContent" to { args -> bridge.onFirstContent(args.text(0), if (args.isNull(1)) null else args.getLong(1)); null },
         "retry" to { bridge.retry(); null },
     )
