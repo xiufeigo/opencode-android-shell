@@ -1,0 +1,1 @@
+import{n as e}from"./dist-3e61_V1I.js";import{a as t}from"./JNCCF6MP-CT4mMYxX.js";function n(n={}){let[r,i]=t({value:()=>e(n.isSelected),defaultValue:()=>!!e(n.defaultIsSelected),onChange:e=>n.onSelectedChange?.(e)});return{isSelected:r,setIsSelected:t=>{!e(n.isReadOnly)&&!e(n.isDisabled)&&i(t)},toggle:()=>{!e(n.isReadOnly)&&!e(n.isDisabled)&&i(!r())}}}export{n as t};

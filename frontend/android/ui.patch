@@ -321,11 +321,11 @@ index 92e80d2..64490c3 100644
        const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
  
 diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
-index 81a5163..f9c37f7 100644
+index 8f498fe..3355cdf 100644
 --- a/packages/app/src/session/timeline/message-timeline.tsx
 +++ b/packages/app/src/session/timeline/message-timeline.tsx
-@@ -401,8 +401,8 @@ function MessageTimelineView(
-   const activityRow = createMemo(() => projection.rows().some((row) => Predicate.isTagged(row, "Activity")))
+@@ -511,8 +511,8 @@ function MessageTimelineView(
+   )
  
    // The lane keeps its height while empty, so Working and the hint come and go without moving the rows around it.
 -  // The bottom lane also keeps its height while live status moves into the Activity row, so the tail the activity pill
@@ -335,15 +335,15 @@ index 81a5163..f9c37f7 100644
    const activity = (live: () => boolean) => (
      <div
        classList={{
-@@ -410,7 +410,7 @@ function MessageTimelineView(
-         "md:max-w-session md:mx-auto": props.centered,
-       }}
-     >
--      <div class={`flex h-9 items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
-+      <div class={`flex h-[36px] items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
-         <Show when={live() && showWorking()}>
-           <div data-component="session-working" role="status">
-             <TextShimmer text={language.t("session.timeline.working")} active />
+@@ -523,7 +523,7 @@ function MessageTimelineView(
+       <Show
+         when={props.next}
+         fallback={
+-          <div class={`flex h-9 items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
++          <div class={`flex h-[36px] items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}>
+             <Show when={live() && showWorking()}>
+               <div data-component="session-working" role="status">
+                 <TextShimmer text={language.t("session.timeline.working")} active />
 diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
 index faf429a..ddaddd4 100644
 --- a/packages/app/src/session/timeline/virtualizer.tsx
@@ -568,29 +568,23 @@ index c406494..69cc2f6 100644
              <Show when={appearance.zoom.available()}>
                <SettingsRow
 diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
-index 6df3823..5c78f89 100644
+index 01b8917..6a73187 100644
 --- a/packages/app/src/settings/model.tsx
 +++ b/packages/app/src/settings/model.tsx
-@@ -8,6 +8,7 @@ import { timelinePresets, type TimelineCategory, type TimelineDetail } from "@op
- import { persisted } from "@/runtime/persistence/storage"
- import { Persistence } from "@/runtime/persistence/schema"
- import { ScopedKey, type ServerScope } from "@/runtime/server/scope"
-+import { usePlatform } from "@/runtime/platform/platform"
+@@ -339,7 +339,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
+ }
  
- export type Settings = typeof settingsSchema.Type
+ /** Only local/dev desktop builds offer the Recent side-tab organization. */
+-export function recentSessionsAvailable(platform: "web" | "desktop", channel: ImportMetaEnv["VITE_OPENCODE_CHANNEL"]) {
++export function recentSessionsAvailable(platform: "web" | "desktop" | "android", channel: ImportMetaEnv["VITE_OPENCODE_CHANNEL"]) {
+   return platform === "desktop" && (channel === "local" || channel === "dev")
+ }
  
-@@ -338,6 +339,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
-   gate: false,
-   init: () => {
-     const [store, setStore, , ready] = persisted({ key: "settings.v3" }, settingsPersistence, defaultSettings)
-+    const platform = usePlatform()
- 
-     const showCustomAgents = withFallback(
-       () => store.general?.showCustomAgents,
-@@ -355,6 +357,15 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+@@ -372,6 +372,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
        void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
      })
  
++    const platform = usePlatform()
 +    createEffect(() => {
 +      if (platform.platform !== "android") return
 +      const selected = new Set([store.appearance?.sans, store.appearance?.mono, store.appearance?.terminal])
@@ -1079,14 +1073,14 @@ index f61a189..3580162 100644
    if (props.video) {
      const video = props.video
 diff --git a/packages/ui/src/components/provider-icon.tsx b/packages/ui/src/components/provider-icon.tsx
-index d044147..726eb78 100644
+index bc21bd7..c8621f2 100644
 --- a/packages/ui/src/components/provider-icon.tsx
 +++ b/packages/ui/src/components/provider-icon.tsx
 @@ -1,7 +1,10 @@
  import type { Component, JSX } from "solid-js"
  import { createMemo, splitProps } from "solid-js"
  import sprite from "./provider-icons/sprite.svg"
--import { iconNames, type IconName } from "./provider-icons/types"
+-import { iconNames } from "./provider-icons/types"
 +import extraSprite from "./provider-icons/extra.svg?no-inline"
 +import { isExtraProviderIcon, resolveProviderIcon } from "./provider-icons/resolve"
 +
@@ -1094,16 +1088,22 @@ index d044147..726eb78 100644
  
  export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
    id: string
-@@ -9,7 +12,7 @@ export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
+@@ -9,12 +12,12 @@ export type ProviderIconProps = JSX.SVGElementTags["svg"] & {
+ 
+ /** Whether a provider has its own icon. Others fall back to a generic one, which callers may prefer to leave out. */
+ export function hasProviderIcon(id: string) {
+-  return iconNames.some((name) => name === id)
++  return resolveProviderIcon(id) !== undefined
+ }
  
  export const ProviderIcon: Component<ProviderIconProps> = (props) => {
    const [local, rest] = splitProps(props, ["id", "class", "classList"])
--  const resolved = createMemo(() => (iconNames.includes(local.id as IconName) ? local.id : "synthetic"))
+-  const resolved = createMemo(() => (hasProviderIcon(local.id) ? local.id : "synthetic"))
 +  const resolved = createMemo(() => resolveProviderIcon(local.id))
  
    return (
      <svg
-@@ -20,7 +23,7 @@ export const ProviderIcon: Component<ProviderIconProps> = (props) => {
+@@ -25,7 +28,7 @@ export const ProviderIcon: Component<ProviderIconProps> = (props) => {
          [local.class ?? ""]: !!local.class,
        }}
      >
