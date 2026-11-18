@@ -30,7 +30,9 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 2.1.4 的新界面文案上游仍没有中文：`session.elicitation.selectPlaceholder` 已由本仓库补齐。免费额度 UI 仍依赖服务端 ≥2.1.2 的 `provider.free-limit`；MCP 表单依赖服务端发出 `session.form` 请求。未读徽标仍依赖服务端 `time.viewed`。
 
-当前 UI 基准为官方 v2.2.6（`dc2ffcf`），Bun 仍是 **1.4.4**。按官方 app 和 ui 词典比对，本仓库补齐了 2.2.6 新增的 48 条简繁中文缺口。
+当前 UI 基准为官方 v2.3.2（`c0ad18b`），Bun 仍是 **1.4.4**。2.3.1 不单独跟进。按官方 app 和 ui 词典比对，本仓库补齐了 2.3.2 相对已有译文新增的 23 条简繁中文缺口。
+
+2.3.2 把官方 UI 从 2.3.0（`a6b15d3`）升到正式 tag v2.3.2（`c0ad18b`）。`upstream.patch` 可以原样套上。`ui.patch` 在五处跟上上游：提供商图标继续走 `resolveProviderIcon`；时间线活动行保留上游新增的 `inRow`；系统字体加载留在设置模型里（上游已去掉 `newIcons`）；上下文页词典同时保留上游的 `usage.toggle` 和本仓库的完整历史文案。终端仍改用本仓库的 `/oc-terminal.js`。自定义服务端浏览器面板仍注册在官方 GUI 插件列表中，供已经安装的旧插件使用，不作为新安装的默认插件。
 
 2.2.0 把官方 UI 从 2.1.4（`68bc26b`）升到正式 tag v2.2.0（`1097e266`）。上游结构变化有三处，本仓库逐一跟进：
 

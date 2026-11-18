@@ -14,10 +14,10 @@ index af213ad..7f07362 100644
        await expect(root.getByTestId("timeline-controls")).toHaveAttribute("data-pinned", "false")
      }
 diff --git a/packages/app/e2e/regression/settings.spec.ts b/packages/app/e2e/regression/settings.spec.ts
-index c4260f2..1a24c91 100644
+index 1005653..f842fa4 100644
 --- a/packages/app/e2e/regression/settings.spec.ts
 +++ b/packages/app/e2e/regression/settings.spec.ts
-@@ -347,6 +347,8 @@ for (const locale of ["en", "ar"]) {
+@@ -377,6 +377,8 @@ for (const [locale, dict] of [
      const panel = page.locator('[data-slot="session-activity-panel"]')
      await expect(capsule).toBeVisible()
      await expect(page.locator("html")).toHaveAttribute("dir", locale === "ar" ? "rtl" : "ltr")
@@ -26,7 +26,7 @@ index c4260f2..1a24c91 100644
  
      for (const value of ["Center", "Right", "Hidden", "Left", "Right"] as const) {
        await page.keyboard.press("Control+,")
-@@ -363,6 +365,7 @@ for (const locale of ["en", "ar"]) {
+@@ -393,6 +395,7 @@ for (const [locale, dict] of [
        if (value === "Hidden") {
          await expect(capsule).toHaveCount(0)
          await expect(panel).toHaveCount(0)
@@ -35,7 +35,7 @@ index c4260f2..1a24c91 100644
        }
  
 diff --git a/packages/app/e2e/regression/timeline-geometry.spec.ts b/packages/app/e2e/regression/timeline-geometry.spec.ts
-index 4e19574..1dd63c6 100644
+index f87b30f..6994175 100644
 --- a/packages/app/e2e/regression/timeline-geometry.spec.ts
 +++ b/packages/app/e2e/regression/timeline-geometry.spec.ts
 @@ -742,9 +742,7 @@ for (const input of [
@@ -115,10 +115,10 @@ index 4e19574..1dd63c6 100644
  
  test("groups consecutive sent prompts under the last one's meta line, with each bubble's actions beside it", async ({
 diff --git a/packages/app/e2e/regression/timeline-stream.spec.ts b/packages/app/e2e/regression/timeline-stream.spec.ts
-index 6443010..13c0d32 100644
+index 324ede8..5584f90 100644
 --- a/packages/app/e2e/regression/timeline-stream.spec.ts
 +++ b/packages/app/e2e/regression/timeline-stream.spec.ts
-@@ -912,6 +912,8 @@ test.describe("Working", () => {
+@@ -873,6 +873,8 @@ test.describe("Working", () => {
    for (const grouped of [false, true]) {
      test(`uses ${grouped ? "grouped" : "standalone"} background shell presentation`, async ({ page }) => {
        await setupTimeline(page, {
@@ -127,7 +127,7 @@ index 6443010..13c0d32 100644
          settings: { shellToolPartsExpanded: !grouped },
          messages: [
            userMessage(),
-@@ -957,6 +959,20 @@ test.describe("Working", () => {
+@@ -918,6 +920,20 @@ test.describe("Working", () => {
  
        await expect(trigger).toHaveAttribute("aria-expanded", "false")
        await expect(working).toBeVisible()
@@ -148,6 +148,24 @@ index 6443010..13c0d32 100644
        await trigger.click()
        await expect(trigger).toHaveAttribute("aria-expanded", "true")
        await expect(working).toBeVisible()
+diff --git a/packages/app/src/composer/editor/editor.tsx b/packages/app/src/composer/editor/editor.tsx
+index 0c0d870..df04944 100644
+--- a/packages/app/src/composer/editor/editor.tsx
++++ b/packages/app/src/composer/editor/editor.tsx
+@@ -116,8 +116,11 @@ export function ComposerEditor(props: ComposerEditorProps) {
+   const [overflow, setOverflow] = createStore({ start: false, end: false })
+   // A history preview holds the composer at the height it had when the list opened.
+   const historyHeight = createMemo(() => composerHistoryPreviewHeight(state))
+-  // Phones and tablets, whatever their width: a narrow desktop window keeps the desktop composer.
+-  const touch = createMediaQuery("(hover: none) and (pointer: coarse)")
++  // Android: the WebView reports `pointer: coarse` for touch, which would select the
++  // docked touch action bar and portal it below the session as an extra row. The
++  // desktop layout (inline composer actions) ships on every Android device, so this
++  // stays off unconditionally. Upstream: "(hover: none) and (pointer: coarse)".
++  const touch = () => false
+   // The shell's slot at the bottom of the screen; without one (a story), the touch bar stays under the composer.
+   const [dock, setDock] = createSignal<HTMLElement>()
+ 
 diff --git a/packages/app/src/index.css b/packages/app/src/index.css
 index 19ecf51..c833a66 100644
 --- a/packages/app/src/index.css
@@ -164,7 +182,7 @@ index 19ecf51..c833a66 100644
    [data-slot="session-timeline-scroll"] > .scroll-view__viewport {
      --session-timeline-fade-start: var(--session-timeline-inset, 0px);
 diff --git a/packages/app/src/providers/models/provider-group.tsx b/packages/app/src/providers/models/provider-group.tsx
-index 3429e0b..2e94e9c 100644
+index b5ecb8c..c337aec 100644
 --- a/packages/app/src/providers/models/provider-group.tsx
 +++ b/packages/app/src/providers/models/provider-group.tsx
 @@ -1,9 +1,8 @@
@@ -178,10 +196,11 @@ index 3429e0b..2e94e9c 100644
  import type { JSX } from "solid-js"
  import { createMemo, For, Match, Show, Switch } from "solid-js"
  import { consoleProviderGroup, consoleProviderName } from "@/providers/catalog/console"
-@@ -25,12 +24,7 @@ function CustomManagedProviderIcon(props: { class?: string }) {
+@@ -25,13 +24,7 @@ function CustomManagedProviderIcon(props: { class?: string }) {
  }
  
  export function ProviderModelIcon(props: { provider: ModelProvider; class?: string }) {
+-  // SAFETY: the cast only lets `includes` look up any string; the type guard narrows on the result.
 -  const icon = () =>
 -    [
 -      props.provider.canonical,
@@ -193,10 +212,10 @@ index 3429e0b..2e94e9c 100644
    return (
      <Switch>
 diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
-index 369faac..585ad54 100644
+index 0921724..a094022 100644
 --- a/packages/app/src/runtime/i18n/en.ts
 +++ b/packages/app/src/runtime/i18n/en.ts
-@@ -1053,6 +1053,8 @@ export const dict = {
+@@ -1142,6 +1142,8 @@ export const dict = {
    "settings.general.row.terminalFont.description": "Customise the font used in the terminal",
    "settings.general.row.uiFont.title": "UI Font",
    "settings.general.row.uiFont.description": "Customise the font used throughout the interface",
@@ -308,10 +327,10 @@ index 172cef4..fa27335 100644
  
  // A panel with a side width of its own: the chat panel takes the rest of the row, keeping at least its minimum.
 diff --git a/packages/app/src/session/timeline/interaction.ts b/packages/app/src/session/timeline/interaction.ts
-index 92e80d2..64490c3 100644
+index 3b7205a..04fe79a 100644
 --- a/packages/app/src/session/timeline/interaction.ts
 +++ b/packages/app/src/session/timeline/interaction.ts
-@@ -387,7 +387,7 @@ export function createSessionTimelineInteraction(session: SessionModel, visible:
+@@ -385,7 +385,7 @@ export function createSessionTimelineInteraction(session: SessionModel, visible:
    createResizeObserver(
      () => state.refs.dock,
      (_rect, _element, entry) => {
@@ -321,7 +340,7 @@ index 92e80d2..64490c3 100644
        const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
  
 diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
-index 8f498fe..3355cdf 100644
+index 591a7b8..b73528c 100644
 --- a/packages/app/src/session/timeline/message-timeline.tsx
 +++ b/packages/app/src/session/timeline/message-timeline.tsx
 @@ -511,8 +511,8 @@ function MessageTimelineView(
@@ -332,7 +351,7 @@ index 8f498fe..3355cdf 100644
 -  // floats in never closes and a pinned timeline does not shift when input waits.
 +  // The bottom lane also keeps its height while live status moves into the Activity row, so a pinned timeline does not
 +  // shift when input waits.
-   const activity = (live: () => boolean) => (
+   const activity = (live: () => boolean, inRow = false) => (
      <div
        classList={{
 @@ -523,7 +523,7 @@ function MessageTimelineView(
@@ -345,10 +364,10 @@ index 8f498fe..3355cdf 100644
                <div data-component="session-working" role="status">
                  <TextShimmer text={language.t("session.timeline.working")} active />
 diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
-index faf429a..ddaddd4 100644
+index 50b824d..548a7b2 100644
 --- a/packages/app/src/session/timeline/virtualizer.tsx
 +++ b/packages/app/src/session/timeline/virtualizer.tsx
-@@ -145,11 +145,9 @@ export function createTimelineVirtualizer(input: Input) {
+@@ -146,11 +146,9 @@ export function createTimelineVirtualizer(input: Input) {
    const active = () => input.active?.() !== false
    const isDesktop = createMediaQuery("(min-width: 768px)")
    const topOffset = () => (input.showHeader() ? 64 : isDesktop() ? 0 : 16)
@@ -568,10 +587,10 @@ index c406494..69cc2f6 100644
              <Show when={appearance.zoom.available()}>
                <SettingsRow
 diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
-index 01b8917..6a73187 100644
+index cea40b0..70d2e9b 100644
 --- a/packages/app/src/settings/model.tsx
 +++ b/packages/app/src/settings/model.tsx
-@@ -339,7 +339,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
+@@ -334,7 +334,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
  }
  
  /** Only local/dev desktop builds offer the Recent side-tab organization. */
@@ -580,7 +599,7 @@ index 01b8917..6a73187 100644
    return platform === "desktop" && (channel === "local" || channel === "dev")
  }
  
-@@ -372,6 +372,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+@@ -367,6 +367,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
        void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
      })
  
@@ -594,14 +613,14 @@ index 01b8917..6a73187 100644
 +      }
 +    })
 +
-     const newIcons = withFallback(() => store.general?.newIcons, defaultSettings.general.newIcons)
-     createEffect(() => setNewIcons(newIcons()))
+     const reduceMotion = withFallback(() => store.appearance?.reduceMotion, defaultSettings.appearance.reduceMotion)
+     const systemReducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
  
 diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
-index 0312e34..5909013 100644
+index bc22377..d1aa0a9 100644
 --- a/packages/app/src/shell/shell.tsx
 +++ b/packages/app/src/shell/shell.tsx
-@@ -26,12 +26,16 @@ import {
+@@ -27,12 +27,16 @@ import {
  import { createPanelMotion, guardClosingFocus, panelOpacity, setPanelResizing } from "@/shell/panel-motion"
  import { createSidebarPeek } from "@/shell/sidebar-peek"
  import { windowDragEnabled } from "@/session/header/drag-area"
@@ -619,10 +638,10 @@ index 0312e34..5909013 100644
    const settings = useSettingsSurface()
    const preferences = useSettings()
 diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index 114b395..075b7ab 100644
+index 86eab87..46ba98d 100644
 --- a/packages/app/src/shell/titlebar/titlebar.tsx
 +++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -79,7 +79,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -114,7 +114,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
    const location = useLocation()
    const mobile = createMediaQuery("(max-width: 767px)")
    const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
@@ -631,7 +650,7 @@ index 114b395..075b7ab 100644
  
    const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
    const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -168,7 +168,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -203,7 +203,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
        }}
        style={{
          height:
@@ -640,7 +659,7 @@ index 114b395..075b7ab 100644
              ? bottom()
                ? "calc(28px + max(8px, var(--shell-safe-area-bottom, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))))"
                : mobileTop()
-@@ -565,8 +565,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -642,8 +642,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                    "ps-3.5": windows() && !props.verticalTabs,
                  }}
                >
@@ -656,9 +675,9 @@ index 114b395..075b7ab 100644
                  </Show>
                  <Show when={windows() && props.verticalTabs}>
                    <SidebarToggle />
-@@ -775,6 +780,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                                 <Show when={homeInSidebarHeader()} fallback={<div class="flex-1" />}>
-                                   <div class="min-w-0 flex-1">{homeButton(true)}</div>
+@@ -851,6 +856,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                                 <Show when={actionInSidebarHeader()} fallback={<div class="flex-1" />}>
+                                   <div class="min-w-0 flex-1">{firstSidebarAction()}</div>
                                  </Show>
 +                                <Show when={platform.platform === "android"}>
 +                                  <WindowsAppMenu
@@ -684,31 +703,31 @@ index 5ad0d90..0808c27 100644
 +  "history.retry": "Retry",
  }
 diff --git a/packages/gui-plugins/src/context/i18n/zh.ts b/packages/gui-plugins/src/context/i18n/zh.ts
-index e35c175..d4db2f0 100644
+index fc04079..ef4839e 100644
 --- a/packages/gui-plugins/src/context/i18n/zh.ts
 +++ b/packages/gui-plugins/src/context/i18n/zh.ts
-@@ -28,4 +28,7 @@ export default {
-   "export.success.description": "已将会话保存到 {{filename}}",
+@@ -29,4 +29,7 @@ export default {
    "export.failed.title": "导出会话失败",
    "export.failed.description": "导出会话时发生错误",
+   "usage.toggle": "切换会话上下文",
 +  "history.loading": "正在加载完整历史…",
 +  "history.failed": "无法加载完整历史",
 +  "history.retry": "重试",
  }
 diff --git a/packages/gui-plugins/src/context/i18n/zht.ts b/packages/gui-plugins/src/context/i18n/zht.ts
-index 5b25681..0fb2503 100644
+index 1026443..81d559d 100644
 --- a/packages/gui-plugins/src/context/i18n/zht.ts
 +++ b/packages/gui-plugins/src/context/i18n/zht.ts
-@@ -28,4 +28,7 @@ export default {
-   "export.success.description": "已將工作階段儲存至 {{filename}}",
+@@ -29,4 +29,7 @@ export default {
    "export.failed.title": "匯出工作階段失敗",
    "export.failed.description": "匯出工作階段時發生錯誤",
+   "usage.toggle": "切換工作階段上下文",
 +  "history.loading": "正在載入完整歷史…",
 +  "history.failed": "無法載入完整歷史",
 +  "history.retry": "重試",
  }
 diff --git a/packages/gui-plugins/src/context/tab.tsx b/packages/gui-plugins/src/context/tab.tsx
-index de49dc7..545b0ee 100644
+index 9de3574..0e81985 100644
 --- a/packages/gui-plugins/src/context/tab.tsx
 +++ b/packages/gui-plugins/src/context/tab.tsx
 @@ -1,4 +1,4 @@
@@ -789,7 +808,7 @@ index de49dc7..545b0ee 100644
    const usd = createMemo(
      () =>
        new Intl.NumberFormat(i18n.locale(), {
-@@ -395,10 +460,30 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -405,12 +470,32 @@ export default function SessionContextTab(props: { session: MountedSession }) {
        }
      >
        <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
@@ -808,7 +827,9 @@ index de49dc7..545b0ee 100644
 +        </Show>
 +
          <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
-           <For each={stats}>{(stat) => <Stat label={ctx.t(stat.label)} value={stat.value()} />}</For>
+           <For each={stats}>
+             {(stat) => <Show when={stat.value()}>{(value) => <Stat label={ctx.t(stat.label)} value={value()} />}</Show>}
+           </For>
          </div>
  
 +        <Show when={history() === "loading"}>
@@ -820,7 +841,7 @@ index de49dc7..545b0ee 100644
          <Show when={systemPrompt()}>
            {(prompt) => (
              <div class="flex flex-col gap-2">
-@@ -412,7 +497,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -424,7 +509,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
  
          <div class="flex flex-col gap-2">
            <div class="flex items-center justify-between">
@@ -842,7 +863,7 @@ index de49dc7..545b0ee 100644
              <Button
                size="small"
                variant="ghost"
-@@ -426,13 +524,17 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -438,13 +536,17 @@ export default function SessionContextTab(props: { session: MountedSession }) {
                <span>{ctx.t("export.session")}</span>
              </Button>
            </div>
@@ -868,10 +889,10 @@ index de49dc7..545b0ee 100644
        </div>
      </div>
 diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
-index f61a189..3580162 100644
+index aed607f..b141102 100644
 --- a/packages/ui/src/components/image-preview.tsx
 +++ b/packages/ui/src/components/image-preview.tsx
-@@ -68,6 +68,14 @@ export interface ImagePreviewProps {
+@@ -70,6 +70,14 @@ export interface ImagePreviewProps {
  
  const STEP = Math.SQRT2
  
@@ -886,7 +907,7 @@ index f61a189..3580162 100644
  // How far up from its bottom edge a video keeps its own controls, whose drag scrubs rather than pans.
  const CONTROLS = 56
  
-@@ -142,6 +150,21 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -144,6 +152,21 @@ export function ImagePreview(props: ImagePreviewProps) {
    const followEvent = { type: "follow" as const, zoomed: false }
    const movedEvent = { type: "pointer.moved" as const, pointerId: 0 }
  
@@ -908,7 +929,7 @@ index f61a189..3580162 100644
    const percent = createMemo(() => new Intl.NumberFormat(i18n.locale(), { style: "percent", maximumFractionDigits: 0 }))
  
    const dispatchFlight = (event: PreviewFlightEvent) => {
-@@ -535,12 +558,17 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -537,12 +560,17 @@ export function ImagePreview(props: ImagePreviewProps) {
    )
  
    // From the center of the box zoom is measured in: the window's for an image, the frame's for a video.
@@ -928,7 +949,7 @@ index f61a189..3580162 100644
    const measure = () => {
      natural.width = image instanceof HTMLImageElement ? image.naturalWidth : image.width
      natural.height = image instanceof HTMLImageElement ? image.naturalHeight : image.height
-@@ -581,12 +609,60 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -583,12 +611,60 @@ export function ImagePreview(props: ImagePreviewProps) {
    const detail = (event: MouseEvent) => {
      if (!interactive()) return
  
@@ -989,7 +1010,7 @@ index f61a189..3580162 100644
      dispatchZoom({
        type: "pointer.down",
        pointerId: event.pointerId,
-@@ -604,6 +680,33 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -606,6 +682,33 @@ export function ImagePreview(props: ImagePreviewProps) {
  
    // The hot path of a pan: no layout reads, and no Solid writes once the pan has moved.
    const pan = (event: PointerEvent) => {
@@ -1023,7 +1044,7 @@ index f61a189..3580162 100644
      if (!selectPanPointer(untrack(zoom), event.pointerId)) return
  
      // The button came up without a pointerup reaching the preview, so this is a hover, not a drag.
-@@ -624,8 +727,46 @@ export function ImagePreview(props: ImagePreviewProps) {
+@@ -626,8 +729,46 @@ export function ImagePreview(props: ImagePreviewProps) {
      )
    }
  
@@ -1113,10 +1134,10 @@ index bc21bd7..c8621f2 100644
    )
  }
 diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
-index 19335dd..7a7f8c5 100644
+index 9327cad..2375e2e 100644
 --- a/packages/ui/src/i18n/en.ts
 +++ b/packages/ui/src/i18n/en.ts
-@@ -202,6 +202,7 @@ const source = {
+@@ -262,6 +262,7 @@ const source = {
    "ui.textField.copied": "Copied",
  
    "ui.imagePreview.alt": "Image preview",
@@ -1125,10 +1146,10 @@ index 19335dd..7a7f8c5 100644
    "ui.imagePreview.zoomOut": "Zoom out",
    "ui.imagePreview.zoomToFit": "Zoom to fit",
 diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
-index b6c00e7..f03f1cb 100644
+index 38c3de7..0844921 100644
 --- a/packages/ui/src/i18n/zh.ts
 +++ b/packages/ui/src/i18n/zh.ts
-@@ -140,6 +140,7 @@ export const dict = {
+@@ -142,6 +142,7 @@ export const dict = {
    "ui.textField.copied": "已复制",
  
    "ui.imagePreview.alt": "图片预览",
@@ -1137,10 +1158,10 @@ index b6c00e7..f03f1cb 100644
  
    "ui.tool.read": "读取",
 diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
-index de7b083..8e38048 100644
+index f53f1df..66d4760 100644
 --- a/packages/ui/src/i18n/zht.ts
 +++ b/packages/ui/src/i18n/zht.ts
-@@ -140,6 +140,7 @@ export const dict = {
+@@ -142,6 +142,7 @@ export const dict = {
    "ui.textField.copied": "已複製",
  
    "ui.imagePreview.alt": "圖片預覽",
@@ -1148,21 +1169,3 @@ index de7b083..8e38048 100644
    "ui.scrollView.ariaLabel": "可捲動內容",
  
    "ui.tool.read": "讀取",
-diff --git a/packages/app/src/composer/editor/editor.tsx b/packages/app/src/composer/editor/editor.tsx
-index ee7d835..836dc03 100644
---- a/packages/app/src/composer/editor/editor.tsx
-+++ b/packages/app/src/composer/editor/editor.tsx
-@@ -110,8 +110,11 @@ export function ComposerEditor(props: ComposerEditorProps) {
-   const [overflow, setOverflow] = createStore({ start: false, end: false })
-   // A history preview holds the composer at the height it had when the list opened.
-   const historyHeight = createMemo(() => composerHistoryPreviewHeight(state))
--  // Phones and tablets, whatever their width: a narrow desktop window keeps the desktop composer.
--  const touch = createMediaQuery("(hover: none) and (pointer: coarse)")
-+  // Android: the WebView reports `pointer: coarse` for touch, which would select the
-+  // docked touch action bar and portal it below the session as an extra row. The
-+  // desktop layout (inline composer actions) ships on every Android device, so this
-+  // stays off unconditionally. Upstream: "(hover: none) and (pointer: coarse)".
-+  const touch = () => false
-   // The shell's slot at the bottom of the screen; without one (a story), the touch bar stays under the composer.
-   const [dock, setDock] = createSignal<HTMLElement>()
- 
