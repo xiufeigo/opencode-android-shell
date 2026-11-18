@@ -730,6 +730,32 @@ const android = {
   "settings.extensions.console.replaced": "取代 OpenCode Console",
   "settings.extensions.console.connect": "在 Console 中連接 {{name}}",
   "settings.extensions.console.manage": "在 Console 中管理 {{name}}",
+  // 2.3.2 仍缺的 23 條（專案瀏覽、主要檢出、外掛更新、中斷提供者）。
+  "dialog.directory.breadcrumbs": "資料夾路徑",
+  "dialog.directory.moreProjects": "更多專案",
+  "project.browse.back": "返回專案",
+  "project.browse.history": "檢視工作階段歷史…",
+  "project.browse.newSession": "在此新增工作階段",
+  "project.browse.partial": "部分工作階段無法載入",
+  "project.browse.title": "瀏覽專案",
+  "project.start.reconnect": "重新連線",
+  "session.new.project.other.search": "搜尋其他專案",
+  "session.new.workspace.useMainCheckout": "使用主要檢出",
+  "settings.helpFeedback": "說明與意見回饋",
+  "settings.plugins.check": "檢查更新",
+  "settings.plugins.checking": "正在檢查更新",
+  "settings.plugins.update": "更新",
+  "settings.plugins.update.label": "更新 {{name}}",
+  "settings.plugins.updating": "正在更新",
+  "settings.providers.account.remove.description": "{{provider}} 將不再使用此帳號。",
+  "settings.providers.account.remove.finalDescription": "這是你唯一的 {{provider}} 帳號，因此將中斷 {{provider}}。",
+  "settings.providers.account.remove.title": "移除 {{account}}？",
+  "settings.providers.disconnect.consoleDescription.one":
+    "你的登入將被移除，來自 {{workspace}} 的 {{count}} 個提供者將不再可用。",
+  "settings.providers.disconnect.consoleDescription.other":
+    "你的登入將被移除，來自 {{workspace}} 的 {{count}} 個提供者將不再可用。",
+  "settings.providers.disconnect.description": "已儲存的憑證將被移除，其模型將不再可用。",
+  "settings.providers.disconnect.title": "中斷 {{provider}}？",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }

@@ -54,9 +54,10 @@ android {
         // 64 用 WebView 实高钉死官方 h-dvh：Android WebView 的 100dvh 在父层压矮后要点击才更新。
         // 65 Pixel Tablet 实测：AppCompat content 冲掉 padding，WebView 仍整屏，官方 env(safe-area-inset-bottom)=32
         //    再垫一层；要点击才把 env 收掉。改成自有 viewportHost + 写死 WebView 高度，并把官方安全区变量钉 0。
-        versionCode = 69
+        // 70 官方 UI 升到 2.3.2（跳过 2.3.1），重放 Android 补丁并补齐 23 条新中文。
+        versionCode = 70
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.41"
+        versionName = "2.0.42"
     }
 
     signingConfigs {

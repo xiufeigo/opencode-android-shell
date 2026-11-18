@@ -734,6 +734,32 @@ const android = {
   "settings.extensions.console.replaced": "替代 OpenCode Console",
   "settings.extensions.console.connect": "在 Console 中连接 {{name}}",
   "settings.extensions.console.manage": "在 Console 中管理 {{name}}",
+  // 2.3.2 仍缺的 23 条（项目浏览、主检出、插件更新、断开提供商）。
+  "dialog.directory.breadcrumbs": "文件夹路径",
+  "dialog.directory.moreProjects": "更多项目",
+  "project.browse.back": "返回项目",
+  "project.browse.history": "查看会话历史…",
+  "project.browse.newSession": "在此新建会话",
+  "project.browse.partial": "部分会话无法加载",
+  "project.browse.title": "浏览项目",
+  "project.start.reconnect": "重新连接",
+  "session.new.project.other.search": "搜索其他项目",
+  "session.new.workspace.useMainCheckout": "使用主检出",
+  "settings.helpFeedback": "帮助与反馈",
+  "settings.plugins.check": "检查更新",
+  "settings.plugins.checking": "正在检查更新",
+  "settings.plugins.update": "更新",
+  "settings.plugins.update.label": "更新 {{name}}",
+  "settings.plugins.updating": "正在更新",
+  "settings.providers.account.remove.description": "{{provider}} 将不再使用此账号。",
+  "settings.providers.account.remove.finalDescription": "这是你唯一的 {{provider}} 账号，因此将断开 {{provider}}。",
+  "settings.providers.account.remove.title": "移除 {{account}}？",
+  "settings.providers.disconnect.consoleDescription.one":
+    "你的登录将被移除，来自 {{workspace}} 的 {{count}} 个提供商将不再可用。",
+  "settings.providers.disconnect.consoleDescription.other":
+    "你的登录将被移除，来自 {{workspace}} 的 {{count}} 个提供商将不再可用。",
+  "settings.providers.disconnect.description": "已保存的凭据将被移除，其模型将不再可用。",
+  "settings.providers.disconnect.title": "断开 {{provider}}？",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }

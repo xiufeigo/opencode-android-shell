@@ -2,7 +2,7 @@
 
 Android 客户端连接电脑或服务器上的 OpenCode，直接使用 OpenCode Desktop 共享的官方 `packages/app` 界面。当前产品模块是 `:webapp`，入口是 `WebHostActivity`；`app/` 中的 Compose 实现保留为历史代码，不参与发布。
 
-官方 UI 固定为 **2.2.6**，提交 `dc2ffcf8bf26f9e669b6aa22b95f50e12be15e06`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.37 / 65**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
+官方 UI 固定为 **2.3.2**，提交 `c0ad18b402eb2827fc1ee71c171b1177b3fc02d1`。唯一构建基准见 [frontend/android/upstream.json](frontend/android/upstream.json)。Android APK 版本为 **2.0.42 / 70**；包名 `com.xiufeigo.opencodeshell`，Android 8.0 起支持，目标 SDK 35。
 
 ## 与 Desktop 对齐
 
