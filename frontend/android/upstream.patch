@@ -1,5 +1,5 @@
 diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
-index 969f506..8ad0e2a 100644
+index f9a06a0f1..233f6327b 100644
 --- a/packages/app/src/entry.tsx
 +++ b/packages/app/src/entry.tsx
 @@ -7,6 +7,8 @@ import { AppBaseProviders, AppInterface } from "@/app"
@@ -26,10 +26,10 @@ index 969f506..8ad0e2a 100644
 +// answering navigations from the old build, and its chunks vanish with the next
 +// APK. The host clears that worker at document start; never register it again.
 +if (!android && import.meta.env.PROD && "serviceWorker" in navigator) {
-   window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
- }
- 
-@@ -99,7 +108,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
+   window.addEventListener("load", () => void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`), {
+     once: true,
+   })
+@@ -101,7 +110,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
  
      render(
        () => (
@@ -39,7 +39,7 @@ index 969f506..8ad0e2a 100644
              <AppInterface
                canonicalLocalServer={server ? ServerConnection.key(server) : undefined}
 diff --git a/packages/app/src/home/sessions/controller.tsx b/packages/app/src/home/sessions/controller.tsx
-index 2f42703..f72f159 100644
+index 2f4270332..f72f159ed 100644
 --- a/packages/app/src/home/sessions/controller.tsx
 +++ b/packages/app/src/home/sessions/controller.tsx
 @@ -270,7 +270,7 @@ export function createHomeSessionsController(home: HomeController) {
@@ -61,7 +61,7 @@ index 2f42703..f72f159 100644
      location: {
        value: location,
 diff --git a/packages/app/src/runtime/i18n/language.tsx b/packages/app/src/runtime/i18n/language.tsx
-index 4100d35..59c959c 100644
+index a3d12ce43..e048de867 100644
 --- a/packages/app/src/runtime/i18n/language.tsx
 +++ b/packages/app/src/runtime/i18n/language.tsx
 @@ -114,8 +114,11 @@ const merge = (app: Promise<Source>, ui: Promise<Source>) =>
@@ -79,7 +79,7 @@ index 4100d35..59c959c 100644
    de: () => merge(import("@/runtime/i18n/de"), import("@opencode/ui/i18n/de")),
    es: () => merge(import("@/runtime/i18n/es"), import("@opencode/ui/i18n/es")),
 diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
-index 38a1233..f68d926 100644
+index 4c7185d55..6e248603e 100644
 --- a/packages/app/src/runtime/platform/platform.tsx
 +++ b/packages/app/src/runtime/platform/platform.tsx
 @@ -21,7 +21,7 @@ type OpenFilePathPickerOptions = { title?: string; multiple?: boolean; extension
@@ -100,25 +100,25 @@ index 38a1233..f68d926 100644
  type PlatformBase = {
    requestMicrophone?(): Promise<boolean>
    setVoiceCallActive?(active: boolean): Promise<void>
-@@ -60,7 +62,7 @@ type PlatformBase = {
-   /** Send a system notification */
-   notify(title: string, description?: string, onClick?: () => void): Promise<void>
+@@ -71,7 +73,7 @@ type PlatformBase = {
+   /** Draw the user to a window in the background, as a flashing taskbar button on Windows (desktop only) */
+   requestAttention?(): Promise<void>
  
 -  /** Open a native attachment picker and read selected files sequentially (desktop only) */
 +  /** Open the host's attachment picker and read selected files sequentially. */
    openAttachmentPickerDialog?<Value>(
      opts: OpenAttachmentPickerOptions,
      onFile: (file: File) => Promise<Value>,
-@@ -75,7 +77,7 @@ type PlatformBase = {
-   /** Observe native drag cancellation that does not reach the renderer event loop. */
-   onDragCancel?(callback: () => void): () => void
+@@ -101,7 +103,7 @@ type PlatformBase = {
+   /** Observe the machine waking from sleep, when server event streams may be dead without knowing it (desktop only) */
+   onSystemResume?(callback: () => void): () => void
  
 -  /** Open a native save file dialog and write content to the selected path (desktop only) */
 +  /** Open the host's save file dialog and write content to the selected path. */
    saveFile?(opts: SaveFilePickerOptions, content: string): Promise<boolean>
  
    /** Storage mechanism, defaults to localStorage */
-@@ -114,8 +116,10 @@ type PlatformBase = {
+@@ -140,8 +142,10 @@ type PlatformBase = {
    /** Turn the native spellchecker on or off (desktop only) */
    setSpellcheckEnabled?(enabled: boolean): Promise<void>
  
@@ -130,7 +130,7 @@ index 38a1233..f68d926 100644
  
    /** Check if an editor app exists (desktop only) */
    checkAppExists?(appName: string): Promise<boolean>
-@@ -142,6 +146,14 @@ type PlatformBase = {
+@@ -168,6 +172,14 @@ type PlatformBase = {
  export type Platform = PlatformBase &
    (
      | { platform: "web"; os?: never; windowID?: never }
@@ -146,7 +146,7 @@ index 38a1233..f68d926 100644
          platform: "desktop"
          os?: DesktopOS
 diff --git a/packages/app/src/runtime/polyfills.test.ts b/packages/app/src/runtime/polyfills.test.ts
-index 0c4c8d5..f4b0def 100644
+index 0c4c8d599..f4b0def11 100644
 --- a/packages/app/src/runtime/polyfills.test.ts
 +++ b/packages/app/src/runtime/polyfills.test.ts
 @@ -1,4 +1,5 @@
@@ -190,7 +190,7 @@ index 0c4c8d5..f4b0def 100644
 +  expect(pairingLink("http://host:4096")).toBeUndefined()
 +})
 diff --git a/packages/app/src/runtime/polyfills.ts b/packages/app/src/runtime/polyfills.ts
-index edf61c8..d0636a5 100644
+index edf61c83d..d0636a59b 100644
 --- a/packages/app/src/runtime/polyfills.ts
 +++ b/packages/app/src/runtime/polyfills.ts
 @@ -37,3 +37,23 @@ if (!Promise.try) {
@@ -218,7 +218,7 @@ index edf61c8..d0636a5 100644
 +  }
 +}
 diff --git a/packages/app/src/servers/connect/controller.ts b/packages/app/src/servers/connect/controller.ts
-index dd764c9..add4061 100644
+index dd764c992..add40618f 100644
 --- a/packages/app/src/servers/connect/controller.ts
 +++ b/packages/app/src/servers/connect/controller.ts
 @@ -214,7 +214,7 @@ export function createServerConnectController(options: ServerConnectControllerOp
@@ -231,7 +231,7 @@ index dd764c9..add4061 100644
    if (!window.isSecureContext) return "insecure"
  
 diff --git a/packages/app/src/settings/settings.css b/packages/app/src/settings/settings.css
-index 385621c..42a9846 100644
+index f7bc52942..a624ceaad 100644
 --- a/packages/app/src/settings/settings.css
 +++ b/packages/app/src/settings/settings.css
 @@ -212,6 +212,12 @@
@@ -248,7 +248,7 @@ index 385621c..42a9846 100644
    .settings-nav-group-header:hover {
      background: var(--v2-background-bg-layer-03);
 diff --git a/packages/app/src/shell/commands/desktop-menu.ts b/packages/app/src/shell/commands/desktop-menu.ts
-index b85a79a..bfefddc 100644
+index b85a79aa2..bfefddca4 100644
 --- a/packages/app/src/shell/commands/desktop-menu.ts
 +++ b/packages/app/src/shell/commands/desktop-menu.ts
 @@ -1,6 +1,6 @@
@@ -269,7 +269,7 @@ index b85a79a..bfefddc 100644
        {
          type: "item",
 diff --git a/packages/app/src/shell/errors/error.tsx b/packages/app/src/shell/errors/error.tsx
-index 176b01c..ecea660 100644
+index 176b01cbd..ecea66081 100644
 --- a/packages/app/src/shell/errors/error.tsx
 +++ b/packages/app/src/shell/errors/error.tsx
 @@ -427,7 +427,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
@@ -282,7 +282,7 @@ index 176b01c..ecea660 100644
            <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
              <Button
 diff --git a/packages/app/src/shell/titlebar/windows-menu.tsx b/packages/app/src/shell/titlebar/windows-menu.tsx
-index c5325b2..3ac4e92 100644
+index c5325b21b..3ac4e921f 100644
 --- a/packages/app/src/shell/titlebar/windows-menu.tsx
 +++ b/packages/app/src/shell/titlebar/windows-menu.tsx
 @@ -17,6 +17,7 @@ import {
@@ -384,10 +384,10 @@ index c5325b2..3ac4e92 100644
                          />
                        )
 diff --git a/packages/app/vite.pwa.ts b/packages/app/vite.pwa.ts
-index 20661ce..f7b0613 100644
+index 92f45b1f0..44d3cbfb0 100644
 --- a/packages/app/vite.pwa.ts
 +++ b/packages/app/vite.pwa.ts
-@@ -39,6 +39,8 @@ export function serviceWorker(directory: string) {
+@@ -52,6 +52,8 @@ export function serviceWorker(directory: string) {
            manifest: await Promise.all(
              entries
                .filter((entry) => !onDemandAsset(entry.url))
@@ -397,7 +397,7 @@ index 20661ce..f7b0613 100644
                ...entry,
                // A revision labels a cache entry; integrity rejects mixed deployments
 diff --git a/packages/gui-plugins/src/renderer.ts b/packages/gui-plugins/src/renderer.ts
-index 5c131e2..59b3734 100644
+index 5c131e235..59b3734c5 100644
 --- a/packages/gui-plugins/src/renderer.ts
 +++ b/packages/gui-plugins/src/renderer.ts
 @@ -29,6 +29,8 @@ import sources from "./sources"
@@ -416,7 +416,7 @@ index 5c131e2..59b3734 100644
 +  "server-browser": { ...serverBrowser, windowEntry: eager(serverBrowserRenderer) },
  })
 diff --git a/packages/gui-plugins/src/terminal/model.ts b/packages/gui-plugins/src/terminal/model.ts
-index 0098cfa..9bda4c4 100644
+index 0098cfaba..9bda4c4ba 100644
 --- a/packages/gui-plugins/src/terminal/model.ts
 +++ b/packages/gui-plugins/src/terminal/model.ts
 @@ -49,7 +49,12 @@ const OVERLAYS = '[role="dialog"], [role="menu"]'
@@ -434,10 +434,10 @@ index 0098cfa..9bda4c4 100644
  /** The one ghostty-web load the window's terminals share; a failed load is retried by the next terminal. */
  type Ghostty = { shared?: ReturnType<typeof importGhostty> }
 diff --git a/packages/gui-plugins/src/terminal/terminal.tsx b/packages/gui-plugins/src/terminal/terminal.tsx
-index 9a4bf61..3954d08 100644
+index a235eb4a4..d57db7795 100644
 --- a/packages/gui-plugins/src/terminal/terminal.tsx
 +++ b/packages/gui-plugins/src/terminal/terminal.tsx
-@@ -439,7 +439,7 @@ export const Terminal = (props: TerminalProps) => {
+@@ -456,7 +456,7 @@ export const Terminal = (props: TerminalProps) => {
        fontSize: 14,
        fontFamily: appearance.font("mono"),
        allowTransparency: false,
@@ -447,7 +447,7 @@ index 9a4bf61..3954d08 100644
        scrollback: 10_000,
        ghostty: loaded.ghostty,
 diff --git a/packages/plugin/src/gui/core.ts b/packages/plugin/src/gui/core.ts
-index 3d048e6..185e8e3 100644
+index 404e0c8e8..9ae426492 100644
 --- a/packages/plugin/src/gui/core.ts
 +++ b/packages/plugin/src/gui/core.ts
 @@ -65,9 +65,10 @@ export interface App {
@@ -464,7 +464,7 @@ index 3d048e6..185e8e3 100644
  }
  
 diff --git a/packages/ui/src/components/resize-handle.css b/packages/ui/src/components/resize-handle.css
-index 1a8cbbb..662a683 100644
+index 1a8cbbbfc..662a68390 100644
 --- a/packages/ui/src/components/resize-handle.css
 +++ b/packages/ui/src/components/resize-handle.css
 @@ -1,6 +1,7 @@

@@ -10,8 +10,8 @@ import java.io.File
  *
  * ## 缺陷（真机复现）
  *
- * 官方 Web 产物在 `load` 后注册 `/sw.js`（`vite-plugin-pwa`，workbox 预缓存 +
- * `skipWaiting: false` / `clientsClaim: false`）。Android 的 UI 就在 APK 里、由
+ * 官方 Web 产物在 `load` 后注册 `${import.meta.env.BASE_URL}sw.js`（`vite-plugin-pwa`，
+ * workbox 预缓存 + `skipWaiting: false` / `clientsClaim: false`）。Android 的 UI 就在 APK 里、由
  * 本机 127.0.0.1 提供，预缓存没有任何收益，却会在**覆盖安装**后继续生效：
  *
  * - 旧 worker 仍接管导航，页面继续拿上一版 `index.html`；
@@ -136,13 +136,15 @@ class EmbeddedUiServiceWorkerTest {
     @Test
     fun webBuildStillRegistersTheOfficialWorker() {
         // Web 分发走同一补丁产物，但 `android` 为 false ⇒ 保留官方 PWA 行为。
+        // v2.4.1 把注册路径从字面量 "/sw.js" 改成 BASE_URL，Web 仍必须注册同一条官方调用。
         assertTrue(
             "非 Android（Web 分发）必须继续注册官方 SW，不能把 PWA 能力一起砍掉",
-            upstreamPatch.contains("navigator.serviceWorker.register(\"/sw.js\")"),
+            upstreamPatch.contains("navigator.serviceWorker.register(`\${import.meta.env.BASE_URL}sw.js`)"),
         )
         assertTrue(
             "注册行必须仍在 load 事件里、once 语义不变",
-            upstreamPatch.contains("window.addEventListener(\"load\", () => void navigator.serviceWorker.register(\"/sw.js\"), { once: true })"),
+            upstreamPatch.contains("window.addEventListener(\"load\", () => void navigator.serviceWorker.register(`\${import.meta.env.BASE_URL}sw.js`)") &&
+                upstreamPatch.contains("once: true"),
         )
     }
 
