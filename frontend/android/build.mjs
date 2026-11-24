@@ -68,6 +68,19 @@ const pkg = JSON.parse(await fs.readFile(path.join(checkout, "packages/app/packa
 if (pkg.version !== pin.version) throw new Error("Pinned OpenCode version does not match source")
 await applyAndroidSources(checkout, here)
 await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", "@opencode/app"])
+// Filtered install does not bring in the root devDependency @types/mime-types, which
+// packages/util/src/fs-util.ts needs when gui-plugins is typechecked (v2.4.1).
+const rootPkg = JSON.parse(await fs.readFile(path.join(checkout, "package.json"), "utf8"))
+const mimeTypes = rootPkg.devDependencies?.["@types/mime-types"]
+if (typeof mimeTypes === "string" && !mimeTypes.startsWith("catalog:")) {
+  const stage = path.join(checkout, ".android-types")
+  await fs.rm(stage, { recursive: true, force: true })
+  await fs.mkdir(stage, { recursive: true })
+  await fs.writeFile(path.join(stage, "package.json"), JSON.stringify({ private: true }) + "\n")
+  await run(bun, ["add", `--exact`, `@types/mime-types@${mimeTypes}`, "--ignore-scripts"], stage)
+  await fs.mkdir(path.join(checkout, "node_modules/@types"), { recursive: true })
+  await fs.cp(path.join(stage, "node_modules/@types/mime-types"), path.join(checkout, "node_modules/@types/mime-types"), { recursive: true })
+}
 await run(process.execPath, ["--test", path.join(here, "system-fonts.test.mjs")], root)
 // 2.1.3+ runs app unit tests through Solid's hyperscript preload. TSX in the
 // production graph (pairing, settings) has no Solid compiler pass under bun test.

@@ -1,5 +1,5 @@
 diff --git a/packages/app/component-tests/timeline-virtualizer.spec.ts b/packages/app/component-tests/timeline-virtualizer.spec.ts
-index af213ad..7f07362 100644
+index a46018732..07fda6677 100644
 --- a/packages/app/component-tests/timeline-virtualizer.spec.ts
 +++ b/packages/app/component-tests/timeline-virtualizer.spec.ts
 @@ -187,8 +187,8 @@ for (const input of [
@@ -14,7 +14,7 @@ index af213ad..7f07362 100644
        await expect(root.getByTestId("timeline-controls")).toHaveAttribute("data-pinned", "false")
      }
 diff --git a/packages/app/e2e/regression/settings.spec.ts b/packages/app/e2e/regression/settings.spec.ts
-index 1005653..f842fa4 100644
+index fdc74981b..713a51692 100644
 --- a/packages/app/e2e/regression/settings.spec.ts
 +++ b/packages/app/e2e/regression/settings.spec.ts
 @@ -377,6 +377,8 @@ for (const [locale, dict] of [
@@ -35,7 +35,7 @@ index 1005653..f842fa4 100644
        }
  
 diff --git a/packages/app/e2e/regression/timeline-geometry.spec.ts b/packages/app/e2e/regression/timeline-geometry.spec.ts
-index f87b30f..6994175 100644
+index 8166b8bf0..5e8305938 100644
 --- a/packages/app/e2e/regression/timeline-geometry.spec.ts
 +++ b/packages/app/e2e/regression/timeline-geometry.spec.ts
 @@ -742,9 +742,7 @@ for (const input of [
@@ -115,7 +115,7 @@ index f87b30f..6994175 100644
  
  test("groups consecutive sent prompts under the last one's meta line, with each bubble's actions beside it", async ({
 diff --git a/packages/app/e2e/regression/timeline-stream.spec.ts b/packages/app/e2e/regression/timeline-stream.spec.ts
-index 324ede8..5584f90 100644
+index 6ebd8ecc3..c05664db6 100644
 --- a/packages/app/e2e/regression/timeline-stream.spec.ts
 +++ b/packages/app/e2e/regression/timeline-stream.spec.ts
 @@ -873,6 +873,8 @@ test.describe("Working", () => {
@@ -149,7 +149,7 @@ index 324ede8..5584f90 100644
        await expect(trigger).toHaveAttribute("aria-expanded", "true")
        await expect(working).toBeVisible()
 diff --git a/packages/app/src/composer/editor/editor.tsx b/packages/app/src/composer/editor/editor.tsx
-index 0c0d870..df04944 100644
+index 45fc69a2c..ba9800872 100644
 --- a/packages/app/src/composer/editor/editor.tsx
 +++ b/packages/app/src/composer/editor/editor.tsx
 @@ -116,8 +116,11 @@ export function ComposerEditor(props: ComposerEditorProps) {
@@ -167,7 +167,7 @@ index 0c0d870..df04944 100644
    const [dock, setDock] = createSignal<HTMLElement>()
  
 diff --git a/packages/app/src/index.css b/packages/app/src/index.css
-index 19ecf51..c833a66 100644
+index 0163e3082..4422b0003 100644
 --- a/packages/app/src/index.css
 +++ b/packages/app/src/index.css
 @@ -90,8 +90,8 @@
@@ -182,7 +182,7 @@ index 19ecf51..c833a66 100644
    [data-slot="session-timeline-scroll"] > .scroll-view__viewport {
      --session-timeline-fade-start: var(--session-timeline-inset, 0px);
 diff --git a/packages/app/src/providers/models/provider-group.tsx b/packages/app/src/providers/models/provider-group.tsx
-index b5ecb8c..c337aec 100644
+index b5ecb8c35..c337aeca5 100644
 --- a/packages/app/src/providers/models/provider-group.tsx
 +++ b/packages/app/src/providers/models/provider-group.tsx
 @@ -1,9 +1,8 @@
@@ -212,10 +212,10 @@ index b5ecb8c..c337aec 100644
    return (
      <Switch>
 diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
-index 0921724..a094022 100644
+index 9bb444470..9bdaad716 100644
 --- a/packages/app/src/runtime/i18n/en.ts
 +++ b/packages/app/src/runtime/i18n/en.ts
-@@ -1142,6 +1142,8 @@ export const dict = {
+@@ -1224,6 +1224,8 @@ export const dict = {
    "settings.general.row.terminalFont.description": "Customise the font used in the terminal",
    "settings.general.row.uiFont.title": "UI Font",
    "settings.general.row.uiFont.description": "Customise the font used throughout the interface",
@@ -225,7 +225,7 @@ index 0921724..a094022 100644
    "settings.general.row.mobileTitlebarBottom.description": "Place the title bar at the bottom of the screen on mobile",
    "settings.general.row.showCustomAgents.title": "Show agent",
 diff --git a/packages/app/src/session/composer/composer-lane.tsx b/packages/app/src/session/composer/composer-lane.tsx
-index 540b622..8b3f0a2 100644
+index 540b62247..8b3f0a2b8 100644
 --- a/packages/app/src/session/composer/composer-lane.tsx
 +++ b/packages/app/src/session/composer/composer-lane.tsx
 @@ -3,7 +3,7 @@ import { useLanguage } from "@/runtime/i18n/language"
@@ -258,10 +258,10 @@ index 540b622..8b3f0a2 100644
          "justify-start": alignment() === "start",
          "justify-center": alignment() === "center",
 diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
-index 938a906..fe2ad88 100644
+index 15af22204..2de0d9719 100644
 --- a/packages/app/src/session/session-panel-width.test.ts
 +++ b/packages/app/src/session/session-panel-width.test.ts
-@@ -8,6 +8,8 @@ test.each([
+@@ -14,6 +14,8 @@ test.each([
    // Regression: the old cap was 45% of the window, forcing the review pane to at least 55%.
    ["lets the chat panel take everything beyond the review pane minimum", 3440, 3440, false, false, 2960],
    ["holds the chat panel minimum when there is no room for both", 1600, 700, true, false, 450],
@@ -271,10 +271,10 @@ index 938a906..fe2ad88 100644
    ["skips clamping before the layout is measured", 1600, undefined, false, false, 1600],
    ["lets a dragged width leave the side pane its hard minimum, split diffs included", 1600, 1700, true, true, 1380],
 diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
-index 172cef4..fa27335 100644
+index 6ed74af4e..23a3193aa 100644
 --- a/packages/app/src/session/session-panel-width.ts
 +++ b/packages/app/src/session/session-panel-width.ts
-@@ -16,21 +16,47 @@ const REVIEW_PANE_WIDTH_FIT = 480
+@@ -20,21 +20,47 @@ const REVIEW_PANE_WIDTH_FIT = 480
  
  const REVIEW_PANE_WIDTH_FIT_SPLIT = 800
  
@@ -327,7 +327,7 @@ index 172cef4..fa27335 100644
  
  // A panel with a side width of its own: the chat panel takes the rest of the row, keeping at least its minimum.
 diff --git a/packages/app/src/session/timeline/interaction.ts b/packages/app/src/session/timeline/interaction.ts
-index 3b7205a..04fe79a 100644
+index 3b7205a2d..04fe79a9f 100644
 --- a/packages/app/src/session/timeline/interaction.ts
 +++ b/packages/app/src/session/timeline/interaction.ts
 @@ -385,7 +385,7 @@ export function createSessionTimelineInteraction(session: SessionModel, visible:
@@ -340,10 +340,10 @@ index 3b7205a..04fe79a 100644
        const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
  
 diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
-index 591a7b8..b73528c 100644
+index 3ff58a0cd..9b0aa6d98 100644
 --- a/packages/app/src/session/timeline/message-timeline.tsx
 +++ b/packages/app/src/session/timeline/message-timeline.tsx
-@@ -511,8 +511,8 @@ function MessageTimelineView(
+@@ -518,8 +518,8 @@ function MessageTimelineView(
    )
  
    // The lane keeps its height while empty, so Working and the hint come and go without moving the rows around it.
@@ -354,7 +354,7 @@ index 591a7b8..b73528c 100644
    const activity = (live: () => boolean, inRow = false) => (
      <div
        classList={{
-@@ -523,7 +523,7 @@ function MessageTimelineView(
+@@ -530,7 +530,7 @@ function MessageTimelineView(
        <Show
          when={props.next}
          fallback={
@@ -364,10 +364,10 @@ index 591a7b8..b73528c 100644
                <div data-component="session-working" role="status">
                  <TextShimmer text={language.t("session.timeline.working")} active />
 diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
-index 50b824d..548a7b2 100644
+index 0922e74c9..4e083dd93 100644
 --- a/packages/app/src/session/timeline/virtualizer.tsx
 +++ b/packages/app/src/session/timeline/virtualizer.tsx
-@@ -146,11 +146,9 @@ export function createTimelineVirtualizer(input: Input) {
+@@ -153,11 +153,9 @@ export function createTimelineVirtualizer(input: Input) {
    const active = () => input.active?.() !== false
    const isDesktop = createMediaQuery("(min-width: 768px)")
    const topOffset = () => (input.showHeader() ? 64 : isDesktop() ? 0 : 16)
@@ -375,15 +375,15 @@ index 50b824d..548a7b2 100644
 -  // activity pill and its 10px composer gap. Without hover the pill grows from 32px to its 44px touch size
 -  // (composer-lane.css), and the tail grows with it. Both come and go inside it, so neither moves the rows above.
 -  const touch = createMediaQuery("(hover: none)")
--  const tailSize = () => (touch() ? 104 : 92)
+-  const tailSize = () => (touch() ? 104 : 92) + (input.tailExtra?.() ?? 0)
 +  // The activity lane is part of the composer inset. Keep the 36px live-status row and the 20px timeline fade clear
-+  // above it, even when background work starts or finishes.
-+  const tailSize = () => 56
++  // above it, even when background work starts or finishes. Official lane spacing still adds its extra gap.
++  const tailSize = () => 56 + (input.tailExtra?.() ?? 0)
    const ownerSessionKey = input.sessionKey()
    const entry = cache.get(ownerSessionKey)
    const cached = entry?.presentationKey === input.presentationKey?.() ? entry : undefined
 diff --git a/packages/app/src/settings/appearance/appearance.tsx b/packages/app/src/settings/appearance/appearance.tsx
-index c406494..69cc2f6 100644
+index c406494ce..69cc2f6f2 100644
 --- a/packages/app/src/settings/appearance/appearance.tsx
 +++ b/packages/app/src/settings/appearance/appearance.tsx
 @@ -1,4 +1,5 @@
@@ -587,10 +587,10 @@ index c406494..69cc2f6 100644
              <Show when={appearance.zoom.available()}>
                <SettingsRow
 diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
-index cea40b0..70d2e9b 100644
+index a3c44f21a..421da537a 100644
 --- a/packages/app/src/settings/model.tsx
 +++ b/packages/app/src/settings/model.tsx
-@@ -334,7 +334,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
+@@ -343,7 +343,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
  }
  
  /** Only local/dev desktop builds offer the Recent side-tab organization. */
@@ -599,7 +599,7 @@ index cea40b0..70d2e9b 100644
    return platform === "desktop" && (channel === "local" || channel === "dev")
  }
  
-@@ -367,6 +367,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+@@ -389,6 +389,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
        void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
      })
  
@@ -617,10 +617,10 @@ index cea40b0..70d2e9b 100644
      const systemReducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
  
 diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
-index bc22377..d1aa0a9 100644
+index 5f9d2ed8e..d3e86f93f 100644
 --- a/packages/app/src/shell/shell.tsx
 +++ b/packages/app/src/shell/shell.tsx
-@@ -27,12 +27,16 @@ import {
+@@ -28,12 +28,16 @@ import {
  import { createPanelMotion, guardClosingFocus, panelOpacity, setPanelResizing } from "@/shell/panel-motion"
  import { createSidebarPeek } from "@/shell/sidebar-peek"
  import { windowDragEnabled } from "@/session/header/drag-area"
@@ -638,10 +638,10 @@ index bc22377..d1aa0a9 100644
    const settings = useSettingsSurface()
    const preferences = useSettings()
 diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index 86eab87..46ba98d 100644
+index 94cfeb37f..6a9824886 100644
 --- a/packages/app/src/shell/titlebar/titlebar.tsx
 +++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -114,7 +114,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -122,7 +122,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
    const location = useLocation()
    const mobile = createMediaQuery("(max-width: 767px)")
    const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
@@ -650,7 +650,7 @@ index 86eab87..46ba98d 100644
  
    const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
    const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -203,7 +203,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -223,7 +223,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
        }}
        style={{
          height:
@@ -659,42 +659,42 @@ index 86eab87..46ba98d 100644
              ? bottom()
                ? "calc(28px + max(8px, var(--shell-safe-area-bottom, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))))"
                : mobileTop()
-@@ -642,8 +642,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                   "ps-3.5": windows() && !props.verticalTabs,
-                 }}
-               >
--                <Show when={windows() || linux()}>
--                  <WindowsAppMenu command={command} platform={platform} />
-+                <Show when={windows() || linux() || (platform.platform === "android" && !props.verticalTabs)}>
-+                  <WindowsAppMenu
-+                    command={command}
-+                    platform={platform}
-+                    menuPlatform={platform.platform === "android" ? "android" : "windows"}
-+                    actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
-+                  />
-                 </Show>
-                 <Show when={windows() && props.verticalTabs}>
-                   <SidebarToggle />
-@@ -851,6 +856,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
-                                 <Show when={actionInSidebarHeader()} fallback={<div class="flex-1" />}>
-                                   <div class="min-w-0 flex-1">{firstSidebarAction()}</div>
-                                 </Show>
-+                                <Show when={platform.platform === "android"}>
-+                                  <WindowsAppMenu
-+                                    command={command}
-+                                    platform={platform}
-+                                    menuPlatform="android"
-+                                    actionEnabled={platform.androidMenuActionEnabled}
-+                                  />
-+                                </Show>
-                                 <SidebarToggle handoff="out" />
-                               </div>
-                             </Show>
+@@ -765,8 +765,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                         "ps-3.5": windows() && !props.verticalTabs,
+                       }}
+                     >
+-                      <Show when={windows() || linux()}>
+-                        <WindowsAppMenu command={command} platform={platform} />
++                      <Show when={windows() || linux() || (platform.platform === "android" && !props.verticalTabs)}>
++                        <WindowsAppMenu
++                          command={command}
++                          platform={platform}
++                          menuPlatform={platform.platform === "android" ? "android" : "windows"}
++                          actionEnabled={platform.platform === "android" ? platform.androidMenuActionEnabled : undefined}
++                        />
+                       </Show>
+                       <Show when={windows() && props.verticalTabs}>
+                         <SidebarToggle />
+@@ -980,6 +985,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+                                       <Show when={actionInSidebarHeader()} fallback={<div class="flex-1" />}>
+                                         <div class="min-w-0 flex-1">{firstSidebarAction()}</div>
+                                       </Show>
++                                      <Show when={platform.platform === "android"}>
++                                        <WindowsAppMenu
++                                          command={command}
++                                          platform={platform}
++                                          menuPlatform="android"
++                                          actionEnabled={platform.androidMenuActionEnabled}
++                                        />
++                                      </Show>
+                                       <SidebarToggle handoff="out" />
+                                     </div>
+                                   </Show>
 diff --git a/packages/gui-plugins/src/context/i18n/en.ts b/packages/gui-plugins/src/context/i18n/en.ts
-index 5ad0d90..0808c27 100644
+index 24cfd5c65..80f23b0ed 100644
 --- a/packages/gui-plugins/src/context/i18n/en.ts
 +++ b/packages/gui-plugins/src/context/i18n/en.ts
-@@ -29,4 +29,7 @@ export default {
+@@ -28,4 +28,7 @@ export default {
    "export.success.description": "Saved session to {{filename}}",
    "export.failed.title": "Failed to export session",
    "export.failed.description": "An error occurred while exporting the session",
@@ -703,10 +703,10 @@ index 5ad0d90..0808c27 100644
 +  "history.retry": "Retry",
  }
 diff --git a/packages/gui-plugins/src/context/i18n/zh.ts b/packages/gui-plugins/src/context/i18n/zh.ts
-index fc04079..ef4839e 100644
+index c7a6853c0..258e524ab 100644
 --- a/packages/gui-plugins/src/context/i18n/zh.ts
 +++ b/packages/gui-plugins/src/context/i18n/zh.ts
-@@ -29,4 +29,7 @@ export default {
+@@ -28,4 +28,7 @@ export default {
    "export.failed.title": "导出会话失败",
    "export.failed.description": "导出会话时发生错误",
    "usage.toggle": "切换会话上下文",
@@ -715,10 +715,10 @@ index fc04079..ef4839e 100644
 +  "history.retry": "重试",
  }
 diff --git a/packages/gui-plugins/src/context/i18n/zht.ts b/packages/gui-plugins/src/context/i18n/zht.ts
-index 1026443..81d559d 100644
+index 9687843db..0bb9c2745 100644
 --- a/packages/gui-plugins/src/context/i18n/zht.ts
 +++ b/packages/gui-plugins/src/context/i18n/zht.ts
-@@ -29,4 +29,7 @@ export default {
+@@ -28,4 +28,7 @@ export default {
    "export.failed.title": "匯出工作階段失敗",
    "export.failed.description": "匯出工作階段時發生錯誤",
    "usage.toggle": "切換工作階段上下文",
@@ -727,7 +727,7 @@ index 1026443..81d559d 100644
 +  "history.retry": "重試",
  }
 diff --git a/packages/gui-plugins/src/context/tab.tsx b/packages/gui-plugins/src/context/tab.tsx
-index 9de3574..0e81985 100644
+index 1117a3b83..032666715 100644
 --- a/packages/gui-plugins/src/context/tab.tsx
 +++ b/packages/gui-plugins/src/context/tab.tsx
 @@ -1,4 +1,4 @@
@@ -736,7 +736,7 @@ index 9de3574..0e81985 100644
  import type { JSX } from "solid-js"
  import { makeEventListener } from "@solid-primitives/event-listener"
  import { checksum } from "@opencode/util/encode"
-@@ -107,6 +107,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -106,6 +106,71 @@ export default function SessionContextTab(props: { session: MountedSession }) {
      { equals: same },
    )
  
@@ -808,7 +808,7 @@ index 9de3574..0e81985 100644
    const usd = createMemo(
      () =>
        new Intl.NumberFormat(i18n.locale(), {
-@@ -405,12 +470,32 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -393,15 +458,48 @@ export default function SessionContextTab(props: { session: MountedSession }) {
        }
      >
        <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
@@ -838,11 +838,6 @@ index 9de3574..0e81985 100644
 +          </div>
 +        </Show>
 +
-         <Show when={systemPrompt()}>
-           {(prompt) => (
-             <div class="flex flex-col gap-2">
-@@ -424,7 +509,20 @@ export default function SessionContextTab(props: { session: MountedSession }) {
- 
          <div class="flex flex-col gap-2">
            <div class="flex items-center justify-between">
 -            <div class="text-12-regular text-text-weak">{ctx.t("rawMessages.title")}</div>
@@ -863,7 +858,7 @@ index 9de3574..0e81985 100644
              <Button
                size="small"
                variant="ghost"
-@@ -438,13 +536,17 @@ export default function SessionContextTab(props: { session: MountedSession }) {
+@@ -415,13 +513,17 @@ export default function SessionContextTab(props: { session: MountedSession }) {
                <span>{ctx.t("export.session")}</span>
              </Button>
            </div>
@@ -889,7 +884,7 @@ index 9de3574..0e81985 100644
        </div>
      </div>
 diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
-index aed607f..b141102 100644
+index aed607fca..b14110233 100644
 --- a/packages/ui/src/components/image-preview.tsx
 +++ b/packages/ui/src/components/image-preview.tsx
 @@ -70,6 +70,14 @@ export interface ImagePreviewProps {
@@ -1094,7 +1089,7 @@ index aed607f..b141102 100644
    if (props.video) {
      const video = props.video
 diff --git a/packages/ui/src/components/provider-icon.tsx b/packages/ui/src/components/provider-icon.tsx
-index bc21bd7..c8621f2 100644
+index bc21bd761..c8621f21f 100644
 --- a/packages/ui/src/components/provider-icon.tsx
 +++ b/packages/ui/src/components/provider-icon.tsx
 @@ -1,7 +1,10 @@
@@ -1134,10 +1129,10 @@ index bc21bd7..c8621f2 100644
    )
  }
 diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
-index 9327cad..2375e2e 100644
+index 833a111f4..f6be4ab30 100644
 --- a/packages/ui/src/i18n/en.ts
 +++ b/packages/ui/src/i18n/en.ts
-@@ -262,6 +262,7 @@ const source = {
+@@ -263,6 +263,7 @@ const source = {
    "ui.textField.copied": "Copied",
  
    "ui.imagePreview.alt": "Image preview",
@@ -1146,7 +1141,7 @@ index 9327cad..2375e2e 100644
    "ui.imagePreview.zoomOut": "Zoom out",
    "ui.imagePreview.zoomToFit": "Zoom to fit",
 diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
-index 38c3de7..0844921 100644
+index 38c3de7d3..084492111 100644
 --- a/packages/ui/src/i18n/zh.ts
 +++ b/packages/ui/src/i18n/zh.ts
 @@ -142,6 +142,7 @@ export const dict = {
@@ -1158,7 +1153,7 @@ index 38c3de7..0844921 100644
  
    "ui.tool.read": "读取",
 diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
-index f53f1df..66d4760 100644
+index f53f1dfbe..66d4760fe 100644
 --- a/packages/ui/src/i18n/zht.ts
 +++ b/packages/ui/src/i18n/zht.ts
 @@ -142,6 +142,7 @@ export const dict = {
