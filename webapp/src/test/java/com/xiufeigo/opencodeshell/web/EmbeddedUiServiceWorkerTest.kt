@@ -136,7 +136,7 @@ class EmbeddedUiServiceWorkerTest {
     @Test
     fun webBuildStillRegistersTheOfficialWorker() {
         // Web 分发走同一补丁产物，但 `android` 为 false ⇒ 保留官方 PWA 行为。
-        // v2.4.1 把注册路径从字面量 "/sw.js" 改成 BASE_URL，Web 仍必须注册同一条官方调用。
+        // v2.4.1 把注册路径从字面量 "/sw.js" 改成 BASE_URL。v2.4.2 的 upstream.patch 仍注册同一条官方调用。
         assertTrue(
             "非 Android（Web 分发）必须继续注册官方 SW，不能把 PWA 能力一起砍掉",
             upstreamPatch.contains("navigator.serviceWorker.register(`\${import.meta.env.BASE_URL}sw.js`)"),

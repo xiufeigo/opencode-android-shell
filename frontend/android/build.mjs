@@ -69,7 +69,7 @@ if (pkg.version !== pin.version) throw new Error("Pinned OpenCode version does n
 await applyAndroidSources(checkout, here)
 await run(bun, ["install", "--frozen-lockfile", "--ignore-scripts", "--filter", "@opencode/app"])
 // Filtered install does not bring in the root devDependency @types/mime-types, which
-// packages/util/src/fs-util.ts needs when gui-plugins is typechecked (v2.4.1).
+// packages/util/src/fs-util.ts needs when gui-plugins is typechecked (still true on v2.4.2).
 const rootPkg = JSON.parse(await fs.readFile(path.join(checkout, "package.json"), "utf8"))
 const mimeTypes = rootPkg.devDependencies?.["@types/mime-types"]
 if (typeof mimeTypes === "string" && !mimeTypes.startsWith("catalog:")) {

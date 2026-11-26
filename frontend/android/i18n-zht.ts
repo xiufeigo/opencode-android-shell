@@ -847,6 +847,24 @@ const android = {
   "ui.promptInput.chooseSpeed": "選擇模型速度",
   "ui.sessionTimeline.notice.speedStandard": "已切換到標準速度",
   "ui.sessionTimeline.notice.speedSwitched": "已切換到速度 {{speed}}",
+  // 2.4.2 仍缺的 16 條（取消封存、產生標題、工作中工作階段位置、分頁分組、問題提交鍵、審查側欄位置）。
+  "command.session.rename.description": "重新命名工作階段；未提供名稱時則產生新標題",
+  "command.session.title.generate": "產生工作階段標題",
+  "command.session.title.generate.description": "根據目前的對話產生新標題",
+  "command.session.unarchive": "取消封存工作階段",
+  "settings.general.row.questionSubmitKey.description":
+    "用來進入下一題或提交的按鍵。{{keybind}} 會選擇一個答案，或在你自己的答案裡換行。",
+  "settings.general.row.questionSubmitKey.title": "提交問題答案的按鍵",
+  "settings.general.row.tabGrouping.none": "無",
+  "settings.general.row.tabGrouping.project": "依專案",
+  "settings.general.row.tabGrouping.server": "依伺服器",
+  "settings.general.row.tabGrouping.title": "分頁分組",
+  "sidebar.inbox.working.inline": "在已封存上方",
+  "sidebar.inbox.working.placement": "工作中的工作階段",
+  "sidebar.inbox.working.shelf": "固定在底部",
+  "ui.sessionReviewV2.sidebarPosition": "側欄位置",
+  "ui.sessionReviewV2.sidebarPosition.left": "左側",
+  "ui.sessionReviewV2.sidebarPosition.right": "右側",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }

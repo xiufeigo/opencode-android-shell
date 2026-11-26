@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/anomalyco/opencode.git",
-  "commit": "6f0514052a3c859894ad01bb14cc14dda1e44b96",
-  "version": "2.4.1",
+  "commit": "fc31a485317970bcf6be7b431a9830aaef875731",
+  "version": "2.4.2",
   "bun": "1.4.4"
 }

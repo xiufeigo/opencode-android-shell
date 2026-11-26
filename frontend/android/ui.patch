@@ -1,5 +1,5 @@
 diff --git a/packages/app/component-tests/timeline-virtualizer.spec.ts b/packages/app/component-tests/timeline-virtualizer.spec.ts
-index a46018732..07fda6677 100644
+index a460187..07fda66 100644
 --- a/packages/app/component-tests/timeline-virtualizer.spec.ts
 +++ b/packages/app/component-tests/timeline-virtualizer.spec.ts
 @@ -187,8 +187,8 @@ for (const input of [
@@ -14,10 +14,10 @@ index a46018732..07fda6677 100644
        await expect(root.getByTestId("timeline-controls")).toHaveAttribute("data-pinned", "false")
      }
 diff --git a/packages/app/e2e/regression/settings.spec.ts b/packages/app/e2e/regression/settings.spec.ts
-index fdc74981b..713a51692 100644
+index 6ff88fa..7e01a49 100644
 --- a/packages/app/e2e/regression/settings.spec.ts
 +++ b/packages/app/e2e/regression/settings.spec.ts
-@@ -377,6 +377,8 @@ for (const [locale, dict] of [
+@@ -378,6 +378,8 @@ for (const [locale, dict] of [
      const panel = page.locator('[data-slot="session-activity-panel"]')
      await expect(capsule).toBeVisible()
      await expect(page.locator("html")).toHaveAttribute("dir", locale === "ar" ? "rtl" : "ltr")
@@ -26,7 +26,7 @@ index fdc74981b..713a51692 100644
  
      for (const value of ["Center", "Right", "Hidden", "Left", "Right"] as const) {
        await page.keyboard.press("Control+,")
-@@ -393,6 +395,7 @@ for (const [locale, dict] of [
+@@ -394,6 +396,7 @@ for (const [locale, dict] of [
        if (value === "Hidden") {
          await expect(capsule).toHaveCount(0)
          await expect(panel).toHaveCount(0)
@@ -35,7 +35,7 @@ index fdc74981b..713a51692 100644
        }
  
 diff --git a/packages/app/e2e/regression/timeline-geometry.spec.ts b/packages/app/e2e/regression/timeline-geometry.spec.ts
-index 8166b8bf0..5e8305938 100644
+index fe39295..bfd5c6e 100644
 --- a/packages/app/e2e/regression/timeline-geometry.spec.ts
 +++ b/packages/app/e2e/regression/timeline-geometry.spec.ts
 @@ -742,9 +742,7 @@ for (const input of [
@@ -115,7 +115,7 @@ index 8166b8bf0..5e8305938 100644
  
  test("groups consecutive sent prompts under the last one's meta line, with each bubble's actions beside it", async ({
 diff --git a/packages/app/e2e/regression/timeline-stream.spec.ts b/packages/app/e2e/regression/timeline-stream.spec.ts
-index 6ebd8ecc3..c05664db6 100644
+index f36cc81..0b0c65b 100644
 --- a/packages/app/e2e/regression/timeline-stream.spec.ts
 +++ b/packages/app/e2e/regression/timeline-stream.spec.ts
 @@ -873,6 +873,8 @@ test.describe("Working", () => {
@@ -149,7 +149,7 @@ index 6ebd8ecc3..c05664db6 100644
        await expect(trigger).toHaveAttribute("aria-expanded", "true")
        await expect(working).toBeVisible()
 diff --git a/packages/app/src/composer/editor/editor.tsx b/packages/app/src/composer/editor/editor.tsx
-index 45fc69a2c..ba9800872 100644
+index 45fc69a..ba98008 100644
 --- a/packages/app/src/composer/editor/editor.tsx
 +++ b/packages/app/src/composer/editor/editor.tsx
 @@ -116,8 +116,11 @@ export function ComposerEditor(props: ComposerEditorProps) {
@@ -167,7 +167,7 @@ index 45fc69a2c..ba9800872 100644
    const [dock, setDock] = createSignal<HTMLElement>()
  
 diff --git a/packages/app/src/index.css b/packages/app/src/index.css
-index 0163e3082..4422b0003 100644
+index 0163e30..4422b00 100644
 --- a/packages/app/src/index.css
 +++ b/packages/app/src/index.css
 @@ -90,8 +90,8 @@
@@ -182,7 +182,7 @@ index 0163e3082..4422b0003 100644
    [data-slot="session-timeline-scroll"] > .scroll-view__viewport {
      --session-timeline-fade-start: var(--session-timeline-inset, 0px);
 diff --git a/packages/app/src/providers/models/provider-group.tsx b/packages/app/src/providers/models/provider-group.tsx
-index b5ecb8c35..c337aeca5 100644
+index b5ecb8c..c337aec 100644
 --- a/packages/app/src/providers/models/provider-group.tsx
 +++ b/packages/app/src/providers/models/provider-group.tsx
 @@ -1,9 +1,8 @@
@@ -212,10 +212,10 @@ index b5ecb8c35..c337aeca5 100644
    return (
      <Switch>
 diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
-index 9bb444470..9bdaad716 100644
+index e30ffdf..420c567 100644
 --- a/packages/app/src/runtime/i18n/en.ts
 +++ b/packages/app/src/runtime/i18n/en.ts
-@@ -1224,6 +1224,8 @@ export const dict = {
+@@ -1232,6 +1232,8 @@ export const dict = {
    "settings.general.row.terminalFont.description": "Customise the font used in the terminal",
    "settings.general.row.uiFont.title": "UI Font",
    "settings.general.row.uiFont.description": "Customise the font used throughout the interface",
@@ -225,7 +225,7 @@ index 9bb444470..9bdaad716 100644
    "settings.general.row.mobileTitlebarBottom.description": "Place the title bar at the bottom of the screen on mobile",
    "settings.general.row.showCustomAgents.title": "Show agent",
 diff --git a/packages/app/src/session/composer/composer-lane.tsx b/packages/app/src/session/composer/composer-lane.tsx
-index 540b62247..8b3f0a2b8 100644
+index 540b622..8b3f0a2 100644
 --- a/packages/app/src/session/composer/composer-lane.tsx
 +++ b/packages/app/src/session/composer/composer-lane.tsx
 @@ -3,7 +3,7 @@ import { useLanguage } from "@/runtime/i18n/language"
@@ -258,7 +258,7 @@ index 540b62247..8b3f0a2b8 100644
          "justify-start": alignment() === "start",
          "justify-center": alignment() === "center",
 diff --git a/packages/app/src/session/session-panel-width.test.ts b/packages/app/src/session/session-panel-width.test.ts
-index 15af22204..2de0d9719 100644
+index 15af222..2de0d97 100644
 --- a/packages/app/src/session/session-panel-width.test.ts
 +++ b/packages/app/src/session/session-panel-width.test.ts
 @@ -14,6 +14,8 @@ test.each([
@@ -271,7 +271,7 @@ index 15af22204..2de0d9719 100644
    ["skips clamping before the layout is measured", 1600, undefined, false, false, 1600],
    ["lets a dragged width leave the side pane its hard minimum, split diffs included", 1600, 1700, true, true, 1380],
 diff --git a/packages/app/src/session/session-panel-width.ts b/packages/app/src/session/session-panel-width.ts
-index 6ed74af4e..23a3193aa 100644
+index 6ed74af..23a3193 100644
 --- a/packages/app/src/session/session-panel-width.ts
 +++ b/packages/app/src/session/session-panel-width.ts
 @@ -20,21 +20,47 @@ const REVIEW_PANE_WIDTH_FIT = 480
@@ -327,7 +327,7 @@ index 6ed74af4e..23a3193aa 100644
  
  // A panel with a side width of its own: the chat panel takes the rest of the row, keeping at least its minimum.
 diff --git a/packages/app/src/session/timeline/interaction.ts b/packages/app/src/session/timeline/interaction.ts
-index 3b7205a2d..04fe79a9f 100644
+index 3b7205a..04fe79a 100644
 --- a/packages/app/src/session/timeline/interaction.ts
 +++ b/packages/app/src/session/timeline/interaction.ts
 @@ -385,7 +385,7 @@ export function createSessionTimelineInteraction(session: SessionModel, visible:
@@ -340,10 +340,10 @@ index 3b7205a2d..04fe79a9f 100644
        const next = Math.round((entry.borderBoxSize[0]?.blockSize ?? 0) * dpr) / dpr
  
 diff --git a/packages/app/src/session/timeline/message-timeline.tsx b/packages/app/src/session/timeline/message-timeline.tsx
-index 3ff58a0cd..9b0aa6d98 100644
+index 96f462f..7c83deb 100644
 --- a/packages/app/src/session/timeline/message-timeline.tsx
 +++ b/packages/app/src/session/timeline/message-timeline.tsx
-@@ -518,8 +518,8 @@ function MessageTimelineView(
+@@ -537,8 +537,8 @@ function MessageTimelineView(
    )
  
    // The lane keeps its height while empty, so Working and the hint come and go without moving the rows around it.
@@ -354,7 +354,7 @@ index 3ff58a0cd..9b0aa6d98 100644
    const activity = (live: () => boolean, inRow = false) => (
      <div
        classList={{
-@@ -530,7 +530,7 @@ function MessageTimelineView(
+@@ -549,7 +549,7 @@ function MessageTimelineView(
        <Show
          when={props.next}
          fallback={
@@ -364,7 +364,7 @@ index 3ff58a0cd..9b0aa6d98 100644
                <div data-component="session-working" role="status">
                  <TextShimmer text={language.t("session.timeline.working")} active />
 diff --git a/packages/app/src/session/timeline/virtualizer.tsx b/packages/app/src/session/timeline/virtualizer.tsx
-index 0922e74c9..4e083dd93 100644
+index 009a4aa..2967a13 100644
 --- a/packages/app/src/session/timeline/virtualizer.tsx
 +++ b/packages/app/src/session/timeline/virtualizer.tsx
 @@ -153,11 +153,9 @@ export function createTimelineVirtualizer(input: Input) {
@@ -383,7 +383,7 @@ index 0922e74c9..4e083dd93 100644
    const entry = cache.get(ownerSessionKey)
    const cached = entry?.presentationKey === input.presentationKey?.() ? entry : undefined
 diff --git a/packages/app/src/settings/appearance/appearance.tsx b/packages/app/src/settings/appearance/appearance.tsx
-index c406494ce..69cc2f6f2 100644
+index c406494..69cc2f6 100644
 --- a/packages/app/src/settings/appearance/appearance.tsx
 +++ b/packages/app/src/settings/appearance/appearance.tsx
 @@ -1,4 +1,5 @@
@@ -587,10 +587,10 @@ index c406494ce..69cc2f6f2 100644
              <Show when={appearance.zoom.available()}>
                <SettingsRow
 diff --git a/packages/app/src/settings/model.tsx b/packages/app/src/settings/model.tsx
-index a3c44f21a..421da537a 100644
+index f3c2484..3df004e 100644
 --- a/packages/app/src/settings/model.tsx
 +++ b/packages/app/src/settings/model.tsx
-@@ -343,7 +343,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
+@@ -351,7 +351,7 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
  }
  
  /** Only local/dev desktop builds offer the Recent side-tab organization. */
@@ -599,7 +599,7 @@ index a3c44f21a..421da537a 100644
    return platform === "desktop" && (channel === "local" || channel === "dev")
  }
  
-@@ -389,6 +389,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
+@@ -397,6 +397,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
        void document.fonts?.load(`440 13px ${mono}`).catch(() => undefined)
      })
  
@@ -617,7 +617,7 @@ index a3c44f21a..421da537a 100644
      const systemReducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
  
 diff --git a/packages/app/src/shell/shell.tsx b/packages/app/src/shell/shell.tsx
-index 5f9d2ed8e..d3e86f93f 100644
+index 5f9d2ed..d3e86f9 100644
 --- a/packages/app/src/shell/shell.tsx
 +++ b/packages/app/src/shell/shell.tsx
 @@ -28,12 +28,16 @@ import {
@@ -638,10 +638,10 @@ index 5f9d2ed8e..d3e86f93f 100644
    const settings = useSettingsSurface()
    const preferences = useSettings()
 diff --git a/packages/app/src/shell/titlebar/titlebar.tsx b/packages/app/src/shell/titlebar/titlebar.tsx
-index 94cfeb37f..6a9824886 100644
+index 5267a4c..a250e48 100644
 --- a/packages/app/src/shell/titlebar/titlebar.tsx
 +++ b/packages/app/src/shell/titlebar/titlebar.tsx
-@@ -122,7 +122,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -123,7 +123,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
    const location = useLocation()
    const mobile = createMediaQuery("(max-width: 767px)")
    const bottom = createMemo(() => mobile() && settings.general.mobileTitlebarPosition() === "bottom")
@@ -650,7 +650,7 @@ index 94cfeb37f..6a9824886 100644
  
    const mac = createMemo(() => platform.platform === "desktop" && platform.os === "macos")
    const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
-@@ -223,7 +223,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -224,7 +224,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
        }}
        style={{
          height:
@@ -659,13 +659,15 @@ index 94cfeb37f..6a9824886 100644
              ? bottom()
                ? "calc(28px + max(8px, var(--shell-safe-area-bottom, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))))"
                : mobileTop()
-@@ -765,8 +765,13 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -768,8 +768,15 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                          "ps-3.5": windows() && !props.verticalTabs,
                        }}
                      >
--                      <Show when={windows() || linux()}>
+-                      <Show when={(windows() || linux()) && !hideVerticalTitlebar()}>
 -                        <WindowsAppMenu command={command} platform={platform} />
-+                      <Show when={windows() || linux() || (platform.platform === "android" && !props.verticalTabs)}>
++                      <Show
++                        when={(windows() || linux() || platform.platform === "android") && !hideVerticalTitlebar()}
++                      >
 +                        <WindowsAppMenu
 +                          command={command}
 +                          platform={platform}
@@ -675,7 +677,7 @@ index 94cfeb37f..6a9824886 100644
                        </Show>
                        <Show when={windows() && props.verticalTabs}>
                          <SidebarToggle />
-@@ -980,6 +985,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
+@@ -990,6 +997,14 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                                        <Show when={actionInSidebarHeader()} fallback={<div class="flex-1" />}>
                                          <div class="min-w-0 flex-1">{firstSidebarAction()}</div>
                                        </Show>
@@ -691,7 +693,7 @@ index 94cfeb37f..6a9824886 100644
                                      </div>
                                    </Show>
 diff --git a/packages/gui-plugins/src/context/i18n/en.ts b/packages/gui-plugins/src/context/i18n/en.ts
-index 24cfd5c65..80f23b0ed 100644
+index 24cfd5c..80f23b0 100644
 --- a/packages/gui-plugins/src/context/i18n/en.ts
 +++ b/packages/gui-plugins/src/context/i18n/en.ts
 @@ -28,4 +28,7 @@ export default {
@@ -703,7 +705,7 @@ index 24cfd5c65..80f23b0ed 100644
 +  "history.retry": "Retry",
  }
 diff --git a/packages/gui-plugins/src/context/i18n/zh.ts b/packages/gui-plugins/src/context/i18n/zh.ts
-index c7a6853c0..258e524ab 100644
+index c7a6853..258e524 100644
 --- a/packages/gui-plugins/src/context/i18n/zh.ts
 +++ b/packages/gui-plugins/src/context/i18n/zh.ts
 @@ -28,4 +28,7 @@ export default {
@@ -715,7 +717,7 @@ index c7a6853c0..258e524ab 100644
 +  "history.retry": "重试",
  }
 diff --git a/packages/gui-plugins/src/context/i18n/zht.ts b/packages/gui-plugins/src/context/i18n/zht.ts
-index 9687843db..0bb9c2745 100644
+index 9687843..0bb9c27 100644
 --- a/packages/gui-plugins/src/context/i18n/zht.ts
 +++ b/packages/gui-plugins/src/context/i18n/zht.ts
 @@ -28,4 +28,7 @@ export default {
@@ -727,7 +729,7 @@ index 9687843db..0bb9c2745 100644
 +  "history.retry": "重試",
  }
 diff --git a/packages/gui-plugins/src/context/tab.tsx b/packages/gui-plugins/src/context/tab.tsx
-index 1117a3b83..032666715 100644
+index 1117a3b..0326667 100644
 --- a/packages/gui-plugins/src/context/tab.tsx
 +++ b/packages/gui-plugins/src/context/tab.tsx
 @@ -1,4 +1,4 @@
@@ -884,7 +886,7 @@ index 1117a3b83..032666715 100644
        </div>
      </div>
 diff --git a/packages/ui/src/components/image-preview.tsx b/packages/ui/src/components/image-preview.tsx
-index aed607fca..b14110233 100644
+index aed607f..b141102 100644
 --- a/packages/ui/src/components/image-preview.tsx
 +++ b/packages/ui/src/components/image-preview.tsx
 @@ -70,6 +70,14 @@ export interface ImagePreviewProps {
@@ -1089,7 +1091,7 @@ index aed607fca..b14110233 100644
    if (props.video) {
      const video = props.video
 diff --git a/packages/ui/src/components/provider-icon.tsx b/packages/ui/src/components/provider-icon.tsx
-index bc21bd761..c8621f21f 100644
+index bc21bd7..c8621f2 100644
 --- a/packages/ui/src/components/provider-icon.tsx
 +++ b/packages/ui/src/components/provider-icon.tsx
 @@ -1,7 +1,10 @@
@@ -1129,10 +1131,10 @@ index bc21bd761..c8621f21f 100644
    )
  }
 diff --git a/packages/ui/src/i18n/en.ts b/packages/ui/src/i18n/en.ts
-index 833a111f4..f6be4ab30 100644
+index 28e9af9..ee45a82 100644
 --- a/packages/ui/src/i18n/en.ts
 +++ b/packages/ui/src/i18n/en.ts
-@@ -263,6 +263,7 @@ const source = {
+@@ -266,6 +266,7 @@ const source = {
    "ui.textField.copied": "Copied",
  
    "ui.imagePreview.alt": "Image preview",
@@ -1141,7 +1143,7 @@ index 833a111f4..f6be4ab30 100644
    "ui.imagePreview.zoomOut": "Zoom out",
    "ui.imagePreview.zoomToFit": "Zoom to fit",
 diff --git a/packages/ui/src/i18n/zh.ts b/packages/ui/src/i18n/zh.ts
-index 38c3de7d3..084492111 100644
+index 38c3de7..0844921 100644
 --- a/packages/ui/src/i18n/zh.ts
 +++ b/packages/ui/src/i18n/zh.ts
 @@ -142,6 +142,7 @@ export const dict = {
@@ -1153,7 +1155,7 @@ index 38c3de7d3..084492111 100644
  
    "ui.tool.read": "读取",
 diff --git a/packages/ui/src/i18n/zht.ts b/packages/ui/src/i18n/zht.ts
-index f53f1dfbe..66d4760fe 100644
+index f53f1df..66d4760 100644
 --- a/packages/ui/src/i18n/zht.ts
 +++ b/packages/ui/src/i18n/zht.ts
 @@ -142,6 +142,7 @@ export const dict = {

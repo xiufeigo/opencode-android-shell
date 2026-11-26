@@ -56,9 +56,10 @@ android {
         //    再垫一层；要点击才把 env 收掉。改成自有 viewportHost + 写死 WebView 高度，并把官方安全区变量钉 0。
         // 70 官方 UI 升到 2.3.2（跳过 2.3.1），重放 Android 补丁并补齐 23 条新中文。
         // 71 官方 UI 升到 2.4.1（跳过单独的 2.4.0），重放 Android 补丁并补齐 87 条新中文。
-        versionCode = 71
+        // 72 官方 UI 升到 2.4.2，重放 Android 补丁并补齐 16 条新中文。
+        versionCode = 72
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.43"
+        versionName = "2.0.44"
     }
 
     signingConfigs {
