@@ -851,6 +851,24 @@ const android = {
   "ui.promptInput.chooseSpeed": "选择模型速度",
   "ui.sessionTimeline.notice.speedStandard": "已切换到标准速度",
   "ui.sessionTimeline.notice.speedSwitched": "已切换到速度 {{speed}}",
+  // 2.4.2 仍缺的 16 条（取消归档、生成标题、工作中会话位置、标签分组、问题提交键、审查侧栏位置）。
+  "command.session.rename.description": "重命名会话；不带名称运行时则生成新标题",
+  "command.session.title.generate": "生成会话标题",
+  "command.session.title.generate.description": "根据目前的对话生成新标题",
+  "command.session.unarchive": "取消归档会话",
+  "settings.general.row.questionSubmitKey.description":
+    "用来进入下一题或提交的按键。{{keybind}} 会选择一个答案，或在你自己的答案里换行。",
+  "settings.general.row.questionSubmitKey.title": "提交问题答案的按键",
+  "settings.general.row.tabGrouping.none": "无",
+  "settings.general.row.tabGrouping.project": "按项目",
+  "settings.general.row.tabGrouping.server": "按服务器",
+  "settings.general.row.tabGrouping.title": "标签分组",
+  "sidebar.inbox.working.inline": "在已归档上方",
+  "sidebar.inbox.working.placement": "工作中的会话",
+  "sidebar.inbox.working.shelf": "固定在底部",
+  "ui.sessionReviewV2.sidebarPosition": "侧栏位置",
+  "ui.sessionReviewV2.sidebarPosition.left": "左侧",
+  "ui.sessionReviewV2.sidebarPosition.right": "右侧",
 } satisfies Record<string, string>
 
 export const dict = { ...android, ...upstream }
