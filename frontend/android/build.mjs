@@ -84,7 +84,7 @@ if (typeof mimeTypes === "string" && !mimeTypes.startsWith("catalog:")) {
 await run(process.execPath, ["--test", path.join(here, "system-fonts.test.mjs")], root)
 // 2.1.3+ runs app unit tests through Solid's hyperscript preload. TSX in the
 // production graph (pairing, settings) has no Solid compiler pass under bun test.
-await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts", "src/session/session-panel-width.test.ts", "src/shell/titlebar/inbox-groups.test.ts"], path.join(checkout, "packages/app"))
+await run(bun, ["test", "--conditions=solid", "--preload", "../ui/test/solid-jsx.ts", "--preload", "./happydom.ts", "src/settings/route.test.ts", "src/runtime/polyfills.test.ts", "src/session/session-panel-width.test.ts", "src/shell/titlebar/tab-groups.test.ts"], path.join(checkout, "packages/app"))
 await run(bun, ["test", "--conditions=browser", "src/terminal/session-model.test.ts", "src/remote-browser"], path.join(checkout, "packages/gui-plugins"))
 await run(bun, ["test", "--conditions=browser", "src/components/provider-icons/resolve.test.ts"], path.join(checkout, "packages/ui"))
 // Upstream 2.1.3+ typecheck is `bun check --no-script -b`, which reads the nearest
