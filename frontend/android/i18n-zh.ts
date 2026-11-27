@@ -388,6 +388,7 @@ const android = {
   "sidebar.inbox.elapsed.seconds.one": "{{count}} 秒",
   "sidebar.inbox.elapsed.seconds.other": "{{count}} 秒",
   "sidebar.inbox.empty": "你正在处理的会话会显示在这里",
+  "sidebar.inbox.grouping.menu": "会话分组",
   "sidebar.inbox.section.archived": "已归档",
   "sidebar.inbox.section.needsAttention": "需要处理",
   "sidebar.inbox.section.recent": "最近",

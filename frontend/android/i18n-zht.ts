@@ -384,6 +384,7 @@ const android = {
   "sidebar.inbox.elapsed.seconds.one": "{{count}} 秒",
   "sidebar.inbox.elapsed.seconds.other": "{{count}} 秒",
   "sidebar.inbox.empty": "你正在處理的工作階段會顯示在這裡",
+  "sidebar.inbox.grouping.menu": "工作階段分組",
   "sidebar.inbox.section.archived": "已封存",
   "sidebar.inbox.section.needsAttention": "需要處理",
   "sidebar.inbox.section.recent": "最近",

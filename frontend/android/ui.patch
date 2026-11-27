@@ -1166,3 +1166,837 @@ index f53f1df..66d4760 100644
    "ui.scrollView.ariaLabel": "可捲動內容",
  
    "ui.tool.read": "讀取",
+diff --git a/packages/app/src/runtime/i18n/en.ts b/packages/app/src/runtime/i18n/en.ts
+index e30ffdf..9eed23e 100644
+--- a/packages/app/src/runtime/i18n/en.ts
++++ b/packages/app/src/runtime/i18n/en.ts
+@@ -834,6 +834,7 @@ export const dict = {
+   "sidebar.settings": "Settings",
+   "sidebar.help": "Help",
+   "sidebar.inbox.empty": "Sessions you work on will appear here",
++  "sidebar.inbox.grouping.menu": "Group sessions",
+   "sidebar.inbox.section.needsAttention": "Needs attention",
+   "sidebar.inbox.showMore": "Show more",
+   "sidebar.inbox.showLess": "Show less",
+diff --git a/packages/app/src/shell/titlebar/inbox-groups.test.ts b/packages/app/src/shell/titlebar/inbox-groups.test.ts
+new file mode 100644
+index 0000000..e6a7097
+--- /dev/null
++++ b/packages/app/src/shell/titlebar/inbox-groups.test.ts
+@@ -0,0 +1,106 @@
++import { describe, expect, test } from "bun:test"
++import {
++  buildInboxGroups,
++  canonicalInboxGroupDimensions,
++  visibleInboxGroupItems,
++  type InboxGroupItem,
++} from "./inbox-groups"
++
++function item(overrides: Partial<InboxGroupItem> & { key: string }): InboxGroupItem {
++  return {
++    server: "server-a",
++    serverLabel: "Server A",
++    project: "project-1",
++    projectLabel: "Project One",
++    ...overrides,
++  }
++}
++
++const input = {
++  collapsed: {},
++  colors: {},
++  otherLabel: "Other",
++  scope: "recent",
++}
++
++describe("buildInboxGroups", () => {
++  test("orders selected dimensions as server before project", () => {
++    expect(canonicalInboxGroupDimensions(["project", "server", "project"])).toEqual(["server", "project"])
++  })
++
++  test("nests projects inside servers while preserving row order", () => {
++    const rows = [
++      item({ key: "a1", server: "server-a", project: "p1", projectLabel: "P1" }),
++      item({ key: "b1", server: "server-b", serverLabel: "Server B", project: "p2", projectLabel: "P2" }),
++      item({ key: "a2", server: "server-a", project: "p2", projectLabel: "P2" }),
++      item({ key: "b2", server: "server-b", serverLabel: "Server B", project: "p1", projectLabel: "P1" }),
++    ]
++
++    const result = buildInboxGroups({ ...input, items: rows, dimensions: ["server", "project"] })
++
++    expect(result.groups.map((group) => [group.id, group.children.map((child) => child.id)])).toEqual([
++      ["server-a", ["p1", "p2"]],
++      ["server-b", ["p2", "p1"]],
++    ])
++    expect(result.groups[0]?.children.map((group) => group.items.map((row) => row.key))).toEqual([["a1"], ["a2"]])
++    expect(result.groups[1]?.children.map((group) => group.items.map((row) => row.key))).toEqual([["b1"], ["b2"]])
++  })
++
++  test("project-only grouping merges the same project across servers", () => {
++    const rows = [
++      item({ key: "a", server: "server-a", project: "same", projectLabel: "Same" }),
++      item({ key: "b", server: "server-b", serverLabel: "Server B", project: "same", projectLabel: "Same" }),
++    ]
++
++    const result = buildInboxGroups({ ...input, items: rows, dimensions: ["project"] })
++
++    expect(result.groups).toHaveLength(1)
++    expect(result.groups[0]?.items.map((row) => row.key)).toEqual(["a", "b"])
++  })
++
++  test("keeps the other project group last and marks it gray", () => {
++    const rows = [
++      item({ key: "other", project: undefined, projectLabel: undefined }),
++      item({ key: "named", project: "p9", projectLabel: "P9" }),
++    ]
++
++    const result = buildInboxGroups({ ...input, items: rows, dimensions: ["project"] })
++
++    expect(result.groups.map((group) => [group.id, group.color])).toEqual([
++      ["p9", result.groups[0]?.color],
++      ["other", "gray"],
++    ])
++    expect(result.groups[0]?.color).not.toBe("gray")
++  })
++
++  test("collapsed ancestors keep only the selected row visible", () => {
++    const rows = [
++      item({ key: "a1", server: "server-a", project: "p1", projectLabel: "P1" }),
++      item({ key: "a2", server: "server-a", project: "p1", projectLabel: "P1" }),
++    ]
++    const result = buildInboxGroups({
++      ...input,
++      items: rows,
++      dimensions: ["server", "project"],
++      collapsed: {
++        "recent/server:server-a": true,
++        "recent/server:server-a/project:p1": true,
++      },
++    })
++
++    expect(visibleInboxGroupItems(result.groups, (row) => row.key === "a2").map((row) => row.key)).toEqual(["a2"])
++  })
++
++  test("applies collapsed state by scoped group key", () => {
++    const rows = [item({ key: "row" })]
++    const result = buildInboxGroups({
++      ...input,
++      items: rows,
++      dimensions: ["server"],
++      collapsed: { "recent/server:server-a": true },
++    })
++
++    expect(result.groups[0]?.key).toBe("recent/server:server-a")
++    expect(result.groups[0]?.collapsed).toBe(true)
++  })
++})
+diff --git a/packages/app/src/shell/titlebar/inbox-groups.ts b/packages/app/src/shell/titlebar/inbox-groups.ts
+new file mode 100644
+index 0000000..0fddc35
+--- /dev/null
++++ b/packages/app/src/shell/titlebar/inbox-groups.ts
+@@ -0,0 +1,125 @@
++import { assignStableGroupColors, type TabGroupColor } from "./tab-groups"
++
++export const INBOX_GROUP_DIMENSIONS = ["server", "project"] as const
++
++export type InboxGroupDimension = (typeof INBOX_GROUP_DIMENSIONS)[number]
++
++export type InboxGroupItem = {
++  key: string
++  server: string
++  serverLabel: string
++  project: string | undefined
++  projectLabel: string | undefined
++}
++
++export type InboxGroupNode<T> = {
++  key: string
++  dimension: InboxGroupDimension
++  id: string
++  label: string
++  color: TabGroupColor
++  collapsed: boolean
++  count: number
++  items: T[]
++  children: InboxGroupNode<T>[]
++}
++
++export type InboxGroupResult<T> = {
++  items: T[]
++  groups: InboxGroupNode<T>[]
++  colors: Record<string, TabGroupColor>
++}
++
++export function canonicalInboxGroupDimensions(values: readonly InboxGroupDimension[]) {
++  return INBOX_GROUP_DIMENSIONS.filter((dimension) => values.includes(dimension))
++}
++
++export function assignInboxGroupColors<T extends InboxGroupItem>(
++  items: readonly T[],
++  dimensions: readonly InboxGroupDimension[],
++  remembered: Readonly<Record<string, TabGroupColor>>,
++) {
++  const colors: Record<string, TabGroupColor> = {}
++
++  for (const dimension of canonicalInboxGroupDimensions(dimensions)) {
++    const prefix = dimension === "server" ? "server:" : "project:"
++    const assigned = assignStableGroupColors(
++      items.map((item) => valueOf(item, dimension)),
++      prefix,
++      remembered,
++    )
++
++    for (const [seed, color] of assigned) colors[`${prefix}${seed}`] = color
++  }
++
++  return colors
++}
++
++export function buildInboxGroups<T extends InboxGroupItem>(input: {
++  items: T[]
++  dimensions: readonly InboxGroupDimension[]
++  collapsed: Readonly<Record<string, boolean>>
++  colors: Readonly<Record<string, TabGroupColor>>
++  otherLabel: string
++  scope: string
++}): InboxGroupResult<T> {
++  const dimensions = canonicalInboxGroupDimensions(input.dimensions)
++
++  if (dimensions.length === 0) return { items: input.items, groups: [], colors: {} }
++
++  const colors = assignInboxGroupColors(input.items, dimensions, input.colors)
++
++  const build = (items: T[], depth: number, prefix: string): InboxGroupNode<T>[] => {
++    const dimension = dimensions[depth]
++
++    if (!dimension) return []
++
++    const buckets = [...Map.groupBy(items, (item) => valueOf(item, dimension))].toSorted(([a], [b]) => {
++      if (dimension !== "project") return 0
++
++      return Number(a === "other") - Number(b === "other")
++    })
++
++    return buckets.map(([id, rows]) => {
++      const key = `${prefix}/${dimension}:${id}`
++      const children = build(rows, depth + 1, key)
++      const first = rows[0]
++
++      return {
++        key,
++        dimension,
++        id,
++        label: first ? labelOf(first, dimension, input.otherLabel) : input.otherLabel,
++        color: colors[`${dimension}:${id}`] ?? "gray",
++        collapsed: input.collapsed[key] === true,
++        count: rows.length,
++        items: children.length === 0 ? rows : [],
++        children,
++      }
++    })
++  }
++
++  return { items: input.items, groups: build(input.items, 0, input.scope), colors }
++}
++
++export function visibleInboxGroupItems<T>(groups: readonly InboxGroupNode<T>[], keep: (item: T) => boolean): T[] {
++  const walk = (group: InboxGroupNode<T>, ancestorCollapsed: boolean): T[] => {
++    const collapsed = ancestorCollapsed || group.collapsed
++
++    if (group.children.length > 0) return group.children.flatMap((child) => walk(child, collapsed))
++
++    return collapsed ? group.items.filter(keep) : group.items
++  }
++
++  return groups.flatMap((group) => walk(group, false))
++}
++
++function valueOf<T extends InboxGroupItem>(item: T, dimension: InboxGroupDimension) {
++  if (dimension === "server") return item.server
++  return item.project ?? "other"
++}
++
++function labelOf<T extends InboxGroupItem>(item: T, dimension: InboxGroupDimension, otherLabel: string) {
++  if (dimension === "server") return item.serverLabel
++  return item.projectLabel ?? otherLabel
++}
+diff --git a/packages/app/src/shell/titlebar/inbox.tsx b/packages/app/src/shell/titlebar/inbox.tsx
+index f7105c2..ed13de2 100644
+--- a/packages/app/src/shell/titlebar/inbox.tsx
++++ b/packages/app/src/shell/titlebar/inbox.tsx
+@@ -1,4 +1,5 @@
+ import { Schema } from "effect"
++import { Key } from "@solid-primitives/keyed"
+ import { Persistence } from "@/runtime/persistence/schema"
+ import {
+   createContext,
+@@ -44,6 +45,21 @@ import { pinnedRefs, pinKey } from "@/shell/tabs/pins"
+ import { usePins } from "./pinned-area"
+ import { createSessionRowNavigation } from "./tab-strip"
+ import { isAttachment } from "@/composer/prompt-parts"
++import { useSettings } from "@/settings/model"
++import { pathKey } from "@/workspaces/path-key"
++import { useTabGroups } from "./tab-groups-ui"
++import { TAB_GROUP_COLORS } from "./tab-groups"
++import {
++  assignInboxGroupColors,
++  buildInboxGroups,
++  canonicalInboxGroupDimensions,
++  INBOX_GROUP_DIMENSIONS,
++  visibleInboxGroupItems,
++  type InboxGroupDimension,
++  type InboxGroupItem,
++  type InboxGroupNode,
++} from "./inbox-groups"
++import "./tab-groups.css"
+ 
+ const RECENT_LIMIT = 10
+ 
+@@ -52,8 +68,16 @@ const InboxState = Persistence.struct({
+   recentExpanded: Schema.Boolean,
+   archivedExpanded: Schema.Boolean,
+   workingPlacement: Schema.Literals(["shelf", "inline"]),
++  groupingCustomized: Schema.Boolean,
++  groupDimensions: Persistence.array(Schema.Literals(INBOX_GROUP_DIMENSIONS)),
++  groupCollapsed: Persistence.record(Schema.Boolean),
++  groupColors: Persistence.record(Schema.Literals(TAB_GROUP_COLORS)),
+ })
+ 
++type InboxGroupRow = InboxGroupItem & { entry: InboxEntry }
++
++type InboxGroupScope = "current" | "needs" | "recent" | "working" | "archived"
++
+ const InboxNavigation = createContext<Accessor<string | undefined>>()
+ 
+ /** The experimental Inbox interface mode: the session inbox in place of vertical tabs. */
+@@ -66,6 +90,8 @@ export function SidebarInbox() {
+   const layout = useLayout()
+   const global = useGlobal()
+   const pins = usePins()
++  const settings = useSettings()
++  const tabGroups = useTabGroups()
+ 
+   const exporter = createSessionExporter()
+ 
+@@ -74,10 +100,41 @@ export function SidebarInbox() {
+     recentExpanded: false,
+     archivedExpanded: false,
+     workingPlacement: "shelf",
++    groupingCustomized: false,
++    groupDimensions: [],
++    groupCollapsed: {},
++    groupColors: {},
+   })
+ 
+   const shelf = () => state.workingPlacement === "shelf"
+ 
++  const inheritedDimensions = createMemo<InboxGroupDimension[]>(() => {
++    const mode = tabGroups.mode()
++
++    return mode === "none" ? [] : [mode]
++  })
++
++  const configuredDimensions = createMemo(() =>
++    canonicalInboxGroupDimensions(state.groupingCustomized ? state.groupDimensions : inheritedDimensions()),
++  )
++
++  const dimensions = createMemo(() => {
++    if (!settings.general.tabGroups()) return []
++
++    const oneServer = global.servers.list().length <= 1
++
++    return configuredDimensions().filter((dimension) => dimension !== "server" || !oneServer)
++  })
++
++  const toggleDimension = (dimension: InboxGroupDimension, enabled: boolean) => {
++    const next = canonicalInboxGroupDimensions(
++      enabled ? [...configuredDimensions(), dimension] : configuredDimensions().filter((item) => item !== dimension),
++    )
++
++    setState("groupingCustomized", true)
++    setState("groupDimensions", next)
++  }
++
+   const [announcement, setAnnouncement] = createStore({ text: "" })
+ 
+   createEffect((previous: { underway: Map<string, number>; statuses: Map<string, InboxStatus> } | undefined) => {
+@@ -172,20 +229,79 @@ export function SidebarInbox() {
+     }
+   })
+ 
++  const groupItem = (entry: InboxEntry): InboxGroupRow => {
++    const project = entry.ctx.projects.forSession(entry.session)
++    const directory = entry.session.location.directory
++
++    return {
++      key: entry.key,
++      entry,
++      server: entry.server,
++      serverLabel: servers.label(entry.conn),
++      project: project?.id ?? pathKey(directory),
++      projectLabel: displayName(project ?? { worktree: directory }),
++    }
++  }
++
++  const groupItems = createMemo(() => new Map(inbox.entries().map((entry) => [entry.key, groupItem(entry)] as const)))
++
++  const groupColors = createMemo(() =>
++    assignInboxGroupColors([...groupItems().values()], dimensions(), state.groupColors),
++  )
++
++  // Keep each automatic color stable after a group disappears or another section no longer contains it.
++  createEffect(() => {
++    if (!ready() || dimensions().length === 0) return
++
++    for (const [key, color] of Object.entries(groupColors())) {
++      if (state.groupColors[key] === undefined) setState("groupColors", key, color)
++    }
++  })
++
++  const grouped = createMemo(() => {
++    const visible = sections()
++    const itemsFor = (list: InboxEntry[]) => list.flatMap((entry) => groupItems().get(entry.key) ?? [])
++    const build = (list: InboxEntry[], scope: InboxGroupScope) =>
++      buildInboxGroups({
++        items: itemsFor(list),
++        dimensions: dimensions(),
++        collapsed: state.groupCollapsed,
++        colors: groupColors(),
++        otherLabel: language.t("sidebar.view.other"),
++        scope,
++      })
++
++    return {
++      current: build(visible.current, "current"),
++      needs: build(visible.needs, "needs"),
++      recent: build(visible.recent, "recent"),
++      working: build(visible.working, "working"),
++      archived: build(visible.archived, "archived"),
++    }
++  })
++
++  const visibleEntries = (list: InboxEntry[], scope: InboxGroupScope) => {
++    if (dimensions().length === 0) return list
++
++    return visibleInboxGroupItems(grouped()[scope].groups, (item) => inbox.selected(item.entry)).map(
++      (item) => item.entry,
++    )
++  }
++
+   // The vertical tab strip's shortcuts, over the session rows in the order they show: ⌘1-9, ⌥↑/⌥↓ and ⇧⌥↑/⇧⌥↓.
+   const rowRefs = new Map<string, HTMLElement>()
+ 
+   const navigationKeys = () => {
+     const visible = sections()
+ 
+-    const working = state.workingExpanded ? visible.working : []
++    const working = state.workingExpanded ? visibleEntries(visible.working, "working") : []
+ 
+     return [
+-      ...visible.current,
+-      ...visible.needs,
+-      ...visible.recent,
++      ...visibleEntries(visible.current, "current"),
++      ...visibleEntries(visible.needs, "needs"),
++      ...visibleEntries(visible.recent, "recent"),
+       ...(shelf() ? [] : working),
+-      ...(state.archivedExpanded ? visible.archived : []),
++      ...(state.archivedExpanded ? visibleEntries(visible.archived, "archived") : []),
+       ...(shelf() ? working : []),
+     ].map((entry) => entry.key)
+   }
+@@ -271,8 +387,8 @@ export function SidebarInbox() {
+ 
+   // Takes an accessor so only the For tracks the section. Reading it here would recreate the For, remounting every
+   // row on any session change and resetting the list's scroll.
+-  const rows = (list: () => InboxEntry[]) => (
+-    <For each={list().map((entry) => entry.key)}>
++  const keyRows = (keys: () => string[]) => (
++    <For each={keys()}>
+       {(key) => (
+         <Show when={inbox.byKey().get(key)}>
+           {(entry) => (
+@@ -293,6 +409,8 @@ export function SidebarInbox() {
+               worktree={inbox.inWorktree(entry())}
+               archived={inboxArchived(entry())}
+               pinned={pinned(entry())}
++              hideAvatar={dimensions().includes("project")}
++              hideServer={dimensions().includes("server")}
+               actions={
+                 <>
+                   <Menu.Item
+@@ -341,6 +459,21 @@ export function SidebarInbox() {
+     </For>
+   )
+ 
++  const rows = (list: () => InboxEntry[]) => keyRows(() => list().map((entry) => entry.key))
++
++  const itemRows = (items: () => InboxGroupRow[]) => keyRows(() => items().map((item) => item.entry.key))
++
++  const sectionRows = (scope: InboxGroupScope, list: () => InboxEntry[]) => (
++    <Show when={dimensions().length > 0} fallback={rows(list)}>
++      <InboxGroupNodes
++        groups={() => grouped()[scope].groups}
++        rows={itemRows}
++        selected={(item) => inbox.selected(item.entry)}
++        onToggle={(key) => setState("groupCollapsed", key, !state.groupCollapsed[key])}
++      />
++    </Show>
++  )
++
+   // Render slots inside InboxNavigation without recreating section objects on updates.
+   const groups = [
+     {
+@@ -374,7 +507,7 @@ export function SidebarInbox() {
+       get count() {
+         return sections().needs.length
+       },
+-      rows: () => rows(() => sections().needs),
++      rows: () => sectionRows("needs", () => sections().needs),
+     },
+     {
+       id: "recent",
+@@ -385,7 +518,7 @@ export function SidebarInbox() {
+       get count() {
+         return sections().recent.length
+       },
+-      rows: () => rows(() => sections().recent),
++      rows: () => sectionRows("recent", () => sections().recent),
+       more: () => (
+         <Show when={sections().more}>
+           <Button
+@@ -409,7 +542,7 @@ export function SidebarInbox() {
+       get count() {
+         return shelf() ? 0 : sections().working.length
+       },
+-      rows: () => rows(() => sections().working),
++      rows: () => sectionRows("working", () => sections().working),
+       get expanded() {
+         return state.workingExpanded
+       },
+@@ -426,7 +559,7 @@ export function SidebarInbox() {
+       get count() {
+         return sections().archived.length
+       },
+-      rows: () => rows(() => sections().archived),
++      rows: () => sectionRows("archived", () => sections().archived),
+       get expanded() {
+         return state.archivedExpanded
+       },
+@@ -434,50 +567,115 @@ export function SidebarInbox() {
+     },
+   ]
+ 
+-  return (
+-    <InboxSessionList
+-      loading={inbox.loading()}
+-      announcement={announcement.text}
+-      current={{
+-        get count() {
+-          return sections().current.length
+-        },
+-        rows: () => rows(() => sections().current),
+-      }}
+-      sections={groups}
+-      working={{
+-        get count() {
+-          return shelf() ? sections().working.length : 0
+-        },
+-        rows: () => rows(() => sections().working),
+-        get expanded() {
+-          return state.workingExpanded
+-        },
+-        onToggle: () => setState("workingExpanded", !state.workingExpanded),
+-      }}
+-      menu={() => (
+-        <Menu.Sub gutter={4} overflowPadding={16} overlap>
+-          <Menu.SubTrigger class="[&_[data-slot=menu-v2-item-chevron]]:text-v2-icon-icon-muted">
+-            <span>{language.t("sidebar.inbox.working.placement")}</span>
+-          </Menu.SubTrigger>
+-          <Menu.Portal>
+-            <Menu.SubContent>
+-              <Menu.RadioGroup
+-                value={state.workingPlacement}
+-                onChange={(value) => setState("workingPlacement", value === "inline" ? "inline" : "shelf")}
+-              >
+-                <Menu.RadioItem value="shelf" closeOnSelect>
+-                  {language.t("sidebar.inbox.working.shelf")}
+-                </Menu.RadioItem>
+-                <Menu.RadioItem value="inline" closeOnSelect>
+-                  {language.t("sidebar.inbox.working.inline")}
+-                </Menu.RadioItem>
+-              </Menu.RadioGroup>
+-            </Menu.SubContent>
+-          </Menu.Portal>
+-        </Menu.Sub>
++  const groupingItems = () => (
++    <For each={INBOX_GROUP_DIMENSIONS}>
++      {(dimension) => (
++        <Menu.CheckboxItem
++          closeOnSelect={false}
++          checked={configuredDimensions().includes(dimension)}
++          onChange={(checked) => toggleDimension(dimension, checked)}
++        >
++          <span>{language.t(`tabs.groups.mode.${dimension}`)}</span>
++        </Menu.CheckboxItem>
+       )}
+-    />
++    </For>
++  )
++
++  const navigationRevision = createMemo(() =>
++    [
++      dimensions().join(","),
++      Object.entries(state.groupCollapsed)
++        .filter(([, collapsed]) => collapsed)
++        .map(([key]) => key)
++        .toSorted()
++        .join("\n"),
++    ].join("\n"),
++  )
++
++  return (
++    <div class="flex min-h-0 flex-1 flex-col">
++      <Show when={settings.general.tabGroups()}>
++        <div class="flex h-7 shrink-0 items-center gap-2 pe-1 ps-2">
++          <span class="min-w-0 flex-1 truncate text-[13px] leading-4 text-v2-text-text-muted">
++            {language.t("sidebar.view.sessions")}
++          </span>
++          <Menu gutter={4} modal={false} placement="bottom-end">
++            <Menu.Trigger
++              as="button"
++              type="button"
++              aria-label={language.t("sidebar.inbox.grouping.menu")}
++              title={language.t("sidebar.inbox.grouping.menu")}
++              data-action="inbox-groups-menu"
++              class="my-auto flex size-5 shrink-0 items-center justify-center rounded-[4px] text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base focus-visible:-outline-offset-2 [app-region:no-drag]"
++            >
++              <Icon name="sliders" />
++            </Menu.Trigger>
++            <Menu.Portal>
++              <Menu.Content class="min-w-[164px]">{groupingItems()}</Menu.Content>
++            </Menu.Portal>
++          </Menu>
++        </div>
++      </Show>
++      <InboxSessionList
++        navigationRevision={navigationRevision()}
++        loading={inbox.loading()}
++        announcement={announcement.text}
++        current={{
++          get count() {
++            return sections().current.length
++          },
++          rows: () => sectionRows("current", () => sections().current),
++        }}
++        sections={groups}
++        working={{
++          get count() {
++            return shelf() ? sections().working.length : 0
++          },
++          rows: () => sectionRows("working", () => sections().working),
++          get expanded() {
++            return state.workingExpanded
++          },
++          onToggle: () => setState("workingExpanded", !state.workingExpanded),
++        }}
++        menu={() => (
++          <>
++            <Show when={settings.general.tabGroups()}>
++              <>
++                <Menu.Sub gutter={4} overflowPadding={16} overlap>
++                  <Menu.SubTrigger class="[&_[data-slot=menu-v2-item-chevron]]:text-v2-icon-icon-muted">
++                    <span>{language.t("tabs.groups.groupBy")}</span>
++                  </Menu.SubTrigger>
++                  <Menu.Portal>
++                    <Menu.SubContent class="min-w-[164px]">{groupingItems()}</Menu.SubContent>
++                  </Menu.Portal>
++                </Menu.Sub>
++                <Menu.Separator />
++              </>
++            </Show>
++            <Menu.Sub gutter={4} overflowPadding={16} overlap>
++              <Menu.SubTrigger class="[&_[data-slot=menu-v2-item-chevron]]:text-v2-icon-icon-muted">
++                <span>{language.t("sidebar.inbox.working.placement")}</span>
++              </Menu.SubTrigger>
++              <Menu.Portal>
++                <Menu.SubContent>
++                  <Menu.RadioGroup
++                    value={state.workingPlacement}
++                    onChange={(value) => setState("workingPlacement", value === "inline" ? "inline" : "shelf")}
++                  >
++                    <Menu.RadioItem value="shelf" closeOnSelect>
++                      {language.t("sidebar.inbox.working.shelf")}
++                    </Menu.RadioItem>
++                    <Menu.RadioItem value="inline" closeOnSelect>
++                      {language.t("sidebar.inbox.working.inline")}
++                    </Menu.RadioItem>
++                  </Menu.RadioGroup>
++                </Menu.SubContent>
++              </Menu.Portal>
++            </Menu.Sub>
++          </>
++        )}
++      />
++    </div>
+   )
+ }
+ 
+@@ -517,8 +715,110 @@ function DeleteDialog(props: { title: string | undefined; onConfirm: () => void
+   )
+ }
+ 
++type InboxGroupRenderer = {
++  rows: (items: () => InboxGroupRow[]) => JSX.Element
++  selected: (item: InboxGroupRow) => boolean
++  onToggle: (key: string) => void
++}
++
++function InboxGroupNodes(props: InboxGroupRenderer & { groups: () => InboxGroupNode<InboxGroupRow>[] }) {
++  return (
++    <Key each={props.groups()} by={(group) => group.key}>
++      {(group) => (
++        <InboxGroupNodeView group={group} rows={props.rows} selected={props.selected} onToggle={props.onToggle} />
++      )}
++    </Key>
++  )
++}
++
++function InboxGroupNodeView(
++  props: InboxGroupRenderer & { group: Accessor<InboxGroupNode<InboxGroupRow>>; ancestorCollapsed?: boolean },
++) {
++  const collapsed = () => props.ancestorCollapsed === true || props.group().collapsed
++
++  const children = () => {
++    const group = props.group()
++
++    if (!collapsed()) return group.children
++
++    return group.children.filter((child) => inboxGroupContains(child, props.selected))
++  }
++
++  const items = () => {
++    const group = props.group()
++
++    if (!collapsed()) return group.items
++
++    return group.items.filter(props.selected)
++  }
++
++  const hasContent = () => !collapsed() || items().length > 0 || children().length > 0
++
++  return (
++    <div
++      data-tab-group
++      data-orientation="vertical"
++      data-group-key={props.group().key}
++      data-group-color={props.group().color}
++    >
++      <div
++        data-tab-group-header
++        data-orientation="vertical"
++        data-group-key={props.group().key}
++        data-group-color={props.group().color}
++        class="group/group-row relative flex w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-[6px]"
++      >
++        <button
++          type="button"
++          aria-expanded={!props.group().collapsed}
++          onClick={() => props.onToggle(props.group().key)}
++          class="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-[6px] text-start focus-visible:-outline-offset-2"
++        >
++          <span data-tab-group-chip data-group-color={props.group().color} class="max-w-full min-w-0">
++            <span class="min-w-0 truncate" dir="auto">
++              {props.group().label}
++            </span>
++          </span>
++          <Show when={props.group().collapsed}>
++            <span class="shrink-0 text-[11px] leading-[var(--line-height-compact)] text-v2-text-text-faint">
++              {props.group().count}
++            </span>
++          </Show>
++          <Icon
++            name="chevron-down"
++            class="ms-auto shrink-0 text-v2-icon-icon-muted opacity-0 transition-[transform,opacity] duration-[120ms] ease-out motion-reduce:transition-none group-hover/group-row:opacity-100"
++            classList={{ "-rotate-90 rtl:rotate-90 opacity-100": props.group().collapsed }}
++          />
++        </button>
++      </div>
++      <Show when={hasContent()}>
++        <div data-tab-group-items>
++          <Show when={children().length > 0} fallback={props.rows(items)}>
++            <Key each={children()} by={(group) => group.key}>
++              {(group) => (
++                <InboxGroupNodeView
++                  group={group}
++                  rows={props.rows}
++                  selected={props.selected}
++                  onToggle={props.onToggle}
++                  ancestorCollapsed={collapsed()}
++                />
++              )}
++            </Key>
++          </Show>
++        </div>
++      </Show>
++    </div>
++  )
++}
++
++function inboxGroupContains(group: InboxGroupNode<InboxGroupRow>, selected: (item: InboxGroupRow) => boolean): boolean {
++  return group.items.some(selected) || group.children.some((child) => inboxGroupContains(child, selected))
++}
++
+ export function InboxSessionList(props: {
+   loading?: boolean
++  navigationRevision?: string
+   announcement?: string
+   current: { count: number; rows: () => JSX.Element }
+   sections: {
+@@ -548,6 +848,7 @@ export function InboxSessionList(props: {
+     on(
+       () => [
+         props.loading,
++        props.navigationRevision,
+         props.current.count,
+         ...props.sections.flatMap((section) => [section.count, section.expanded]),
+         props.working.count,
+@@ -842,6 +1143,8 @@ export function InboxSessionCard(props: {
+   worktree: boolean
+   archived: boolean
+   pinned?: boolean
++  hideAvatar?: boolean
++  hideServer?: boolean
+   onOpen: () => void
+   onArchive: () => void
+   onUnarchive: () => void
+@@ -897,9 +1200,11 @@ export function InboxSessionCard(props: {
+         onClick={props.onOpen}
+       >
+         <span class="flex h-4 w-full min-w-0 shrink-0 items-center gap-2">
+-          <span class="flex size-4 shrink-0 items-center justify-center">
+-            <SessionTabAvatarView project={props.project} directory={props.directory} unread={false} />
+-          </span>
++          <Show when={!props.hideAvatar}>
++            <span class="flex size-4 shrink-0 items-center justify-center">
++              <SessionTabAvatarView project={props.project} directory={props.directory} unread={false} />
++            </span>
++          </Show>
+           <span
+             dir="auto"
+             class="min-w-0 flex-1 truncate text-[13px] leading-4 font-medium tracking-[-0.04px] text-v2-text-text-base"
+@@ -911,8 +1216,11 @@ export function InboxSessionCard(props: {
+             <span class="sr-only">{language.t("sidebar.recent.pinned")}</span>
+           </Show>
+         </span>
+-        <span class="relative flex h-4 w-full min-w-0 shrink-0 items-center gap-2 ps-6 text-[13px] leading-4 tracking-[-0.04px] text-v2-text-text-muted">
+-          <Show when={props.server}>
++        <span
++          class="relative flex h-4 w-full min-w-0 shrink-0 items-center gap-2 text-[13px] leading-4 tracking-[-0.04px] text-v2-text-text-muted"
++          classList={{ "ps-6": !props.hideAvatar || (!!props.server && !props.hideServer) }}
++        >
++          <Show when={!props.hideServer ? props.server : undefined}>
+             {(name) => (
+               <Tooltip placement="right" value={name()} class="absolute start-0 top-0 flex size-4 shrink-0">
+                 <Icon name="server" aria-label={name()} class="text-v2-icon-icon-muted" />

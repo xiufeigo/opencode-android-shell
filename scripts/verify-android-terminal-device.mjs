@@ -471,13 +471,13 @@ async function main() {
   check('newer-drag-does-not-open-ime', imeHidden(newer) && newerSample.inputMethod.inputShown === false && !newer.terminal.inputFocused, { inputFocused: newer.terminal.inputFocused, ime: newer.ime, native: newerSample.inputMethod })
   check('history-drag-height-stable', Math.abs(newer.viewport.height - seeded.viewport.height) <= 2 && Math.abs(newer.terminal.container.height - seeded.terminal.container.height) <= 2, { before: seeded.viewport, after: newer.viewport })
   report.backendHits = backend.hits
-  report.ptyInput = [...backend.sockets.values()].map(socket => ({ id: socket.id, received: socket.received }))
+  report.ptyInput = [...backend.sockets.values()].map(socket => ({ id: socket.id, received: socket.received, sizeFrames: socket.sizeFrames ?? [] }))
 }
 
 async function cleanup() {
   if (backend) {
     report.backendHits = backend.hits
-    report.ptyInput = [...backend.sockets.values()].map(socket => ({ id: socket.id, received: socket.received }))
+    report.ptyInput = [...backend.sockets.values()].map(socket => ({ id: socket.id, received: socket.received, sizeFrames: socket.sizeFrames ?? [] }))
     for (const socket of backend.sockets.values()) { try { socket.socket?.destroy() } catch {} }
     for (const sse of backend.sse) { try { sse.end() } catch {} }
     backend.server.closeAllConnections?.()

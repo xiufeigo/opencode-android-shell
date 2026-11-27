@@ -57,9 +57,9 @@ android {
         // 70 官方 UI 升到 2.3.2（跳过 2.3.1），重放 Android 补丁并补齐 23 条新中文。
         // 71 官方 UI 升到 2.4.1（跳过单独的 2.4.0），重放 Android 补丁并补齐 87 条新中文。
         // 72 官方 UI 升到 2.4.2，重放 Android 补丁并补齐 16 条新中文。
-        versionCode = 72
+        versionCode = 73
         // 保持正式包名和原 CI 签名，允许从 v2.0.8 原地升级。
-        versionName = "2.0.44"
+        versionName = "2.0.45"
     }
 
     signingConfigs {

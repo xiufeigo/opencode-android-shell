@@ -406,6 +406,10 @@ class MockPersistentPtySocket extends MockPtySocket {
   constructor(id, log, info) {
     super(id, log)
     this.info = info
+    // Size-only frames carry no input text, so keep them separately from
+    // `received`: without this the test cannot tell a missing client resize
+    // from a missing server canonical-resize reply.
+    this.sizeFrames = []
   }
   /** Terminal output goes out as a binary frame; the client routes ArrayBuffers to the screen. */
   write(text) {
@@ -429,8 +433,23 @@ class MockPersistentPtySocket extends MockPtySocket {
     if (opcode !== 0x2 || payload.length < 5) return
     const cols = payload.readUInt16BE(1)
     const rows = payload.readUInt16BE(3)
-    if (cols > 0 && rows > 0) this.info.size = { cols, rows }
+    if (cols <= 0 || rows <= 0) return
+    this.sizeFrames.push({ cols, rows, input: payload[0] === 1 })
     if (payload[0] === 1) this.received.push(payload.subarray(5).toString("utf8"))
+    if (this.info.size.cols === cols && this.info.size.rows === rows) return
+    this.info.size = { cols, rows }
+    // The daemon answers a controlling attachment's resize with the canonical
+    // size on every socket. The client deliberately never fits its emulator
+    // locally, so omitting this control frame leaves it at the creation size
+    // forever; the fixture then reports a product resize defect that the real
+    // server never causes. Its checkpoint is the retained output, matching the
+    // app e2e persistent-PTY mock.
+    this.sendControl({
+      type: "resized",
+      cols,
+      rows,
+      checkpoint: Buffer.from(this.log.history, "utf8").toString("base64"),
+    })
   }
 }
 
