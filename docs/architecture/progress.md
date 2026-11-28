@@ -365,6 +365,14 @@
 
 验证：所有改动脚本 `node --check` 通过；backend smoke 覆盖 `/api/health`、PTY WebSocket upgrade、socket 注册与 recorder 标记；`VERIFY_TERMINAL_MODE=boot VERIFY_TERMINAL_NO_SHOTS=1` 使用本机 plugin Playwright 路径运行手机/平板 boot，6/6 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。首次 boot 因 `_upstream` Playwright 不存在而失败，属于环境路径问题；改用仓库现有 `plugins/server-browser` Playwright 后通过，不作为产品回归证据。
 
+### Round 36：host-runtime 拼接顺序单一权威来源
+
+状态：完成，待提交。
+
+闭环内容：新增 `frontend/host-runtime/assembly.json`，把复制文件清单与 document-start facade 拼接顺序从 `build.mjs` / `check-architecture.mjs` 两份硬编码数组中收回。构建脚本和架构检查都读取同一清单；架构检查还校验数组非空、无重复、文件存在，并禁止 build 脚本再次内联片段顺序。`frontend/host-runtime/README.md` 改为指向该清单，不再复制过时片段列表。
+
+验证：重建前后 `webapp/src/main/assets/www/oc-host.js` sha256 均为 `71e91fe509543e655cd700cf52a276868f1da314d79e8e0a217287c23e117bd6`；`node frontend/host-runtime/build.mjs`、`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

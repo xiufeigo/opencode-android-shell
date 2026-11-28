@@ -10,7 +10,23 @@ const requirePresent = (text, needle, label) => {
   if (!text.includes(needle)) failures.push(`${label}: required canonical implementation is missing: ${needle}`)
 }
 
-const hostPieces = ["facade-bootstrap.js", "scheme-bridge.js", "safe-area-style.js", "back-overlay.js", "ime-insets.js", "surface-color.js", "android-facade.js", "notification-shim.js", "background-state-shim.js", "editable-arrow-guard.js", "round-power-sensor.js", "surface-color-tail.js", "overlay-focus.js", "terminal-settings.js"]
+const hostAssemblyPath = "frontend/host-runtime/assembly.json"
+const hostAssembly = JSON.parse(read(hostAssemblyPath))
+if (!Array.isArray(hostAssembly.copies) || !Array.isArray(hostAssembly.hostPieces) || !hostAssembly.hostPieces.length) {
+  failures.push(`${hostAssemblyPath}: copies and hostPieces must be non-empty arrays`)
+}
+for (const [key, list] of [["copies", hostAssembly.copies || []], ["hostPieces", hostAssembly.hostPieces || []]]) {
+  if (new Set(list).size !== list.length) failures.push(`${hostAssemblyPath}: ${key} contains duplicate entries`)
+  for (const file of list) {
+    if (!fs.existsSync(`frontend/host-runtime/${file}`)) failures.push(`${hostAssemblyPath}: ${key} entry is missing: ${file}`)
+  }
+}
+const copies = Array.isArray(hostAssembly.copies) ? hostAssembly.copies : []
+const hostPieces = Array.isArray(hostAssembly.hostPieces) ? hostAssembly.hostPieces : []
+const hostBuild = read("frontend/host-runtime/build.mjs")
+if (!hostBuild.includes("assembly.json")) failures.push("frontend/host-runtime/build.mjs must read assembly order from assembly.json")
+if (hostBuild.includes("facade-bootstrap.js") || hostBuild.includes("terminal-settings.js")) failures.push("frontend/host-runtime/build.mjs duplicates host piece ordering instead of reading assembly.json")
+
 if (fs.existsSync("frontend/host-runtime/oc-host.js")) failures.push("frontend/host-runtime/oc-host.js must not reappear; edit the named runtime pieces instead")
 const host = hostPieces.map(file => read(`frontend/host-runtime/${file}`)).join("")
 for (const needle of ["__ocAndroidShell", "__ocAndroidEscapePassThrough", "oc:ready"]) {
@@ -28,7 +44,7 @@ for (const needle of [
 ]) requireAbsent(host, needle, "oc-host terminal boundary")
 
 
-for (const file of ["index.html", "oc-perf.js", "oc-preflight.js"]) {
+for (const file of copies) {
   const sourcePath = `frontend/host-runtime/${file}`
   const outputPath = `webapp/src/main/assets/www/${file}`
   if (!fs.existsSync(outputPath)) {
