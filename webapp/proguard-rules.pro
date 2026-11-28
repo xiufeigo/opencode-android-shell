@@ -38,7 +38,7 @@
 #     它们**不在**这个包名下，仍然被正常缩与混淆。
 #     这不是「放宽到等于没混淆」，而是「用零成本的定向保留买下 6 项风险的确定性」。
 #
-# 风险 #12 补充：enum（ImeMode / Kind / StreamingAction / RoundStreamSignal）与
+# 风险 #12 补充：enum（ImeMode / Kind / RoundStreamSignal）与
 # `valueOf`/`values()` 都在本包内 ⇒ 被本条覆盖。
 # ═══════════════════════════════════════════════════════════════════════════
 -keep class com.xiufeigo.opencodeshell.web.** { *; }

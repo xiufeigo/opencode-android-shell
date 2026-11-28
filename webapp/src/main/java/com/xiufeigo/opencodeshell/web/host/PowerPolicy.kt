@@ -70,43 +70,4 @@ object PowerPolicy {
         } else {
             flags and FLAG_KEEP_SCREEN_ON_BIT.inv()
         }
-
-    /**
-     * **后台是否允许维持流式连接（SSE）。**
-     *
-     * false ⇒ 宿主必须让流式连接**断开**，且**不得**回落到"照样连上游"。
-     * 兜底那条是重点：若断开后页面 `EventSource` 自动重连又被放行，
-     * 就变成"关一条、再连一条"的拉锯，射频照旧被唤醒，省电等于 0。
-     */
-    fun allowStreaming(foreground: Boolean): Boolean = foreground
-
-    /**
-     * 某条流式请求在当前状态下该被怎么处理。代理据此决定转发还是拒绝。
-     */
-    enum class StreamingAction {
-        /** 前台：照常转发上游（保持原行为）。 */
-        FORWARD,
-
-        /**
-         * 后台：**不回上游**，直接给页面一个可重试的失败（`503` + `Connection: close`）。
-         *
-         * UX6：回环代理已删，本枚举暂无生产消费者（保留为策略声明；若未来
-         * 宿主重新介入流量，这条语义即生效）。历史理由：页面 `EventSource`
-         * 的自动重连是既有语义，复用"可重试失败"= 不引入新行为类别，回前台时
-         * 页面自然重连并重新同步。
-         */
-        REFUSE_WHILE_BACKGROUND,
-    }
-
-    fun streamingAction(foreground: Boolean): StreamingAction =
-        if (allowStreaming(foreground)) StreamingAction.FORWARD else StreamingAction.REFUSE_WHILE_BACKGROUND
-
-    /**
-     * 后台拒绝流式请求时该回什么状态码。
-     *
-     * 503 = Service Unavailable，语义"服务暂时不可用、稍后重试"，正好对上
-     * `EventSource` 的重连语义；**不选 200**（200 空 body 会让页面以为连上了、
-     * 永远不重连 ⇒ 回前台后收不到任何事件，那才是真 bug）。
-     */
-    const val BACKGROUND_STREAM_REFUSE_STATUS: Int = 503
 }

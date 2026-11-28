@@ -437,6 +437,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止路径策略回流 socket server，并要求 server 委托 `LocalUiRoutePolicy`。
 
+### Round 45：删除回环代理残留的流式拒绝策略
+
+状态：完成，待提交。
+
+闭环内容：`PowerPolicy` 仍保留 `allowStreaming` / `StreamingAction` / `BACKGROUND_STREAM_REFUSE_STATUS` 一整套后台 SSE 拦截策略，但 UX6 已删除回环代理、UX8 起后台断流改由合成 `pagehide/pageshow` 驱动上游 pageLifecycle，宿主不再介入页面流量。检索确认这些 API 没有任何生产消费者，只有测试在测试它们自身，属于被历史方案遗留下来的平行实现。删除死策略与对应测试，保留真实生效的常亮决策；同时更新 ProGuard 风险注释中的枚举清单。架构检查禁止这套回环代理策略重新混入 `PowerPolicy`。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

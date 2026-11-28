@@ -368,6 +368,14 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  const powerPolicy = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/PowerPolicy.kt")
+  for (const needle of ["StreamingAction", "streamingAction", "BACKGROUND_STREAM_REFUSE_STATUS", "allowStreaming"]) {
+    if (powerPolicy.includes(needle)) failures.push(`PowerPolicy reintroduced the dead loopback-proxy streaming policy: ${needle}`)
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

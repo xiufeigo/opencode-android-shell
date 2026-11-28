@@ -99,48 +99,6 @@ class PowerPolicyTest {
         assertFalse(PowerPolicy.hasKeepScreenOn(twice))
     }
 
-    // ---- 刀 2：后台不许维持流式连接 ---------------------------------------
-
-    @Test
-    fun `background must not be allowed to hold streaming connections`() {
-        assertFalse(PowerPolicy.allowStreaming(foreground = false))
-        assertEquals(
-            PowerPolicy.StreamingAction.REFUSE_WHILE_BACKGROUND,
-            PowerPolicy.streamingAction(foreground = false),
-        )
-    }
-
-    /**
-     * 绊线第二条：**"关"必须是"关 + 拒绝"，不能只关。**
-     *
-     * 只关会让页面 `EventSource` 自动重连又被打回上游 = 拉锯，射频照旧唤醒。
-     * 所以后台态必须**拒绝**新的流式请求（不是放行）。
-     */
-    @Test
-    fun `background streaming request must be refused not forwarded`() {
-        assertEquals(
-            "后台的 SSE 请求必须是 REFUSE_WHILE_BACKGROUND，而不是 FORWARD",
-            PowerPolicy.StreamingAction.REFUSE_WHILE_BACKGROUND,
-            PowerPolicy.streamingAction(foreground = false),
-        )
-    }
-
-    @Test
-    fun `foreground streaming must keep the original forward behaviour`() {
-        assertTrue(PowerPolicy.allowStreaming(foreground = true))
-        assertEquals(
-            "前台不得改变既有转发行为（回归保护）",
-            PowerPolicy.StreamingAction.FORWARD,
-            PowerPolicy.streamingAction(foreground = true),
-        )
-    }
-
-    @Test
-    fun `background refuse status is 503 not 200`() {
-        // 200 空 body 会让 EventSource 以为连上了 ⇒ 永远不重连 ⇒ 回前台收不到事件。
-        assertEquals(503, PowerPolicy.BACKGROUND_STREAM_REFUSE_STATUS)
-    }
-
     // ---- 常量必须与 android 框架一致（防手抄错） ---------------------------
 
     @Test
