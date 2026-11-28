@@ -20,12 +20,6 @@ class RoundActivityTrackerTest {
     private val timeout = RoundActivityTracker.DEFAULT_ROUND_HOLD_TIMEOUT_MS
     private val startAt = 1_000_000L
 
-    /**
-     * 旧代理的 SSE 读超时（35 s）。代理已删（UX6），阈值本身作为
-     * "流静默判回合自然结束"的历史口径保留在测试里（不再从生产代码引用）。
-     */
-    private val SSE_IDLE_READ_TIMEOUT_MS = 35_000L
-
     /** 当前 flag 该不该置起（= 宿主实际落 flag 的判据）。 */
     private fun shouldBeSet(t: RoundActivityTracker, now: Long, foreground: Boolean = true): Boolean =
         PowerPolicy.shouldKeepScreenOn(
@@ -52,43 +46,6 @@ class RoundActivityTrackerTest {
     }
 
     @Test
-    fun messagePostIsRecognisedAsRoundStart() {
-        val t = RoundActivityTracker()
-        assertTrue(
-            "POST 会话消息 = 回合开始",
-            t.isRoundStartRequest("POST", "/session/ses_abc/message"),
-        )
-        assertTrue(
-            "带 /api 前缀也要认",
-            t.isRoundStartRequest("POST", "/api/session/ses_abc/message"),
-        )
-        assertTrue(
-            "message_async 也要认",
-            t.isRoundStartRequest("POST", "/api/session/ses_abc/message_async"),
-        )
-    }
-
-    @Test
-    fun nonMessageRequestsAreNotRoundStart() {
-        val t = RoundActivityTracker()
-        // 这些都会出现在真实流量里，认错就会"打开页面就常亮"。
-        assertFalse("GET 会话列表不是回合", t.isRoundStartRequest("GET", "/api/session"))
-        assertFalse("GET 事件流不是回合", t.isRoundStartRequest("GET", "/api/event"))
-        assertFalse("GET 消息列表不是回合", t.isRoundStartRequest("GET", "/api/session/ses_abc/message"))
-        assertFalse("改会话名不是回合", t.isRoundStartRequest("PATCH", "/api/session/ses_abc"))
-        assertFalse("压缩不是回合", t.isRoundStartRequest("POST", "/api/session/ses_abc/compact"))
-        assertFalse("空路径不是回合", t.isRoundStartRequest("POST", "/"))
-    }
-
-    @Test
-    fun queryStringDoesNotBreakPathMatch() {
-        val t = RoundActivityTracker()
-        assertTrue("带 query 的消息请求也要认", t.isRoundStartRequest("POST", "/api/session/ses_abc/message?x=1"))
-    }
-
-    // ---- 回合结束 ⇒ 释放 -------------------------------------------------
-
-    @Test
     fun roundEndClearsKeepScreenOn() {
         val t = RoundActivityTracker()
         t.onRoundStart(startAt)
@@ -96,31 +53,6 @@ class RoundActivityTrackerTest {
         t.onRoundEnd()
         assertFalse("回合结束必须释放 KEEP_SCREEN_ON", shouldBeSet(t, startAt))
     }
-
-    @Test
-    fun streamEndAfterLongSilenceClearsKeepScreenOn() {
-        // 回合"自然结束"：流式通道静默超过一个 SSE 读超时后关闭。
-        // 历史判定口径（代理已删）：静默 >= 35 s ⇒ 调 onRoundEnd()。
-        // 跟踪器本身不会"自己"在 35s 释放 —— 释放来自这个显式结束信号，
-        // 漏了这个信号由 [holdTimeoutReleasesStaleRound] 的 90s 兜底接管。
-        val t = RoundActivityTracker()
-        t.onRoundStart(startAt)
-        t.onRoundActivity(startAt + 1_000L)
-        val shortSilence = startAt + 10_000L
-        assertTrue(
-            "短暂静默不该释放：页面 EventSource 正在按退避重连",
-            shouldBeSet(t, shortSilence) && t.idleMs(shortSilence) < SSE_IDLE_READ_TIMEOUT_MS,
-        )
-        val longSilence = startAt + 36_000L
-        assertTrue(
-            "静默 36s 已越过 35s 阈值 ⇒ 代理会调 onRoundEnd",
-            t.idleMs(longSilence) >= SSE_IDLE_READ_TIMEOUT_MS,
-        )
-        t.onRoundEnd()
-        assertFalse("回合自然结束后必须释放 KEEP_SCREEN_ON", shouldBeSet(t, longSilence))
-    }
-
-    // ---- 兜底超时：忘关路径 ---------------------------------------------
 
     @Test
     fun holdTimeoutReleasesStaleRound() {
@@ -139,7 +71,7 @@ class RoundActivityTrackerTest {
     fun streamActivityKeepsAliveRoundFromTimingOut() {
         val t = RoundActivityTracker()
         t.onRoundStart(startAt)
-        // 每 10 s 一次心跳（上游 `/event` 的真实节奏），持续 5 分钟。
+        // 调用方已分类为"回合活动"的信号持续到来，持续 5 分钟。
         var now = startAt
         while (now < startAt + 300_000L) {
             t.onRoundActivity(now)
@@ -152,16 +84,15 @@ class RoundActivityTrackerTest {
     }
 
     @Test
-    fun idleEventStreamAloneNeverStartsARound() {
-        // 页面随手开个 GET /event 订阅（上游每 10 s 心跳）**不是回合**。
-        // 若把它当回合，常亮会被一个纯订阅永久吊住。
+    fun activityWithoutRoundStartNeverStartsARound() {
+        // 没有回合开始信号时，即使用调用方误把后台活动喂进来，也不能凭空开回合。
         val t = RoundActivityTracker()
         var now = startAt
         while (now < startAt + 600_000L) {
             t.onRoundActivity(now)
             now += 10_000L
         }
-        assertFalse("只有心跳、没有回合开始信号 ⇒ 不得置起", shouldBeSet(t, now))
+        assertFalse("没有回合开始信号 ⇒ 不得置起", shouldBeSet(t, now))
     }
 
     @Test
@@ -201,15 +132,13 @@ class RoundActivityTrackerTest {
     }
 
     @Test
-    fun persistentEventStreamCannotKeepFlagOnForever() {
-        // ⚠️ 设备实测逼出来的用例：官方 UI **常驻**一条 `GET /event` 订阅，
-        // 其 10 s 心跳经代理的 onRoundActivity 持续续命 ⇒ 只靠 90 s 空闲超时
-        // 的话，flag 会**永久**挂着（设备原文：t=+91s…t=+131s 一直 hits=1）。
+    fun persistentRoundActivityCannotKeepFlagOnForever() {
+        // 即使调用方持续喂入回合活动，单靠 90 s 空闲兜底也可能永久续命；
         // 硬上限 [maxRoundKeepMs] 就是为这道兜底而存在。
         val t = RoundActivityTracker()
         t.onRoundStart(startAt)
         val ceiling = t.maxRoundKeepMs
-        // 心跳一直来：60 min 内每一秒都有活动。
+        // 活动一直来：60 min 内每一秒都有活动。
         var now = startAt
         while (now < startAt + 60 * 60_000L) {
             t.onRoundActivity(now)
@@ -220,7 +149,7 @@ class RoundActivityTrackerTest {
             shouldBeSet(t, startAt + ceiling - 1L),
         )
         assertFalse(
-            "超过 ${ceiling}ms 的硬上限 ⇒ 必须释放，无论心跳多活跃",
+            "超过 ${ceiling}ms 的硬上限 ⇒ 必须释放，无论活动多频繁",
             shouldBeSet(t, startAt + ceiling),
         )
     }
@@ -245,7 +174,7 @@ class RoundActivityTrackerTest {
             shouldBeSet(t, secondAt + 60_000L),
         )
         // 有活动时，续命可以一直到**新的**天花板，而不是沿用旧回合的余额。
-        // ⚠️ 必须**持续**喂活动（每 10 s 一次心跳），不是只喂一次 ——
+        // ⚠️ 必须**持续**喂活动，不是只喂一次 ——
         // 90 s 空闲层是独立生效的：只喂一次的话 90 s 后照样判死。
         var t2 = secondAt + 80_000L
         while (t2 < secondAt + ceiling) { t2 += 10_000L; t.onRoundActivity(t2) }

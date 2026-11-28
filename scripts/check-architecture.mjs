@@ -447,6 +447,14 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  const tracker = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/RoundActivityTracker.kt")
+  for (const needle of ["RoundStreamSignal", "classifyRoundStream", "onRoundStreamSignal", "containsRoundEndMarker", "containsSubstantivePayload", "isRoundStartRequest", "ROUND_STATUS_MARKER", "SUBSTANTIVE_MARKER"]) {
+    if (tracker.includes(needle)) failures.push(`RoundActivityTracker reintroduced the dead loopback-proxy traffic classifier: ${needle}`)
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

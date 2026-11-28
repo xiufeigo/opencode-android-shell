@@ -477,6 +477,16 @@
 
 验证：`node --check scripts/check-architecture.mjs`、`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 50：删除回环代理残留的流量分类器
+
+状态：完成，待提交。
+
+闭环内容：审计确认 `RoundActivityTracker` 中的 `RoundStreamSignal`、`classifyRoundStream`、`onRoundStreamSignal`、`containsRoundEndMarker`、`containsSubstantivePayload` 与 `isRoundStartRequest` 在生产代码中没有任何调用方；它们服务的旧回环代理已经删除，而当前权威流量分类实现在注入层 `frontend/host-runtime/round-power-sensor.js`。保留这套 Kotlin 平行分类器只会让上游协议语义拥有两个答案。已删除这些 API、对应私有/公开标记常量、只测试自身的 `RoundStreamSignalReleaseTest`（262 行）以及请求路径分类测试。核心时间跟踪器仍保留真实电源语义所需的 `onRoundStart` / `onRoundActivity` / `onRoundEnd` / 超时 / 硬上限；相关测试注释改为描述"调用方已分类的回合活动"，不再把心跳误写成跟踪器输入。架构检查禁止死分类器复活。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
-暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
+- 回合电源活动通道：当前注入层只在 busy 集合翻转时调用 `setKeepScreenOn`，尚未把回合中途活动接入 `RoundActivityTracker.onRoundActivity`。因此 90 s “空闲兜底”在当前生产接线里也会让超过 90 s 的长回合失去常亮；补活动通道会延长长回合常亮，属于电源语义/产品取舍，不能用删除死代码顺手改变。
+
+若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，也会先记录在这里，不擅自做破坏性迁移。
