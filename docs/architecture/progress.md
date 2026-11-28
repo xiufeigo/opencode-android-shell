@@ -381,6 +381,14 @@
 
 验证：`:webapp:testDebugUnitTest` 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 38：初始化编排退出后台状态 shim
+
+状态：完成，待提交。
+
+闭环内容：`background-state-shim.js` 曾同时持有后台 visibility/focus 读数 shim 与 document-start 初始化编排（安装 IME/top-inset 样式、委托 focusin、补放 lastInsets）。将后者按原字节顺序移入 `facade-init.js`，并把它登记到 `assembly.json` 的同一位置；后台 shim 现在只负责后台状态读数契约。生成 `oc-host.js` sha256 保持 `71e91fe509543e655cd700cf52a276868f1da314d79e8e0a217287c23e117bd6` 不变。
+
+验证：`node frontend/host-runtime/build.mjs`、`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

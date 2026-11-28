@@ -55,11 +55,12 @@ scripts ──验证──> 以上产物与运行时契约
 7. `android-facade.js`：`window.__ocAndroid` 对页面公开的 facade API。
 8. `notification-shim.js`：浏览器 Notification API 垫片。
 9. `background-state-shim.js`：后台 visibility/focus 读数 shim。
-10. `editable-arrow-guard.js`：输入框边界方向键守卫。
-11. `round-power-sensor.js`：fetch/SSE 回合电源传感器。
-12. `surface-color-tail.js`：表面色 observer 与外层 IIFE 收口。
-13. `overlay-focus.js`：浮层自动聚焦键盘抑制。
-14. `terminal-settings.js`：终端字号设置契约。
+10. `facade-init.js`：document-start 初始化编排，把此前各职责片段安装到 DOM 生命周期。
+11. `editable-arrow-guard.js`：输入框边界方向键守卫。
+12. `round-power-sensor.js`：fetch/SSE 回合电源传感器。
+13. `surface-color-tail.js`：表面色 observer 与外层 IIFE 收口。
+14. `overlay-focus.js`：浮层自动聚焦键盘抑制。
+15. `terminal-settings.js`：终端字号设置契约。
 
 这些文件目前共享同一个 document-start 闭包，因此**拼接顺序是行为契约**。拆分的目标是降低修改半径与并行冲突，而不是把它们伪装成独立 ES module；后续若要真正模块化，必须先显式化共享状态并重建行为基线。
 

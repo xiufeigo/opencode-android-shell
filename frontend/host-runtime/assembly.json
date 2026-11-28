@@ -14,6 +14,7 @@
     "android-facade.js",
     "notification-shim.js",
     "background-state-shim.js",
+    "facade-init.js",
     "editable-arrow-guard.js",
     "round-power-sensor.js",
     "surface-color-tail.js",
