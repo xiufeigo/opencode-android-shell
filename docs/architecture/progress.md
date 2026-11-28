@@ -72,6 +72,14 @@
 - `git diff --check` 通过。
 - `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
 
+### Round 3：版本事实单一权威来源
+
+状态：完成，待提交。
+
+闭环内容：根 README 不再复制上游版本/提交/Bun pin 或 APK versionCode/versionName，改为指向 `upstream.json` 与 `webapp/build.gradle.kts`；`frontend/android/README.md` 的当前基准说明同样改为引用权威文件。`scripts/check-architecture.mjs` 新增漂移检查，防止 README 再次硬编码这些可变事实。
+
+验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

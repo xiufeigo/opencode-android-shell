@@ -29,9 +29,9 @@
 
 ## P2 文档与版本 SSOT
 
-- [ ] README 删除可变版本号副本，指向 `upstream.json` 与 `webapp/build.gradle.kts`。
+- [x] README 删除可变版本号副本，指向 `upstream.json` 与 `webapp/build.gradle.kts`。
 - [ ] 把当前有效工程约束迁入 `docs/architecture/`，`research/` 明确标记为历史证据。
-- [ ] 建立文档漂移检查，防止 README 再次硬编码过期版本。
+- [x] 建立文档漂移检查，防止 README 再次硬编码过期版本。
 
 ## P3 防回归架构约束
 

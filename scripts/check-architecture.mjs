@@ -47,6 +47,29 @@ for (const name of fs.readdirSync("webapp/src/main/java/com/xiufeigo/opencodeshe
   }
 }
 
+
+const upstream = JSON.parse(read("frontend/android/upstream.json"))
+const gradle = read("webapp/build.gradle.kts")
+const readme = read("README.md")
+const versionCode = /versionCode\s*=\s*(\d+)/.exec(gradle)?.[1]
+const versionName = /versionName\s*=\s*"([^"]+)"/.exec(gradle)?.[1]
+const hasStandaloneFact = (text, value) => {
+  let at = 0
+  while ((at = text.indexOf(value, at)) !== -1) {
+    const before = text[at - 1] || ""
+    const after = text[at + value.length] || ""
+    if (!/[A-Za-z0-9]/.test(before) && !/[A-Za-z0-9]/.test(after)) return true
+    at += value.length
+  }
+  return false
+}
+for (const value of [upstream.version, upstream.commit, upstream.bun, versionCode, versionName].filter(Boolean)) {
+  if (hasStandaloneFact(readme, value)) failures.push(`README.md duplicates mutable version fact from its authority: ${value}`)
+}
+if (/当前 UI 基准为官方 v|Bun 必须为 \d/.test(read("frontend/android/README.md"))) {
+  failures.push("frontend/android/README.md duplicates the current upstream/Bun authority")
+}
+
 if (failures.length) {
   console.error(failures.join("\n"))
   process.exit(1)

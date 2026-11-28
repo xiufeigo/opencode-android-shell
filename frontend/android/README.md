@@ -12,7 +12,7 @@
 node frontend/android/build.mjs
 ```
 
-Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执行 `frontend/terminal` 的 `npm ci && npm test && npm run build`。最终 APK 通过 `:webapp:assembleRelease` 构建。
+Bun 版本以 `upstream.json` 的 `bun` 字段为准；`BUN_BINARY` 可指定二进制路径。Terminal 独立执行 `frontend/terminal` 的 `npm ci && npm test && npm run build`。最终 APK 通过 `:webapp:assembleRelease` 构建。
 
 源码补丁涉及：官方入口的平台提供者和路由恢复；服务器设置的导航状态及持续添加入口；终端模块入口改用本仓库自带引擎；共享 ResizeHandle 的触屏生命周期和点击范围；应用菜单的 Android 平台动作；官方中文词典的缺口填充。业务 API、会话状态、PTY、文件、设置和主题继续由官方实现负责。
 
@@ -30,7 +30,7 @@ Bun 必须为 1.4.4；`BUN_BINARY` 可指定二进制路径。Terminal 独立执
 
 2.1.4 的新界面文案上游仍没有中文：`session.elicitation.selectPlaceholder` 已由本仓库补齐。免费额度 UI 仍依赖服务端 ≥2.1.2 的 `provider.free-limit`；MCP 表单依赖服务端发出 `session.form` 请求。未读徽标仍依赖服务端 `time.viewed`。
 
-当前 UI 基准为官方 v2.4.2（`fc31a485`），Bun 仍是 **1.4.4**。按官方 app 和 ui 词典比对，本仓库补齐了 2.4.2 相对已有译文新增的 16 条简繁中文缺口。`build.mjs` 的稀疏检出工作区与 2.4.1 相同，没有新增必须纳入的工作区。过滤安装仍不会带上根目录的 `@types/mime-types`，而 `packages/util` 的文件类型查询在 GUI 类型检查里会用到它，因此构建在冻结安装之后补上这份根开发依赖。
+当前 UI 与 Bun 基准以 `upstream.json` 为唯一权威来源。按官方 app 和 ui 词典比对，本仓库补齐了当前基准相对已有译文新增的 16 条简繁中文缺口。`build.mjs` 的稀疏检出工作区与 2.4.1 相同，没有新增必须纳入的工作区。过滤安装仍不会带上根目录的 `@types/mime-types`，而 `packages/util` 的文件类型查询在 GUI 类型检查里会用到它，因此构建在冻结安装之后补上这份根开发依赖。
 
 2.4.2 把官方 UI 从 2.4.1（`6f051405`）升到正式 tag v2.4.2（`fc31a485`）。`upstream.patch` 可以原样套上。`ui.patch` 在标题栏跟上上游：竖排标签下横条菜单受 `hideVerticalTitlebar()` 约束，Linux 把应用菜单放进侧栏头部；Android 在标题栏可见时挂上菜单，竖排时仍留在侧栏头部。时间线尾部仍按本仓库的 56px 活动区计算，并加上上游的 `tailExtra`。终端仍改用本仓库的 `/oc-terminal.js`。`entry.tsx` 继续不注册 service worker。官方内置浏览器面板只在 `platform === "desktop"` 时挂载。自定义服务端浏览器面板仍注册在官方 GUI 插件列表中，供已经安装的旧插件使用，不作为新安装的默认插件。
 

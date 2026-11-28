@@ -6,3 +6,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:21:07.033Z	round1	验证 Ghostty 死实现删除闭环	删除后宿主边界、终端源码测试、Android 单测和打包 SPA boot 均保持绿色	scripts/check-architecture.mjs; gradle testDebugUnitTest; verify-android-terminal-release host-terminal-boundary	VERIFIED
 2026-11-28T06:21:07.087Z	round1	记录 drag 定向基线为未采用证据	预改运行未进入 drag 检查；不能把 harness 噪声伪装成行为证明	research/tmp/verify-android-terminal-release-ready/2026-11-28T06-15-24-836Z-c6d6cf/report.json	INCONCLUSIVE
 2026-11-28T06:25:32.584Z	round2	断开 WebHostBridge 和 NotifierHost 对入口 Activity 的反向依赖	host/ 应是可复用能力层；反向依赖让模块职责和测试边界模糊	WebHostBridgeHost; WebHostBridge; NotifierHost; check-architecture.mjs	VERIFIED: gradle testDebugUnitTest green
+2026-11-28T06:27:47.875Z	round3	README 不再复制可变版本事实	根 README 已出现 APK 版本漂移；版本事实应只有 upstream.json 与 build.gradle.kts 两个权威来源	README.md; frontend/android/README.md; scripts/check-architecture.mjs	VERIFIED: architecture check green
