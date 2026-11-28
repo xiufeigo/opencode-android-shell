@@ -1863,6 +1863,27 @@ index 97962eb..2743279 100644
  import {
    createMenuState,
    MENU_CLOSE_AUTOFOCUS,
+@@ -127,11 +129,19 @@ export interface MenuItemProps extends ComponentProps<typeof DropdownMenu.Item> {
+ 
+ function MenuItem(props: ParentProps<MenuItemProps>) {
+   const ctx = useMenuContext()
+-  const [s, r] = splitProps(props, ["class", "classList", "children", "shortcut", "badge"])
++  const menu = useOptionalMenuContext()
++  const [s, r] = splitProps(props, ["class", "classList", "children", "shortcut", "badge", "onSelect", "closeOnSelect"])
++
++  const onSelect = () => {
++    if (s.closeOnSelect ?? true) menu?.close(true)
++    setTimeout(() => s.onSelect?.())
++  }
+ 
+   return (
+     <DropdownMenu.Item
+       {...r}
++      closeOnSelect={s.closeOnSelect}
++      onSelect={onSelect}
+       data-component="menu-v2-item"
+       data-appearance={ctx.appearance()}
+       classList={{ ...s.classList, [s.class ?? ""]: !!s.class }}
 @@ -529,6 +531,12 @@ function MenuRoot(props: MenuProps) {
    )
  }

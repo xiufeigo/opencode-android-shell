@@ -51,8 +51,8 @@ async function addServer(page, url, name) {
   }, url)
   // Wait for the actual destination, rather than clicking the outgoing root
   // action during its transition and accidentally bypassing the regression.
-  await button(page, "Back to settings").waitFor()
-  await page.locator(".settings-tab-title").filter({ hasText: name }).waitFor()
+  await button(page, "Back to app").waitFor()
+  await page.locator(".settings-servers-name").filter({ hasText: name }).waitFor()
 }
 
 async function runProfile(browser, profile, ui, servers) {
@@ -94,17 +94,18 @@ async function runProfile(browser, profile, ui, servers) {
     await button(page, "Add server").waitFor()
     assert.equal((await registry(page)).list.length, 5)
     record(profile.name, "five-servers-persist-after-reload", await registry(page))
-    await selectSettingsEntry(page, profile.name === "phone", "Server B")
     const row = page.locator(".settings-servers-row").filter({ hasText: "Server B" })
-    await row.getByRole("button", { name: "More options", exact: true }).click()
-    await page.getByRole("menuitem", { name: "Edit", exact: true }).click()
+    await row.getByRole("button", { name: "More options", exact: true }).tap()
+    await page.getByRole("menuitem", { name: "Edit", exact: true }).tap()
     const dialog = page.getByRole("dialog")
+    await dialog.waitFor()
+    await page.waitForTimeout(250)
+    assert.equal(await dialog.isVisible(), true)
     await dialog.locator("input").nth(1).fill("Server B edited")
     await dialog.getByRole("button", { name: "Save", exact: true }).click()
     await dialog.waitFor({ state: "hidden" })
     await page.waitForFunction(url => JSON.parse(localStorage.getItem("opencode.global.dat:server")).list.some(server => server.http.url === url && server.displayName === "Server B edited"), servers[1].origin)
     record(profile.name, "edit-second-server", await registry(page))
-    await button(page, "Back to settings").click()
     await button(page, "Add server").waitFor()
     await button(page, "Back to app").click()
     for (const name of [new URL(servers[0].origin).host, "Server C", "Server D", "Server E", "Server B edited"]) {
@@ -175,8 +176,8 @@ async function runOfficialPlus(browser, ui, server) {
     await button(page, "Toggle review").waitFor()
     if (await button(page, "Toggle review").getAttribute("aria-expanded") !== "true") await button(page, "Toggle review").click()
     await visible(review.getByRole("button", { name: "Add tab", exact: true })).click()
-    await page.getByRole("menuitem", { name: /^Browser\b/ }).waitFor()
-    await page.getByRole("menuitem", { name: /^Open file\b/ }).click()
+    await page.getByRole("button", { name: /^Browser\b/ }).waitFor()
+    await page.getByRole("button", { name: /^Open file\b/ }).click()
     await review.getByRole("tab", { name: "Open file", exact: true }).waitFor()
     await visible(review.locator('input[type="search"][aria-label="Filter files"]')).waitFor()
     assert.equal(await page.evaluate(() => typeof window.__ocPlusChooser), "undefined")
@@ -315,7 +316,7 @@ async function runUpgrade(browser, ui, servers) {
   await page.addInitScript({ content: nativeBridgeSource() + ";" + ocHostLoaderSource(fs.readFileSync(path.join(root, "webapp/src/main/assets/www/oc-host.js"), "utf8")) })
   const saved = {
     list: servers.map((server, index) => ({ type: "http", http: { url: server.origin }, displayName: `Saved ${index + 1}` })),
-    hidden: {}, projects: {}, lastProject: {}, recentlyClosed: {},
+    hidden: {}, projects: {}, lastProjectID: {}, usedProjectIDs: {}, hostnames: {},
   }
   try {
     await page.goto(ui, { waitUntil: "domcontentloaded" })
