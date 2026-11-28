@@ -12,15 +12,15 @@
  *   · `webapp/src/main/assets/www/ui/index.html` is the served document, and its
  *     real `/_assets/*` chunks come from `www/ui/oa/*` — byte-for-byte the files
  *     that ship in the APK. Nothing in the vendored build is rewritten.
- *   · The Ghostty module slot is swapped **at the HTTP route only**:
+ *   · The terminal engine module slot is swapped **at the HTTP route only**:
  *       `/oc-terminal.js`  ->  `www/oc-terminal.js`
  *       `/oc-terminal/{file}`        ->  `www/terminal/{file}`
  *     The production `index-*.js` lazy-imports that same URL, so it asks for the
  *     replacement module by itself. A request log proves it did.
- *   · The **complete** `oc-host.js` (all 2172 lines, not a section) is injected
- *     at document start behind a mock `window.__ocAndroidNative`, so the Android
- *     facade, the IME/insets plumbing and the OC-TERMINAL touch/font patches are
- *     all live exactly as on device.
+ *   · The **complete** `oc-host.js` is injected at document start behind a mock
+ *     `window.__ocAndroidNative`, so the Android facade and IME/insets plumbing
+ *     are live exactly as on device. Terminal touch and font behavior belong to
+ *     the xterm adapter, not to the host facade.
  *   * A minimal OpenCode V2 mock backend (HTTP + SSE `/event` + WebSocket
  *     `/api/pty/{id}/connect`) supplies the session + PTY the UI needs.
  *   · The terminal is opened through the **app's own** `terminal.toggle`
@@ -1093,12 +1093,11 @@ const base64url = (v) =>
  * Why not a plain `addInitScript`: Playwright (and Chromium's
  * `Page.addScriptToEvaluateOnNewDocument`, which is what WebView's
  * `addDocumentStartJavaScript` mirrors) evaluates scripts *before* the parser has
- * created `document.documentElement`. oc-host.js does
- * `(document.head || document.documentElement).appendChild(st)`, so it throws
- * there and — because the OC-TERMINAL installers run at the tail of the file —
- * the whole terminal patch block never installs. The host file is never edited;
- * this loader just hands it a moment where `document.documentElement` exists and
- * no page script has executed yet.
+ * created `document.documentElement`. Parts of oc-host.js append styles through
+ * `(document.head || document.documentElement)`, so evaluating too early can throw
+ * before the rest of the facade installs. The host file is never edited; this
+ * loader just hands it a moment where `document.documentElement` exists and no
+ * page script has executed yet.
  */
 function ocHostLoaderSource(hostSource) {
   return `(() => {
@@ -1258,10 +1257,8 @@ const LAYOUT_PROBE = `(() => {
     out.hostPresent = typeof window.__ocAndroid === "object" && window.__ocAndroid !== null
     out.hostVersion = out.hostPresent ? window.__ocAndroid.version : null
     out.touchPatchInstalled = !!window.__ocTermTouch
-    // oc-host.js:20 hardcodes this to "xterm" and then bails out of BOTH
-    // installTerminalFontScale() (2011) and installTerminalTouchScroll() (2340)
-    // when it equals "xterm". So with the packaged host the touch->wheel bridge
-    // is never installed and the engine must handle finger drags itself.
+    // The host facade no longer owns terminal touch or font patching. Those
+    // behaviors are canonical in the xterm adapter served as oc-terminal.js.
     out.ocTerminalEngine = window.__ocTerminalEngine || null
     out.hostSourceEvaluated = !!window.__ocHostInstalled
     out.hostLoadError = window.__ocHostError || null
@@ -2205,28 +2202,16 @@ async function runDevice(browser, { chromium }, device, state) {
     )
   }
 
-  // Record whether oc-host's own terminal patches actually installed. Under the
-  // packaged host they never do (see the __ocTerminalEngine gate), which means
-  // finger-drag scrolling has to come from the replacement engine itself.
-  if (shouldRun("host-engine-gate")) {
+  // The host facade must not grow a second terminal implementation. Finger-drag
+  // scrolling and font scaling are verified in the xterm adapter itself.
+  if (shouldRun("host-terminal-boundary")) {
     const engine = layout0 && layout0.ocTerminalEngine
-    if (layout0 && layout0.touchPatchInstalled) {
-      recordResult(
-        "host-engine-gate",
-        device.name,
-        "pass",
-        `oc-host installed its terminal touch bridge (__ocTerminalEngine=${engine})`,
-      )
-    } else {
-      recordResult(
-        "host-engine-gate",
-        device.name,
-        "info",
-        `oc-host's terminal patches did NOT install (__ocTerminalEngine=${engine}, touch=${layout0?.touchPatchInstalled}). ` +
-          `oc-host.js:20 pins the flag to "xterm" and installTerminalTouchScroll() (2340) / installTerminalFontScale() (2011) ` +
-          `both bail out on it, so trusted finger drags must be handled by the replacement engine, not by the host bridge.`,
-      )
-    }
+    recordResult(
+      "host-terminal-boundary",
+      device.name,
+      layout0 && !layout0.touchPatchInstalled && engine === "xterm" ? "pass" : "fail",
+      `terminal boundary: engine=${engine}, legacy host touch patch=${layout0?.touchPatchInstalled}; xterm owns terminal behavior`,
+    )
   }
 
   // (The ghostty replacement route is asserted after the terminal opens — the
@@ -3049,7 +3034,7 @@ async function runDevice(browser, { chromium }, device, state) {
       changed
         ? `font scale changed the grid ${before.cols}x${before.rows} -> ${after.cols}x${after.rows}`
         : `font scale did not change the grid (${after.cols}x${after.rows}). Page.setFontSizes only moves the default font size, ` +
-          `it is not Android text zoom, and oc-host's installTerminalFontScale() is disabled by the __ocTerminalEngine gate. ` +
+          `it is not Android text zoom, and terminal font scaling belongs to the xterm adapter rather than the host facade. ` +
           `Verdict needs a real device.`,
     )
     await shot(page, `${device.name}-09-font-scale`)

@@ -33,11 +33,27 @@
 
 ### Round 1：删除不可达的 Ghostty 终端兼容实现
 
-状态：已识别，待建立行为基线。
+状态：完成，待提交。
 
-证据：`oc-host.js` 第 16 行固定 `window.__ocTerminalEngine = "xterm"`；`installTerminalFontScale()` 与 `installTerminalTouchScroll()` 第一行都因该值直接返回。完整 SPA 验证脚本已经把这个状态视为预期，并说明触摸与字号行为由 xterm 适配层承担。
+识别证据：删除前 `oc-host.js` 固定 `window.__ocTerminalEngine = "xterm"`；`installTerminalFontScale()` 与 `installTerminalTouchScroll()` 都在第一行因该值返回。生产触摸、字号、字符网格和滚动行为已经由 `frontend/terminal/terminal.js` 承担。
 
-目标：删除这两段死实现及其历史源码绊线，把终端行为契约统一到 `frontend/terminal/terminal.js` 与完整 SPA 验证。
+闭环内容：
+
+- 删除 canvas 字体缩放补丁、触摸转 wheel 补丁和只为它们存在的 `TerminalFontScaleTest` / `TerminalTouchScrollTest`。
+- 保留终端字号设置项及其存储键契约；列数估算改为直接使用浏览器原生 `measureText`。
+- 完整 SPA 验证脚本的检查改为 `host-terminal-boundary`，明确宿主 facade 不得再长出第二套终端实现。
+- 新增 `scripts/check-architecture.mjs`，并接入 CI，防止这些死实现复活。
+
+验证：
+
+- `node scripts/check-architecture.mjs` 通过。
+- `node --check webapp/src/main/assets/www/oc-host.js` 通过。
+- `node --test frontend/embedded-ui/*.test.mjs frontend/android/*.test.mjs` 通过。
+- `cd frontend/terminal && npm test` 通过。
+- `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
+- `VERIFY_TERMINAL_MODE=boot VERIFY_TERMINAL_FILTER=host-terminal-boundary node scripts/verify-android-terminal-release.mjs` 手机与平板均通过；报告中 `engine=xterm` 且 legacy host touch patch 为 `false`。
+
+备注：一次 `VERIFY_TERMINAL_FILTER=drag` 的预改基线运行在终端打开等待处未进入 drag 检查，因此没有作为行为证据使用；本轮删除依赖静态不可达证明、xterm 单元测试和打包 SPA boot 边界验证。
 
 ## 待确认事项
 

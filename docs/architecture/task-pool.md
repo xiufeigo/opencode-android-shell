@@ -4,8 +4,8 @@
 
 ## P0 删除死实现与虚假兼容
 
-- [ ] 删除 `oc-host.js` 中永久不可达的 Ghostty 终端字体缩放和触摸滚动实现；删除只为它们存在的历史源码绊线，保留或迁移真正覆盖当前 xterm 行为的验证。
-- [ ] 清理验证脚本和 README 对这些死实现的现行语义描述；历史描述只允许留在 `research/`。
+- [x] 删除 `oc-host.js` 中永久不可达的 Ghostty 终端字体缩放和触摸滚动实现；删除只为它们存在的历史源码绊线，保留或迁移真正覆盖当前 xterm 行为的验证。
+- [x] 清理验证脚本和 README 对这些死实现的现行语义描述；历史描述只允许留在 `research/`。
 - [ ] 检查 `databaseEnabled` 等 Deprecated WebView 设置是否仍有真实调用方；没有则删除并验证存储行为。
 
 ## P1 建立权威源码边界
@@ -35,6 +35,7 @@
 
 ## P3 防回归架构约束
 
-- [ ] 新增 `scripts/check-architecture.mjs`：扫描生成产物边界、禁止手改产物、检查 Kotlin 反向依赖、检查已知死代码重新出现。
-- [ ] 把架构检查接入 CI package workflow 和本地验证说明。
+- [x] 新增初版 `scripts/check-architecture.mjs`：防止 Ghostty 终端死实现复活。
+- [x] 把架构检查接入 CI package workflow。
+- [ ] 扩展 `scripts/check-architecture.mjs`：扫描生成产物边界、禁止手改产物、检查 Kotlin 反向依赖。
 - [ ] 在每次治理循环后把新确立规则加入检查，而不是只写文档。

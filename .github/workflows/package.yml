@@ -17,6 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check architecture boundaries
+        run: node scripts/check-architecture.mjs
+
       # The web app loads `assets/www/oc-terminal.js`, a bundle of
       # frontend/terminal/terminal.js. Build it from the lockfile below and
       # prove the committed bundle is in sync, so a source-only change can

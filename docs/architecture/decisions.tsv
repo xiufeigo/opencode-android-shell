@@ -2,3 +2,6 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:14:13.805Z	frame	在隔离 worktree 建立架构治理基线	仓库是发布中的 Android 产品；重构必须可回退且不影响主工作区	git worktree arch/governance-2026-11-28; docs/architecture/progress.md	baseline established
 2026-11-28T06:14:13.858Z	frame	采用高 rigor 渐进治理而不是一次性重写	发布身份、上游 UI、协议和本地数据都是高爆破半径边界	docs/architecture/adr/0001-architecture-governance-baseline.md	accepted
 2026-11-28T06:15:36.573Z	harness	完成改动前基线验证	后续每个删除或迁移都需要可比较的 before 状态	frontend/android/build.mjs; gradle :webapp:testDebugUnitTest; terminal/plugin tests	green; generated assets byte-identical
+2026-11-28T06:20:03.175Z	round1	删除 oc-host 中不可达的 Ghostty 终端实现	xterm 已是唯一生产引擎；被门禁禁用的兼容代码和绊线只增加读者负担	webapp/src/main/assets/www/oc-host.js; scripts/check-architecture.mjs	implementation deleted; verification in progress
+2026-11-28T06:21:07.033Z	round1	验证 Ghostty 死实现删除闭环	删除后宿主边界、终端源码测试、Android 单测和打包 SPA boot 均保持绿色	scripts/check-architecture.mjs; gradle testDebugUnitTest; verify-android-terminal-release host-terminal-boundary	VERIFIED
+2026-11-28T06:21:07.087Z	round1	记录 drag 定向基线为未采用证据	预改运行未进入 drag 检查；不能把 harness 噪声伪装成行为证明	research/tmp/verify-android-terminal-release-ready/2026-11-28T06-15-24-836Z-c6d6cf/report.json	INCONCLUSIVE

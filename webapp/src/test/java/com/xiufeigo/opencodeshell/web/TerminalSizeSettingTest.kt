@@ -1,6 +1,5 @@
 package com.xiufeigo.opencodeshell.web
 
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -26,8 +25,8 @@ import java.io.File
  * 4. **只在 `/settings` 路径上检查**：会话页流式输出时 DOM 每秒在动，别跟着凑热闹。
  * 5. **选完整页重载**：上游 URL 自带 `?tab=appearance`，重载后仍停在同一面板（设备实测确认）；
  *    否则已挂载的终端要等重新创建才会换字号，用户会以为"没生效"。
- * 6. **列数提示必须用"未缩放"的原生 measureText**：拿被自己补丁缩放过的宽度去算，
- *    会算出 43 列（真实 63 列）—— 这个坑本轮真踩过。
+ * 6. **列数提示只用浏览器原生 measureText**：xterm 适配层直接缩放终端 fontSize，
+ *    宿主不再修补 canvas 度量，也就不存在“被宿主补丁缩放过的宽度”。
  */
 class TerminalSizeSettingTest {
 
@@ -45,19 +44,13 @@ class TerminalSizeSettingTest {
 
     @Test
     fun settingIsStoredClampedAndDefaultsToNarrowScreenValue() {
-        assertTrue("存储键必须走宿主自己的命名空间", settings.contains("oc.settings.terminalFontScale"))
-        assertTrue("必须提供读取函数", settings.contains("function ocTerminalScale()"))
+        assertTrue("存储键必须走宿主自己的命名空间", js.contains("oc.settings.terminalFontScale"))
+        assertTrue("必须提供读取函数", js.contains("function ocTerminalScale()"))
         assertTrue(
             "越界值必须夹回 [0.5, 1]（用户手改 localStorage 也不能画出格）",
-            settings.contains("Math.min(1, Math.max(0.5, v))"),
+            js.contains("Math.min(1, Math.max(0.5, v))"),
         )
-        assertTrue("读不到时手机使用缩小字号、宽屏使用原字号", settings.contains(".matches ? OC_TERM_SCALE_DEFAULT : 1"))
-        assertTrue(
-            "绘制与度量必须共同使用本页缓存的设置值",
-            js.contains("ocAppliedTerminalScale = ocTerminalScale()") &&
-                js.contains("var z = ocTerminalRenderScale();") &&
-                js.contains("ocScaleFontPx(String(value), ocTerminalRenderScale())"),
-        )
+        assertTrue("读不到时手机使用缩小字号、宽屏使用原字号", js.contains(".matches ? OC_TERM_SCALE_DEFAULT : 1"))
     }
 
     @Test
@@ -115,14 +108,10 @@ class TerminalSizeSettingTest {
     }
 
     @Test
-    fun columnHintUsesUnscaledMetrics() {
+    fun columnHintUsesNativeMetrics() {
         assertTrue(
-            "必须保留一份原生 measureText",
-            js.contains("ocRawMeasureText = origMeasure") && js.contains("ocRawMeasureText.call(ctx, \"M\")"),
-        )
-        assertFalse(
-            "估算列数不得用被自己缩放过的 ctx.measureText（会算出 43 列 / 真实 63 列）",
-            settings.contains("ctx.measureText(\"M\")") && !settings.contains("ocRawMeasureText ?"),
+            "估算列数必须直接使用浏览器原生 measureText",
+            settings.contains("ctx.measureText(\"M\")"),
         )
         assertTrue(
             "列数提示要按设备实测口径给（去掉 padding 与滚动条余量）",
