@@ -10,7 +10,7 @@
 
 ## P1 建立权威源码边界
 
-- [ ] 把 `oc-host.js`、`oc-perf.js`、`oc-preflight.js`、诊断页 `index.html` 的权威源码迁出 `webapp/src/main/assets/www/`，产物目录只保留生成结果，并用脚本验证同步。
+- [x] 把 `oc-host.js`、`oc-perf.js`、`oc-preflight.js`、诊断页 `index.html` 的权威源码迁出 `webapp/src/main/assets/www/`，产物目录只保留生成结果，并用脚本验证同步。
 - [ ] 拆分 `oc-host.js` 单体为按职责命名的运行时模块，再打包成单个 document-start 脚本。优先拆分无副作用的纯逻辑，最后处理安装顺序敏感的模块。
 - [ ] 将终端字号存储键、insets 事件名、桥接口名等跨 Kotlin/JS 契约集中到显式契约文档或共享生成常量，并加契约测试。
 
@@ -38,5 +38,6 @@
 - [x] 新增初版 `scripts/check-architecture.mjs`：防止 Ghostty 终端死实现复活。
 - [x] 把架构检查接入 CI package workflow。
 - [x] 扩展 `scripts/check-architecture.mjs`：检查 Kotlin `host/` 反向依赖。
-- [ ] 扩展 `scripts/check-architecture.mjs`：扫描生成产物边界、禁止手改产物。
+- [x] 扩展 `scripts/check-architecture.mjs`：扫描宿主运行时生成产物边界并验证字节同步。
+- [ ] 扩展 `scripts/check-architecture.mjs`：扫描上游 UI 生成产物边界，提供比“禁止手改”更强的机器约束。
 - [ ] 在每次治理循环后把新确立规则加入检查，而不是只写文档。

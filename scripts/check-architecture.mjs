@@ -10,7 +10,7 @@ const requirePresent = (text, needle, label) => {
   if (!text.includes(needle)) failures.push(`${label}: required canonical implementation is missing: ${needle}`)
 }
 
-const host = read("webapp/src/main/assets/www/oc-host.js")
+const host = read("frontend/host-runtime/oc-host.js")
 for (const needle of [
   "installTerminalFontScale",
   "installTerminalTouchScroll",
@@ -20,6 +20,19 @@ for (const needle of [
   "OC-TERM-TOUCH",
   "proto.measureText = function",
 ]) requireAbsent(host, needle, "oc-host terminal boundary")
+
+
+for (const file of ["index.html", "oc-host.js", "oc-perf.js", "oc-preflight.js"]) {
+  const sourcePath = `frontend/host-runtime/${file}`
+  const outputPath = `webapp/src/main/assets/www/${file}`
+  if (!fs.existsSync(outputPath)) {
+    failures.push(`${outputPath}: generated host-runtime artifact is missing`)
+    continue
+  }
+  if (!fs.readFileSync(sourcePath).equals(fs.readFileSync(outputPath))) {
+    failures.push(`${outputPath}: generated artifact differs from authoritative source ${sourcePath}; run node frontend/host-runtime/build.mjs`)
+  }
+}
 
 const terminal = read("frontend/terminal/terminal.js")
 for (const needle of [

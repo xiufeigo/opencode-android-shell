@@ -15,6 +15,8 @@
 | 官方 UI 生成产物 | `webapp/src/main/assets/www/ui/` | 由 `node frontend/android/build.mjs` 生成，禁止手改。 |
 | 终端引擎源码 | `frontend/terminal/terminal.js` | 生成 `webapp/src/main/assets/www/oc-terminal.js`。 |
 | 终端生成产物 | `webapp/src/main/assets/www/oc-terminal.js` | CI 要求与源码构建字节一致。 |
+| 宿主运行时源码 | `frontend/host-runtime/` | `oc-host.js`、`oc-perf.js`、`oc-preflight.js`、诊断页的唯一权威源码。 |
+| 宿主运行时生成产物 | `webapp/src/main/assets/www/{index.html,oc-host.js,oc-perf.js,oc-preflight.js}` | 由 `node frontend/host-runtime/build.mjs` 逐字节复制生成。 |
 | Android 上游补丁与覆盖源码 | `frontend/android/` | `upstream.patch` / `ui.patch` 修改上游，`sources.mjs` 声明覆盖文件。 |
 | 内嵌 UI 存储迁移 | `frontend/embedded-ui/` | 由 `sources.mjs` 注入上游应用。 |
 | 服务端浏览器 RPC 契约 | `plugins/server-browser/src/rpc.ts` | 构建时复制到浏览器面板客户端。 |
@@ -29,6 +31,7 @@
 ```text
 frontend/android 构建配方 ──生成──> webapp/assets/www/ui
 frontend/terminal ──生成──> webapp/assets/www/oc-terminal.js
+frontend/host-runtime ──复制生成──> webapp/assets/www/{index.html,oc-host.js,oc-perf.js,oc-preflight.js}
 plugins/server-browser/src/rpc.ts ──复制──> frontend/remote-browser 构建输入
 webapp/host 能力模块 ──被编排──> WebHostActivity
 webapp/assets/www/oc-host.js ──页面侧 facade──> 内嵌 UI 与 Android 覆盖源码
@@ -39,15 +42,11 @@ scripts ──验证──> 以上产物与运行时契约
 
 ## 当前主要偏离
 
-1. `oc-host.js`、`oc-perf.js`、`oc-preflight.js` 与诊断页 `index.html` 是手写源码，却直接生活在 `webapp/src/main/assets/www/` 产物目录。
-2. `oc-host.js` 是 1840 行单体，混合缓存清理、主题桥、insets/IME、返回 facade、通知垫片、后台生命周期、终端设置和终端兼容代码。
-3. `oc-host.js` 内 Ghostty 时代的终端字体缩放与触摸滚动实现被 `window.__ocTerminalEngine = "xterm"` 永久禁用；当前 canonical 实现在 `frontend/terminal/terminal.js`。
-4. `WebHostActivity` 约 1517 行，同时编排 WebView 构造、生命周期、电源、通知权限、相机权限、返回、渲染恢复、外链和诊断。可变状态集中在 Activity 内。
-5. `WebHostActivity` 与 `WebHostBridge` / `NotifierHost` 存在反向类依赖。入口依赖能力模块，能力模块又引用入口类型。
-6. 大量单元测试是历史事故绊线，直接断言资产源码字符串。它们能防回归，也把实现细节固化，阻碍删除死代码和移动模块。
-7. README 中的版本号曾落后于 `webapp/build.gradle.kts`。版本只能以构建文件和 pin 文件为准，文档不应复制可变数字。
-8. `frontend/remote-browser` 在仓库内缺少它导入的 `./rpc` 文件；该文件由构建复制生成。这个契约需要显式化，不能让本地读者靠猜。
-9. 验证脚本包含过期行号和历史叙述。行号不是稳定契约。
+1. `oc-host.js` 是 1413 行单体，混合缓存清理、主题桥、insets/IME、返回 facade、通知垫片、后台生命周期、终端设置和终端兼容代码。
+2. `WebHostActivity` 约 1500 行，同时编排 WebView 构造、生命周期、电源、通知权限、相机权限、返回、渲染恢复、外链和诊断。可变状态集中在 Activity 内。
+3. 大量单元测试是历史事故绊线，直接断言资产源码字符串。它们能防回归，也把实现细节固化，阻碍删除死代码和移动模块。
+4. `frontend/remote-browser` 在仓库内缺少它导入的 `./rpc` 文件；该文件由构建复制生成。这个契约需要显式化，不能让本地读者靠猜。
+5. 验证脚本包含过期行号和历史叙述。行号不是稳定契约。
 
 ## 治理规则
 

@@ -88,6 +88,26 @@
 
 验证：`node scripts/check-architecture.mjs` 与 `:webapp:testDebugUnitTest` 通过后提交。
 
+### Round 5：宿主运行时权威源码边界
+
+状态：完成，待提交。
+
+闭环内容：
+
+- 新增 `frontend/host-runtime/` 作为 `index.html`、`oc-host.js`、`oc-perf.js`、`oc-preflight.js` 的唯一权威源码位置。
+- 新增 `frontend/host-runtime/build.mjs`，逐字节复制生成 `webapp/src/main/assets/www/` 中的打包输入。
+- `scripts/check-architecture.mjs` 对四份源码/产物做字节级同步检查；根 README 构建命令加入该生成步骤。
+- 本轮只建立边界，不改变任何运行时字节内容。
+
+验证：
+
+- `node frontend/host-runtime/build.mjs` 后 `webapp/src/main/assets/www` 无 diff。
+- `node --check` 通过四份运行时源码与构建脚本。
+- `node --test frontend/embedded-ui/*.test.mjs frontend/android/*.test.mjs` 通过。
+- `cd frontend/terminal && npm test` 通过。
+- `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
+- 打包 SPA boot 边界验证手机/平板通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

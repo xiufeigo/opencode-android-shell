@@ -9,3 +9,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:27:47.875Z	round3	README 不再复制可变版本事实	根 README 已出现 APK 版本漂移；版本事实应只有 upstream.json 与 build.gradle.kts 两个权威来源	README.md; frontend/android/README.md; scripts/check-architecture.mjs	VERIFIED: architecture check green
 2026-11-28T06:28:13.222Z	round4	删除 WebView databaseEnabled 兼容设置	该开关只影响废弃 Web SQL；仓库与打包 UI 均无真实调用方，保留会伪装成受支持能力	WebHostActivity.kt; scripts/check-architecture.mjs	verification in progress
 2026-11-28T06:28:41.519Z	round4	验证 Web SQL 设置删除	Android 单元测试保持绿色，架构检查阻止 deprecated 设置回归	gradle testDebugUnitTest; check-architecture	VERIFIED
+2026-11-28T06:31:14.818Z	round5	宿主运行时源码迁出 assets 产物目录	assets/www 同时混有上游生成产物和手写源码，所有权不清；先建立逐字节复制边界，为后续拆分 oc-host 做准备	frontend/host-runtime; scripts/check-architecture.mjs	VERIFIED: reproducible copy, unit tests, terminal tests, SPA boot

@@ -27,6 +27,7 @@ npm test
 npm run build
 cd ../..
 node frontend/android/build.mjs
+node frontend/host-runtime/build.mjs
 ./gradlew :webapp:testDebugUnitTest :webapp:assembleRelease
 ```
 
