@@ -27,7 +27,7 @@ import java.io.File
  * 改动都会在这里被抓住。
  *
  * ## 本类钉住的不变量（全部对源码文本断言，不依赖 android 运行时）
- *  1. WebHostActivity **直接 loadUrl 后端地址**（bootUrl = KEY_BACKEND_URL ?: 默认）；
+ *  1. WebHostActivity **只 loadUrl 本地 UI origin**（不再把后端地址作为页面来源）；
  *  2. 全模块**没有**回环代理 / ServerSocket / Authorization 注入 / 口令键残留；
  *  3. SecretStore **只剩非秘密**的宿主偏好（无 KEY_SERVER_PASSWORD）；
  *  4. 反向验证：对**故意写坏**的样本（带代理/口令的源码）扫描器必须报红。

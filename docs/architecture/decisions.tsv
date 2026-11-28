@@ -25,3 +25,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T07:24:16.561Z	round17	提取 HostWebChromeClient	WebChromeClient 是框架适配边界，文件选择、权限事件和 console 转发不应通过 inner class 隐式捕获 Activity；业务宿主显式注入	web/host/HostWebChromeClient.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:26:09.563Z	round18	提取 SystemUiThemeHost	页面深浅色上报快照和系统栏兜底是一条独立状态机，不应散落在 Activity；同时删除未读取的 systemDark 死状态	web/host/SystemUiThemeHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:28:45.204Z	round19	提取 WebViewViewportFactory	视口容器和 native focus/IME 接线是实例固有的平台适配复杂性，应与桥接、client、insets 和加载编排分离	web/host/WebViewViewportFactory.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
+2026-11-28T07:30:38.762Z	round20	正名本地 UI origin	UX10 后页面来源已是本地静态 UI 服务，继续称为后端地址会重新引入双真相和错误所有权	WebHostActivity.kt; TerminalReattachTest.kt	VERIFIED: testDebugUnitTest green

@@ -36,7 +36,6 @@ import com.xiufeigo.opencodeshell.web.host.NotificationPermissionHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.RenderProcessRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
-import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.StartupRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.SurfaceColor
 import com.xiufeigo.opencodeshell.web.host.SystemUiThemeHost
@@ -230,7 +229,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         PerfMarks.mark("B2.localUiOrigin", "bound=${localUiServer.boundPort}")
 
         // UX6：冷启动 = 直接加载真实服务器地址（官方前端由后端自托管）。
-        // 恢复态的旧 URL 直接沿用（origin 现在是稳定的后端地址，不像代理端口每次必变）。
+        // 恢复态的旧 URL 直接沿用（origin 现在由本机静态 UI 服务稳定提供）。
         val restored = savedInstanceState?.getString(STATE_URL)
         restoredUrlOrNull = restored
 
@@ -310,11 +309,10 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     }
 
     /**
-     * UX6 · 本次启动要加载的后端地址。
+     * UX6 · 本次启动要加载的本地 UI origin。
      *
-     * 唯一来源 = [SecretStore.KEY_BACKEND_URL]（**不是秘密**，只是"应用壳从哪个
-     * 后端取官方 UI"的入口；默认 `http://127.0.0.1:4095`，靠 adb reverse 打通）。
-     * 服务器与口令的**配置**不在宿主做 —— 那是官方 UI 「设置 → 服务器」的职责。
+     * 页面来源固定为 `LocalUiOriginServer`；远端后端只由官方 UI 自己连接，
+     * 宿主不再把后端地址当成 WebView 的页面 origin。
      */
     private fun bootUrl(): String =
         LocalUiOriginServer.origin()
@@ -323,15 +321,15 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * UX6 启动链（代理已删，只剩一步直达）：
      *
      * ```
-     *   bootUrl() ──▶ G1 前置检查 ──▶ StartupRecoveryHost.arm() ──▶ loadUrl(后端地址)
+     *   bootUrl() ──▶ G1 前置检查 ──▶ StartupRecoveryHost.arm() ──▶ loadUrl(本地 UI origin)
      * ```
      *
      * 没有任何凭据检查：宿主不持有口令，"空口令 ⇒ 不许用"这条旧规则（F21）在新
      * 形态下由**结构**保障 —— 宿主侧根本不存在"以无认证方式使用后端"的代码路径；
      * 认证协商完全发生在官方 UI 与后端之间（官方连接页会自己提示口令错误）。
      */
-    private fun launch(backend: String) {
-        PerfMarks.mark("H.launch.enter", "backend=$backend")
+    private fun launch(uiOrigin: String) {
+        PerfMarks.mark("H.launch.enter", "uiOrigin=$uiOrigin")
         if (localUiServer.boundPort == null) {
             startupRecovery.showDiagnostic(WebViewPreflight.Reason.LOAD_ERROR, "本地 UI 服务无法绑定端口 ${localUiServer.port}，请检查端口占用后重启应用")
             return
@@ -342,7 +340,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             return
         }
         val restored = restoredUrlOrNull
-        val url = if (restored != null && restored.startsWith(backend)) restored else "$backend/"
+        val url = if (restored != null && restored.startsWith(uiOrigin)) restored else "$uiOrigin/"
 
         // ---- G1 前置能力检查 ------------------------------------------------
         // 过旧就**不加载**官方 UI：实测 WebView 83 加载它只会得到一片纯白
@@ -360,7 +358,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             }
         }
 
-        Log.i(TAG, "home=$url backend=$backend")
+        Log.i(TAG, "home=$url uiOrigin=$uiOrigin")
         startupRecovery.arm()
         webView.loadUrl(url)
         PerfMarks.mark("J.loadUrlIssued", "url=$url")

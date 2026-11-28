@@ -237,6 +237,14 @@
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 20：本地 UI origin 概念正名
+
+状态：完成，待提交。
+
+闭环内容：纠正 UX10 之后遗留的概念漂移：`bootUrl()` 的权威文档、恢复 URL 注释、启动链说明、`launch` 参数与日志字段不再把页面来源误称为“后端地址”；统一为正名后的本地 UI origin。删除 `WebHostActivity` 对 `SecretStore` 的无执行语义 import，并同步修正两处测试文档中已废弃的直连页面来源叙述。恢复 URL 的同源绊线随参数正名迁移，行为不变。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

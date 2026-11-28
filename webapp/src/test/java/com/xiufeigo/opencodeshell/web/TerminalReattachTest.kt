@@ -18,11 +18,11 @@ import java.io.File
  * `localStorage`）在杀进程重启后读不到，回来必然是空终端。
  *
  * 旧架构里 origin = `http://127.0.0.1:<代理端口>`，端口随机 ⇒ 需要 StableOrigin
- * 钉端口。新架构里 origin = 后端地址（`bootUrl()`），**天然稳定** ⇒ 该性质
+ * 钉端口。新架构里 origin = 本地静态 UI 服务（`bootUrl()`），**天然稳定** ⇒ 该性质
  * 由结构保障，本类把它钉成可断言的源代码事实：
  *  1. 启动地址不含任何随机成分（没有 ServerSocket/临时端口）；
  *  2. 跨启动的地址来源是同一个持久键（KEY_BACKEND_URL）+ 同一默认值；
- *  3. 恢复 URL 的判定是 startsWith(backend)（深链可以原样恢复）。
+ *  3. 恢复 URL 的判定是 startsWith(uiOrigin)（深链可以原样恢复）。
  *
  * ## 删测试的理由（不许为了让测试过而放宽断言）
  * 旧的 8 条 StableOrigin 纯逻辑用例测的是**已被删除的类**本身（候选端口顺序、
@@ -81,8 +81,8 @@ class TerminalReattachTest {
         assertTrue("找不到 launch()", start >= 0)
         val body = activitySrc.substring(start, minOf(start + 2500, activitySrc.length))
         assertTrue(
-            "深链恢复必须按 startsWith(backend) 判定（同 origin 才复用，跨 origin 退回 / ）",
-            body.contains("restored.startsWith(backend)"),
+            "深链恢复必须按 startsWith(uiOrigin) 判定（同 origin 才复用，跨 origin 退回 / ）",
+            body.contains("restored.startsWith(uiOrigin)"),
         )
     }
 }
