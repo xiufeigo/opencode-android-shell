@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web.host
 
 /**
- * F18 纯几何件：把「顶部内容是否避开状态栏/挖孔」写成可在
- * JVM 单测里跑的纯函数。**不进生产路径**（宿主一行都没引用它），只给绊线用。
+ * F18 测试几何判据：把「顶部内容是否避开状态栏/挖孔」写成可在
+ * JVM 单测里跑的纯函数。它只属于测试源集，不进生产 APK。
  */
-object PhoneFormDefect {
+object PhoneFormGeometry {
 
     data class Rect(val top: Double, val bottom: Double)
 

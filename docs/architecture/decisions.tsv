@@ -43,3 +43,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T08:00:40.425Z	round36	单一化 host-runtime 拼接清单	拼接顺序是行为契约，不能同时由构建脚本和架构检查各持一份；声明式 assembly.json 让两个消费者共用同一事实	frontend/host-runtime/assembly.json	VERIFIED: generated oc-host.js sha256 unchanged
 2026-11-28T08:04:36.015Z	round37	集中测试源码读取	22 个测试类复制同一套文件定位逻辑；读取路径是测试基础设施而非各事故语义，集中后保留各测试自己的契约断言	webapp/src/test/java/com/xiufeigo/opencodeshell/web/testutil/TestSource.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T08:06:58.240Z	round38	拆分 facade 初始化编排	后台状态读数与 DOM 初始化编排是不同变化轴；按原字节位置拆件可提升内聚且不改变生成产物	frontend/host-runtime/facade-init.js; assembly.json	VERIFIED: generated oc-host.js sha256 unchanged
+2026-11-28T08:10:53.922Z	round39	测试几何 oracle 退出生产源集	ImeOcclusion/PhoneFormDefect 只服务测试却进入生产 APK，且 ImeOcclusion 文件混放生产 resize 策略；按 source-set 所有权拆分可减少发布面并澄清语义	webapp/src/main/java/.../ImeResize.kt; webapp/src/test/java/.../ImeOcclusionGeometry.kt; PhoneFormGeometry.kt	VERIFIED: unit tests passed

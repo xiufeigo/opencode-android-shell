@@ -293,6 +293,23 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   visit(testRoot)
 }
 
+
+{
+  const mainHostDir = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host"
+  if (!fs.existsSync(`${mainHostDir}/ImeResize.kt`)) failures.push(`${mainHostDir}/ImeResize.kt: production IME resize policy owner is missing`)
+  for (const forbidden of ["ImeOcclusion.kt", "PhoneFormDefect.kt"]) {
+    if (fs.existsSync(`${mainHostDir}/${forbidden}`)) failures.push(`${mainHostDir}/${forbidden}: test-only geometry must not live in production source`)
+  }
+  for (const name of fs.readdirSync(mainHostDir)) {
+    if (!name.endsWith(".kt")) continue
+    const path = `${mainHostDir}/${name}`
+    const source = read(path)
+    for (const needle of ["object ImeOcclusion", "object PhoneFormDefect", "object PhoneFormGeometry", "object ImeOcclusionGeometry"]) {
+      if (source.includes(needle)) failures.push(`${path}: test oracle geometry leaked into production source: ${needle}`)
+    }
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

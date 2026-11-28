@@ -10,7 +10,7 @@ import java.io.File
  * IME1 绊线：断言「IME 弹起时 composer 与 IME 区域的重叠面积为 0」。
  *
  * ### 两层
- * 1. **几何层**（[ImeOcclusion] 的纯函数）：用 IME1 改前**真机原始读数**做固定输入。
+ * 1. **几何层**（[ImeOcclusionGeometry] 的纯函数）：用 IME1 改前**真机原始读数**做固定输入。
  * 2. **资产契约层**（[facadeConsumesImeBottomForComposer]）：读注入层 `oc-host.js`，
  *    断言修法**真的在**资产里。这一层是**可反向验证**的关键——
  *    把修法撤回（删掉 `oc-ime-lift` 那段）⇒ 本用例必红。
@@ -27,51 +27,51 @@ class ImeOcclusionTest {
     // ---- 读数常量（与设备原始输出一一对应，改动前请先改报告） ----------------
     private val phoneViewport = 915.0
     private val phoneImeBottom = 336.38
-    private val phoneComposerBefore = ImeOcclusion.Rect(top = 790.0, bottom = 850.0)
+    private val phoneComposerBefore = ImeOcclusionGeometry.Rect(top = 790.0, bottom = 850.0)
 
     private val tabletViewport = 768.0
     private val tabletImeBottom = 426.0
-    private val tabletComposerBefore = ImeOcclusion.Rect(top = 643.0, bottom = 703.0)
+    private val tabletComposerBefore = ImeOcclusionGeometry.Rect(top = 643.0, bottom = 703.0)
 
     // ---- 1. 几何：imeTopCss ------------------------------------------------
 
     @Test
     fun `ime 上沿等于视口高减 ime 高度`() {
-        assertEquals(578.62, ImeOcclusion.imeTopCss(phoneImeBottom, phoneViewport), 0.01)
-        assertEquals(342.0, ImeOcclusion.imeTopCss(tabletImeBottom, tabletViewport), 0.01)
+        assertEquals(578.62, ImeOcclusionGeometry.imeTopCss(phoneImeBottom, phoneViewport), 0.01)
+        assertEquals(342.0, ImeOcclusionGeometry.imeTopCss(tabletImeBottom, tabletViewport), 0.01)
     }
 
     @Test
     fun `ime 收起时上沿贴视口底 不遮挡任何东西`() {
-        assertEquals(phoneViewport, ImeOcclusion.imeTopCss(0.0, phoneViewport), 0.01)
-        assertEquals(0.0, ImeOcclusion.overlapPx(phoneComposerBefore, phoneViewport), 0.0)
-        assertTrue(ImeOcclusion.isFullyVisible(phoneComposerBefore, 0.0, phoneViewport))
+        assertEquals(phoneViewport, ImeOcclusionGeometry.imeTopCss(0.0, phoneViewport), 0.01)
+        assertEquals(0.0, ImeOcclusionGeometry.overlapPx(phoneComposerBefore, phoneViewport), 0.0)
+        assertTrue(ImeOcclusionGeometry.isFullyVisible(phoneComposerBefore, 0.0, phoneViewport))
     }
 
     // ---- 2. 几何：重叠量（缺陷的量化口径） ---------------------------------
 
     @Test
     fun `改前读数 手机侧重叠等于 composer 全高 60px`() {
-        val top = ImeOcclusion.imeTopCss(phoneImeBottom, phoneViewport)
+        val top = ImeOcclusionGeometry.imeTopCss(phoneImeBottom, phoneViewport)
         assertEquals(
             "IME1 改前：composer 整条落在键盘带内 ⇒ 重叠应为 60",
             60.0,
-            ImeOcclusion.overlapPx(phoneComposerBefore, top),
+            ImeOcclusionGeometry.overlapPx(phoneComposerBefore, top),
             0.01,
         )
-        assertFalse(ImeOcclusion.isFullyVisible(phoneComposerBefore, phoneImeBottom, phoneViewport))
+        assertFalse(ImeOcclusionGeometry.isFullyVisible(phoneComposerBefore, phoneImeBottom, phoneViewport))
     }
 
     @Test
     fun `改前读数 平板侧重叠同样等于 60px 证明非窄屏特有`() {
-        val top = ImeOcclusion.imeTopCss(tabletImeBottom, tabletViewport)
+        val top = ImeOcclusionGeometry.imeTopCss(tabletImeBottom, tabletViewport)
         assertEquals(
             "IME1 改前：平板几何下同样完全遮挡",
             60.0,
-            ImeOcclusion.overlapPx(tabletComposerBefore, top),
+            ImeOcclusionGeometry.overlapPx(tabletComposerBefore, top),
             0.01,
         )
-        assertFalse(ImeOcclusion.isFullyVisible(tabletComposerBefore, tabletImeBottom, tabletViewport))
+        assertFalse(ImeOcclusionGeometry.isFullyVisible(tabletComposerBefore, tabletImeBottom, tabletViewport))
     }
 
     // ---- 3. 几何：上抬后必须归零（这是修法的数学前提） ---------------------
@@ -82,25 +82,25 @@ class ImeOcclusionTest {
             Triple(phoneComposerBefore, phoneImeBottom, phoneViewport),
             Triple(tabletComposerBefore, tabletImeBottom, tabletViewport),
         ).forEach { (composer, ime, vh) ->
-            val lift = ImeOcclusion.requiredLiftPx(composer, ime, vh)
-            val lifted = ImeOcclusion.Rect(composer.top - lift, composer.bottom - lift)
+            val lift = ImeOcclusionGeometry.requiredLiftPx(composer, ime, vh)
+            val lifted = ImeOcclusionGeometry.Rect(composer.top - lift, composer.bottom - lift)
             assertEquals(
                 "上抬 $lift px 后重叠必须为 0",
                 0.0,
-                ImeOcclusion.overlapPx(lifted, ImeOcclusion.imeTopCss(ime, vh)),
+                ImeOcclusionGeometry.overlapPx(lifted, ImeOcclusionGeometry.imeTopCss(ime, vh)),
                 0.0,
             )
-            assertTrue(ImeOcclusion.isFullyVisible(lifted, ime, vh))
+            assertTrue(ImeOcclusionGeometry.isFullyVisible(lifted, ime, vh))
         }
     }
 
     @Test
     fun `键盘比 composer 矮时 requiredLift 为 0`() {
         // 视口 915，键盘只占 100 ⇒ 上沿 815，composer 底 850 仍需上抬 35。
-        val lift = ImeOcclusion.requiredLiftPx(phoneComposerBefore, 100.0, phoneViewport)
+        val lift = ImeOcclusionGeometry.requiredLiftPx(phoneComposerBefore, 100.0, phoneViewport)
         assertEquals(35.0, lift, 0.01)
         // 键盘只占 60 ⇒ 上沿 855 > 850 ⇒ 已经在键盘上方，无需移动。
-        assertEquals(0.0, ImeOcclusion.requiredLiftPx(phoneComposerBefore, 60.0, phoneViewport), 0.0)
+        assertEquals(0.0, ImeOcclusionGeometry.requiredLiftPx(phoneComposerBefore, 60.0, phoneViewport), 0.0)
     }
 
     // ---- 4. 资产契约层：**可反向验证**的那条 --------------------------------

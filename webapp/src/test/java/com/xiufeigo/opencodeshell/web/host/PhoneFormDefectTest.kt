@@ -10,7 +10,7 @@ import org.junit.Test
  * F18 绊线：两条手机专属缺陷的可断言判据。
  *
  * ### 两层
- * 1. **几何层**（[PhoneFormDefect] 纯函数）：顶部遮挡量。
+ * 1. **几何层**（[PhoneFormGeometry] 纯函数）：顶部遮挡量。
  * 2. **资产契约层**（读 `oc-host.js` + `WebHostActivity.kt` + `InsetsHost.kt`）：
  *    断言修法**真的在**源码里。这一层是**可反向验证**的关键 ——
  *    撤回修法 ⇒ 必红（`webapp/build.gradle.kts:126-137` 已把这三个文件声明为
@@ -27,38 +27,38 @@ class PhoneFormDefectTest {
 
     // ---- 读数常量（与设备原始输出一一对应） --------------------------------
     private val phoneSafeTopCss = 48.0          // 状态栏+挖孔合计，F18 实测 --oc-safe-top
-    private val headerBefore = PhoneFormDefect.Rect(top = 1.0, bottom = 37.0)
+    private val headerBefore = PhoneFormGeometry.Rect(top = 1.0, bottom = 37.0)
 
     // ---- 1. 几何：顶部遮挡 -------------------------------------------------
 
     @Test
     fun `改前 标题行与状态栏挖孔区完全重叠`() {
-        val overlap = PhoneFormDefect.topOverlapPx(headerBefore, phoneSafeTopCss)
+        val overlap = PhoneFormGeometry.topOverlapPx(headerBefore, phoneSafeTopCss)
         assertEquals(
             "F18 改前：header [1,37] 落在安全区 [0,48] 内，重叠应等于 header 全高 36",
             36.0, overlap, 0.01,
         )
-        assertFalse("改前不可能 clear", PhoneFormDefect.topClear(headerBefore, phoneSafeTopCss))
+        assertFalse("改前不可能 clear", PhoneFormGeometry.topClear(headerBefore, phoneSafeTopCss))
     }
 
     @Test
     fun `按 safeTop 下移后顶部遮挡精确归零`() {
-        val moved = PhoneFormDefect.shiftedByTopInset(headerBefore, phoneSafeTopCss)
+        val moved = PhoneFormGeometry.shiftedByTopInset(headerBefore, phoneSafeTopCss)
         assertEquals(49.0, moved.top, 0.01)
         assertEquals(85.0, moved.bottom, 0.01)
         assertEquals(
             "垫了 safeTop 后顶部遮挡必须为 0",
-            0.0, PhoneFormDefect.topOverlapPx(moved, phoneSafeTopCss), 0.0,
+            0.0, PhoneFormGeometry.topOverlapPx(moved, phoneSafeTopCss), 0.0,
         )
-        assertTrue(PhoneFormDefect.topClear(moved, phoneSafeTopCss))
+        assertTrue(PhoneFormGeometry.topClear(moved, phoneSafeTopCss))
     }
 
     @Test
     fun `safeTop 为 0 的形态（平板、无状态栏层）不得凭空产生留白`() {
         // 平板档没有状态栏重叠问题：safeTop=0 ⇒ 下移 0 ⇒ 遮挡恒 0（不制造回归）。
-        val moved = PhoneFormDefect.shiftedByTopInset(headerBefore, 0.0)
+        val moved = PhoneFormGeometry.shiftedByTopInset(headerBefore, 0.0)
         assertEquals("safeTop=0 时位移必须为 0", headerBefore.top, moved.top, 0.0)
-        assertEquals(0.0, PhoneFormDefect.topOverlapPx(moved, 0.0), 0.0)
+        assertEquals(0.0, PhoneFormGeometry.topOverlapPx(moved, 0.0), 0.0)
     }
 
     // ---- 3. 资产契约层：**可反向验证**的那几条 ------------------------------

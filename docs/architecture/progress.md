@@ -389,6 +389,14 @@
 
 验证：`node frontend/host-runtime/build.mjs`、`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 39：测试几何 oracle 退出生产 APK
+
+状态：完成，待提交。
+
+闭环内容：生产源集中曾有两个只被 JVM 测试消费的几何对象：`ImeOcclusion`（且与真正生产使用的 `ImeResize` 混在同一文件）和 `PhoneFormDefect`（注释已承认宿主零引用）。现将生产 resize 策略独立为 `host/ImeResize.kt`，把测试 oracle 移入测试源集并正名为 `ImeOcclusionGeometry` / `PhoneFormGeometry`；测试类继续钉住同一组真机几何判据，但不再把测试专用代码打进生产 APK。`build.gradle.kts` 的显式测试输入同步改指 `ImeResize.kt`。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止这些测试 oracle 或旧文件名重新出现在生产 `host/` 源集。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

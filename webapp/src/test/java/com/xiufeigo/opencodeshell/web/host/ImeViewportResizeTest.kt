@@ -149,8 +149,8 @@ class ImeViewportResizeTest {
     @Test
     fun `键盘动画期间的多次上报只落一次 避免终端反复重排`() {
         val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
-        val occl = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeOcclusion.kt")
-        assertTrue("必须有合并窗口常量（纯函数宿主侧可测）", occl.contains("COMMIT_DELAY_MS"))
+        val resize = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeResize.kt")
+        assertTrue("必须有合并窗口常量（纯函数宿主侧可测）", resize.contains("COMMIT_DELAY_MS"))
         assertTrue("必须 postDelayed 提交", src.contains("postDelayed(commitResizeRunnable"))
         assertTrue("新的上报必须撤掉上一个挂起的提交", src.contains("removeCallbacks(commitResizeRunnable)"))
         assertTrue("值回到已提交值时不得多压一次", src.contains("if (want == committedPadPx)"))
