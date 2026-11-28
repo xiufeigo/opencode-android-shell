@@ -44,6 +44,9 @@ class TerminalReattachTest {
     private val activitySrc: String
         get() = sourceOf("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val navigationSrc: String
+        get() = sourceOf("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
+
     @Test
     fun bootUrlHasNoRandomComponent() {
         // 随机端口是旧代理的 ServerSocket(0)；直连架构里出现它 = 有人把随机化接回来了。
@@ -77,9 +80,7 @@ class TerminalReattachTest {
 
     @Test
     fun restoredUrlIsReusedWhenItBelongsToBackend() {
-        val start = activitySrc.indexOf("private fun launch(")
-        assertTrue("找不到 launch()", start >= 0)
-        val body = activitySrc.substring(start, minOf(start + 2500, activitySrc.length))
+        val body = navigationSrc
         assertTrue(
             "深链恢复必须按 startsWith(uiOrigin) 判定（同 origin 才复用，跨 origin 退回 / ）",
             body.contains("restored.startsWith(uiOrigin)"),

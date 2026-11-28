@@ -269,6 +269,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 24：启动导航闸门与恢复 URL 裁决退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `StartupNavigationHost`，集中拥有本地 UI 服务端口闸门、WebView feature 闸门、恢复 URL 的同 origin 裁决、G1 preflight、看门狗 arm 和最终 loadUrl 顺序。Activity 只保留组合根 `launch()` 委托与恢复快照存储；直连、终端重接和 G1 绊线迁移到导航宿主，架构检查禁止 Activity 重新持有这些策略。
+
+验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

@@ -29,6 +29,8 @@ class WebViewPreflightTest {
 
     private fun bootstrapSrc(): String = File("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt").readText()
 
+    private fun navigationSource(): String = File("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt").readText()
+
     private val minTargetPx = 48
 
     private fun page(): String {
@@ -77,10 +79,10 @@ class WebViewPreflightTest {
         )
 
         // 宿主侧真的把判定接到了 loadUrl 之前（接线不能只存在于纯逻辑里）。
-        val src = activitySource()
+        val src = navigationSource()
         val gate = src.indexOf("WebViewPreflight.preflight(")
-        assertTrue("G1 ①: WebHostActivity 里找不到 preflight 判定调用", gate >= 0)
-        val load = src.indexOf("webView.loadUrl(url)", gate)
+        assertTrue("G1 ①: StartupNavigationHost 里找不到 preflight 判定调用", gate >= 0)
+        val load = src.indexOf("loadUrl(url)", gate)
         assertTrue("G1 ①: 找不到官方 UI 的 loadUrl", load > gate)
         assertTrue(
             "G1 ①: preflight 判定必须发生在加载官方 UI **之前**，否则仍是先白屏再提示。" +

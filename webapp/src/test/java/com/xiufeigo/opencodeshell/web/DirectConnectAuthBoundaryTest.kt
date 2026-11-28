@@ -43,6 +43,9 @@ class DirectConnectAuthBoundaryTest {
     private val activitySrc: String
         get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val navigationSrc: String
+        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
+
     private val bridgeSrc: String
         get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
@@ -103,10 +106,9 @@ class DirectConnectAuthBoundaryTest {
 
     @Test
     fun launchLoadsBackendDirectly() {
-        val start = activitySrc.indexOf("private fun launch(")
-        assertTrue("找不到 launch()", start >= 0)
-        val body = activitySrc.substring(start, minOf(start + 2500, activitySrc.length))
-        assertTrue("launch() 必须 loadUrl", body.contains("webView.loadUrl(url)"))
+        val body = navigationSrc
+        assertTrue("StartupNavigationHost 必须执行 loadUrl", body.contains("loadUrl(url)"))
+        assertTrue("Activity 必须把 launch 委托给 StartupNavigationHost", activitySrc.contains("startupNavigation.launch(uiOrigin)"))
         assertFalse(
             "launch() 里不允许再出现回环代理（代理已删）",
             body.contains("LoopbackProxy"),

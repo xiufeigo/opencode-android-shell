@@ -38,6 +38,7 @@ import com.xiufeigo.opencodeshell.web.host.NotificationPermissionHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.RenderProcessRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
+import com.xiufeigo.opencodeshell.web.host.StartupNavigationHost
 import com.xiufeigo.opencodeshell.web.host.StartupRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.SurfaceColor
 import com.xiufeigo.opencodeshell.web.host.SystemUiThemeHost
@@ -168,6 +169,13 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         context = this,
         diagnosticBaseUrl = LEGACY_PLACEHOLDER_URL,
         webViewProvider = { if (::webView.isInitialized) webView else null },
+    )
+
+    private val startupNavigation = StartupNavigationHost(
+        localUiServerProvider = { localUiServer },
+        startupRecovery = startupRecovery,
+        restoredUrlProvider = { restoredUrlOrNull },
+        loadUrl = { url -> webView.loadUrl(url) },
     )
 
     /**
@@ -333,39 +341,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * 认证协商完全发生在官方 UI 与后端之间（官方连接页会自己提示口令错误）。
      */
     private fun launch(uiOrigin: String) {
-        PerfMarks.mark("H.launch.enter", "uiOrigin=$uiOrigin")
-        if (localUiServer.boundPort == null) {
-            startupRecovery.showDiagnostic(WebViewPreflight.Reason.LOAD_ERROR, "本地 UI 服务无法绑定端口 ${localUiServer.port}，请检查端口占用后重启应用")
-            return
-        }
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
-            !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            startupRecovery.showDiagnostic(WebViewPreflight.Reason.WEBVIEW_TOO_OLD, "当前 WebView 不支持平台消息和文档开始注入，请更新 Android System WebView")
-            return
-        }
-        val restored = restoredUrlOrNull
-        val url = if (restored != null && restored.startsWith(uiOrigin)) restored else "$uiOrigin/"
-
-        // ---- G1 前置能力检查 ------------------------------------------------
-        // 过旧就**不加载**官方 UI：实测 WebView 83 加载它只会得到一片纯白
-        // （资源全 200、ESM 解析失败、`onPageFinished` 照常回调）。
-        // 加载它再报错，等于让用户在白屏前多等一轮无意义的网络与解析。
-        when (val verdict = WebViewPreflight.preflight(startupRecovery.versionName)) {
-            is WebViewPreflight.Verdict.ShowDiagnostic -> {
-                startupRecovery.showDiagnostic(verdict.reason, "WebView ${verdict.versionName} < ${WebViewPreflight.MIN_MAJOR}")
-                PerfMarks.mark("J.g1.blockedOldWebview", "major=${verdict.major}")
-                return
-            }
-            is WebViewPreflight.Verdict.LoadOfficialUi -> {
-                // 读不到版本（unknownVersion=true）**照样放行**，只多挂一层运行期看门狗。
-                PerfMarks.mark("J.g1.preflightOk", "major=${verdict.major} unknown=${verdict.unknownVersion}")
-            }
-        }
-
-        Log.i(TAG, "home=$url uiOrigin=$uiOrigin")
-        startupRecovery.arm()
-        webView.loadUrl(url)
-        PerfMarks.mark("J.loadUrlIssued", "url=$url")
+        startupNavigation.launch(uiOrigin)
     }
 
     private var restoredUrlOrNull: String? = null
