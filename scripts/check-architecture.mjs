@@ -131,6 +131,8 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+if (activitySource.includes("KeyEvent.KEYCODE_ESCAPE")) failures.push("WebHostActivity owns physical ESC event construction that belongs to WebHostEscapePolicy")
+
 for (const needle of ["EVAL_SETTLE_MS", "OcWebHost/Eval"]) {
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns debug-eval behavior that belongs to DebugEvalHost: ${needle}`)
 }

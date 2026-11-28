@@ -395,19 +395,8 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             return super.dispatchKeyEvent(event)
         }
         // 2) 物理键盘的 ESC 被报成了 BACK：还原成 ESC 再发给 WebView。
-        if (WebHostEscapePolicy.shouldRemapBackToEscape(event.keyCode, event.source, event.flags, event.deviceId)) {
-            val escaped = KeyEvent(
-                event.downTime,
-                event.eventTime,
-                event.action,
-                KeyEvent.KEYCODE_ESCAPE,
-                event.repeatCount,
-                event.metaState,
-                event.deviceId,
-                event.scanCode,
-                event.flags,
-                event.source,
-            )
+        val escaped = WebHostEscapePolicy.remappedBackToEscape(event)
+        if (escaped != null) {
             if (BuildConfig.DEBUG) {
                 Log.d(TAG, "key: BACK from keyboard -> remapped to ESCAPE")
             }

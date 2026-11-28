@@ -138,6 +138,15 @@ class WebHostEscapePassThroughTest {
 
     // ---- 2. 资产契约层：修法真的在源码里 ----------------------------------
 
+
+    @Test
+    fun policyRemapBuildsEscapeEvent() {
+        val src = File("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostEscapePolicy.kt").readText()
+        assertTrue("策略模块必须集中构造替换事件", src.contains("fun remappedBackToEscape(event: KeyEvent): KeyEvent?"))
+        assertTrue("替换事件必须使用 KEYCODE_ESCAPE", src.contains("KeyEvent.KEYCODE_ESCAPE"))
+        assertTrue("未命中判据时必须返回 null 保持 Android Back 老路", src.contains("return null"))
+    }
+
     @Test
     fun `WebHostActivity 有 dispatchKeyEvent 且不消费 ESC`() {
         val src = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").readText()
@@ -148,11 +157,11 @@ class WebHostEscapePassThroughTest {
         )
         assertTrue(
             "被报成 BACK 的物理 ESC 必须还原成 ESCAPE",
-            src.contains("shouldRemapBackToEscape"),
+            src.contains("WebHostEscapePolicy.remappedBackToEscape"),
         )
         assertTrue(
             "还原后必须用 KEYCODE_ESCAPE 派发",
-            src.contains("KeyEvent.KEYCODE_ESCAPE"),
+            src.contains("WebHostEscapePolicy.remappedBackToEscape(event)"),
         )
         // ESC 绝不能被消费掉（否则 xterm / Vim 收不到）。
         assertFalse(

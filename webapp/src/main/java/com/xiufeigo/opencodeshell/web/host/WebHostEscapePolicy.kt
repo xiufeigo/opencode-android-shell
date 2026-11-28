@@ -77,4 +77,24 @@ object WebHostEscapePolicy {
         if (deviceId != null && deviceId == VIRTUAL_DEVICE_ID) return false
         return true
     }
+
+    /**
+     * Build the replacement ESC event for a physical-keyboard BACK, or null when
+     * the event must keep the normal Android Back path.
+     */
+    fun remappedBackToEscape(event: KeyEvent): KeyEvent? {
+        if (!shouldRemapBackToEscape(event.keyCode, event.source, event.flags, event.deviceId)) return null
+        return KeyEvent(
+            event.downTime,
+            event.eventTime,
+            event.action,
+            KeyEvent.KEYCODE_ESCAPE,
+            event.repeatCount,
+            event.metaState,
+            event.deviceId,
+            event.scanCode,
+            event.flags,
+            event.source,
+        )
+    }
 }
