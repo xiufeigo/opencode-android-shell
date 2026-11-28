@@ -30,3 +30,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T07:35:16.538Z	round22	收归 ESC 改写事件构造	物理 ESC 的判定与 KeyEvent 复制是同一业务规则，拆开会让字段保留契约分散到 Activity	web/host/WebHostEscapePolicy.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:36:15.932Z	round23	提取 NotificationLaunchHost	通知点击后的 extra 消费、页面就绪延迟和会话投递是一条独立流程，不应与 Activity 生命周期边界混合	web/host/NotificationLaunchHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:37:52.793Z	round24	提取 StartupNavigationHost	启动导航的端口、能力、preflight、恢复 URL 与看门狗顺序是一条完整状态机，集中在专用宿主可保证崩溃重建和重试共用同一裁决	web/host/StartupNavigationHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
+2026-11-28T07:40:26.444Z	round25	拆出 round-power-sensor	回合电源传感器是独立复杂的网络观测状态机，先从 facade 主文件按原字节顺序拆出以降低并行修改冲突	frontend/host-runtime/round-power-sensor.js; frontend/host-runtime/build.mjs	VERIFIED: generated oc-host.js byte-identical; testDebugUnitTest green

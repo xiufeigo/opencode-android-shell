@@ -277,6 +277,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 25：回合电源传感器退出 android-facade 主文件
+
+状态：完成，待提交。
+
+闭环内容：把 UX8 回合电源传感器（fetch 包装、SSE 透明 tee、execution 事件解析、busy 会话集合与 `oc.setKeepScreenOn` 驱动）从 `android-facade.js` 原位置切到 `round-power-sensor.js`；尾部表面色 observer 与外层 IIFE 收口进入 `surface-color-tail.js`。构建脚本按原顺序拼接，重建后的 `oc-host.js` 字节完全一致，不改变任何运行行为。`android-facade.js` 从 1090 行降至 842 行，架构检查同步识别新的权威源码拼件。
+
+验证：`:webapp:testDebugUnitTest` 281 项通过；`node frontend/host-runtime/build.mjs` 后生成资产无 diff；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
