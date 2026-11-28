@@ -3,6 +3,7 @@ package com.xiufeigo.opencodeshell.web
 import com.xiufeigo.opencodeshell.web.testutil.TestSource
 
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
+import com.xiufeigo.opencodeshell.web.host.LocalUiRoutePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,7 +53,7 @@ class LocalUiOriginServerTest {
         // SPA 的 JS 产物目录必须一起进来，否则页面起来是空白。
         // ⚠️ 磁盘目录名是 `oa/` 而不是官方的 `_assets/`：AGP 资源合并会丢弃下划线开头的
         // 目录（实测 890 个 chunk 全被过滤），端点把 `/_assets/x` 映射到 `/oa/x`，
-        // **官方产物内容与页面 URL 一字未改**（见 LocalUiOriginServer.toDiskPath）。
+        // **官方产物内容与页面 URL 一字未改**（见 LocalUiRoutePolicy.toDiskPath）。
         val assets = File("src/main/assets/www/ui/oa")
         assertTrue("官方前端 JS 产物目录缺失：oa/（= 官方产物的 _assets/）", assets.isDirectory)
         val jsCount = assets.listFiles()?.count { it.isFile && it.name.endsWith(".js") } ?: 0
@@ -95,10 +96,16 @@ class LocalUiOriginServerTest {
         )
         // 官方产物里的 `/_assets/` 在磁盘上落在 `oa/`（AGP 会丢下划线开头的目录），
         // 端点做路径映射，**官方产物内容与页面 URL 一字不改**。
+        assertEquals("/_assets/", LocalUiRoutePolicy.URL_BUNDLE_PREFIX)
+        assertEquals("oa", LocalUiRoutePolicy.BUNDLE_DIR)
+        assertEquals(
+            "官方产物的 /_assets/ 必须映射到磁盘的 oa/（AGP 过滤下划线目录）",
+            "/oa/chunk.js",
+            LocalUiRoutePolicy.toDiskPath("/_assets/chunk.js"),
+        )
         assertTrue(
-            "必须把官方产物的 /_assets/ 映射到磁盘的 oa/（AGP 过滤下划线目录）",
-            serverSrc.contains("URL_BUNDLE_PREFIX = \"/_assets/\"") &&
-                serverSrc.contains("BUNDLE_DIR = \"oa\""),
+            "端点必须委托纯路由策略做磁盘映射",
+            serverSrc.contains("LocalUiRoutePolicy.toDiskPath(normalized)"),
         )
     }
 
@@ -124,10 +131,13 @@ class LocalUiOriginServerTest {
     @Test
     fun endpointRefusesApiPaths() {
         // 🔴 红线：不许把 API 代理过去。静态来源对 /api 一律 404，页面直连用户配置的服务器。
-        assertTrue("必须显式拒答 /api", serverSrc.contains("refuseApiPath"))
+        assertTrue("必须拒答 /api 本身", LocalUiRoutePolicy.refuseApiPath("/api"))
+        assertTrue("必须拒答 /api/ 前缀", LocalUiRoutePolicy.refuseApiPath("/api/session"))
+        assertTrue("必须拒答 SSE /event", LocalUiRoutePolicy.refuseApiPath("/event"))
+        assertFalse("非 API 前缀不得误伤", LocalUiRoutePolicy.refuseApiPath("/apix"))
         assertTrue(
-            "必须匹配 /api/ 前缀",
-            serverSrc.contains("p.startsWith(\"/api/\")"),
+            "端点必须委托纯路由策略拒答后端路由",
+            serverSrc.contains("LocalUiRoutePolicy.refuseApiPath(path)"),
         )
         // 反向验证：拒答逻辑真的会被触发（把扫描器钉在真实源码上）。
         assertFalse(
@@ -212,13 +222,16 @@ class LocalUiOriginServerTest {
 
     @Test
     fun pathNormalizationRejectsTraversal() {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt")
-        assertTrue(f.isFile)
-        // 反向验证：源码里必须有 `..` 的消除逻辑（assets 读取前先归一化）。
-        assertTrue(
-            "路径归一化必须消除 `..`（防目录穿越出 ui/ 根）",
-            f.readText().contains("\"..\" ->"),
+        assertEquals("/", LocalUiRoutePolicy.normalize(""))
+        assertEquals("/a/b", LocalUiRoutePolicy.normalize("//a/./b/"))
+        assertEquals("/x", LocalUiRoutePolicy.normalize("/a/../x"))
+        assertEquals("/a/x", LocalUiRoutePolicy.normalize("/a/b/../x"))
+        assertEquals(
+            "根之上的 .. 不得穿越出 ui/ 根",
+            "/x",
+            LocalUiRoutePolicy.normalize("/../x"),
         )
+        assertEquals("/x", LocalUiRoutePolicy.normalize("x"))
     }
 
     // ---- 6) 不许借这次改动把自建页请回来 -------------------------------------

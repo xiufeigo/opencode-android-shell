@@ -347,6 +347,27 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
 if (!read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt").includes("var imeMode: ImeMode = ImeMode.DEFAULT")) failures.push("InsetsHost must use ImeMode.DEFAULT as the single default IME mode")
 if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").includes("else \"vars\"")) failures.push("WebHostActivity duplicates a divergent IME mode fallback instead of ImeMode.DEFAULT")
 
+
+{
+  const serverPath = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt"
+  const policyPath = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiRoutePolicy.kt"
+  if (!fs.existsSync(policyPath)) failures.push(`${policyPath}: local UI route policy owner is missing`)
+  const server = read(serverPath)
+  for (const needle of ["fun normalize(", "fun refuseApiPath(", "fun toDiskPath(", "URL_BUNDLE_PREFIX =", "BUNDLE_DIR ="]) {
+    if (server.includes(needle)) failures.push(`${serverPath}: route/path policy leaked back into the socket server: ${needle}`)
+  }
+  for (const needle of ["LocalUiRoutePolicy.refuseApiPath(path)", "LocalUiRoutePolicy.normalize(path)", "LocalUiRoutePolicy.toDiskPath(normalized)"]) {
+    if (!server.includes(needle)) failures.push(`${serverPath}: must delegate to LocalUiRoutePolicy: missing ${needle}`)
+  }
+  if (server.includes("readAsset(LocalUiRoutePolicy.normalize(path))")) failures.push(`${serverPath}: double-normalizes request paths; readAsset owns the single normalization boundary`)
+  if (fs.existsSync(policyPath)) {
+    const policy = read(policyPath)
+    for (const needle of ['const val URL_BUNDLE_PREFIX = "/_assets/"', 'const val BUNDLE_DIR = "oa"', "fun refuseApiPath", "fun normalize", "fun toDiskPath"]) {
+      if (!policy.includes(needle)) failures.push(`${policyPath}: missing route policy contract: ${needle}`)
+    }
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

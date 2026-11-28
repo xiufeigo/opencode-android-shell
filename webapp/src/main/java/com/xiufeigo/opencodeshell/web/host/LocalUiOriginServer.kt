@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 2. **绝不碰凭据**：本文件不含也不构造任何认证信息；宿主不持有、不注入、
  *    不转发任何口令。认证完全由官方 UI 自己对后端完成。
  * 3. **绝不代理 API**：`/api/` 一律 404，由页面**直连**用户配置的那台服务器。
- *    这条是"不许把 API 代理过去"红线的代码级落点（见 [refuseApiPath]）。
+ *    这条是"不许把 API 代理过去"红线的代码级落点（见 [LocalUiRoutePolicy]）。
  * 4. **只绑回环**：`InetAddress.getByName("127.0.0.1")`，外部网络访问不到。
  *
  * 这些性质由 `LocalUiOriginServerTest` 与 `DirectConnectAuthBoundaryTest` 钉死。
@@ -71,17 +71,6 @@ class LocalUiOriginServer(
 
         /** assets 内的根目录（官方前端产物由 `_upstream/packages/app` 的 `vite build` 产出）。 */
         const val ASSET_ROOT = "www/ui"
-
-        /**
-         * 官方产物里 JS chunk 目录叫 `/_assets/`（vite 默认）。
-         * ⚠️ 实测：AGP 的资源合并会**丢掉下划线开头的目录**（890 个 chunk 全被过滤，
-         * 同级的 `assets/`、`icons/` 则正常进包）。所以磁盘上把**同一批文件**放在
-         * [BUNDLE_DIR] 下，由本端点把请求路径 `/_assets/x` 映射到磁盘的 `/oa/x`。
-         *
-         * ⇒ **官方产物的内容、以及页面里引用的 URL，一个字节都没有改。**
-         */
-        const val URL_BUNDLE_PREFIX = "/_assets/"
-        const val BUNDLE_DIR = "oa"
 
         /** 页面来源。宿主启动链加载它。 */
         fun origin(port: Int = DEFAULT_PORT): String = "http://127.0.0.1:$port"
@@ -202,12 +191,12 @@ class LocalUiOriginServer(
             val path = URLDecoder.decode(rawTarget.substringBefore('?'), "UTF-8")
 
             // 🔴 红线 3：API 一律 404，宿主不做任何转发。
-            if (refuseApiPath(path)) {
+            if (LocalUiRoutePolicy.refuseApiPath(path)) {
                 respond(out, 404, "text/plain; charset=utf-8", "not found".toByteArray(), isHead)
                 return
             }
 
-            val hit = readAsset(normalize(path))
+            val hit = readAsset(path)
             if (hit != null) {
                 respond(out, 200, contentTypeOf(hit.path), hit.bytes, isHead)
                 return
@@ -223,33 +212,6 @@ class LocalUiOriginServer(
         }
     }
 
-    /**
-     * 🔴 红线 3 的代码级落点：`/api/` 前缀（以及官方 connect 用到的任何后端路由）
-     * 永远不由本机端点应答。
-     *
-     * 静态资源目录里本来就没有这些文件，所以这实际是**双保险**：
-     * 即使将来有人误把后端产物塞进 `assets/www/ui/api/`，也不会变成回环代理。
-     */
-    internal fun refuseApiPath(path: String): Boolean {
-        val p = normalize(path)
-        return p == "/api" || p.startsWith("/api/") || p == "/event" || p.startsWith("/event")
-    }
-
-    /** 归一化：绝对路径、去 `..`、去重复斜杠。 */
-    internal fun normalize(path: String): String {
-        var p = path.ifEmpty { "/" }
-        if (!p.startsWith("/")) p = "/$p"
-        val parts = ArrayList<String>()
-        for (seg in p.split('/')) {
-            when (seg) {
-                "", "." -> Unit
-                ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.size - 1)
-                else -> parts.add(seg)
-            }
-        }
-        return "/" + parts.joinToString("/")
-    }
-
     /** 一次资源命中：字节 + 实际命中的磁盘相对路径（Content-Type 必须按它判，不能按请求路径）。 */
     private data class Hit(val path: String, val bytes: ByteArray)
 
@@ -261,13 +223,13 @@ class LocalUiOriginServer(
      * 会把首页当**文件下载**而不是渲染（实测过：5.98 KB 的"File downloaded"）。
      */
     private fun readAsset(path: String): Hit? {
-        val normalized = normalize(path)
+        val normalized = LocalUiRoutePolicy.normalize(path)
         // The pinned source imports the Android terminal by this stable URL.
         if (normalized == "/oc-terminal.js") {
             val bytes = assets.open("www/oc-terminal.js").use { it.readBytes() }
             return Hit("/oc-terminal.js", bytes)
         }
-        val clean = toDiskPath(normalized)
+        val clean = LocalUiRoutePolicy.toDiskPath(normalized)
         val resolved = if (clean == "/") "/index.html" else clean
         val assetPath = "$ASSET_ROOT/${resolved.removePrefix("/")}"
         val bytes = runCatching {
@@ -275,17 +237,6 @@ class LocalUiOriginServer(
         }.getOrNull() ?: return null
         return Hit(resolved, bytes)
     }
-
-    /**
-     * 请求路径 → 磁盘路径。只做一件事：把 vite 的 `/_assets/` 映射到 [BUNDLE_DIR]，
-     * 绕开 AGP 丢弃下划线开头目录的限制。**不改写任何官方产物内容。**
-     */
-    internal fun toDiskPath(normalized: String): String =
-        if (normalized.startsWith(URL_BUNDLE_PREFIX)) {
-            "/$BUNDLE_DIR/" + normalized.removePrefix(URL_BUNDLE_PREFIX)
-        } else {
-            normalized
-        }
 
     private fun respond(
         out: BufferedOutputStream,

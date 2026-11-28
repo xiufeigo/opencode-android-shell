@@ -429,6 +429,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止 `InsetsHost` 重新持有 resize 状态机，并要求共享 `ImeMode` 契约保持独立。
 
+### Round 44：本地 UI 路由策略纯化并行为化
+
+状态：完成，待提交。
+
+闭环内容：`LocalUiOriginServer` 曾把 socket/线程/HTTP 边界与纯路径策略混在同一类：API/SSE 拒答、路径归一化、`/_assets/` → `oa/` 磁盘映射都只是 server 的内部方法，测试主要靠字符串绊线确认实现存在。新增 `LocalUiRoutePolicy` 作为不碰 socket、assets、线程的纯 owner，server 只保留监听、请求读写、assets 命中与响应边界并显式委托；同时折叠 handle/readAsset 之间重复的一层 normalize，让 `readAsset` 成为唯一归一边界。路径穿越、`..` 根逃逸、`/_assets` 映射、`/api`/`/event` 拒答和 `/apix` 不误伤改为直接调用纯 owner 的行为契约测试，替代对应实现字符串断言。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止路径策略回流 socket server，并要求 server 委托 `LocalUiRoutePolicy`。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

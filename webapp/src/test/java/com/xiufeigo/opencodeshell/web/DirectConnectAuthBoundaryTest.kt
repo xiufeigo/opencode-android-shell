@@ -161,7 +161,7 @@ class DirectConnectAuthBoundaryTest {
         )
         assertTrue(
             "本机静态来源端点必须显式拒答 /api（红线：不许把 API 代理过去）",
-            serverSrc.contains("refuseApiPath") && serverSrc.contains("p.startsWith(\"/api/\")"),
+            serverSrc.contains("LocalUiRoutePolicy.refuseApiPath(path)"),
         )
         // 🔴 最关键：静态来源端点里不得出现任何凭据字样。
         listOf("Authorization", "password", "Basic", "authTokenFromCredentials", "KEY_SERVER_PASSWORD")

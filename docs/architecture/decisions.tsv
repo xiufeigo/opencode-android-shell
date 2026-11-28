@@ -48,3 +48,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T08:16:13.589Z	round41	单文件测试读取统一走 TestSource	直接 File.readText 与 TestSource 并存造成同一语义多套实现；目录遍历/字节检查保留 File 因为语义不同	webapp/src/test/java/com/xiufeigo/opencodeshell/web/testutil/TestSource.kt	VERIFIED: unit tests passed
 2026-11-28T08:18:46.835Z	round42	IME 默认模式单一事实	InsetsHost 默认 RESIZE 与 Activity 未初始化 fallback vars 漂移；显式 ImeMode.DEFAULT 让两处共同消费同一答案	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt	VERIFIED: unit tests passed
 2026-11-28T08:25:56.385Z	round43	IME 视口 resize 状态机独立归口	insets 采集/发布与 Android view resize 是不同变化轴；独立 owner 保留同一归一输入并缩小 InsetsHost 修改半径	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt; ImeMode.kt	VERIFIED: unit tests passed
+2026-11-28T08:34:17.105Z	round44	本地 UI 路由策略纯化	socket/HTTP effect 与路径安全策略是不同变化轴；纯 owner 让穿越、拒答和磁盘映射可直接行为测试，同时保持 server 边界简单	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiRoutePolicy.kt	VERIFIED: unit tests passed
