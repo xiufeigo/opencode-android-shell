@@ -485,6 +485,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 51：删除页面可见的通用 secret 桥
+
+状态：完成，待提交。
+
+闭环内容：`getSecret` / `setSecret` 在官方 UI 与生产注入层没有任何消费者，唯一调用者是诊断页的自测按钮；桥上保留它会把任意 EncryptedSharedPreferences 键值读写能力暴露给页面，却只能服务“未来宿主偏好”这种投机需求。已删除页面 facade 方法、诊断页按钮/处理器、原生 `@JavascriptInterface` 方法和 `LegacyBridgeChannel` 转发；浏览器验证 mock 同步收缩，避免 mock 比真实桥更宽。`SecretStore` 本身保留：宿主仍用它读取 `KEY_BACKEND_URL`，供 `hostInfo` 与通知回会话路由推导；变化的只是不再把通用键值 API 暴露给页面。架构检查禁止该投机 API 在 facade、桥和 legacy channel 三层复活。
+
+验证：`node frontend/host-runtime/build.mjs`、`node --check scripts/verify-android-common.mjs`、`node --check webapp/src/main/assets/www/oc-host.js`、`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 - 回合电源活动通道：当前注入层只在 busy 集合翻转时调用 `setKeepScreenOn`，尚未把回合中途活动接入 `RoundActivityTracker.onRoundActivity`。因此 90 s “空闲兜底”在当前生产接线里也会让超过 90 s 的长回合失去常亮；补活动通道会延长长回合常亮，属于电源语义/产品取舍，不能用删除死代码顺手改变。

@@ -115,9 +115,6 @@
     <div class="row"><div class="k">返回键</div><div class="v" id="back">…</div>
       <button id="backBtn">注册 back handler（点系统返回键测试）</button>
     </div>
-    <div class="row"><div class="k">凭据（EncryptedSharedPreferences）</div><div class="v" id="secret">…</div>
-      <button id="secretBtn">写 1 个 secret 并读回</button>
-    </div>
     <div class="row"><div class="k">通知</div><div class="v" id="notify">…</div>
       <button id="notifyBtn">申请权限并发一条通知</button>
     </div>
@@ -266,15 +263,6 @@
           });
           set("back", "已注册。现在按系统返回键："
             + "① 有 handler → 弹窗，不退出；② 再点一次把 handler 置空后 → 回落到 canGoBack/什么都不做。");
-        };
-
-        $("secretBtn").onclick = function () {
-          var k = "w1.demo." + Date.now();
-          var v = "hello-" + Math.random().toString(36).slice(2, 8);
-          var wrote = oc.setSecret(k, v);
-          var back = oc.getSecret(k);
-          set("secret", ok("set=" + wrote + " get=" + back
-            + (back === v ? "（回读一致）" : "（不一致！）")));
         };
 
         $("notifyBtn").onclick = function () {

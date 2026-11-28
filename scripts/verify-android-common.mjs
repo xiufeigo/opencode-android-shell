@@ -19,7 +19,6 @@ function nativeBridgeSource() {
     },
   }
   const record = (name, args) => { try { calls.push({ name, args }) } catch {} }
-  const secret = new Map()
   window.__ocAndroidNative = {
     hostInfo: () => JSON.stringify({ model: "Chromium-Emulated-Android", sdk: 34, brand: "verify" }),
     hasNotificationPermission: () => 1,
@@ -30,8 +29,6 @@ function nativeBridgeSource() {
     saveContent: (n, m, b) => record("saveContent", [n, m, b]),
     clearPickedFile: () => record("clearPickedFile"),
     share: (t, s) => { record("share", [t, s]); return true },
-    getSecret: (k) => (secret.has(k) ? secret.get(k) : null),
-    setSecret: (k, v) => { secret.set(k, v); return true },
     setKeepScreenOn: (on) => record("setKeepScreenOn", [on]),
     setImeMode: (m) => { record("setImeMode", [m]); window.__ocImeMode = m },
     getImeMode: () => window.__ocImeMode || "resize",

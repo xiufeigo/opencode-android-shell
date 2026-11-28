@@ -455,6 +455,22 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  const bridge = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+  const legacy = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LegacyBridgeChannel.kt")
+  const facade = read("frontend/host-runtime/android-facade.js")
+  for (const needle of ["fun getSecret(key", "fun setSecret(key"]) {
+    if (bridge.includes(needle)) failures.push(`WebHostBridge reintroduced the speculative generic secret API: ${needle}`)
+  }
+  for (const needle of ['"getSecret" to', '"setSecret" to']) {
+    if (legacy.includes(needle)) failures.push(`LegacyBridgeChannel reintroduced generic secret forwarding: ${needle}`)
+  }
+  for (const needle of ["getSecret: function", "setSecret: function"]) {
+    if (facade.includes(needle)) failures.push(`android-facade reintroduced the speculative generic secret API: ${needle}`)
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

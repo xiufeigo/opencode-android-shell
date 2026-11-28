@@ -19,8 +19,6 @@ class LegacyBridgeChannel(private val bridge: WebHostBridge) {
         "hasNotificationPermission" to { bridge.hasNotificationPermission() },
         "requestNotificationPermission" to { bridge.requestNotificationPermission(); null },
         "postMessage" to { args -> bridge.postMessage(args.text(0), args.text(1), args.text(2)) },
-        "getSecret" to { args -> bridge.getSecret(args.text(0)) },
-        "setSecret" to { args -> bridge.setSecret(args.text(0), args.text(1)) },
         "setKeepScreenOn" to { args -> bridge.setKeepScreenOn(args.getBoolean(0)); null },
         "setImeMode" to { args -> bridge.setImeMode(args.text(0)); null },
         "getImeMode" to { bridge.getImeMode() },

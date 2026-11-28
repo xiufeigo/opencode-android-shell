@@ -68,21 +68,6 @@ class WebHostBridge(
     // ---- 2. 返回（宿主用 evaluateJavascript 调 __ocAndroid.onBack()）------
     // 这里不放 onBack：它是"问页面"的回调，facade 里定义。见 oc-host.js。
 
-    // ---- 5. 宿主偏好 -------------------------------------------------------
-    // ⚠ UX6：这里**没有**任何口令读写。回环代理已删，宿主不持有凭据；
-    // 服务器/口令配置全在官方 UI「设置 → 服务器」里，存页面的 localStorage。
-    // getSecret/setSecret 只服务于**非秘密**的宿主偏好（如后端地址），
-    // 且仍走 EncryptedSharedPreferences（Historische 一致性 + 未来宿主秘密的存放点）。
-    @JavascriptInterface
-    fun getSecret(key: String?): String? = SecretStore.getSecret(ctx, key.orEmpty())
-
-    @JavascriptInterface
-    fun setSecret(key: String?, value: String?): Boolean {
-        if (key.isNullOrBlank()) return false
-        SecretStore.setSecret(ctx, key, value)
-        return true
-    }
-
     // ---- 7. 常亮 ---------------------------------------------------------
     /**
      * 回合进行中传 true 置 FLAG_KEEP_SCREEN_ON，结束传 false 清掉。

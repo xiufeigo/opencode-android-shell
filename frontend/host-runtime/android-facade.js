@@ -30,23 +30,6 @@
       }
     },
 
-    // ---- 5. 凭据 -------------------------------------------------------
-    getSecret: function (key) {
-      try {
-        var v = N.getSecret(String(key || ""));
-        return v == null ? null : v;
-      } catch (e) {
-        return null;
-      }
-    },
-    setSecret: function (key, value) {
-      try {
-        return N.setSecret(String(key || ""), value == null ? null : String(value));
-      } catch (e) {
-        return false;
-      }
-    },
-
     // ---- 7. 常亮 -------------------------------------------------------
     setKeepScreenOn: function (on) {
       try {
