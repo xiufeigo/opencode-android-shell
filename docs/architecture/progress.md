@@ -301,6 +301,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node frontend/host-runtime/build.mjs` 后生成资产无 diff；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 28：架构地图与任务池状态校正
+
+状态：完成，待提交。
+
+闭环内容：重写 `docs/architecture/README.md` 的当前权威来源、依赖方向、host-runtime 拼件所有权和剩余偏离，删除“Activity 约 1500 行”“facade 未拆分”等已失效叙述；显式记录这些拼件共享同一 document-start 闭包、拼接顺序是行为契约，避免把分件误读成独立 ES module。任务池同步标记 Activity 深模块提取完成，并把 research 迁移项改为进行中。无生产代码变更。
+
+验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

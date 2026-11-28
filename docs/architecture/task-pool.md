@@ -19,7 +19,7 @@
 
 - [x] 断开 `WebHostBridge` 对具体 `WebHostActivity` 的反向依赖，改为窄接口或能力注入。
 - [x] 断开 `NotifierHost` 对具体 Activity 类的依赖，通知目标由入口层传入。
-- [ ] 从 `WebHostActivity` 提取 WebView 实例装配、加载看门狗、相机权限、后台生命周期/电源策略等深模块；每次只提取一个职责并运行现有行为测试。
+- [x] 从 `WebHostActivity` 提取 WebView 实例装配、加载看门狗、相机权限、后台生命周期/电源策略等深模块；每次只提取一个职责并运行现有行为测试。
 - [x] 建立 Kotlin 内部依赖扫描，禁止 `host/` 能力包反向引用入口 Activity。
 
 ## P2 测试体系归一
@@ -31,7 +31,7 @@
 ## P2 文档与版本 SSOT
 
 - [x] README 删除可变版本号副本，指向 `upstream.json` 与 `webapp/build.gradle.kts`。
-- [ ] 把当前有效工程约束迁入 `docs/architecture/`，`research/` 明确标记为历史证据。
+- [~] 把当前有效工程约束迁入 `docs/architecture/`，`research/` 明确标记为历史证据。（架构地图已更新；剩余工作是逐项甄别 research 证据）
 - [x] 建立文档漂移检查，防止 README 再次硬编码过期版本。
 
 ## P3 防回归架构约束
