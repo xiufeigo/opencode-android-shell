@@ -229,6 +229,14 @@
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 19：WebView 实例视口与 native focus 装配退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `WebViewViewportFactory`，集中拥有每个 WebView 实例必须重建的视口容器、背景/滚动配置、native focus/IME 前置条件、ACTION_DOWN 焦点补救和首帧绘制标记。`WebViewViewport` 明确暴露“WebView 必须住在 padding 所属容器里”这一结构契约；Activity 只执行 `setContentView(viewport.root)` 并继续编排 bridge/client/insets/加载。 viewport 绊线迁移到工厂所有权，同时保留“不得直接 setContentView(webView)”负断言；架构检查禁止 Activity 重新持有该装配实现。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

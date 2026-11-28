@@ -119,13 +119,14 @@ class ImeViewportResizeTest {
         assertTrue("必须按 max(ime, nav) 压矮", src.contains("ImeResize.bottomPadPx("))
         assertTrue("必须作用在真正那一层上（WebView 的父）", src.contains("val p = root.parent"))
         val activity = read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        val viewportFactory = read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewViewportFactory.kt")
         assertTrue(
             "必须自己包一层 viewportHost：AppCompat content 会冲掉 padding，WebView 仍是整屏",
-            activity.contains("viewportHost.addView(webView)"),
+            viewportFactory.contains("root.addView(webView)"),
         )
         assertFalse(
             "不得再把 WebView 直接塞进 AppCompat content",
-            Regex("""setContentView\(\s*webView\s*\)""").containsMatchIn(activity),
+            Regex("""setContentView\(\s*webView\s*\)""").containsMatchIn(activity) || Regex("""setContentView\(\s*viewport\.webView\s*\)""").containsMatchIn(activity),
         )
         assertTrue("必须真的下 padding", src.contains("layer.setPadding("))
         assertTrue(
