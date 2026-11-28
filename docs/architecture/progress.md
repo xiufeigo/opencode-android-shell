@@ -123,7 +123,7 @@
 
 ### Round 7：document-start facade 第一层职责拆分
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：
 
@@ -140,6 +140,14 @@
 - `cd frontend/terminal && npm test` 通过。
 - `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
 - 打包 SPA boot 边界验证手机/平板通过。
+
+### Round 8：相机权限状态机退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `CameraPermissionHost`，集中封装可信来源检查、VIDEO_CAPTURE 白名单、运行期权限请求去重、结果回调和销毁时 pending 请求清理。`WebHostActivity` 只注册 Android result launcher、提供可信 origin 判断并转发 WebChromeClient 回调。既有源码绊线迁移到新的所有权位置；架构检查禁止 Activity 重新持有 pending/in-flight 相机状态。
+
+验证：`:webapp:compileDebugKotlin` 与 `:webapp:testDebugUnitTest` 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
 ## 待确认事项
 

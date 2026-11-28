@@ -27,12 +27,14 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.xiufeigo.opencodeshell.web.host.CameraPermissionHost
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
 import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
@@ -128,6 +130,11 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
 
     private lateinit var platformHost: AndroidPlatformHost
     private lateinit var legacyChannel: LegacyBridgeChannel
+    private val cameraPermissionHost: CameraPermissionHost = CameraPermissionHost(
+        context = this,
+        isTrustedOrigin = { origin -> isTrustedWebOrigin(origin) },
+        requestCameraPermission = { cameraPermission.launch(Manifest.permission.CAMERA) },
+    )
     private var pageReportedDark: Boolean? = null
 
     /**
@@ -1175,8 +1182,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     }
 
     private fun disposeWebView() {
-        pendingCameraPermission?.deny()
-        pendingCameraPermission = null
+        cameraPermissionHost.denyPending()
         if (::legacyChannel.isInitialized) legacyChannel.close()
         if (::platformHost.isInitialized) platformHost.close()
         if (!::webView.isInitialized) return
@@ -1406,58 +1412,11 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         }
 
         override fun onPermissionRequest(request: PermissionRequest) {
-            // F3 / N-2: upstream's server pairing scanner really opens the camera
-            // (origin/v2 servers/connect/scanner.tsx:19-34 QrScanner over <video>,
-            //  :38 scanner.start() -> getUserMedia). WebView surfaces that as
-            // onPermissionRequest with RESOURCE_VIDEO_CAPTURE, so we must grant it
-            // or pairing scan is dead in this host (upstream then degrades
-            // gracefully, screen.tsx:136-155 disables the button).
-            //
-            // SECURITY: a PermissionRequest carries the ORIGIN that asked
-            // (PermissionRequest.getOrigin()). We never grant to an arbitrary
-            // origin -- only to this host's own configured backend origin (the
-            // page we ourselves load in loadUrl).
-            val origin = request.origin?.toString()
-            val trusted = origin != null && isTrustedWebOrigin(origin)
-            val wanted = request.resources.filter { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }
-            if (!trusted || wanted.isEmpty()) {
-                Log.i(TAG, "camera permission DENIED origin=$origin resources=${request.resources.toList()}")
-                request.deny()
-                return
-            }
-
-            // Already granted at runtime (API 23+): hand it over now.
-            if (ContextCompat.checkSelfPermission(
-                    this@WebHostActivity,
-                    Manifest.permission.CAMERA,
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                Log.i(TAG, "camera permission GRANTED (already held) origin=$origin")
-                request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
-                return
-            }
-
-            // Not held yet. Do NOT grant now: the Android round-trip is async and
-            // granting before the user answers would hand the page a stream that
-            // then silently dies. Instead ask, remember the pending request, and
-            // answer from the ActivityResult callback.
-            //
-            // Denying is safe: upstream camera.ts:10-14 only marks the permission
-            // denied, and screen.tsx:140,148-154 then disables the scan button and
-            // shows its own "camera unavailable" copy. We add no self-made UI text.
-            Log.i(TAG, "camera permission REQUEST origin=$origin (runtime grant pending)")
-            if (cameraPermissionInFlight) {
-                Log.w(TAG, "camera permission request already pending")
-                request.deny()
-                return
-            }
-            pendingCameraPermission = request
-            cameraPermissionInFlight = true
-            cameraPermission.launch(Manifest.permission.CAMERA)
+            cameraPermissionHost.onPermissionRequest(request)
         }
 
         override fun onPermissionRequestCanceled(request: PermissionRequest) {
-            if (pendingCameraPermission === request) pendingCameraPermission = null
+            cameraPermissionHost.onPermissionRequestCanceled(request)
         }
 
         override fun onConsoleMessage(m: ConsoleMessage): Boolean {
@@ -1468,29 +1427,10 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
 
     // ---- F3 / N-2: camera runtime permission for the pairing scanner -------
 
-    private var pendingCameraPermission: PermissionRequest? = null
-    private var cameraPermissionInFlight = false
-
-    private val cameraPermission = registerForActivityResult(
+    private val cameraPermission: ActivityResultLauncher<String> = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        cameraPermissionInFlight = false
-        val request = pendingCameraPermission
-        pendingCameraPermission = null
-        if (request == null) {
-            Log.i(TAG, "camera permission result=$granted but no pending request")
-            return@registerForActivityResult
-        }
-        if (granted) {
-            // Grant ONLY the whitelisted resource, never request.resources itself:
-            // passing the whole array through would auto-allow any resource type
-            // the page asks for later (e.g. RESOURCE_AUDIO_CAPTURE).
-            Log.i(TAG, "camera permission GRANTED origin=${request.origin}")
-            request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
-        } else {
-            Log.i(TAG, "camera permission DENIED (user) origin=${request.origin}")
-            request.deny()
-        }
+        cameraPermissionHost.onRuntimePermissionResult(granted)
     }
 
     private fun openExternalLink(url: String) {

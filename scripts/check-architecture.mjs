@@ -106,6 +106,11 @@ if (/当前 UI 基准为官方 v|Bun 必须为 \d/.test(read("frontend/android/R
 
 
 const activitySource = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+
+for (const needle of ["pendingCameraPermission", "cameraPermissionInFlight"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns camera permission state that belongs to CameraPermissionHost: ${needle}`)
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

@@ -49,6 +49,9 @@ class CameraPermissionHostTest {
     private val activity: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val cameraHost: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/CameraPermissionHost.kt")
+
     /**
      * 只切出 `isTrustedWebOrigin` **函数体**（从声明处到配对的收尾 `}`）。
      *
@@ -117,11 +120,11 @@ class CameraPermissionHostTest {
     fun onlyVideoCaptureIsGranted() {
         assertTrue(
             "必须按资源白名单过滤出 RESOURCE_VIDEO_CAPTURE",
-            activity.contains("PermissionRequest.RESOURCE_VIDEO_CAPTURE"),
+            cameraHost.contains("PermissionRequest.RESOURCE_VIDEO_CAPTURE"),
         )
         assertTrue(
             "授予时只能回传白名单里的那一个资源",
-            activity.contains("arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)"),
+            cameraHost.contains("arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)"),
         )
         assertFalse(
             "禁止整包 grant(request.resources)：那会把页面以后新增的资源类型（如 " +
@@ -140,7 +143,7 @@ class CameraPermissionHostTest {
         )
         assertTrue(
             "必须在注册回调里把拒绝如实回报给页面（deny ⇒ 上游 camera.ts:10-14 走既有降级文案）",
-            activity.contains("request.deny()"),
+            cameraHost.contains("request.deny()"),
         )
     }
 
@@ -184,11 +187,11 @@ class CameraPermissionHostTest {
             Regex(
                 "if \\(!trusted \\|\\| wanted\\.isEmpty\\(\\)\\) \\{[\\s\\S]{0,400}?" +
                     "request\\.deny\\(\\)[\\s\\S]{0,200}?return",
-            ).containsMatchIn(activity),
+            ).containsMatchIn(cameraHost),
         )
         // deny 分支必须在 grant 分支**之前**，否则不可信 origin 也会被授予
-        val denyAt = activity.indexOf("camera permission DENIED origin=")
-        val grantAt = activity.indexOf("camera permission GRANTED (already held)")
+        val denyAt = cameraHost.indexOf("camera permission DENIED origin=")
+        val grantAt = cameraHost.indexOf("camera permission GRANTED (already held)")
         assertTrue(
             "必须存在 deny 分支", denyAt >= 0
         )
