@@ -317,6 +317,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 30：上游 UI 生成产物边界机器检查
+
+状态：完成，待提交。
+
+闭环内容：`check-architecture` 新增生成 UI 边界验证：`opencode-build.json` 的 repository/commit/version/bun 必须与 `frontend/android/upstream.json` 完全一致且 platform 为 android；磁盘禁止出现 `_assets` 目录、必须存在 `oa` chunk 目录；`ui/index.html` 必须继续引用逻辑 `/_assets/` URL，且所有引用 chunk 都真实存在于 `ui/oa`。这把“禁止手改”升级为可执行的来源一致性与 asset-map 完整性约束，同时固化 `LocalUiOriginServer` 的逻辑路径/磁盘路径边界。
+
+验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

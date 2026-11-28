@@ -35,3 +35,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T07:42:39.676Z	round27	完成 facade 内部职责拆分	facade 启动、主题桥、安全区、返回浮层、insets/IME、表面色和 facade API 是不同变化轴，按原字节顺序分件既降低修改半径又不承担运行时迁移风险	frontend/host-runtime/facade-bootstrap.js; android-facade.js; build.mjs	VERIFIED: generated oc-host.js byte-identical; testDebugUnitTest green
 2026-11-28T07:43:45.154Z	round28	校正架构地图	文档是并行 Agent 的入口契约，必须反映当前模块所有权与共享闭包约束，避免后续治理按过期复杂度地图行动	docs/architecture/README.md; task-pool.md	VERIFIED: check-architecture green
 2026-11-28T07:46:42.649Z	round29	建立桥契约清单	跨 Kotlin/JS 字面量是并行开发最容易漂移的边界；先用机器可读清单加 owner/participant 校验，避免为过小收益引入双端代码生成链	docs/architecture/host-bridge-contract.json; scripts/check-architecture.mjs	VERIFIED: contract check and testDebugUnitTest green
+2026-11-28T07:48:21.616Z	round30	检查上游 UI 生成边界	生成 UI 的逻辑 _assets URL 与磁盘 oa 目录是本地服务的关键契约；用构建 manifest 与引用存在性检查防止错 pin、错平台或缺 chunk 静默进入 APK	scripts/check-architecture.mjs	VERIFIED: check-architecture green

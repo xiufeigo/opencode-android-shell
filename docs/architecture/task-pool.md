@@ -40,5 +40,5 @@
 - [x] 把架构检查接入 CI package workflow。
 - [x] 扩展 `scripts/check-architecture.mjs`：检查 Kotlin `host/` 反向依赖。
 - [x] 扩展 `scripts/check-architecture.mjs`：扫描宿主运行时生成产物边界并验证字节同步。
-- [ ] 扩展 `scripts/check-architecture.mjs`：扫描上游 UI 生成产物边界，提供比“禁止手改”更强的机器约束。
+- [x] 扩展 `scripts/check-architecture.mjs`：扫描上游 UI 生成产物边界，提供比“禁止手改”更强的机器约束。
 - [ ] 在每次治理循环后把新确立规则加入检查，而不是只写文档。

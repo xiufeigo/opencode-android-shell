@@ -105,6 +105,41 @@ if (/当前 UI 基准为官方 v|Bun 必须为 \d/.test(read("frontend/android/R
 }
 
 
+
+{
+  const uiDir = "webapp/src/main/assets/www/ui"
+  const manifestPath = `${uiDir}/opencode-build.json`
+  if (!fs.existsSync(manifestPath)) {
+    failures.push(`${manifestPath}: generated upstream UI build manifest is missing`)
+  } else {
+    const manifest = JSON.parse(read(manifestPath))
+    for (const key of ["repository", "commit", "version", "bun"]) {
+      if (manifest[key] !== upstream[key]) {
+        failures.push(`${manifestPath}: ${key}=${manifest[key]} does not match frontend/android/upstream.json ${upstream[key]}`)
+      }
+    }
+    if (manifest.platform !== "android") failures.push(`${manifestPath}: platform must be android`)
+  }
+  if (fs.existsSync(`${uiDir}/_assets`)) {
+    failures.push(`${uiDir}/_assets must not exist in packaged Android assets; vite logical URLs are mapped to ui/oa`)
+  }
+  if (!fs.existsSync(`${uiDir}/oa`)) {
+    failures.push(`${uiDir}/oa: packaged Android chunk directory is missing`)
+  }
+  const uiIndexPath = `${uiDir}/index.html`
+  if (!fs.existsSync(uiIndexPath)) {
+    failures.push(`${uiIndexPath}: generated upstream UI entry is missing`)
+  } else {
+    const uiIndex = read(uiIndexPath)
+    if (uiIndex.includes("/oa/")) failures.push(`${uiIndexPath}: generated HTML must keep logical /_assets URLs; LocalUiOriginServer owns the disk mapping`)
+    const refs = [...uiIndex.matchAll(/(?:src|href)="\/_assets\/([^"]+)"/g)].map(match => match[1])
+    if (!refs.length) failures.push(`${uiIndexPath}: no logical /_assets bundle references found`)
+    for (const ref of new Set(refs)) {
+      if (!fs.existsSync(`${uiDir}/oa/${ref}`)) failures.push(`${uiIndexPath}: referenced bundle chunk is missing from ui/oa: ${ref}`)
+    }
+  }
+}
+
 const activitySource = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
 for (const needle of ["pendingCameraPermission", "cameraPermissionInFlight"]) {
