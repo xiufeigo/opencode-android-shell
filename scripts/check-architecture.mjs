@@ -131,6 +131,10 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+for (const needle of ["private fun configureSettings", "private fun installFacade", "private fun installPerfProbe", "private fun installPreflightProbe"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns WebView bootstrap policy that belongs to WebViewBootstrapHost: ${needle}`)
+}
+
 for (const needle of ["lastRenderCrashAtMs", "renderCrashCount", "RENDER_CRASH_RELOAD_WINDOW_MS", "SystemClock.elapsedRealtime"]) {
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns renderer crash recovery state that belongs to RenderProcessRecoveryHost: ${needle}`)
 }

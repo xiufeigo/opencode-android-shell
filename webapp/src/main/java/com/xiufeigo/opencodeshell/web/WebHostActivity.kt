@@ -20,7 +20,6 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -51,6 +50,7 @@ import com.xiufeigo.opencodeshell.web.host.SurfaceColor
 import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebHostBridgeHost
+import com.xiufeigo.opencodeshell.web.host.WebViewBootstrapHost
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import com.xiufeigo.opencodeshell.web.host.WebOrigins
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
@@ -143,6 +143,12 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         showCrashDiagnostic = { detail ->
             setupWebViewAndLoad(WebViewPreflight.Reason.RENDER_CRASH to detail)
         },
+    )
+
+    private val webViewBootstrap = WebViewBootstrapHost(
+        context = this,
+        legacyChannel = { legacyChannel },
+        assetHost = ASSET_DOMAIN,
     )
 
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上访问的跟踪器。 */
@@ -333,7 +339,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         setContentView(viewportHost)
         PerfMarks.mark("C.webviewCreated+setContentView")
 
-        configureSettings(webView.settings)
+        webViewBootstrap.configureSettings(webView.settings)
         if (::legacyChannel.isInitialized) legacyChannel.close()
         legacyChannel = LegacyBridgeChannel(bridge)
         webView.addJavascriptInterface(legacyChannel, WebHostBridge.INJECT_NAME)
@@ -343,9 +349,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             platformHost.install(webView)
         }
         PerfMarks.mark("D.settingsConfigured")
-        installFacade(webView)
-        installPerfProbe(webView)
-        installPreflightProbe(webView)
+        webViewBootstrap.installDocumentStartScripts(webView)
         PerfMarks.mark("E.facadeInstalled")
         // G1：版本读数必须在 [launch] 之前拿到 —— 前置检查要靠它决定加载官方 UI 还是诊断页。
         startupRecovery.readWebViewVersion()
@@ -439,101 +443,6 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * 「设置 → 服务器」里配置；官方自己未配置时呈现 ConnectServerScreen，
      * 官方自己探测健康、自己报告口令错误。宿主再造一套 = 双份真相。
      */
-
-    // ---- WebView 设置 ------------------------------------------------------
-    private fun configureSettings(s: WebSettings) = with(s) {
-        javaScriptEnabled = true
-        domStorageEnabled = true
-        // 1 CSS px == 1 dp 的前提之一。
-        useWideViewPort = false
-        loadWithOverviewMode = false
-        setSupportZoom(false)
-        builtInZoomControls = false
-        displayZoomControls = false
-        mediaPlaybackRequiresUserGesture = false
-        // 混合内容：仅兼容模式（页面与 API 现在同源于后端 http 地址，正常用不到；
-        // 保留是为了 https 后端 + http 子资源的边界场景仍尽量可用）。
-        mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        // 不给 file:// / content:// 通用读权限：资产只走 assetLoader。
-        allowFileAccess = false
-        allowContentAccess = false
-        cacheMode = WebSettings.LOAD_DEFAULT
-        userAgentString = "$userAgentString OpenCodeWebHost/0.1 (W1-skeleton)"
-    }
-
-    /**
-     * 把 facade（`assets/www/oc-host.js`）注册成**文档开始**脚本。
-     *
-     * 用 `WebViewCompat.addDocumentStartJavaScript` 而不是 `onPageFinished` 里
-     * `evaluateJavascript`：后者太晚，页面首屏脚本已经跑完、没拿到
-     * `window.__ocAndroid`。老 WebView 不支持该特性时退回 `onPageStarted` 注入
-     * （对真正的上游 SPA 可能错过首屏，但 G1 前置检查已把过旧的 WebView 拦住）。
-     */
-    private fun installFacade(wv: WebView) {
-        val origins = setOf(LocalUiOriginServer.origin())
-        // 首帧深浅色：`ui/index.html` 的 preload 在页面脚本阶段就按
-        // `prefers-color-scheme` 铺底色，而 WebView 的该媒体查询可能还停在旧值
-        // ⇒ 深色冷启动会先闪一下浅色。`oc-host.js` 会用这个初值驱动它的深浅色桥
-        // （见其中的 `applyHostScheme`），所以注入前先把当前 uiMode 真值递进去。
-        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        val initialScheme = "window.__ocHostSchemeInitial=" + JSONObject.quote(if (night) "dark" else "light") + ";"
-        val script = initialScheme + legacyChannel.script(origins) + runCatching { assets.open("www/oc-host.js").bufferedReader().use { it.readText() } }
-            .getOrElse {
-                Log.e(TAG, "cannot read www/oc-host.js", it)
-                return
-            }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(wv, script, origins)
-            val diagnosticOrigins = setOf("https://$ASSET_DOMAIN")
-            WebViewCompat.addDocumentStartJavaScript(wv, legacyChannel.script(diagnosticOrigins, diagnostic = true), diagnosticOrigins)
-            Log.i(TAG, "facade registered as document-start script")
-        }
-    }
-
-    /**
-     * P2 性能归因：注册 `assets/www/oc-perf.js` 为**文档开始**脚本，
-     * 拿浏览器侧的 first-paint / DCL / 逐资源 waterfall。
-     *
-     * 读不到就跳过 —— 探针失败绝不能影响壳本身。
-     */
-    private fun installPerfProbe(wv: WebView) {
-        val script = runCatching {
-            assets.open("www/oc-perf.js").bufferedReader().use { it.readText() }
-        }.getOrElse {
-            Log.w(TAG, "oc-perf.js missing, skipping probe")
-            return
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("*")) }
-                .onSuccess { PerfMarks.mark("E2.perfProbeRegistered") }
-                .onFailure { Log.w(TAG, "perf probe register failed", it) }
-        } else {
-            Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported -> perf probe skipped")
-        }
-    }
-
-    /**
-     * G1：把 `assets/www/oc-preflight.js` 注册成**文档开始**脚本，回报首屏内容信号。
-     *
-     * 拿不到特性（老 WebView）时退回 `onPageStarted` 注入 —— 那时也已经晚了，
-     * 但 83 那种设备在**前置检查**就被拦住了，走不到这里。
-     */
-    private fun installPreflightProbe(wv: WebView) {
-        val script = runCatching {
-            assets.open("www/oc-preflight.js").bufferedReader().use { it.readText() }
-        }.getOrElse {
-            Log.w(TAG, "oc-preflight.js missing, first-content signal unavailable", it)
-            return
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("*")) }
-                .onSuccess { PerfMarks.mark("E3.g1ProbeRegistered") }
-                .onFailure { Log.w(TAG, "g1 probe register failed", it) }
-        } else {
-            Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported -> g1 probe falls back to onPageStarted")
-        }
-    }
 
     /**
      * 物理 **ESC 透传给 WebView**，绝不能变成 Android Back。
@@ -799,8 +708,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             return loader(view.context).shouldInterceptRequest(url)
         }
 
-        // 参数用 `WebView?`：installFacade 的匿名子类里本来就有一个同签名的 override
-        // （`view: WebView?`）。这里若声明成非空，那个匿名子类就会"overrides nothing"。
+        // 参数保持平台父类签名中的 `WebView?`；改成非空会不再是合法 override。
         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
             super.onPageStarted(view, url, favicon)
             PerfMarks.mark("K.onPageStarted", "url=$url")

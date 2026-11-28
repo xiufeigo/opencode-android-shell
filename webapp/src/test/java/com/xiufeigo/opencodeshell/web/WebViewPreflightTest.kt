@@ -27,6 +27,8 @@ import java.io.File
  */
 class WebViewPreflightTest {
 
+    private fun bootstrapSrc(): String = File("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt").readText()
+
     private val minTargetPx = 48
 
     private fun page(): String {
@@ -272,7 +274,7 @@ class WebViewPreflightTest {
         )
         // 探针必须真的接上了，否则看门狗永远等不到解除信号。
         val src = activitySource()
-        assertTrue("G1: 宿主没有安装首屏内容探针", src.contains("installPreflightProbe"))
+        assertTrue("G1: 宿主没有安装首屏内容探针", src.contains("webViewBootstrap.installDocumentStartScripts(webView)") && bootstrapSrc().contains("installPreflightProbe"))
         assertTrue(
             "G1: 宿主没有接收探针回报（onFirstContent）",
             bridgeSource().contains("fun onFirstContent"),

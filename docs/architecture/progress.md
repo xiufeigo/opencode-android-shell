@@ -191,9 +191,17 @@
 
 ### Round 14：渲染进程崩溃恢复状态机退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `RenderProcessRecoveryHost`，集中封装渲染进程死亡事件消费、60 秒事故窗口、首崩重建、二崩诊断页收口和恢复顺序；新增无 Android 依赖的 `RenderCrashThrottle` 承载窗口计数，并用真实 JVM 行为测试覆盖首次计数、窗口内递增、边界恰好到期和窗口外重置。`WebHostActivity` 只注入销毁、重建、诊断页三个平台效果，并把 WebViewClient 事件委托给该宿主。删除了原实现中不可达的二次未初始化分支；`disposeWebView()` 与完整 `setupWebViewAndLoad()` 顺序保持不变。架构检查禁止 Activity 重新持有崩溃计数、窗口常量或 `SystemClock` 读数。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
+### Round 15：WebView 设置与 document-start 脚本策略退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `WebViewBootstrapHost`，集中封装 WebView 静态设置、facade/性能探针/首屏探针三份 document-start 脚本的资产读取、origin 范围、初始深浅色注入与特性能力分支。`WebHostActivity` 仍负责实例装配与生命周期，只在既有顺序的两个相位调用 `configureSettings` 与 `installDocumentStartScripts`；`LegacyBridgeChannel` 通过惰性 provider 读取，渲染崩溃重建后仍使用当前通道。相关相机/首屏源码绊线迁移到新的所有权位置，架构检查禁止 Activity 重新持有这些实现。
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 

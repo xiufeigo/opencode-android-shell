@@ -52,6 +52,9 @@ class CameraPermissionHostTest {
     private val cameraHost: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/CameraPermissionHost.kt")
 
+    private val bootstrapHost: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt")
+
     /**
      * 只切出 `isTrustedWebOrigin` **函数体**（从声明处到配对的收尾 `}`）。
      *
@@ -226,7 +229,7 @@ class CameraPermissionHostTest {
         // 没有用户手势；WebView 默认要求手势 ⇒ 起流后画面出不来。
         assertTrue(
             "必须 setMediaPlaybackRequiresUserGesture(false)，否则扫码预览无画面",
-            activity.contains("mediaPlaybackRequiresUserGesture = false"),
+            bootstrapHost.contains("mediaPlaybackRequiresUserGesture = false"),
         )
     }
 }
