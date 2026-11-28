@@ -10,3 +10,5 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:28:13.222Z	round4	删除 WebView databaseEnabled 兼容设置	该开关只影响废弃 Web SQL；仓库与打包 UI 均无真实调用方，保留会伪装成受支持能力	WebHostActivity.kt; scripts/check-architecture.mjs	verification in progress
 2026-11-28T06:28:41.519Z	round4	验证 Web SQL 设置删除	Android 单元测试保持绿色，架构检查阻止 deprecated 设置回归	gradle testDebugUnitTest; check-architecture	VERIFIED
 2026-11-28T06:31:14.818Z	round5	宿主运行时源码迁出 assets 产物目录	assets/www 同时混有上游生成产物和手写源码，所有权不清；先建立逐字节复制边界，为后续拆分 oc-host 做准备	frontend/host-runtime; scripts/check-architecture.mjs	VERIFIED: reproducible copy, unit tests, terminal tests, SPA boot
+2026-11-28T06:35:23.742Z	round6	显式生成 remote-browser RPC 客户端契约	上游构建内部复制让仓库读者无法直接理解 ./rpc 来源；生成文件加字节同步既保持单一契约又允许快速行为测试	plugins/server-browser/src/rpc.ts; frontend/remote-browser/rpc.ts; sync-rpc.mjs	fast tests green; full upstream build in progress
+2026-11-28T06:37:07.182Z	round6	验证 remote-browser RPC 与测试入口闭环	快速行为测试 10/10 通过；完整上游构建、上游测试和 gui-plugins typecheck 通过，且生成 UI 无 diff	frontend/remote-browser/test.mjs; frontend/android/build.mjs	VERIFIED

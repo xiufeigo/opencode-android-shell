@@ -47,9 +47,12 @@ export async function applyAndroidSources(checkout, here) {
   await Promise.all(files.map(([from, to]) => fs.copyFile(path.join(here, from), path.join(checkout, to))))
   const browser = path.join(checkout, "packages/gui-plugins/src/remote-browser")
   await fs.rm(browser, { recursive: true, force: true })
-  await fs.cp(path.join(here, "../remote-browser"), browser, { recursive: true })
-  // One RPC contract is compiled into both the server plugin and the clients.
-  await fs.copyFile(path.join(here, "../../plugins/server-browser/src/rpc.ts"), path.join(browser, "rpc.ts"))
+  await fs.mkdir(browser, { recursive: true })
+  const browserFiles = [
+    "index.ts", "input.ts", "input.test.ts", "model.ts", "model.test.ts",
+    "package.json", "panel.tsx", "renderer.tsx", "rpc.ts", "styles.css",
+  ]
+  await Promise.all(browserFiles.map(name => fs.copyFile(path.join(here, "../remote-browser", name), path.join(browser, name))))
   for (const name of ["app", "gui-plugins"]) {
     await fs.writeFile(path.join(checkout, `packages/${name}/tsconfig.android.json`), JSON.stringify({
       extends: "./tsconfig.json", include: ["src", "package.json"], exclude: ["src/**/*.test.ts", "src/**/*.stories.tsx"],

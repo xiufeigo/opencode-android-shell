@@ -19,7 +19,7 @@
 | 宿主运行时生成产物 | `webapp/src/main/assets/www/{index.html,oc-host.js,oc-perf.js,oc-preflight.js}` | 由 `node frontend/host-runtime/build.mjs` 逐字节复制生成。 |
 | Android 上游补丁与覆盖源码 | `frontend/android/` | `upstream.patch` / `ui.patch` 修改上游，`sources.mjs` 声明覆盖文件。 |
 | 内嵌 UI 存储迁移 | `frontend/embedded-ui/` | 由 `sources.mjs` 注入上游应用。 |
-| 服务端浏览器 RPC 契约 | `plugins/server-browser/src/rpc.ts` | 构建时复制到浏览器面板客户端。 |
+| 服务端浏览器 RPC 契约 | `plugins/server-browser/src/rpc.ts` | 由 `frontend/remote-browser/sync-rpc.mjs` 复制生成客户端输入。 |
 | 服务端浏览器插件 | `plugins/server-browser/` | OpenCode v2 插件。 |
 | 浏览器面板客户端 | `frontend/remote-browser/` | 由 `sources.mjs` 复制进上游 `gui-plugins`。 |
 | Android 宿主入口 | `webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt` | Activity 生命周期和 WebView 编排。 |
@@ -32,7 +32,7 @@
 frontend/android 构建配方 ──生成──> webapp/assets/www/ui
 frontend/terminal ──生成──> webapp/assets/www/oc-terminal.js
 frontend/host-runtime ──复制生成──> webapp/assets/www/{index.html,oc-host.js,oc-perf.js,oc-preflight.js}
-plugins/server-browser/src/rpc.ts ──复制──> frontend/remote-browser 构建输入
+plugins/server-browser/src/rpc.ts ──sync-rpc.mjs──> frontend/remote-browser/rpc.ts ──上游构建复制──> gui-plugins
 webapp/host 能力模块 ──被编排──> WebHostActivity
 webapp/assets/www/oc-host.js ──页面侧 facade──> 内嵌 UI 与 Android 覆盖源码
 scripts ──验证──> 以上产物与运行时契约
@@ -45,8 +45,7 @@ scripts ──验证──> 以上产物与运行时契约
 1. `oc-host.js` 是 1413 行单体，混合缓存清理、主题桥、insets/IME、返回 facade、通知垫片、后台生命周期、终端设置和终端兼容代码。
 2. `WebHostActivity` 约 1500 行，同时编排 WebView 构造、生命周期、电源、通知权限、相机权限、返回、渲染恢复、外链和诊断。可变状态集中在 Activity 内。
 3. 大量单元测试是历史事故绊线，直接断言资产源码字符串。它们能防回归，也把实现细节固化，阻碍删除死代码和移动模块。
-4. `frontend/remote-browser` 在仓库内缺少它导入的 `./rpc` 文件；该文件由构建复制生成。这个契约需要显式化，不能让本地读者靠猜。
-5. 验证脚本包含过期行号和历史叙述。行号不是稳定契约。
+4. 验证脚本包含过期行号和历史叙述。行号不是稳定契约。
 
 ## 治理规则
 

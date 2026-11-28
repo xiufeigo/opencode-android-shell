@@ -108,6 +108,19 @@
 - `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
 - 打包 SPA boot 边界验证手机/平板通过。
 
+### Round 6：远程浏览器 RPC 契约与快速测试入口
+
+状态：完成，待提交。
+
+闭环内容：
+
+- `plugins/server-browser/src/rpc.ts` 保持唯一 RPC 契约；新增 `frontend/remote-browser/sync-rpc.mjs` 生成客户端 `rpc.ts`。
+- `scripts/check-architecture.mjs` 对契约与生成文件做字节级同步检查。
+- `frontend/android/sources.mjs` 不再复制第二份 RPC，并改为显式复制十个浏览器面板输入文件；本地测试产生的 `node_modules`、锁文件和 harness 不会进入上游构建。
+- 新增 `frontend/remote-browser/test.mjs`、锁定的依赖和 README；快速测试可在仓库内运行，完整类型检查仍由上游 workspace 构建执行。
+
+验证：快速测试 10/10 通过；完整 `node frontend/android/build.mjs` 通过（包括上游 remote-browser 测试与 `packages/gui-plugins` typecheck），生成 UI 资产无 diff，构建检出的 remote-browser 只包含十个显式输入文件。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

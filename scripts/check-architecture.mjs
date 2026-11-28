@@ -34,6 +34,17 @@ for (const file of ["index.html", "oc-host.js", "oc-perf.js", "oc-preflight.js"]
   }
 }
 
+
+{
+  const sourcePath = "plugins/server-browser/src/rpc.ts"
+  const outputPath = "frontend/remote-browser/rpc.ts"
+  if (!fs.existsSync(outputPath)) {
+    failures.push(`${outputPath}: generated RPC client contract is missing; run node frontend/remote-browser/sync-rpc.mjs`)
+  } else if (!fs.readFileSync(sourcePath).equals(fs.readFileSync(outputPath))) {
+    failures.push(`${outputPath}: generated RPC client contract differs from ${sourcePath}; run node frontend/remote-browser/sync-rpc.mjs`)
+  }
+}
+
 const terminal = read("frontend/terminal/terminal.js")
 for (const needle of [
   "oc.settings.terminalFontScale",

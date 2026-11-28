@@ -1,1 +1,13 @@
-{ "private": true, "type": "module" }
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:rpc": "node sync-rpc.mjs",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@opencode/schema": "2.1.2",
+    "effect": "4.0.1",
+    "solid-js": "1.9.17"
+  }
+}

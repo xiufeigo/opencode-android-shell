@@ -24,7 +24,7 @@
 ## P2 测试体系归一
 
 - [ ] 把历史事故型字符串绊线分批替换为行为契约测试；保留确实无法行为化的资产约束，但集中到一个资产契约测试工具，避免每个事故一套文件读取代码。
-- [ ] 为 `frontend/remote-browser` 建立仓库内可运行的类型检查/测试入口，明确 `rpc.ts` 的生成关系。
+- [x] 为 `frontend/remote-browser` 建立仓库内可运行的测试入口并明确 `rpc.ts` 生成关系；权威类型检查由 `frontend/android/build.mjs` 的上游 workspace typecheck 执行。
 - [ ] 收敛 4000 行级验证脚本中的重复 harness，只保留能驱动真实打包 SPA 的共享基础设施。
 
 ## P2 文档与版本 SSOT
