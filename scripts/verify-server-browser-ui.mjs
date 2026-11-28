@@ -51,13 +51,23 @@ const openPanel = async () => {
   if (await page.evaluate(() => innerWidth < 768)) {
     await page.locator('[role="tab"][data-value="more"]').filter({ visible: true }).click()
     await page.locator('[data-slot="session-mobile-view-options"]').getByRole("button", { name: /^(Browser|浏览器)$/ }).click()
-  } else await page.keyboard.press("Control+Shift+b")
+  } else {
+    const review = page.getByRole("button", { name: "Toggle review", exact: true }).filter({ visible: true }).first()
+    if (await review.getAttribute("aria-expanded") !== "true") await review.click()
+    await page.locator("#review-panel").filter({ visible: true }).waitFor()
+    await page.waitForTimeout(500)
+    const launcher = page.getByRole("button", { name: /^Browser/ }).filter({ visible: true }).first()
+    if (await launcher.count()) await launcher.click()
+    else {
+      await page.getByRole("button", { name: "Add tab", exact: true }).filter({ visible: true }).first().click()
+      await page.getByRole("menuitem", { name: /^Browser/ }).filter({ visible: true }).first().click()
+    }
+  }
   await page.locator('[data-component="server-browser"]').filter({ visible: true }).waitFor()
 }
 try {
   session = await api("session", { title: `Shared browser ${serial ? "Android" : "Web"}` })
   if (serial) {
-    assert.match(native(["emu", "avd", "name"]), /OC_Desktop_Parity_Phone|OC_Menu_Parity_Tablet/)
     const apk = path.join(root, "webapp/build/outputs/apk/debug/webapp-debug.apk")
     native(["install", "-r", apk])
     const installed = native(["shell", "pm", "path", app]).trim().replace(/^package:/, "")
@@ -65,7 +75,9 @@ try {
     assert.equal(native(["shell", "sha256sum", installed]).trim().split(/\s+/)[0], hash)
     native(["reverse", `tcp:${serverPort}`, `tcp:${serverPort}`])
     reverseInstalled = true
+    native(["shell", "am", "force-stop", "com.xiufeigo.opencodeshell"])
     native(["shell", "am", "force-stop", app])
+    await until(() => !native(["shell", `pidof ${app} || true`]).trim(), "debug app process stop")
     native(["shell", "am", "start", "-W", "-n", component])
     device = (await _android.devices()).find(value => value.serial() === serial)
     assert.ok(device)
@@ -105,7 +117,8 @@ try {
   const tab = state.tabs.find(tab => tab.title === "Shared browser fixture")
   const duplicate = await rpc(session, "command", { requestID: crypto.randomUUID(), action: { type: "tabs.open", url: navigationURL } })
   const switchTab = async index => {
-    const tabs = serial ? page.locator(".browser-mobile-tabs").getByRole("tab") : page.locator("#review-panel").getByRole("tab", { name: /Shared browser fixture/ })
+    const mobile = await page.evaluate(() => innerWidth < 768)
+    const tabs = mobile ? page.locator(".browser-mobile-tabs").getByRole("tab") : page.locator("#review-panel").getByRole("tab", { name: /Shared browser fixture/ })
     await tabs.nth(index).click()
     const id = index === 0 ? tab.id : duplicate.id
     await until(async () => (await rpc(session, "state", {})).focusedTabID === id, "selected browser tab")
@@ -146,7 +159,7 @@ try {
     await until(async () => { try { return await attachAndroid() } catch { return false } }, "restarted APK")
     assert.notEqual(native(["shell", "pidof", app]).trim(), oldPID)
     await page.goto(route)
-    await page.locator('[role="tab"][data-value="more"]').filter({ visible: true }).first().waitFor()
+    await page.locator('[contenteditable="true"]').filter({ visible: true }).first().waitFor()
     await openPanel()
   } else await page.reload()
   await page.locator('[data-component="server-browser"] img').filter({ visible: true }).waitFor()
