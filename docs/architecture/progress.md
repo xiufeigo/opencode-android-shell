@@ -285,6 +285,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node frontend/host-runtime/build.mjs` 后生成资产无 diff；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 26：通知、后台读数与输入方向键 shim 退出 android-facade 主文件
+
+状态：完成，待提交。
+
+闭环内容：按原有执行顺序把三块独立页面侧 shim 从 `android-facade.js` 切出：`notification-shim.js` 拥有浏览器 Notification API 垫片与上游通知策略桥；`background-state-shim.js` 拥有后台 `visibilityState` / `hasFocus` 读数覆盖与 `__ocSetBackground`；`editable-arrow-guard.js` 拥有输入框边界方向键防空间导航。构建拼件顺序与原字节布局一致，重建后的 `oc-host.js` 无 diff；`android-facade.js` 从 842 行降至 598 行。
+
+验证：`:webapp:testDebugUnitTest` 281 项通过；`node frontend/host-runtime/build.mjs` 后生成资产无 diff；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
