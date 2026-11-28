@@ -15,6 +15,7 @@ class Ux4ThemeTripwireTest {
     private val colors by lazy { read("src/main/res/values/colors.xml") }
     private val nightColors by lazy { read("src/main/res/values-night/colors.xml") }
     private val activity by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
+    private val themeHost by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/host/SystemUiThemeHost.kt") }
 
     @Test
     fun `window background follows daynight mode`() {
@@ -49,13 +50,17 @@ class Ux4ThemeTripwireTest {
         )
         val body = activity.substringAfter("override fun onConfigurationChanged")
         assertTrue(
-            "onConfigurationChanged 必须重推 insets（把新 scheme 发给页面）",
-            Regex("""insets\.refresh\(\)""").containsMatchIn(body),
+            "Activity 必须把配置变更委托给 SystemUiThemeHost",
+            body.contains("systemUiTheme.onConfigurationChanged()"),
         )
         assertTrue(
-            "onConfigurationChanged 必须清掉 pageReportedDark（让系统栏明暗兜底" +
+            "SystemUiThemeHost 必须重推 insets（把新 scheme 发给页面）",
+            Regex("""insets\.refresh\(\)""").containsMatchIn(themeHost),
+        )
+        assertTrue(
+            "SystemUiThemeHost 必须清掉 pageReportedDark（让系统栏明暗兜底" +
                 "重新读当前 uiMode，而不是停留在页面旧上报值）",
-            body.contains("pageReportedDark = null"),
+            themeHost.contains("pageReportedDark = null"),
         )
     }
 

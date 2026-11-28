@@ -131,6 +131,10 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+for (const needle of ["private var pageReportedDark", "private fun applySystemBarTheme", "private var systemDark"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns system UI theme policy that belongs to SystemUiThemeHost: ${needle}`)
+}
+
 for (const needle of ["inner class HostWebChromeClient", "override fun onShowFileChooser", "EXTRA_MIME_TYPES"]) {
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns WebChromeClient behavior that belongs to HostWebChromeClient: ${needle}`)
 }

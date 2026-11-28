@@ -221,6 +221,14 @@
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 18：系统栏主题快照与深浅色兜底退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `SystemUiThemeHost`，集中拥有页面已上报深浅色快照、相同上报去重、uiMode 变化后的快照失效、insets 重推和系统栏图标明暗兜底。顺带删除从未被读取的 `systemDark` 死状态：主题真值只剩“页面最新上报优先，否则当前 uiMode”这一条规则。Activity 只保留桥接口与配置事件的转发；UX4 绊线迁移为宿主所有权 + 组合根委托双重断言，架构检查禁止 Activity 重新持有该状态机。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

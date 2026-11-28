@@ -39,6 +39,7 @@ import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.StartupRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.SurfaceColor
+import com.xiufeigo.opencodeshell.web.host.SystemUiThemeHost
 import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebHostBridgeHost
@@ -119,7 +120,13 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         isTrustedOrigin = { origin -> isTrustedWebOrigin(origin) },
         requestCameraPermission = { cameraPermission.launch(Manifest.permission.CAMERA) },
     )
-    private var pageReportedDark: Boolean? = null
+    private val systemUiTheme = SystemUiThemeHost(
+        insetsProvider = { if (::insets.isInitialized) insets else null },
+        systemDark = {
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        },
+    )
 
     private val backgroundLifecycle = BackgroundLifecycleHost(
         activity = this,
@@ -495,17 +502,12 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     private fun pushInsets(payload: JSONObject) {
         val json = payload.toString()
         evaluateJs("window.__ocAndroid && window.__ocAndroid.applyInsets($json);")
-        applySystemBarTheme()
+        systemUiTheme.applySystemBarTheme()
     }
 
     /** 系统栏图标明暗跟随页面 `data-color-scheme`（页面用 reportTheme 报上来）。 */
-    private var systemDark: Boolean = false
-
     override fun applyPageTheme(dark: Boolean) {
-        if (pageReportedDark == dark) return
-        pageReportedDark = dark
-        systemDark = dark
-        applySystemBarTheme()
+        systemUiTheme.applyPageTheme(dark)
     }
 
     /** 页面报上来的表面底色 → 视口压矮后露出的条带（见 InsetsHost.setSurfaceColor）。 */
@@ -513,13 +515,6 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         if (!::insets.isInitialized) return
         val color = SurfaceColor.parse(css) ?: return
         insets.setSurfaceColor(color)
-    }
-
-    private fun applySystemBarTheme() {
-        if (!::insets.isInitialized) return
-        val dark = pageReportedDark ?: (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        insets.applyBarsTheme(dark)
     }
 
     override fun setImeMode(mode: ImeMode) {
@@ -606,7 +601,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      *  2. `insets.refresh()` 重推一次 payload —— `dark`/`scheme` 字段已翻转，
      *     去重比较会通过，页面侧 `applyInsets` 拿到新 `--oc-scheme`；
      *  3. 清掉 `pageReportedDark`：它是**页面某次**上报的快照，深浅色切换后
-     *     必须让 [applySystemBarTheme] 的兜底重新读当前 `uiMode`，
+     *     必须让 SystemUiThemeHost 的兜底重新读当前 `uiMode`，
      *     等页面下一次 reportTheme 再精确跟随（页面若不再上报，兜底也正确）。
      *
      * 安全的重入性：`onResume` 本来就会 `insets.refresh()`，重复 refresh
@@ -614,10 +609,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (!::insets.isInitialized) return
-        pageReportedDark = null
-        insets.refresh()
-        applySystemBarTheme()
+        systemUiTheme.onConfigurationChanged()
     }
 
     override fun onPause() {
