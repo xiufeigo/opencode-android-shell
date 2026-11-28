@@ -11,7 +11,8 @@
 ## P1 建立权威源码边界
 
 - [x] 把 `oc-host.js`、`oc-perf.js`、`oc-preflight.js`、诊断页 `index.html` 的权威源码迁出 `webapp/src/main/assets/www/`，产物目录只保留生成结果，并用脚本验证同步。
-- [ ] 拆分 `oc-host.js` 单体为按职责命名的运行时模块，再打包成单个 document-start 脚本。优先拆分无副作用的纯逻辑，最后处理安装顺序敏感的模块。
+- [x] 建立 `oc-host.js` 的第一层职责拆分：`android-facade.js`、`overlay-focus.js`、`terminal-settings.js`，并保持生成产物字节一致。
+- [ ] 继续拆分 `android-facade.js` 内部职责（缓存清理、主题桥、insets/IME、返回 facade、通知垫片、后台生命周期），每次保持生成产物可验证。
 - [ ] 将终端字号存储键、insets 事件名、桥接口名等跨 Kotlin/JS 契约集中到显式契约文档或共享生成常量，并加契约测试。
 
 ## P1 降低 Android 宿主耦合

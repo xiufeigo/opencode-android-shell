@@ -10,7 +10,9 @@ const requirePresent = (text, needle, label) => {
   if (!text.includes(needle)) failures.push(`${label}: required canonical implementation is missing: ${needle}`)
 }
 
-const host = read("frontend/host-runtime/oc-host.js")
+const hostPieces = ["android-facade.js", "overlay-focus.js", "terminal-settings.js"]
+if (fs.existsSync("frontend/host-runtime/oc-host.js")) failures.push("frontend/host-runtime/oc-host.js must not reappear; edit the named runtime pieces instead")
+const host = hostPieces.map(file => read(`frontend/host-runtime/${file}`)).join("")
 for (const needle of [
   "installTerminalFontScale",
   "installTerminalTouchScroll",
@@ -22,7 +24,7 @@ for (const needle of [
 ]) requireAbsent(host, needle, "oc-host terminal boundary")
 
 
-for (const file of ["index.html", "oc-host.js", "oc-perf.js", "oc-preflight.js"]) {
+for (const file of ["index.html", "oc-perf.js", "oc-preflight.js"]) {
   const sourcePath = `frontend/host-runtime/${file}`
   const outputPath = `webapp/src/main/assets/www/${file}`
   if (!fs.existsSync(outputPath)) {
@@ -34,6 +36,14 @@ for (const file of ["index.html", "oc-host.js", "oc-perf.js", "oc-preflight.js"]
   }
 }
 
+{
+  const outputPath = "webapp/src/main/assets/www/oc-host.js"
+  if (!fs.existsSync(outputPath)) {
+    failures.push(`${outputPath}: generated host facade artifact is missing`)
+  } else if (!Buffer.from(host, "utf8").equals(fs.readFileSync(outputPath))) {
+    failures.push(`${outputPath}: generated artifact differs from frontend/host-runtime pieces; run node frontend/host-runtime/build.mjs`)
+  }
+}
 
 {
   const sourcePath = "plugins/server-browser/src/rpc.ts"

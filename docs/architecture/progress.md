@@ -110,7 +110,7 @@
 
 ### Round 6：远程浏览器 RPC 契约与快速测试入口
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：
 
@@ -120,6 +120,26 @@
 - 新增 `frontend/remote-browser/test.mjs`、锁定的依赖和 README；快速测试可在仓库内运行，完整类型检查仍由上游 workspace 构建执行。
 
 验证：快速测试 10/10 通过；完整 `node frontend/android/build.mjs` 通过（包括上游 remote-browser 测试与 `packages/gui-plugins` typecheck），生成 UI 资产无 diff，构建检出的 remote-browser 只包含十个显式输入文件。
+
+### Round 7：document-start facade 第一层职责拆分
+
+状态：完成，待提交。
+
+闭环内容：
+
+- 将原 `frontend/host-runtime/oc-host.js` 按现有顶层职责拆为 `android-facade.js`、`overlay-focus.js`、`terminal-settings.js`。
+- `frontend/host-runtime/build.mjs` 按固定顺序拼接三份源码生成 `webapp/src/main/assets/www/oc-host.js`；诊断页、preflight 和 perf 仍逐字节复制。
+- `scripts/check-architecture.mjs` 禁止单体 `frontend/host-runtime/oc-host.js` 重新出现，并验证拼接结果与打包产物一致。
+
+行为保持证据：拆分后生成 `oc-host.js` 为 64,436 字节，SHA-256 `a5c8e6e96f8eef6a3265e83e5a807e3658a27985f196d7a8134e52ddd567198d`，与拆分前完全一致。
+
+验证：
+
+- 六份 runtime 源文件、构建脚本和生成产物 `node --check` 通过。
+- `node --test frontend/embedded-ui/*.test.mjs frontend/android/*.test.mjs` 通过。
+- `cd frontend/terminal && npm test` 通过。
+- `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
+- 打包 SPA boot 边界验证手机/平板通过。
 
 ## 待确认事项
 

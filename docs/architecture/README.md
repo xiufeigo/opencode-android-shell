@@ -15,7 +15,7 @@
 | 官方 UI 生成产物 | `webapp/src/main/assets/www/ui/` | 由 `node frontend/android/build.mjs` 生成，禁止手改。 |
 | 终端引擎源码 | `frontend/terminal/terminal.js` | 生成 `webapp/src/main/assets/www/oc-terminal.js`。 |
 | 终端生成产物 | `webapp/src/main/assets/www/oc-terminal.js` | CI 要求与源码构建字节一致。 |
-| 宿主运行时源码 | `frontend/host-runtime/` | `oc-host.js`、`oc-perf.js`、`oc-preflight.js`、诊断页的唯一权威源码。 |
+| 宿主运行时源码 | `frontend/host-runtime/` | `oc-perf.js`、`oc-preflight.js`、诊断页与 document-start facade 拆分源码的唯一权威源码。 |
 | 宿主运行时生成产物 | `webapp/src/main/assets/www/{index.html,oc-host.js,oc-perf.js,oc-preflight.js}` | 由 `node frontend/host-runtime/build.mjs` 逐字节复制生成。 |
 | Android 上游补丁与覆盖源码 | `frontend/android/` | `upstream.patch` / `ui.patch` 修改上游，`sources.mjs` 声明覆盖文件。 |
 | 内嵌 UI 存储迁移 | `frontend/embedded-ui/` | 由 `sources.mjs` 注入上游应用。 |
@@ -42,7 +42,7 @@ scripts ──验证──> 以上产物与运行时契约
 
 ## 当前主要偏离
 
-1. `oc-host.js` 是 1413 行单体，混合缓存清理、主题桥、insets/IME、返回 facade、通知垫片、后台生命周期、终端设置和终端兼容代码。
+1. `android-facade.js` 仍是最大的 host-runtime 模块，混合缓存清理、主题桥、insets/IME、返回 facade、通知垫片和后台生命周期；`overlay-focus.js` 与 `terminal-settings.js` 已分离。
 2. `WebHostActivity` 约 1500 行，同时编排 WebView 构造、生命周期、电源、通知权限、相机权限、返回、渲染恢复、外链和诊断。可变状态集中在 Activity 内。
 3. 大量单元测试是历史事故绊线，直接断言资产源码字符串。它们能防回归，也把实现细节固化，阻碍删除死代码和移动模块。
 4. 验证脚本包含过期行号和历史叙述。行号不是稳定契约。
