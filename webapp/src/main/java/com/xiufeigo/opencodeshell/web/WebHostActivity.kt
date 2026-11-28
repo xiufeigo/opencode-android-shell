@@ -580,7 +580,6 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     private fun configureSettings(s: WebSettings) = with(s) {
         javaScriptEnabled = true
         domStorageEnabled = true
-        databaseEnabled = true
         // 1 CSS px == 1 dp 的前提之一。
         useWideViewPort = false
         loadWithOverviewMode = false

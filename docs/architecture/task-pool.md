@@ -6,7 +6,7 @@
 
 - [x] 删除 `oc-host.js` 中永久不可达的 Ghostty 终端字体缩放和触摸滚动实现；删除只为它们存在的历史源码绊线，保留或迁移真正覆盖当前 xterm 行为的验证。
 - [x] 清理验证脚本和 README 对这些死实现的现行语义描述；历史描述只允许留在 `research/`。
-- [ ] 检查 `databaseEnabled` 等 Deprecated WebView 设置是否仍有真实调用方；没有则删除并验证存储行为。
+- [x] 检查 `databaseEnabled` 等 Deprecated WebView 设置是否仍有真实调用方；没有则删除并验证存储行为。
 
 ## P1 建立权威源码边界
 

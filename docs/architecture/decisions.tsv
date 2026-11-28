@@ -7,3 +7,5 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:21:07.087Z	round1	记录 drag 定向基线为未采用证据	预改运行未进入 drag 检查；不能把 harness 噪声伪装成行为证明	research/tmp/verify-android-terminal-release-ready/2026-11-28T06-15-24-836Z-c6d6cf/report.json	INCONCLUSIVE
 2026-11-28T06:25:32.584Z	round2	断开 WebHostBridge 和 NotifierHost 对入口 Activity 的反向依赖	host/ 应是可复用能力层；反向依赖让模块职责和测试边界模糊	WebHostBridgeHost; WebHostBridge; NotifierHost; check-architecture.mjs	VERIFIED: gradle testDebugUnitTest green
 2026-11-28T06:27:47.875Z	round3	README 不再复制可变版本事实	根 README 已出现 APK 版本漂移；版本事实应只有 upstream.json 与 build.gradle.kts 两个权威来源	README.md; frontend/android/README.md; scripts/check-architecture.mjs	VERIFIED: architecture check green
+2026-11-28T06:28:13.222Z	round4	删除 WebView databaseEnabled 兼容设置	该开关只影响废弃 Web SQL；仓库与打包 UI 均无真实调用方，保留会伪装成受支持能力	WebHostActivity.kt; scripts/check-architecture.mjs	verification in progress
+2026-11-28T06:28:41.519Z	round4	验证 Web SQL 设置删除	Android 单元测试保持绿色，架构检查阻止 deprecated 设置回归	gradle testDebugUnitTest; check-architecture	VERIFIED

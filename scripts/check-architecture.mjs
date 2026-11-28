@@ -70,6 +70,12 @@ if (/当前 UI 基准为官方 v|Bun 必须为 \d/.test(read("frontend/android/R
   failures.push("frontend/android/README.md duplicates the current upstream/Bun authority")
 }
 
+
+const activitySource = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+if (activitySource.includes("databaseEnabled")) {
+  failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
+}
+
 if (failures.length) {
   console.error(failures.join("\n"))
   process.exit(1)

@@ -80,6 +80,14 @@
 
 验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 4：删除无调用方的 Web SQL 兼容设置
+
+状态：完成，待提交。
+
+证据：仓库内唯一 `openDatabase` 是 IndexedDB 辅助函数命名，不是 Web SQL；打包 UI 中没有 Web SQL 调用。`databaseEnabled` 只控制已废弃的 Web SQL，不影响官方 UI 使用的 localStorage/IndexedDB，因此删除该 Deprecated 设置。`scripts/check-architecture.mjs` 禁止它无调用方回归。
+
+验证：`node scripts/check-architecture.mjs` 与 `:webapp:testDebugUnitTest` 通过后提交。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
