@@ -349,6 +349,14 @@
 
 验证：`node --check` 覆盖所有改动脚本；独立 smoke 启动共享 UI server，确认 `/` SPA fallback 与 `/oc-terminal.js` 均 200 且 recorder 收到正确 via 标记；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 34：刷新当前偏离清单并收口持续治理规则
+
+状态：完成，待提交。
+
+闭环内容：删除当前偏离清单中已经完成的桥契约清单与上游 UI 生成边界两项；把验证 harness 偏离改写为剩余真实问题（mock backend 与场景矩阵仍在 terminal release runner，shared helper/UI server 已归口）；把“每轮新规则必须机器化”从任务池的一次性待办移入治理规则，避免永远不能完成的流程要求伪装成任务。
+
+验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

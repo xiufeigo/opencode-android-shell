@@ -66,10 +66,8 @@ scripts ──验证──> 以上产物与运行时契约
 ## 当前主要偏离
 
 1. 大量单元测试仍是历史事故型字符串绊线，直接读取 Kotlin/JS 源文本。它们能防回归，也把实现位置固化；后续应分批升级为行为契约测试，确实无法行为化的资产约束集中收纳。
-2. `scripts/verify-android-terminal-release.mjs` 仍是 4000 行级验证 harness，和其他设备验证脚本存在重复基础设施；需要收敛成共享驱动层。
-3. Kotlin/JS 桥契约（事件名、extra 名、存储键、接口方法）仍主要靠源码绊线守护，还没有统一的契约清单或生成常量。
-4. 上游 UI 生成产物边界主要靠构建脚本与审查约束，还缺少和 host-runtime 同等级的显式生成/防漂移检查。
-5. `research/` 同时包含仍有效证据与已失效历史叙述；有效工程约束需要继续迁入本目录。
+2. `scripts/verify-android-terminal-release.mjs` 仍持有体量最大的 mock backend 与终端场景矩阵；共享纯 helper 与 packaged UI server 已分别归口 `verify-android-common.mjs`、`verify-android-ui-server.mjs`，剩余 backend 需要继续拆分。
+3. `research/` 同时包含仍有效证据与已失效历史叙述；有效工程约束需要继续迁入本目录。
 
 ## 治理规则
 
@@ -78,3 +76,4 @@ scripts ──验证──> 以上产物与运行时契约
 - 生成产物不手改。手改源码与生成产物必须能通过字节级或契约级检查证明一致。
 - 行为兼容优先。上游 UI 契约、APK 包名、签名证书、服务器协议、存储键和本地数据迁移都不能擅自破坏。
 - 历史事故编号可以留在 research 证据里，不应成为当前模块命名和结构的主轴。
+- 每次治理循环确立的新规则都必须落入 `scripts/check-architecture.mjs`、测试或生成器，而不是只写文档。
