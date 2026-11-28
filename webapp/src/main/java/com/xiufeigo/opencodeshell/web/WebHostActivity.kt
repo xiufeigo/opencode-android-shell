@@ -12,10 +12,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.webkit.ConsoleMessage
-import android.webkit.PermissionRequest
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
@@ -30,6 +26,7 @@ import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
 import com.xiufeigo.opencodeshell.web.host.BackNavigationHost
 import com.xiufeigo.opencodeshell.web.host.BackgroundLifecycleHost
 import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
+import com.xiufeigo.opencodeshell.web.host.HostWebChromeClient
 import com.xiufeigo.opencodeshell.web.host.HostWebViewClient
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
@@ -357,7 +354,10 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             openExternalLink = { url -> openExternalLink(url) },
             onPageReady = { view, url -> onWebViewPageReady(view, url) },
         )
-        webView.webChromeClient = HostWebChromeClient()
+        webView.webChromeClient = HostWebChromeClient(
+            fileChooser = fileChooser,
+            cameraPermissionHost = cameraPermissionHost,
+        )
         webView.setDownloadListener { url, _, _, _, _ -> openExternalLink(url) }
 
         // WebView 第一次真正把内容画进窗口的时刻（"首帧白屏"的终点）。
@@ -686,45 +686,6 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             Configuration.UI_MODE_NIGHT_YES
         if (dark) {
             Log.d(TAG, "page finished: $url")
-        }
-    }
-
-    // ---- WebChromeClient（文件选择） ---------------------------------------
-    private inner class HostWebChromeClient : WebChromeClient() {
-        override fun onShowFileChooser(
-            webView: WebView,
-            callback: ValueCallback<Array<Uri>>,
-            params: FileChooserParams,
-        ): Boolean {
-            // 自己拿 Uri[]，因此不用 callback.onReceiveValue 的标准 parseResult 路径，
-            // 而是由 fileChooser 统一收 SAF 结果后回灌标准 callback。
-            val intent = params.createIntent().apply {
-                if (params.acceptTypes.isNotEmpty()) {
-                    val types = params.acceptTypes.filter { it.isNotBlank() }
-                    if (types.isNotEmpty()) {
-                        type = if (types.size == 1) types[0] else "*/*"
-                        if (types.size > 1) putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
-                    }
-                }
-            }
-            fileChooser.launchOpen(intent) { uris ->
-                // 仍然回灌标准 callback：老页面靠它拿 File。
-                callback.onReceiveValue(if (uris.isEmpty()) null else uris.toTypedArray())
-            }
-            return true
-        }
-
-        override fun onPermissionRequest(request: PermissionRequest) {
-            cameraPermissionHost.onPermissionRequest(request)
-        }
-
-        override fun onPermissionRequestCanceled(request: PermissionRequest) {
-            cameraPermissionHost.onPermissionRequestCanceled(request)
-        }
-
-        override fun onConsoleMessage(m: ConsoleMessage): Boolean {
-            Log.i(TAG, "web[${m.messageLevel()}] ${m.message()} @${m.lineNumber()}")
-            return true
         }
     }
 

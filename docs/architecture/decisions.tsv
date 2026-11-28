@@ -22,3 +22,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T07:14:58.762Z	round14	提取 RenderProcessRecoveryHost 与 RenderCrashThrottle	渲染崩溃恢复的窗口计数是纯时间语义，恢复执行是 Android 效果编排；拆分后可行为测试计数并让 Activity 只提供平台效果	web/host/RenderProcessRecoveryHost.kt; web/host/RenderCrashThrottle.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:19:47.598Z	round15	提取 WebViewBootstrapHost	WebView 静态设置和 document-start 脚本注册是同一启动契约；Activity 保留实例装配，脚本资产读取与能力分支由专用宿主封装	web/host/WebViewBootstrapHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:23:10.122Z	round16	提取 HostWebViewClient	WebViewClient 是框架适配边界，资产拦截、导航拦截和回调转发不应通过 inner class 隐式捕获 Activity；产品效果显式注入	web/host/HostWebViewClient.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
+2026-11-28T07:24:16.561Z	round17	提取 HostWebChromeClient	WebChromeClient 是框架适配边界，文件选择、权限事件和 console 转发不应通过 inner class 隐式捕获 Activity；业务宿主显式注入	web/host/HostWebChromeClient.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green

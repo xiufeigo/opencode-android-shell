@@ -213,6 +213,14 @@
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 17：WebChromeClient 框架适配退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `host/HostWebChromeClient`，集中承载文件选择 intent 的 MIME 聚合、SAF 结果回灌标准 callback、WebView 权限事件向 `CameraPermissionHost` 的转发，以及页面 console 日志桥接。Activity 不再通过 `inner class` 隐式捕获 `fileChooser` 与相机权限宿主，而是在装配点显式注入依赖；接口面仍是一次性构造的框架适配器，业务语义继续留在专门宿主。相机权限源码绊线迁移到新的所有权位置，架构检查禁止 Activity 重新持有该适配实现。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

@@ -55,6 +55,9 @@ class CameraPermissionHostTest {
     private val bootstrapHost: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt")
 
+    private val chromeClient: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebChromeClient.kt")
+
     /**
      * 只切出 `isTrustedWebOrigin` **函数体**（从声明处到配对的收尾 `}`）。
      *
@@ -115,7 +118,7 @@ class CameraPermissionHostTest {
         assertTrue(
             "HostWebChromeClient 必须 override onPermissionRequest，否则 WebView 默认拒绝、" +
                 "扫码配对在本宿主不可用",
-            activity.contains("override fun onPermissionRequest("),
+            chromeClient.contains("override fun onPermissionRequest("),
         )
     }
 

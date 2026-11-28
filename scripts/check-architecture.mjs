@@ -131,6 +131,10 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+for (const needle of ["inner class HostWebChromeClient", "override fun onShowFileChooser", "EXTRA_MIME_TYPES"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns WebChromeClient behavior that belongs to HostWebChromeClient: ${needle}`)
+}
+
 for (const needle of ["shouldOverrideUrlLoading", "shouldInterceptRequest", "private var assetLoader", "inner open class HostWebViewClient"]) {
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns WebViewClient behavior that belongs to HostWebViewClient: ${needle}`)
 }
