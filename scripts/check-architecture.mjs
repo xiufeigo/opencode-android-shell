@@ -410,6 +410,43 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  for (const tree of ["src/main/java", "src/main/res", "src/main/assets/www"]) {
+    if (!gradle.includes(`"${tree}"`)) failures.push(`webapp/build.gradle.kts: test contract input tree is missing: ${tree}`)
+  }
+  for (const file of ["src/main/AndroidManifest.xml", "build.gradle.kts", "../frontend/terminal/terminal.js", "../frontend/android/upstream.patch"]) {
+    if (!gradle.includes(`"${file}"`)) failures.push(`webapp/build.gradle.kts: test contract input file is missing: ${file}`)
+  }
+  if (/"src\/main\/(?:java|res|assets\/www)\/[^"]+"/.test(gradle)) {
+    failures.push("webapp/build.gradle.kts: per-file src/main test inputs duplicate the canonical tree inputs")
+  }
+
+  const testRoot = "webapp/src/test/java"
+  const testFiles = []
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`
+      if (entry.isDirectory()) walk(path)
+      else if (entry.isFile() && entry.name.endsWith(".kt")) testFiles.push(path)
+    }
+  }
+  walk(testRoot)
+  const coveredByTree = (rel) =>
+    (rel.startsWith("src/main/java/") && gradle.includes('"src/main/java"')) ||
+    (rel.startsWith("src/main/res/") && gradle.includes('"src/main/res"')) ||
+    (rel.startsWith("src/main/assets/www/") && gradle.includes('"src/main/assets/www"'))
+  for (const file of testFiles) {
+    const source = read(file)
+    for (const match of source.matchAll(/TestSource\.read\("([^"]+)"\)/g)) {
+      const rel = match[1]
+      if (!coveredByTree(rel) && !gradle.includes(`"${rel}"`)) {
+        failures.push(`${file}: TestSource.read contract input is not declared for test invalidation: ${rel}`)
+      }
+    }
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

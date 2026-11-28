@@ -469,6 +469,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止常亮效果机回流 `BackgroundLifecycleHost`，并要求 `KeepScreenOnHost` 保持 Window/runOnUiThread 窄边界、PowerPolicy 门控、幂等 clear、flag 写入与 backstop 排程。
 
+### Round 49：测试合同输入从手工清单改为被扫描树
+
+状态：完成，待提交。
+
+闭环内容：`build.gradle.kts` 原先手工列出少量 `TestSource.read` 输入，审计发现 21 个真实合同读取路径未声明；同时 `DirectConnectAuthBoundaryTest` 本身遍历整个 `src/main/java`，通知/渲染/本地 UI 测试也遍历 `src/main/assets/www`，逐文件清单天然会随模块拆分漂移，甚至出现删除文件后 Gradle 配置反被破坏的事故。将输入归一为三类权威树：`src/main/java`、`src/main/res`、`src/main/assets/www`，再保留 manifest、构建脚本和两个 frontend 上游合同文件。这样新增/移动/删除 host 文件不需要同步维护第二份清单，也不会留下 stale input。架构检查现在扫描全部测试中的 `TestSource.read("…")`，证明每条路径要么被树输入覆盖、要么显式声明，并禁止重新手写 `src/main` 下的逐文件重复输入。
+
+验证：`node --check scripts/check-architecture.mjs`、`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

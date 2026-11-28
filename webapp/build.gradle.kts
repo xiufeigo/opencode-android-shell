@@ -161,46 +161,33 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// IME1 绊线（IME_OCCLUSION_FIX.md §5）：`ImeOcclusionTest` 的「资产契约层」直接读
-// `src/main/assets/www/oc-host.js`，断言 IME 抬升修法真的在注入层里。
+// Contract tests read production source and generated assets as text. They also walk whole
+// trees: DirectConnectAuthBoundaryTest scans all of src/main/java for forbidden credential/
+// proxy residue, while notification/render/local-UI tests scan src/main/assets/www. The
+// canonical invalidation rule is therefore the tree itself, not a hand-maintained list that
+// drifts whenever a host file is added, renamed, or deleted.
 //
-// **为什么必须显式声明**：单测任务默认不把 `src/main/assets` 当输入。
-// 只改注入层、不改任何 .kt 时，`testDebugUnitTest` 会被判为 UP-TO-DATE **整段跳过**，
-// 绊线于是"假绿"——本轮真跑验证过：撤回修法后 gradle 仍然 BUILD SUCCESSFUL。
-// 声明成输入后，注入层一改，测试必重跑；撤回修法 ⇒ 必红。
-//
-// C1 绊线（`CLEANUP_C1.md` §1/§2）：同样是「资产/构建脚本契约」型断言，必须显式声明 ——
-//  `FallbackPageTouchTargetTest` 直接读 `assets/www/index.html`；
-//  `DebugEvalChannelTest` 直接读 `build.gradle.kts` + `WebHostActivity.kt`。
-//  不声明的话，撤回 `min-height: 48px` 或改 buildTypes 都会让任务被判 UP-TO-DATE 而"假绿"。
+// This matters because unit tests otherwise can be judged UP-TO-DATE when only a contract
+// input changes. The tree inputs also make deletion safe: removing a retired source file
+// cannot leave a stale explicit input that breaks task configuration.
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     listOf(
-        "src/main/assets/www/oc-host.js",
-        "src/main/assets/www/oc-terminal.js",
-        "../frontend/terminal/terminal.js",
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt",
-        "src/main/assets/www/index.html",
+        "src/main/java",
+        "src/main/res",
+        "src/main/assets/www",
+    ).forEach { rel ->
+        inputs.dir(layout.projectDirectory.dir(rel))
+            .withPropertyName("contractTree_$rel")
+            .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    }
+    listOf(
+        "src/main/AndroidManifest.xml",
         "build.gradle.kts",
-        "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
-        "src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt",
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt",
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/KeepScreenOnHost.kt",
-        // F18/IME 绊线：`PhoneFormDefectTest` 与 `ImeViewportResizeTest` 直接读
-        // InsetsHost、生产 IME resize 纯函数件与 resize 执行器。撤回任一处修法都必须能反向变红。
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/ImeResize.kt",
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt",
-        // 底部留白绊线：`NavigationBarVisualTest` 断言语义让位量与宿主接线；
-        // 不改 .kt 时任务会被判 UP-TO-DATE ⇒ 绊线假绿，所以显式声明为输入。
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/NavigationBarVisual.kt",
-        "src/main/java/com/xiufeigo/opencodeshell/web/host/NavigationBarMode.kt",
-        // UX4 绊线：`Ux4ThemeTripwireTest` 断言面板不硬编码深色（oc-host.js 已在上列）
-        // 且窗口背景按模式给（values/colors.xml + values-night/colors.xml 成对存在）。
-        "src/main/res/values/colors.xml",
-        "src/main/res/values-night/colors.xml",
+        "../frontend/terminal/terminal.js",
+        "../frontend/android/upstream.patch",
     ).forEach { rel ->
         inputs.file(layout.projectDirectory.file(rel))
-            .withPropertyName("contractAsset_$rel")
+            .withPropertyName("contractFile_$rel")
             .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
     }
 }
