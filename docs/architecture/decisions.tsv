@@ -19,3 +19,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:53:36.007Z	round11	提取 StartupRecoveryHost	启动恢复是独立状态机；版本读取、看门狗、诊断切换和主文档失败升级应有一处所有权，Activity 只编排启动链	web/host/StartupRecoveryHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:04:54.469Z	round12	提取 BackgroundLifecycleHost	后台 SSE 保活、页面生命周期合成事件和常亮电源策略共享前台/回合状态，属于同一深模块；Activity 只做生命周期转发和组合	web/host/BackgroundLifecycleHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T07:08:34.490Z	round13	提取 NotificationPermissionHost	通知权限真值、主动申请防抖和页面权限同步是同一状态机；Activity 只保留系统 launcher 边界	web/host/NotificationPermissionHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
+2026-11-28T07:14:58.762Z	round14	提取 RenderProcessRecoveryHost 与 RenderCrashThrottle	渲染崩溃恢复的窗口计数是纯时间语义，恢复执行是 Android 效果编排；拆分后可行为测试计数并让 Activity 只提供平台效果	web/host/RenderProcessRecoveryHost.kt; web/host/RenderCrashThrottle.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green

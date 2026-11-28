@@ -8,7 +8,6 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
@@ -44,6 +43,7 @@ import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
 import com.xiufeigo.opencodeshell.web.host.NotificationPermissionHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
+import com.xiufeigo.opencodeshell.web.host.RenderProcessRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.StartupRecoveryHost
@@ -93,16 +93,6 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         private const val EVAL_SETTLE_MS = 1200L
 
         /**
-         * UX14-P1：渲染进程崩溃后允许多少时间内的**第二次**崩溃还算"同一场事故"。
-         *
-         * 60 s 取的是"用户还来不及反应、也来不及手动重进"的长度：窗口内只放行
-         * 第一次销毁并重建 WebView，再崩就用新实例呈现诊断页（防重启风暴，
-         * 理由见 [renderCrashCount]）。出了窗口则计数清零，把新的崩溃当成独立事件
-         * 再给一次自愈机会。
-         */
-        private const val RENDER_CRASH_RELOAD_WINDOW_MS = 60_000L
-
-        /**
          * G1：诊断页 URL（就是 C1 留下的那套兜底页资产，只是多带 query 参数换文案）。
          * 阈值与超时的依据全在 [WebViewPreflight] 里。
          *
@@ -146,23 +136,14 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         refreshInsets = { if (::insets.isInitialized) insets.refresh() },
     )
 
-    /**
-     * UX14-P1：渲染进程崩溃的节流计数（配合 [RENDER_CRASH_RELOAD_WINDOW_MS]）。
-     *
-     * - [lastRenderCrashAtMs]：上一次崩溃时刻（`SystemClock.elapsedRealtime()`，0 = 还没崩过）
-     * - [renderCrashCount]：该时刻之前的**连续**崩溃次数
-     *
-     * 为什么必须节流：崩溃的成因若是**页面本身**（超大 DOM、内存吃紧、某个
-     * `postMessage` 触发的 OOM），那么"崩了就 reload"会变成
-     * *reload → 起新渲染进程 → 同样输入 → 再崩* 的**无限重启风暴**，
-     * 每次都真起一个 Chromium 渲染进程，很快把整机内存/电量吃干，用户看到的是
-     * 疯狂闪烁而不是恢复。所以窗口内只放行**第一次** reload，第二次就认输、
-     * 切诊断页（`RENDER_CRASH`），把可读信息交给用户而不是继续空转。
-     *
-     * 桌面端 Electron 崩溃会自动恢复；此处对齐那一半行为，但**不**无限对齐。
-     */
-    private var lastRenderCrashAtMs: Long = 0L
-    private var renderCrashCount: Int = 0
+    private val renderProcessRecovery = RenderProcessRecoveryHost(
+        webViewProvider = { if (::webView.isInitialized) webView else null },
+        disposeWebView = { disposeWebView() },
+        rebuildWebView = { setupWebViewAndLoad() },
+        showCrashDiagnostic = { detail ->
+            setupWebViewAndLoad(WebViewPreflight.Reason.RENDER_CRASH to detail)
+        },
+    )
 
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上访问的跟踪器。 */
     override fun roundActivityTracker(): RoundActivityTracker = backgroundLifecycle.roundTracker
@@ -841,96 +822,11 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             )
         }
 
-        /**
-         * UX14-P1：**接线**渲染进程崩溃自愈 —— 关闭 HANDOFF §5 第 11 条未闭环项。
-         *
-         * 此前这里只有一个 `onRenderProcessGoneNotWired()` 的空壳 + 一段注释，
-         * 声称"本模块编译期解析不到 `WebViewRenderProcessDetail`"。那个结论是
-         * **错的**（写错了类名）：平台类型叫 `android.webkit.RenderProcessGoneDetail`
-         * —— 已在本机 `android-35/android.jar` 内确认存在该 class
-         * （`add-type` 打开 zip 目录实查，非记忆）。`compileSdk = 35` / `minSdk = 26`
-         * 都满足 API 26 门槛。历史备份里的报错原文见
-         * `research/env/d1_revert_backup/WebHostActivity.kt.bak:971-984`。
-         *
-         * 为什么必须接：WebView 渲染进程崩溃是"白屏死"的**唯一常见成因**，而默认行为
-         * 是 WebView 直接 **finish 掉整个 Activity** —— 用户唯一出路是杀进程重启，
-         * 正在跑的回合（SSE）全丢。桌面端 Electron 渲染进程崩溃会自动恢复，
-         * 这是功能一致性缺口。
-         *
-         * 行为（见 [RENDER_CRASH_RELOAD_WINDOW_MS] 与 [renderCrashCount]）：
-         * 1. 窗口内第 1 次崩溃 ⇒ **销毁旧 WebView 实例并新建一个**（[setupWebViewAndLoad]），
-         *    重新从 4173 本地源加载；会话与服务器状态在 `localStorage`，恢复后与桌面端一致。
-         * 2. 窗口内再次崩溃 ⇒ 判定为**崩溃循环**（多半是页面自身把渲染进程打崩，或这台
-         *    设备的 WebView 本身有问题），不再重建，切 [showDiagnostic] 并传
-         *    [WebViewPreflight.Reason.RENDER_CRASH] —— 这正好把那个"有枚举、没人用"
-         *    的分支接上。
-         * 3. `return true` = **消费**该事件：宿主已接管，WebView 不再按默认行为
-         *    finish Activity。**这里刻意不调 super**（super 的实现就是 return false，
-         *    即"不处理"⇒ 走默认销毁路径）。
-         *
-         * ⚠️ 为什么第 1 次崩溃**不能**只 `reload()`（UX16-P1 CDP 真触发实证，批 #9 已闭环）：
-         * 在本镜像上 `reload()` 之后渲染进程**必然再崩**，两次独立复现的间隔分别是
-         * 6.55s / 6.56s，页面根本没起来。**两次崩溃总会被节流接住**，所以从日志表面看
-         * "进了诊断页、一切正常"，实际用户拿到的是崩溃兜底页而非自动恢复的会话 ——
-         * **节流的成功掩盖了自愈的失败**。这与平台口径一致：渲染进程消失后该实例
-         * 不应再被使用。重建后若仍然崩溃，第 2 次崩溃会被节流挡下并落到诊断页，
-         * **不会**无限重启。
-         */
+        /** Recovery policy is centralized in [RenderProcessRecoveryHost]. */
         override fun onRenderProcessGone(
             view: WebView,
             detail: RenderProcessGoneDetail,
-        ): Boolean {
-            if (!::webView.isInitialized || view !== webView) return true
-            val now = SystemClock.elapsedRealtime()
-            // 崩溃链的第一个观测点：先落日志再决策，日志要能独立判断"崩了还是被杀"。
-            Log.w(
-                TAG,
-                "UX14 render process gone didCrash=${detail.didCrash()} " +
-                    "priorityAtExit=${detail.rendererPriorityAtExit()}",
-            )
-            PerfMarks.mark(
-                "N.onRenderProcessGone",
-                "didCrash=${detail.didCrash()} count=$renderCrashCount",
-            )
-
-            val withinWindow = lastRenderCrashAtMs > 0L &&
-                (now - lastRenderCrashAtMs) < RENDER_CRASH_RELOAD_WINDOW_MS
-            // 出了窗口 = 上一场事故已结束，计数清零，重新给一次自愈机会。
-            val crashesInWindow = if (withinWindow) renderCrashCount + 1 else 1
-            lastRenderCrashAtMs = now
-            renderCrashCount = crashesInWindow
-
-            // webView 未初始化时（例如崩溃发生在 onCreate 完成前）没有可重载的对象。
-            if (!::webView.isInitialized) {
-                Log.w(TAG, "UX14 render crash before webView init; consuming event only")
-                return true
-            }
-
-            if (crashesInWindow >= 2) {
-                // 崩溃循环：认输，转诊断页，不再 reload（防重启风暴）。
-                Log.w(TAG, "UX14 render crash loop count=$crashesInWindow within=${RENDER_CRASH_RELOAD_WINDOW_MS}ms")
-                disposeWebView()
-                setupWebViewAndLoad(WebViewPreflight.Reason.RENDER_CRASH to
-                    "didCrash=${detail.didCrash()} crashes=$crashesInWindow windowMs=$RENDER_CRASH_RELOAD_WINDOW_MS")
-            } else {
-                // UX16-P2：窗口内首崩 ⇒ **销毁旧实例 + 新建**，不再 `reload()`。
-                //
-                // 为什么不再 reload（UX16-P1 真触发实证，结论已闭环）：本镜像上
-                // `reload()` 之后渲染进程**必然再次崩溃**，稳定在 ~6.5s，
-                // 端到端"恢复可用"从来不成立 —— 节流只是把第二次崩溃接住、
-                // 落诊断页，把"自愈失败"伪装成了"一切正常"。
-                // 平台口径也正是如此：渲染进程消失后该 WebView 实例**不应再被使用**。
-                Log.i(TAG, "UX16 render crash; recreating WebView (window=${RENDER_CRASH_RELOAD_WINDOW_MS}ms)")
-                // 拆桥 → 出视图树 → 销毁，顺序与 [onDestroy] 一致。
-                // destroy() 之后这个实例的任何调用都是未定义行为，必须彻底摘干净。
-                disposeWebView()
-                // 新实例走**完整**初始化链（bridge 注入 / doc-start 脚本 / client /
-                // insets / loadUrl(bootUrl)），否则页面会安静地半残。
-                setupWebViewAndLoad()
-            }
-            // true = 消费：阻止 WebView 默认 finish 掉整个 Activity。不调 super。
-            return true
-        }
+        ): Boolean = renderProcessRecovery.onRenderProcessGone(view, detail)
 
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)

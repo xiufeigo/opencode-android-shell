@@ -41,6 +41,12 @@ import java.io.File
 class RenderProcessRecoveryTest {
 
     private val source: String by lazy {
+        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/RenderProcessRecoveryHost.kt")
+        assertTrue("找不到 RenderProcessRecoveryHost.kt：${f.absolutePath}", f.exists())
+        f.readText()
+    }
+
+    private val activitySource: String by lazy {
         val f = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
         assertTrue("找不到 WebHostActivity.kt：${f.absolutePath}", f.exists())
         f.readText()
@@ -48,15 +54,14 @@ class RenderProcessRecoveryTest {
 
     /** `onRenderProcessGone` 的方法体（已剥注释），找不到时测试直接红。 */
     private fun overrideBody(): String {
-        val start = source.indexOf("override fun onRenderProcessGone(")
+        val start = source.indexOf("fun onRenderProcessGone(")
         assertTrue(
-            "🔴 UX14-P1 回归：WebHostActivity 里没有 onRenderProcessGone 的 override。" +
+            "🔴 UX14-P1 回归：RenderProcessRecoveryHost 里没有 onRenderProcessGone 的实现。" +
                 "渲染进程崩溃会走 WebView 默认行为 finish 掉整个 Activity，" +
                 "用户只能杀进程重启（正在跑的回合全丢），与桌面端 Electron 的自动恢复不一致。",
             start >= 0,
         )
-        // 方法体到下一个同缩进（8 空格）的 "override fun" 之前为止。
-        val next = source.indexOf("\n        override fun ", start + 1)
+        val next = source.indexOf("\n    companion object", start + 1)
         val end = if (next < 0) source.length else next
         return stripComments(source.substring(start, end))
     }
@@ -111,6 +116,10 @@ class RenderProcessRecoveryTest {
                 "`RenderProcessGoneDetail`（不是历史注释里写的 `WebViewRenderProcessDetail`）。",
             source.contains("detail: RenderProcessGoneDetail"),
         )
+        assertTrue(
+            "WebViewClient 必须把崩溃事件委托给 RenderProcessRecoveryHost",
+            activitySource.contains("renderProcessRecovery.onRenderProcessGone(view, detail)"),
+        )
     }
 
     /** 2. 窗口内第 1 次崩溃 ⇒ **重建**自愈（不再 reload），且有 60 s 节流窗口。 */
@@ -124,7 +133,7 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX16-P2：崩溃恢复路径里必须 **destroy() 旧实例 + 重建**，而不是 reload —— " +
                 "平台口径是渲染进程消失后该实例不应再被使用，且本镜像上 reload 后必然再崩。",
-            body.contains("disposeWebView()") && body.contains("setupWebViewAndLoad()"),
+            body.contains("disposeWebView()") && body.contains("rebuildWebView()"),
         )
         assertTrue(
             "🔴 UX14-P1：必须有节流窗口常量，否则 重建→崩→重建 会变成重启风暴，" +
@@ -146,12 +155,12 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX14-P1：崩溃循环必须落到 showDiagnostic（认输并展示可读信息），" +
                 "不能继续无限 reload。",
-            body.contains("setupWebViewAndLoad(WebViewPreflight.Reason.RENDER_CRASH"),
+            body.contains("showCrashDiagnostic("),
         )
         assertTrue(
             "🔴 UX14-P1：诊断页必须收 WebViewPreflight.Reason.RENDER_CRASH —— " +
                 "这个枚举值和对应文案一直存在却没人用（HANDOFF §5 第 11 条），本轮正是接线它。",
-            body.contains("WebViewPreflight.Reason.RENDER_CRASH"),
+            activitySource.contains("WebViewPreflight.Reason.RENDER_CRASH to detail"),
         )
         // 崩溃次数判定：必须存在"第 2 次"这一档的判定，不能只有单次崩溃处理。
         assertTrue(
@@ -196,10 +205,10 @@ class RenderProcessRecoveryTest {
             body.contains("disposeWebView()"),
         )
         assertTrue(
-            "🔴 UX16-P2：必须调用 setupWebViewAndLoad() 走**完整**初始化链重建，" +
+            "🔴 UX16-P2：必须经 rebuildWebView 走**完整**初始化链重建，" +
                 "否则新实例会漏掉 bridge 注入 / doc-start 脚本 / client / insets，" +
                 "页面会安静地半残（能显示但所有原生能力失效，比白屏更难查）。",
-            body.contains("setupWebViewAndLoad()"),
+            body.contains("rebuildWebView()"),
         )
         assertTrue(
             "🔴 UX16-P2：首崩分支不得再调用 reload() —— UX16-P1 已实证 reload 之后渲染进程" +
@@ -210,7 +219,7 @@ class RenderProcessRecoveryTest {
         assertTrue(
             "🔴 UX16-P2：重建前必须 removeJavascriptInterface —— 旧实例上残留的桥引用" +
                 "会让 JS 侧拿到一个已死的宿主对象。",
-            stripComments(source).contains("webView.removeJavascriptInterface"),
+            stripComments(activitySource).contains("webView.removeJavascriptInterface"),
         )
     }
 

@@ -175,7 +175,7 @@
 
 ### Round 12：后台生命周期与回合电源状态机退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `BackgroundLifecycleHost`，集中封装前台真值、回合跟踪器所有权、常亮 flag 写入与兜底复查、合成 pagehide/pageshow/focus/blur、后台 SSE 保活/收口状态机以及 WebView 销毁前的回调清理。`WebHostActivity` 只转发 onPause/onResume/onDestroy 并向桥暴露窄委托；通知权限申请仍留在入口层，下一轮可独立治理。既有事故绊线迁移到新的所有权位置，并修正其函数边界提取，避免把 Activity 包装层误当实现。架构检查禁止 Activity 重新持有后台保活、常亮回调或生命周期事件派发实现。
 
@@ -183,11 +183,19 @@
 
 ### Round 13：通知权限状态机退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `NotificationPermissionHost`，集中封装通知权限真值、页面 `oc:notifyPerm` 同步、首次前台回合主动申请防抖和 API 33 分支。Activity 只保留 Android 结果 launcher 注册与结果转发；页面加载完成仍由组合根触发重推。事故绊线迁移到新的所有权位置，架构检查禁止 Activity 重新持有权限状态或事件构造。
 
 验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
+### Round 14：渲染进程崩溃恢复状态机退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `RenderProcessRecoveryHost`，集中封装渲染进程死亡事件消费、60 秒事故窗口、首崩重建、二崩诊断页收口和恢复顺序；新增无 Android 依赖的 `RenderCrashThrottle` 承载窗口计数，并用真实 JVM 行为测试覆盖首次计数、窗口内递增、边界恰好到期和窗口外重置。`WebHostActivity` 只注入销毁、重建、诊断页三个平台效果，并把 WebViewClient 事件委托给该宿主。删除了原实现中不可达的二次未初始化分支；`disposeWebView()` 与完整 `setupWebViewAndLoad()` 顺序保持不变。架构检查禁止 Activity 重新持有崩溃计数、窗口常量或 `SystemClock` 读数。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
 ## 待确认事项
 
