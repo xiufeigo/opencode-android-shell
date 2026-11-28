@@ -15,11 +15,12 @@ import androidx.webkit.WebViewCompat
  * details of the entry screen.
  */
 class StartupRecoveryHost(
-    context: Context,
+    private val context: Context,
     private val diagnosticBaseUrl: String,
     private val webViewProvider: () -> WebView?,
 ) {
-    private val appContext = context.applicationContext
+    private val appContext: Context
+        get() = context.applicationContext
 
     var versionName: String? = null
         private set

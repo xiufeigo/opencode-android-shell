@@ -479,6 +479,28 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  const activity = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+  for (const needle of ["private val systemUiTheme = SystemUiThemeHost(", "private val backgroundLifecycle = BackgroundLifecycleHost("]) {
+    if (activity.includes(needle)) failures.push(`WebHostActivity constructs a window-dependent host before Activity attach: ${needle}`)
+  }
+  for (const needle of ["private lateinit var systemUiTheme: SystemUiThemeHost", "private lateinit var backgroundLifecycle: BackgroundLifecycleHost", "systemUiTheme = SystemUiThemeHost(", "backgroundLifecycle = BackgroundLifecycleHost("]) {
+    if (!activity.includes(needle)) failures.push(`WebHostActivity must initialize window-dependent hosts inside onCreate after attach: missing ${needle}`)
+  }
+  const superAt = activity.indexOf("super.onCreate(savedInstanceState)")
+  const systemUiAt = activity.indexOf("systemUiTheme = SystemUiThemeHost(")
+  const lifecycleAt = activity.indexOf("backgroundLifecycle = BackgroundLifecycleHost(")
+  if (!(superAt >= 0 && systemUiAt > superAt && lifecycleAt > superAt)) failures.push("window-dependent hosts must initialize after super.onCreate, when Activity.window exists")
+}
+
+
+{
+  const startupRecovery = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/StartupRecoveryHost.kt")
+  if (startupRecovery.includes("private val appContext = context.applicationContext")) failures.push("StartupRecoveryHost resolves applicationContext in its constructor; Activity context is not attached yet")
+  if (!startupRecovery.includes("get() = context.applicationContext")) failures.push("StartupRecoveryHost must defer applicationContext resolution until post-attach use")
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

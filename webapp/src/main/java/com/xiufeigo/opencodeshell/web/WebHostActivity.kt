@@ -120,21 +120,8 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         isTrustedOrigin = { origin -> isTrustedWebOrigin(origin) },
         requestCameraPermission = { cameraPermission.launch(Manifest.permission.CAMERA) },
     )
-    private val systemUiTheme = SystemUiThemeHost(
-        window = window,
-        insetsProvider = { if (::insets.isInitialized) insets else null },
-        systemDark = {
-            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                Configuration.UI_MODE_NIGHT_YES
-        },
-    )
-
-    private val backgroundLifecycle = BackgroundLifecycleHost(
-        activity = this,
-        webViewProvider = { if (::webView.isInitialized) webView else null },
-        evaluateJs = { js -> evaluateJs(js) },
-        refreshInsets = { if (::insets.isInitialized) insets.refresh() },
-    )
+    private lateinit var systemUiTheme: SystemUiThemeHost
+    private lateinit var backgroundLifecycle: BackgroundLifecycleHost
 
     private val renderProcessRecovery = RenderProcessRecoveryHost(
         webViewProvider = { if (::webView.isInitialized) webView else null },
@@ -225,6 +212,21 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         super.onCreate(savedInstanceState)
 
         PerfMarks.mark("A.onCreate.superDone")
+
+        systemUiTheme = SystemUiThemeHost(
+            window = window,
+            insetsProvider = { if (::insets.isInitialized) insets else null },
+            systemDark = {
+                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                    Configuration.UI_MODE_NIGHT_YES
+            },
+        )
+        backgroundLifecycle = BackgroundLifecycleHost(
+            activity = this,
+            webViewProvider = { if (::webView.isInitialized) webView else null },
+            evaluateJs = { js -> evaluateJs(js) },
+            refreshInsets = { if (::insets.isInitialized) insets.refresh() },
+        )
 
         bridge = WebHostBridge(
             context = this,

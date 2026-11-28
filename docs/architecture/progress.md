@@ -501,6 +501,14 @@
 
 验证：`node --check scripts/verify-android-common.mjs`、`node --check scripts/check-architecture.mjs`、`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 53：修复 Activity attach 前组合根启动崩溃
+
+状态：完成，待提交。
+
+闭环内容：模拟器 Release  smoke 复现启动即崩。根因不是单一空指针，而是组合根把依赖 Android attach 状态的对象创建提前到 Activity 属性初始化阶段：`SystemUiThemeHost` / `BackgroundLifecycleHost` 在 `window` 尚不存在时读取 `window`；`StartupRecoveryHost` 在 Context 尚未 attach 时解析 `applicationContext`。修复为：window 依赖型 host 在 `super.onCreate` 后初始化；`StartupRecoveryHost` 延迟到 post-attach 使用时再解析 applicationContext。架构检查禁止重新提前创建 window 依赖 host 或 constructor 期解析 applicationContext。
+
+验证：`:webapp:testDebugUnitTest`、`:webapp:assembleRelease`、`node scripts/check-architecture.mjs`、`git diff --check` 通过；Pixel Tablet API35 模拟器安装 Release 后启动，进程存活、窗口获得焦点、无 AndroidRuntime crash，截图确认官方 UI Connect to a server 首屏渲染。
+
 ## 待确认事项
 
 - 回合电源活动通道：当前注入层只在 busy 集合翻转时调用 `setKeepScreenOn`，尚未把回合中途活动接入 `RoundActivityTracker.onRoundActivity`。因此 90 s “空闲兜底”在当前生产接线里也会让超过 90 s 的长回合失去常亮；补活动通道会延长长回合常亮，属于电源语义/产品取舍，不能用删除死代码顺手改变。
