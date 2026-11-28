@@ -1,11 +1,11 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * 绊线：物理 ESC 必须**透传**给 WebView，绝不能变成 Android Back。
@@ -141,7 +141,7 @@ class WebHostEscapePassThroughTest {
 
     @Test
     fun policyRemapBuildsEscapeEvent() {
-        val src = File("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostEscapePolicy.kt").readText()
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostEscapePolicy.kt")
         assertTrue("策略模块必须集中构造替换事件", src.contains("fun remappedBackToEscape(event: KeyEvent): KeyEvent?"))
         assertTrue("替换事件必须使用 KEYCODE_ESCAPE", src.contains("KeyEvent.KEYCODE_ESCAPE"))
         assertTrue("未命中判据时必须返回 null 保持 Android Back 老路", src.contains("return null"))
@@ -149,7 +149,7 @@ class WebHostEscapePassThroughTest {
 
     @Test
     fun `WebHostActivity 有 dispatchKeyEvent 且不消费 ESC`() {
-        val src = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").readText()
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
         assertTrue("WebHostActivity 必须有 dispatchKeyEvent", src.contains("override fun dispatchKeyEvent(event: KeyEvent)"))
         assertTrue(
             "ESC 必须原样交给 WebView",
@@ -176,8 +176,8 @@ class WebHostEscapePassThroughTest {
 
     @Test
     fun `真正的返回仍然走 onBack 回调`() {
-        val src = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").readText()
-        val host = File("src/main/java/com/xiufeigo/opencodeshell/web/host/BackNavigationHost.kt").readText()
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        val host = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackNavigationHost.kt")
         assertTrue("入口必须把 Android Back 交给 BackNavigationHost", src.contains("BackNavigationHost(this) { webView }.install()"))
         assertTrue("返回回调仍然注册在 onBackPressedDispatcher 上", host.contains("onBackPressedDispatcher.addCallback"))
         assertTrue("返回仍然问页面 __ocAndroid.onBack", host.contains("__ocAndroid.onBack"))

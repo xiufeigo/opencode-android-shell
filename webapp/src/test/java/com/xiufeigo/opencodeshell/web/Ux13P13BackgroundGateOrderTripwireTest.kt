@@ -1,8 +1,8 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * UX13-P13 · **P10 后台读数必须在 `webView.onPause()` 之前落地**（源码顺序绊线）
@@ -43,9 +43,7 @@ import java.io.File
 class Ux13P13BackgroundGateOrderTripwireTest {
 
     private fun onPauseSource(): String {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
-        assertTrue("找不到 BackgroundLifecycleHost.kt：${f.absolutePath}", f.exists())
-        val text = f.readText()
+        val text = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
         val start = text.indexOf("    fun onPause() {")
         assertTrue("找不到 onPause() 定义", start >= 0)
         val next = text.indexOf("    private val backgroundRoundRelease", start + 1)

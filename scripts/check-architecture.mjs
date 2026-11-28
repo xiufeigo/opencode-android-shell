@@ -285,8 +285,10 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const path = `${dir}/${entry.name}`
       if (entry.isDirectory()) visit(path)
-      else if (entry.name.endsWith(".kt") && /private fun (src|read|moduleFile|sourceOf|asset)\(/.test(read(path))) {
-        failures.push(`${path}: reintroduces a private source-file reader instead of testutil.TestSource`)
+      else if (entry.name.endsWith(".kt")) {
+        const source = read(path)
+        if (/private fun (src|read|moduleFile|sourceOf|asset)\(/.test(source)) failures.push(`${path}: reintroduces a private source-file reader instead of testutil.TestSource`)
+        if (/File\(["']src\/main\/[^"']+["']\)\.readText\(/.test(source)) failures.push(`${path}: direct File(...).readText source read bypasses testutil.TestSource`)
       }
     }
   }

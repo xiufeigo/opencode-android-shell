@@ -1,8 +1,8 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * C1（任务 1）绊线：代理起不来时加载的兜底页 `assets/www/index.html` 上，
@@ -25,14 +25,7 @@ class FallbackPageTouchTargetTest {
 
     private val minTargetPx = 48
 
-    private fun page(): String {
-        val f = File("src/main/assets/www/index.html")
-        assertTrue(
-            "找不到兜底页资产：${f.absolutePath}（单测工作目录应为 webapp/ 模块目录）",
-            f.isFile,
-        )
-        return f.readText()
-    }
+    private fun page(): String = TestSource.read("src/main/assets/www/index.html")
 
     private fun rule(html: String, selector: String): String {
         val re = Regex("(?s)\\b" + Regex.escape(selector) + "\\s*\\{(.*?)\\}")

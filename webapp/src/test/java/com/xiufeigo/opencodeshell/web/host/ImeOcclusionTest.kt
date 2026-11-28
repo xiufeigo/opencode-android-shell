@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
-import java.io.File
 
 /**
  * IME1 绊线：断言「IME 弹起时 composer 与 IME 区域的重叠面积为 0」。
@@ -105,11 +105,7 @@ class ImeOcclusionTest {
 
     // ---- 4. 资产契约层：**可反向验证**的那条 --------------------------------
 
-    private fun facade(): String {
-        val f = File("src/main/assets/www/oc-host.js")
-        assertTrue("找不到注入层资产：${f.absolutePath}（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
+    private fun facade(): String = TestSource.read("src/main/assets/www/oc-host.js")
 
     @Test
     fun `facadeConsumesImeBottomForComposer`() {

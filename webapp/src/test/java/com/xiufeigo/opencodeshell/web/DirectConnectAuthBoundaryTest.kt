@@ -147,9 +147,7 @@ class DirectConnectAuthBoundaryTest {
         // 这**取代**了此前"不许 ServerSocket"那条限制。但授权范围极窄：
         // 监听器**只准**服务 assets 里的 UI 静态文件，**不准**碰凭据、**不准**代理 API。
         // 下面把这条窄授权钉成可执行的断言，而不是简单删掉这个用例。
-        val server = File("src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt")
-        assertTrue("找不到 LocalUiOriginServer.kt（UX11 的本机静态来源端点）", server.isFile)
-        val serverSrc = server.readText()
+        val serverSrc = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt")
 
         // 只绑回环：外部网络访问不到这个端点。
         assertTrue(

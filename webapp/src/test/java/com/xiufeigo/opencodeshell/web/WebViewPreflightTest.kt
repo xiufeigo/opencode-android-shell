@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,7 +8,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * G1 绊线：把实测到的真实失败模式
@@ -27,26 +27,18 @@ import java.io.File
  */
 class WebViewPreflightTest {
 
-    private fun bootstrapSrc(): String = File("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt").readText()
+    private fun bootstrapSrc(): String = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt")
 
-    private fun navigationSource(): String = File("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt").readText()
+    private fun navigationSource(): String = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
 
     private val minTargetPx = 48
 
-    private fun page(): String {
-        val f = File("src/main/assets/www/index.html")
-        assertTrue("找不到诊断页资产：${f.absolutePath}", f.isFile)
-        return f.readText()
-    }
+    private fun page(): String = TestSource.read("src/main/assets/www/index.html")
 
-    private fun activitySource(): String {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-        assertTrue("找不到 WebHostActivity.kt：${f.absolutePath}", f.isFile)
-        return f.readText()
-    }
+    private fun activitySource(): String = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private fun bridgeSource(): String =
-        File("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt").readText()
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     // ================= 绊线 ①：版本过旧 ⇒ 走诊断页，不加载官方 UI ================
 

@@ -1,8 +1,8 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * OC-SETTINGS 绊线：**"终端字号"进设置页**（手机端自定义终端列数）。
@@ -30,11 +30,7 @@ import java.io.File
  */
 class TerminalSizeSettingTest {
 
-    private val js: String by lazy {
-        val f = File("src/main/assets/www/oc-host.js")
-        assertTrue("找不到 src/main/assets/www/oc-host.js（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        f.readText()
-    }
+    private val js: String by lazy { TestSource.read("src/main/assets/www/oc-host.js") }
 
     private val settings: String by lazy {
         val idx = js.indexOf("OC-SETTINGS")

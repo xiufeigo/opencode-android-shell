@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -40,23 +41,11 @@ import java.io.File
  */
 class RenderProcessRecoveryTest {
 
-    private val source: String by lazy {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/RenderProcessRecoveryHost.kt")
-        assertTrue("找不到 RenderProcessRecoveryHost.kt：${f.absolutePath}", f.exists())
-        f.readText()
-    }
+    private val source: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/RenderProcessRecoveryHost.kt") }
 
-    private val activitySource: String by lazy {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-        assertTrue("找不到 WebHostActivity.kt：${f.absolutePath}", f.exists())
-        f.readText()
-    }
+    private val activitySource: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
 
-    private val clientSource: String by lazy {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebViewClient.kt")
-        assertTrue("找不到 HostWebViewClient.kt：${f.absolutePath}", f.exists())
-        f.readText()
-    }
+    private val clientSource: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebViewClient.kt") }
 
     /** `onRenderProcessGone` 的方法体（已剥注释），找不到时测试直接红。 */
     private fun overrideBody(): String {

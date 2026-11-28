@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * APK 升级路径 · **内嵌 UI 不得被旧 service worker 劫持** 绊线。
@@ -36,15 +36,11 @@ import java.io.File
  */
 class EmbeddedUiServiceWorkerTest {
 
-    private fun projectFile(relative: String): File = File(relative).also {
-        assertTrue("找不到 $relative（单测工作目录应是 webapp/ 模块目录）", it.isFile)
-    }
-
     // The tracked file uses CRLF on Windows; assertions compare LF text.
-    private val hostJs: String by lazy { projectFile("src/main/assets/www/oc-host.js").readText().replace("\r\n", "\n") }
+    private val hostJs: String by lazy { TestSource.read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
 
     /** 补丁是纯文本：用它核对上游入口在 Android 上不再注册 SW。 */
-    private val upstreamPatch: String by lazy { projectFile("../frontend/android/upstream.patch").readText() }
+    private val upstreamPatch: String by lazy { TestSource.read("../frontend/android/upstream.patch") }
 
     /** 取出 `purgeEmbeddedUiCache` 的函数体（花括号配平）。 */
     private fun purgeBody(): String = hostJs.substring(purgeBodyStart(), purgeBodyEnd())

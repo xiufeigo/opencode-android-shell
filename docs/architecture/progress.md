@@ -405,6 +405,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止 `InsetsHost` 重新持有系统栏主题应用边界。
 
+### Round 41：收尾测试源读取 canonical 化
+
+状态：完成，待提交。
+
+闭环内容：上一轮只消灭了私有 `src/read/moduleFile/sourceOf/asset` 包装函数，仍有一批测试直接用 `File("src/main/...").readText()` 读取单个源文件。现将这类单文件读取迁移到 `testutil.TestSource`，覆盖 preflight、ESC/back、后台闸顺序、终端字号、渲染恢复、兜底页、直连边界、IME、内嵌 service worker 与 LocalUiOriginServer 等测试；目录遍历、字节级检查、生成资产存在性/尺寸检查仍保留 `java.io.File`，因为它们不是“读取一个模块相对源文件”的同一语义。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在拒绝测试中出现直接的 `File("src/main/...").readText()` 读取模式。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
