@@ -16,3 +16,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:44:22.614Z	round8	提取 CameraPermissionHost	相机权限是独立状态机；留在 Activity 让入口继续膨胀且 pending 状态散落生命周期	web/host/CameraPermissionHost.kt; WebHostActivity.kt	VERIFIED: compileDebugKotlin and testDebugUnitTest green
 2026-11-28T06:47:08.578Z	round9	提取 BackNavigationHost	Back 是独立仲裁状态机；Activity 只应组合安装，不应持有 pending callback 与页面回退细节	web/host/BackNavigationHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
 2026-11-28T06:49:09.933Z	round10	提取 WebOrigins.sameOrigin	origin 精确比较是安全边界规则且有三类调用方；应单一化并可用纯 JVM 行为测试验证	web/host/WebOrigins.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green
+2026-11-28T06:53:36.007Z	round11	提取 StartupRecoveryHost	启动恢复是独立状态机；版本读取、看门狗、诊断切换和主文档失败升级应有一处所有权，Activity 只编排启动链	web/host/StartupRecoveryHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green

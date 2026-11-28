@@ -121,6 +121,11 @@ if (activitySource.includes("private fun sameOrigin")) {
   failures.push("WebHostActivity owns origin comparison logic that belongs to WebOrigins")
 }
 
+
+for (const needle of ["watchdogArmed", "firstContentSeen", "loadIssuedAtMs", "WebViewCompat.getCurrentWebViewPackage"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns startup recovery state that belongs to StartupRecoveryHost: ${needle}`)
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

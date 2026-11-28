@@ -46,6 +46,7 @@ import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.PowerPolicy
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
+import com.xiufeigo.opencodeshell.web.host.StartupRecoveryHost
 import com.xiufeigo.opencodeshell.web.host.SurfaceColor
 import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
@@ -105,7 +106,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
          * G1：诊断页 URL（就是 C1 留下的那套兜底页资产，只是多带 query 参数换文案）。
          * 阈值与超时的依据全在 [WebViewPreflight] 里。
          *
-         * ⚠️ 这里**不能**读实例字段（`webViewMajor`/`webViewVersionName`）—— companion object
+         * ⚠️ 这里**不能**读实例字段（`StartupRecoveryHost` 中的版本读数）—— companion object
          * 没有实例上下文。真实读数由实例侧的 [showDiagnostic] 传进来。
          */
         fun diagnosticUrl(
@@ -219,25 +220,11 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     }
 
     // ---- G1：WebView 版本前置检查 + 首屏看门狗 -----------------------------
-    /** 真实读数（不写死）：`WebView.getCurrentWebViewPackage()?.versionName`，读不到就是 `null`。 */
-    private var webViewVersionName: String? = null
-    private var webViewMajor: Int? = null
-
-    /** 已加载官方 UI ⇒ 看门狗才有意义（诊断页自己不需要被诊断）。 */
-    private var watchdogArmed = false
-    private var firstContentSeen = false
-    private var loadIssuedAtMs = 0L
-    private val watchdog = Runnable {
-        val reason = WebViewPreflight.stallVerdict(
-            elapsedMs = SystemClock.elapsedRealtime() - loadIssuedAtMs,
-            contentSeen = firstContentSeen,
-        )
-        if (reason != null) {
-            // 到点还没内容 ⇒ 白屏/卡死。实测 WebView 83 就是这种：资源全 200、页面全白。
-            Log.w(TAG, "G1 watchdog fired: no first content in ${WebViewPreflight.LOAD_STALL_TIMEOUT_MS}ms")
-            showDiagnostic(reason, "首屏 ${WebViewPreflight.LOAD_STALL_TIMEOUT_MS}ms 内没有任何内容")
-        }
-    }
+    private val startupRecovery = StartupRecoveryHost(
+        context = this,
+        diagnosticBaseUrl = LEGACY_PLACEHOLDER_URL,
+        webViewProvider = { if (::webView.isInitialized) webView else null },
+    )
 
     /**
      * 诊断页「重试」按钮的落点：重走一遍启动链。
@@ -247,48 +234,14 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      */
     override fun retryFromDiagnosticPage() {
         Log.i(TAG, "G1 retry: re-running preflight + launch")
-        readWebViewVersion()
+        startupRecovery.readWebViewVersion()
         restoredUrlOrNull = null
         launch(bootUrl())
     }
 
-    /** 读一次 WebView 版本。取不到就留 `null` —— **不得**因此判过旧（见 [WebViewPreflight]）。 */
-    private fun readWebViewVersion() {
-        val pkg = runCatching { WebViewCompat.getCurrentWebViewPackage(this) }.getOrNull()
-        val name = runCatching { pkg?.versionName }.getOrNull()
-        webViewVersionName = name
-        webViewMajor = WebViewPreflight.parseMajor(name)
-        Log.i(
-            TAG,
-            "G1 webview version=$name major=${webViewMajor} " +
-                "min=${WebViewPreflight.MIN_MAJOR} tooOld=${WebViewPreflight.isTooOld(webViewMajor)}",
-        )
-    }
-
-    /** 切到诊断页：先关掉看门狗（诊断页不需要被诊断），再加载带参数的自建页面。 */
-    private fun showDiagnostic(reason: WebViewPreflight.Reason, detail: String?) {
-        watchdogArmed = false
-        firstContentSeen = true
-        val url = diagnosticUrl(reason, webViewMajor, webViewVersionName, detail)
-        Log.w(TAG, "G1 showing diagnostic page reason=${reason.wire} detail=$detail")
-        PerfMarks.mark("M.g1.diagnostic", "reason=${reason.wire}")
-        webView.loadUrl(url)
-    }
-
-    private fun armWatchdog() {
-        watchdogArmed = true
-        firstContentSeen = false
-        loadIssuedAtMs = SystemClock.elapsedRealtime()
-        webView.removeCallbacks(watchdog)
-        webView.postDelayed(watchdog, WebViewPreflight.LOAD_STALL_TIMEOUT_MS)
-    }
-
     /** 桥从 `oc-preflight.js` 收到首屏内容信号 ⇒ 解除看门狗。 */
     override fun onFirstContent(kind: String?, atMs: Long?) {
-        if (firstContentSeen) return
-        firstContentSeen = true
-        PerfMarks.mark("M.g1.firstContent", "kind=$kind at=$atMs")
-        webView.post { webView.removeCallbacks(watchdog) }
+        startupRecovery.onFirstContent(kind, atMs)
     }
 
     override val imeModeName: String
@@ -492,7 +445,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         installPreflightProbe(webView)
         PerfMarks.mark("E.facadeInstalled")
         // G1：版本读数必须在 [launch] 之前拿到 —— 前置检查要靠它决定加载官方 UI 还是诊断页。
-        readWebViewVersion()
+        startupRecovery.readWebViewVersion()
         webView.webViewClient = HostWebViewClient()
         webView.webChromeClient = HostWebChromeClient()
         webView.setDownloadListener { url, _, _, _, _ -> openExternalLink(url) }
@@ -514,7 +467,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         insets = InsetsHost(window, webView) { payload -> pushInsets(payload) }
         PerfMarks.mark("F.insetsReady")
 
-        if (diagnostic == null) launch(bootUrl()) else showDiagnostic(diagnostic.first, diagnostic.second)
+        if (diagnostic == null) launch(bootUrl()) else startupRecovery.showDiagnostic(diagnostic.first, diagnostic.second)
     }
 
     /**
@@ -531,7 +484,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * UX6 启动链（代理已删，只剩一步直达）：
      *
      * ```
-     *   bootUrl() ──▶ G1 前置检查 ──▶ armWatchdog ──▶ loadUrl(后端地址)
+     *   bootUrl() ──▶ G1 前置检查 ──▶ StartupRecoveryHost.arm() ──▶ loadUrl(后端地址)
      * ```
      *
      * 没有任何凭据检查：宿主不持有口令，"空口令 ⇒ 不许用"这条旧规则（F21）在新
@@ -541,12 +494,12 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     private fun launch(backend: String) {
         PerfMarks.mark("H.launch.enter", "backend=$backend")
         if (localUiServer.boundPort == null) {
-            showDiagnostic(WebViewPreflight.Reason.LOAD_ERROR, "本地 UI 服务无法绑定端口 ${localUiServer.port}，请检查端口占用后重启应用")
+            startupRecovery.showDiagnostic(WebViewPreflight.Reason.LOAD_ERROR, "本地 UI 服务无法绑定端口 ${localUiServer.port}，请检查端口占用后重启应用")
             return
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            showDiagnostic(WebViewPreflight.Reason.WEBVIEW_TOO_OLD, "当前 WebView 不支持平台消息和文档开始注入，请更新 Android System WebView")
+            startupRecovery.showDiagnostic(WebViewPreflight.Reason.WEBVIEW_TOO_OLD, "当前 WebView 不支持平台消息和文档开始注入，请更新 Android System WebView")
             return
         }
         val restored = restoredUrlOrNull
@@ -556,9 +509,9 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         // 过旧就**不加载**官方 UI：实测 WebView 83 加载它只会得到一片纯白
         // （资源全 200、ESM 解析失败、`onPageFinished` 照常回调）。
         // 加载它再报错，等于让用户在白屏前多等一轮无意义的网络与解析。
-        when (val verdict = WebViewPreflight.preflight(webViewVersionName)) {
+        when (val verdict = WebViewPreflight.preflight(startupRecovery.versionName)) {
             is WebViewPreflight.Verdict.ShowDiagnostic -> {
-                showDiagnostic(verdict.reason, "WebView ${verdict.versionName} < ${WebViewPreflight.MIN_MAJOR}")
+                startupRecovery.showDiagnostic(verdict.reason, "WebView ${verdict.versionName} < ${WebViewPreflight.MIN_MAJOR}")
                 PerfMarks.mark("J.g1.blockedOldWebview", "major=${verdict.major}")
                 return
             }
@@ -569,7 +522,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         }
 
         Log.i(TAG, "home=$url backend=$backend")
-        armWatchdog()
+        startupRecovery.arm()
         webView.loadUrl(url)
         PerfMarks.mark("J.loadUrlIssued", "url=$url")
     }
@@ -1135,7 +1088,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         if (::legacyChannel.isInitialized) legacyChannel.close()
         if (::platformHost.isInitialized) platformHost.close()
         if (!::webView.isInitialized) return
-        webView.removeCallbacks(watchdog)
+        startupRecovery.cancel()
         webView.removeCallbacks(keepScreenOnBackstop)
         webView.removeJavascriptInterface(WebHostBridge.INJECT_NAME)
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -1152,7 +1105,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     }
 
     // ---- WebViewClient ----------------------------------------------------
-    // G1：必须是 `inner` —— 运行期兜底要读 Activity 的 `watchdogArmed` 并调 `showDiagnostic`。
+    // `inner` 保留运行期兜底对宿主能力模块与生命周期状态的访问。
     private inner open class HostWebViewClient : WebViewClient() {
         private var assetLoader: WebViewAssetLoader? = null
 
@@ -1206,12 +1159,9 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
                 "K2.onReceivedError",
                 "url=${request.url} code=${error.errorCode} desc=${error.description} main=${request.isForMainFrame}",
             )
-            // G1：**只有主文档**挂掉才切诊断页。子资源 404 不切 —— 那会误伤能正常用的页面。
-            val reason = WebViewPreflight.loadErrorVerdict(request.isForMainFrame) ?: return
-            if (!watchdogArmed) return
-            showDiagnostic(
-                reason,
-                "code=${error.errorCode} ${error.description} url=${request.url}",
+            startupRecovery.onLoadError(
+                isForMainFrame = request.isForMainFrame,
+                detail = "code=${error.errorCode} ${error.description} url=${request.url}",
             )
         }
 

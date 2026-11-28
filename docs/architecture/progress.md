@@ -165,6 +165,14 @@
 
 验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 11：启动恢复状态机退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `StartupRecoveryHost`，集中封装 WebView 版本读取、首屏内容看门狗、诊断页切换和主文档加载失败升级。`WebHostActivity` 保留启动链编排（何时 preflight、何时加载哪个 URL），不再持有 `watchdogArmed` / `firstContentSeen` / `loadIssuedAtMs` 等恢复状态。渲染重建与销毁路径通过同一 `cancel()` 边界清理 pending watchdog。架构检查禁止入口 Activity 重新持有这些状态或直接读取 WebView 版本包。
+
+验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
