@@ -386,6 +386,30 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  const lifecyclePath = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt"
+  const keepPath = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/KeepScreenOnHost.kt"
+  if (!fs.existsSync(keepPath)) failures.push(`${keepPath}: keep-screen-on effect owner is missing`)
+  const lifecycle = read(lifecyclePath)
+  for (const needle of ["fun applyKeepScreenOn(", "private val keepScreenOnBackstop", "fun clearKeepScreenOnOnBackground(", "WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON"]) {
+    if (lifecycle.includes(needle)) failures.push(`${lifecyclePath}: keep-screen-on effect machinery leaked back into lifecycle orchestration: ${needle}`)
+  }
+  for (const needle of ["keepScreenOn.applyState()", "keepScreenOn.onBackground()", "keepScreenOn.onForeground()", "keepScreenOn.onWebViewDisposed()", "keepScreenOn.onDestroy()"]) {
+    if (!lifecycle.includes(needle)) failures.push(`${lifecyclePath}: must delegate keep-screen-on lifecycle boundary to KeepScreenOnHost: missing ${needle}`)
+  }
+  if (fs.existsSync(keepPath)) {
+    const keep = read(keepPath)
+    for (const needle of ["PowerPolicy.shouldKeepScreenOn", "postDelayed(keepScreenOnBackstop", "removeCallbacks(keepScreenOnBackstop)", "clearFlags(PowerPolicy.FLAG_KEEP_SCREEN_ON_BIT)", ".addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)"]) {
+      if (!keep.includes(needle)) failures.push(`${keepPath}: keep-screen-on owner lost required boundary behavior: ${needle}`)
+    }
+    if (keep.includes("AppCompatActivity")) failures.push(`${keepPath}: must depend on Window/runOnUiThread capabilities rather than the whole Activity`)
+    for (const needle of ["private val window: Window", "private val runOnUiThread: (Runnable) -> Unit"]) {
+      if (!keep.includes(needle)) failures.push(`${keepPath}: missing narrowed Android boundary dependency: ${needle}`)
+    }
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

@@ -12,7 +12,7 @@ import org.junit.Test
  * [com.xiufeigo.opencodeshell.web.host.PowerPolicyTest] 证明的是**决策**成立。
  * 但决策对象可能被"接上了却不调用"——那样测试全绿、实际一点没省。
  * 本类直接读源码文本，把剩下的接线点钉死：
- *  1. `BackgroundLifecycleHost.onPause()` 里调了 [PowerPolicy] 的兜底清 flag 路径；
+ *  1. `BackgroundLifecycleHost.onPause()` 把兜底清 flag 委托给 `KeepScreenOnHost`；
  *  2. `WebHostActivity.onDestroy()` 通过同一个生命周期宿主清 flag；
  *  3. 桥的 `setKeepScreenOn(true)` 必须过 [PowerPolicy] 的前台校验。
  *
@@ -38,6 +38,9 @@ class PowerWiringTest {
 
     private val lifecycleSrc: String
         get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+
+    private val powerSrc: String
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/KeepScreenOnHost.kt")
 
     private val bridgeSrc: String
         get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
@@ -65,18 +68,18 @@ class PowerWiringTest {
     fun onPauseClearsKeepScreenOnUnconditionally() {
         val body = bodyOf(lifecycleSrc, "fun onPause()", "\n    private val backgroundRoundRelease")
         assertTrue(
-            "onPause 必须调 clearKeepScreenOnOnBackground()（T1 §7.3 的忘关路径兜底）",
-            body.contains("clearKeepScreenOnOnBackground()"),
+            "onPause 必须委托 KeepScreenOnHost 执行 T1 §7.3 的忘关路径兜底",
+            body.contains("keepScreenOn.onBackground()"),
         )
     }
 
     @Test
     fun clearKeepScreenOnUsesClearFlagsNotMasking() {
         // 直接 clearFlags 才幂等、且不依赖"当前值是什么"
-        val lifecycle = lifecycleSrc
-        val idx = lifecycle.indexOf("fun clearKeepScreenOnOnBackground()")
+        val power = powerSrc
+        val idx = power.indexOf("fun clearKeepScreenOnOnBackground()")
         assertTrue("找不到 clearKeepScreenOnOnBackground()", idx >= 0)
-        val snippet = lifecycle.substring(idx, minOf(idx + 400, lifecycle.length))
+        val snippet = power.substring(idx, minOf(idx + 400, power.length))
         assertTrue(
             "兜底清常亮必须用 clearFlags",
             snippet.contains("clearFlags"),

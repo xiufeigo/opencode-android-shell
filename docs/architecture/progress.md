@@ -461,6 +461,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 48：常亮 flag 效果机退出后台生命周期编排
+
+状态：完成，待提交。
+
+闭环内容：`BackgroundLifecycleHost` 同时持有前台真值、后台 SSE 保活/收口、合成页面事件，以及 Android window `KEEP_SCREEN_ON` 的具体写 flag、UI 线程 reconciliation、兜底 `postDelayed` 复查和 WebView callback 清理。新增 `KeepScreenOnHost` 作为常亮效果 owner，依赖收窄为 `Window`、`runOnUiThread`、WebView provider、foreground provider 与共享 `RoundActivityTracker`；生命周期宿主只在前台/后台/销毁边界显式委托。行为保持不变：桥仍经 `applyKeepScreenOnState` 进入同一状态机，离开前台仍无条件清 flag，回前台仍会补回 live round 的常亮，超时兜底仍由同一 WebView callback 排程。相关源码接线断言改为区分“生命周期委托边界”和“常亮效果实现”，并把两个被直接读取的源文件补进 Gradle 显式测试输入，避免假绿。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止常亮效果机回流 `BackgroundLifecycleHost`，并要求 `KeepScreenOnHost` 保持 Window/runOnUiThread 窄边界、PowerPolicy 门控、幂等 clear、flag 写入与 backstop 排程。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

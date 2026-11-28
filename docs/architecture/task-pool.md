@@ -25,6 +25,7 @@
 ## P2 测试体系归一
 
 - [ ] 把历史事故型字符串绊线分批替换为行为契约测试；保留确实无法行为化的资产约束，但集中到一个资产契约测试工具，避免每个事故一套文件读取代码。
+- [ ] 机器对齐 `TestSource.read` 的 `src/main` 合同输入与 Gradle 显式测试输入；round48 只补齐 `BackgroundLifecycleHost` / `KeepScreenOnHost`，仍有其余 host、manifest、生成 UI 与网络安全配置输入需要统一归口，防止源码绊线假绿。
 - [x] 为 `frontend/remote-browser` 建立仓库内可运行的测试入口并明确 `rpc.ts` 生成关系；权威类型检查由 `frontend/android/build.mjs` 的上游 workspace typecheck 执行。
 - [x] 收敛 4000 行级验证脚本中的重复 harness，只保留能驱动真实打包 SPA 的共享基础设施。（纯 helper、packaged UI server、server lifecycle 与 mock backend 已分别归口共享模块）
 

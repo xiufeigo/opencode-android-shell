@@ -183,6 +183,8 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         "build.gradle.kts",
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/KeepScreenOnHost.kt",
         // F18/IME 绊线：`PhoneFormDefectTest` 与 `ImeViewportResizeTest` 直接读
         // InsetsHost、生产 IME resize 纯函数件与 resize 执行器。撤回任一处修法都必须能反向变红。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",

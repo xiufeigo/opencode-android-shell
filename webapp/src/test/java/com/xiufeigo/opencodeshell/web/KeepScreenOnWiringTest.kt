@@ -31,29 +31,32 @@ class KeepScreenOnWiringTest {
     private val lifecycleSrc: String
         get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
+    private val powerSrc: String
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/KeepScreenOnHost.kt")
+
     private val bridgeSrc: String
         get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     // ---- 接线点 1：宿主必须有"落 flag"的生产实现 ------------------------
 
     @Test
-    fun activityHasKeepScreenOnApplyImplementation() {
-        val src = lifecycleSrc
+    fun keepScreenOnHostHasApplyImplementation() {
+        val src = powerSrc
         assertTrue(
-            "BackgroundLifecycleHost 缺少 applyKeepScreenOn(...) —— 回合状态无人落地成 flag",
+            "KeepScreenOnHost 缺少 applyKeepScreenOn(...) —— 回合状态无人落地成 flag",
             src.contains("fun applyKeepScreenOn("),
         )
     }
 
     @Test
     fun applyKeepScreenOnActuallyAddsTheFlag() {
-        val src = lifecycleSrc
+        val src = powerSrc
         val idx = src.indexOf("fun applyKeepScreenOn(")
         assertTrue("找不到 applyKeepScreenOn", idx >= 0)
         val snippet = src.substring(idx, minOf(idx + 1600, src.length))
         assertTrue(
             "回合进行中必须 addFlags(FLAG_KEEP_SCREEN_ON)（这是修复前从未执行到的那一行）",
-            snippet.contains("addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)"),
+            snippet.contains(".addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)"),
         )
         assertTrue(
             "不置位时必须 clearFlags",
@@ -63,7 +66,7 @@ class KeepScreenOnWiringTest {
 
     @Test
     fun applyKeepScreenOnGatedByPowerPolicy() {
-        val src = lifecycleSrc
+        val src = powerSrc
         val idx = src.indexOf("fun applyKeepScreenOn(")
         assertTrue("找不到 applyKeepScreenOn", idx >= 0)
         val snippet = src.substring(idx, minOf(idx + 1600, src.length))
@@ -120,8 +123,12 @@ class KeepScreenOnWiringTest {
         val next = lifecycleSrc.indexOf("\n    private val backgroundRoundRelease", start + 1)
         val body = lifecycleSrc.substring(start, if (next < 0) lifecycleSrc.length else next)
         assertTrue(
-            "onPause 必须仍然无条件清常亮（离开前台一定释放，是硬要求）",
-            body.contains("clearKeepScreenOnOnBackground()"),
+            "onPause 必须把离开前台委托给 KeepScreenOnHost（离开前台一定释放，是硬要求）",
+            body.contains("keepScreenOn.onBackground()"),
+        )
+        assertTrue(
+            "KeepScreenOnHost 必须真正实现无条件清常亮",
+            powerSrc.contains("clearKeepScreenOnOnBackground()"),
         )
     }
 
@@ -132,8 +139,8 @@ class KeepScreenOnWiringTest {
         val next = lifecycleSrc.indexOf("\n    private fun dispatchPageLifecycleEvent", start + 1)
         val body = lifecycleSrc.substring(start, if (next < 0) lifecycleSrc.length else next)
         assertTrue(
-            "onResume 必须重算一次常亮（回合中途切走再回来，回合还在跑就该恢复常亮）",
-            body.contains("applyKeepScreenOn"),
+            "onResume 必须委托 KeepScreenOnHost 重算常亮（回合中途切走再回来，回合还在跑就该恢复常亮）",
+            body.contains("keepScreenOn.onForeground()"),
         )
     }
 
@@ -174,7 +181,7 @@ class KeepScreenOnWiringTest {
         // `isRoundActive` 是"被问才结算"的纯函数，没有定时器去问它，
         // 设备上实测 t=+91s 仍然 `KEEP_SCREEN_ON hits=1`（flag 永久挂着）。
         // 必须**主动 postDelayed 排一次复查**，兜底才真的会兜住。
-        val src = lifecycleSrc
+        val src = powerSrc
         val idx = src.indexOf("fun applyKeepScreenOn(")
         assertTrue("找不到 applyKeepScreenOn", idx >= 0)
         // ⚠️ 必须断言**调用点**的精确形态，不能只断言"出现过这个名字" ——
@@ -209,8 +216,16 @@ class KeepScreenOnWiringTest {
         val next = lifecycleSrc.indexOf("\n    private val backgroundRoundRelease", start + 1)
         val body = lifecycleSrc.substring(start, if (next < 0) lifecycleSrc.length else next)
         assertTrue(
-            "onPause 必须撤掉挂着的兜底复查（已不在前台，不必再问）",
-            body.contains("removeCallbacks"),
+            "onPause 必须委托 KeepScreenOnHost 处理后台边界",
+            body.contains("keepScreenOn.onBackground()"),
+        )
+        val powerStart = powerSrc.indexOf("fun onBackground()")
+        assertTrue("找不到 KeepScreenOnHost.onBackground", powerStart >= 0)
+        val powerEnd = powerSrc.indexOf("\n    /**", powerStart + 1)
+        val powerBody = powerSrc.substring(powerStart, if (powerEnd < 0) powerSrc.length else powerEnd)
+        assertTrue(
+            "后台边界必须撤掉挂着的兜底复查（已不在前台，不必再问）",
+            powerBody.contains("removeCallbacks"),
         )
     }
 
