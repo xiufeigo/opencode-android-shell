@@ -413,6 +413,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在拒绝测试中出现直接的 `File("src/main/...").readText()` 读取模式。
 
+### Round 42：IME 默认模式单一事实
+
+状态：完成，待提交。
+
+闭环内容：`InsetsHost` 的默认模式是 RESIZE，而 `WebHostActivity.imeModeName` 在未初始化兜底时却返回 "vars"，同一业务事实出现两个答案。现把默认值显式建模为 `ImeMode.DEFAULT = RESIZE`，生产 owner 与桥接兜底共同消费它；测试同步从“字面值是 RESIZE”升级为“默认入口是 DEFAULT”。行为不变，但消除了桥提前查询时的错误答案和后续改默认时的双点修改。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

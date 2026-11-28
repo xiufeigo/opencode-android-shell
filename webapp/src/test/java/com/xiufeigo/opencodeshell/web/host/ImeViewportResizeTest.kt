@@ -141,8 +141,8 @@ class ImeViewportResizeTest {
     fun `默认就是 resize 模式`() {
         val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         assertTrue(
-            "默认必须是 RESIZE（页面侧单条让位路径已经证明不够）",
-            Regex("""var imeMode: ImeMode = ImeMode\.\w+""").find(src)?.value?.contains("RESIZE") == true,
+            "默认必须走 ImeMode.DEFAULT（其权威值是 RESIZE；页面侧单条让位路径已经证明不够）",
+            Regex("""var imeMode: ImeMode = ImeMode\.\w+""").find(src)?.value?.contains("DEFAULT") == true,
         )
     }
 

@@ -26,6 +26,13 @@ enum class ImeMode {
 
     /** 发变量 **且** 压矮 WebView。 */
     RESIZE,
+
+    ;
+
+    companion object {
+        /** 产品默认：resize 是唯一被验证过的生产路径，vars 仅保留给诊断页切换。 */
+        val DEFAULT = RESIZE
+    }
 }
 
 /**
@@ -61,7 +68,7 @@ class InsetsHost(
         private const val TAG = "OcWebHost/Insets"
     }
 
-    var imeMode: ImeMode = ImeMode.RESIZE
+    var imeMode: ImeMode = ImeMode.DEFAULT
         private set
 
     private var last: JSONObject? = null

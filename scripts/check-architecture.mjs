@@ -324,6 +324,9 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   }
 }
 
+if (!read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt").includes("var imeMode: ImeMode = ImeMode.DEFAULT")) failures.push("InsetsHost must use ImeMode.DEFAULT as the single default IME mode")
+if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").includes("else \"vars\"")) failures.push("WebHostActivity duplicates a divergent IME mode fallback instead of ImeMode.DEFAULT")
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

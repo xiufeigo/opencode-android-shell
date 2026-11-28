@@ -198,7 +198,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     }
 
     override val imeModeName: String
-        get() = if (::insets.isInitialized) insets.imeMode.name.lowercase() else "vars"
+        get() = (if (::insets.isInitialized) insets.imeMode else ImeMode.DEFAULT).name.lowercase()
 
     // ---- 通知权限（必须在 Activity STARTED 之前注册 launcher） --------------
     private val notificationPermissionHost: NotificationPermissionHost = NotificationPermissionHost(
