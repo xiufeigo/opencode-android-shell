@@ -14,3 +14,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T06:37:07.182Z	round6	验证 remote-browser RPC 与测试入口闭环	快速行为测试 10/10 通过；完整上游构建、上游测试和 gui-plugins typecheck 通过，且生成 UI 无 diff	frontend/remote-browser/test.mjs; frontend/android/build.mjs	VERIFIED
 2026-11-28T06:39:22.185Z	round7	按顶层职责拆分 document-start facade	先把相互独立的 overlay focus 与 terminal settings 从 1400 行单体分离；拼接产物字节不变使行为风险接近零	frontend/host-runtime/android-facade.js; overlay-focus.js; terminal-settings.js	VERIFIED: byte-identical sha256 a5c8e6e96f8eef6a3265e83e5a807e3658a27985f196d7a8134e52ddd567198d
 2026-11-28T06:44:22.614Z	round8	提取 CameraPermissionHost	相机权限是独立状态机；留在 Activity 让入口继续膨胀且 pending 状态散落生命周期	web/host/CameraPermissionHost.kt; WebHostActivity.kt	VERIFIED: compileDebugKotlin and testDebugUnitTest green
+2026-11-28T06:47:08.578Z	round9	提取 BackNavigationHost	Back 是独立仲裁状态机；Activity 只应组合安装，不应持有 pending callback 与页面回退细节	web/host/BackNavigationHost.kt; WebHostActivity.kt	VERIFIED: testDebugUnitTest green

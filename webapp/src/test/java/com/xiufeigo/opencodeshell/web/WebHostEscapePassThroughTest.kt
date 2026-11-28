@@ -12,7 +12,7 @@ import java.io.File
  *
  * ### 缺陷（v2.0.25 真机：Android 平板 + 物理键盘）
  * 终端里按 ESC 退不出 Vim 的插入模式，反而整页跳回首页：
- * `KEYCODE_BACK` → `installBackHandler` → `window.__ocAndroid.onBack()`
+ * `KEYCODE_BACK` → `BackNavigationHost` → `window.__ocAndroid.onBack()`
  * → `frontend/android/back.ts` 的 `navigate("/")`。
  *
  * ### 两层
@@ -168,10 +168,10 @@ class WebHostEscapePassThroughTest {
     @Test
     fun `真正的返回仍然走 onBack 回调`() {
         val src = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").readText()
-        assertTrue("返回回调仍然注册在 onBackPressedDispatcher 上", src.contains("onBackPressedDispatcher.addCallback"))
-        assertTrue("返回仍然问页面 __ocAndroid.onBack", src.contains("__ocAndroid.onBack"))
-        // ESC 的改写只发生在 dispatchKeyEvent 里，不能顺手把 installBackHandler 也改了。
-        assertTrue("installBackHandler 仍然存在", src.contains("private fun installBackHandler()"))
+        val host = File("src/main/java/com/xiufeigo/opencodeshell/web/host/BackNavigationHost.kt").readText()
+        assertTrue("入口必须把 Android Back 交给 BackNavigationHost", src.contains("BackNavigationHost(this) { webView }.install()"))
+        assertTrue("返回回调仍然注册在 onBackPressedDispatcher 上", host.contains("onBackPressedDispatcher.addCallback"))
+        assertTrue("返回仍然问页面 __ocAndroid.onBack", host.contains("__ocAndroid.onBack"))
     }
 
     @Test

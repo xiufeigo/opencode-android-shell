@@ -120,11 +120,12 @@ class PhoneFormDefectTest {
         assertTrue(js.contains("backHandler();"))
         assertFalse(js.contains("installDefaultBackHandler"))
         val src = code("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-        assertTrue(src.contains("window.__ocAndroid.onBack"))
-        assertTrue(src.contains("onBackPressedDispatcher.onBackPressed()"))
-        assertTrue(src.contains("isEnabled = false"))
-        assertFalse(src.contains("webView.goBack()"))
-        assertFalse(src.contains("webView.canGoBack()"))
+        val host = code("src/main/java/com/xiufeigo/opencodeshell/web/host/BackNavigationHost.kt")
+        assertTrue(host.contains("window.__ocAndroid.onBack"))
+        assertTrue(host.contains("onBackPressedDispatcher.onBackPressed()"))
+        assertTrue(host.contains("isEnabled = false"))
+        assertFalse(src.contains("webView.goBack()") || host.contains("webView.goBack()"))
+        assertFalse(src.contains("webView.canGoBack()") || host.contains("webView.canGoBack()"))
     }
 
     @Test

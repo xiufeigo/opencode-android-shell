@@ -9,7 +9,7 @@ import android.view.KeyEvent
  *
  * 背景（v2.0.25 真机：Android 平板 + 物理键盘）：
  * - 终端里按 ESC 没能退出 Vim 的插入模式，反而整页跳回了首页。
- * - 路径是 `KEYCODE_BACK` → `installBackHandler` → `window.__ocAndroid.onBack()`
+ * - 路径是 `KEYCODE_BACK` → `BackNavigationHost` → `window.__ocAndroid.onBack()`
  *   → `frontend/android/back.ts` 的 `navigate("/")`。
  * - 也就是说，部分 OEM 键盘把 ESC 报成了 `KEYCODE_BACK`；而
  *   `ComponentActivity.dispatchKeyEvent` 会把 `KEYCODE_BACK` 交给

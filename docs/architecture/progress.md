@@ -149,6 +149,14 @@
 
 验证：`:webapp:compileDebugKotlin` 与 `:webapp:testDebugUnitTest` 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 9：Android Back 仲裁退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `BackNavigationHost`，集中封装页面优先消费 Back、pending 回调去重、页面失败提示和首页交还 Android 默认行为。`WebHostActivity` 只在组合根安装该能力。相关源码绊线迁移到能力模块；架构检查禁止 Activity 重新直接注册 Back callback。
+
+验证：`:webapp:testDebugUnitTest` 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

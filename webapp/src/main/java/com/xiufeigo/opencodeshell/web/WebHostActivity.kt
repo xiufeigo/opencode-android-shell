@@ -26,7 +26,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -37,6 +36,7 @@ import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.web.host.CameraPermissionHost
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
+import com.xiufeigo.opencodeshell.web.host.BackNavigationHost
 import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
@@ -376,7 +376,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         }
         setupWebViewAndLoad()
 
-        installBackHandler()
+        BackNavigationHost(this) { webView }.install()
         consumeNotificationIntent(intent)
         consumeDebugEval(intent)
         PerfMarks.mark("G.onCreate.exit")
@@ -397,7 +397,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * - `bridge` / `fileChooser` 是 Activity 级依赖，`localUiServer` 由进程统一持有。
      *   渲染重建时复用它们，所以它们不在本方法里。
      *   这也保证了重建后 `window.__ocAndroid` 的桥名与注入通道与首次启动完全一致。
-     * - `installBackHandler()` 只在 [onCreate] 调一次：它注册的是
+     * - `BackNavigationHost.install()` 只在 [onCreate] 调一次：它注册的是
      *   `onBackPressedDispatcher` 回调（注册两次会多挂一个 callback），而回调体
      *   读的是 `webView` **字段**，重建后自动指向新实例。
      * - 焦点/IME 接线（`isFocusable` / `isFocusableInTouchMode` + ACTION_DOWN 监听）
@@ -684,7 +684,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * v2.0.25 真机（Android 平板 + 物理键盘）：终端里按 ESC 退不出 Vim 的插入模式，
      * 反而整页跳回首页。原因是部分 OEM 键盘把 ESC 报成 `KEYCODE_BACK`，而
      * `ComponentActivity.dispatchKeyEvent` 会把 `KEYCODE_BACK` 交给
-     * `onBackPressedDispatcher` ⇒ 命中 [installBackHandler] ⇒
+     * `onBackPressedDispatcher` ⇒ 命中 [BackNavigationHost] ⇒
      * `window.__ocAndroid.onBack()` ⇒ `frontend/android/back.ts` 的 `navigate("/")`。
      *
      * 三条路互不干扰：
@@ -693,7 +693,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * 2. **被报成 BACK 的物理 ESC**：来源是键盘、且不是系统合成的虚拟硬键 ⇒
      *    还原成 `KEYCODE_ESCAPE` 再交给 WebView（见 [WebHostEscapePolicy]）。
      * 3. **导航栏 / 手势返回**：不是虚拟硬键就是压根不是 KeyEvent ⇒ 继续走
-     *    [installBackHandler] → `__ocAndroid.onBack()` 的老路，行为不变。
+     *    [BackNavigationHost] → `__ocAndroid.onBack()` 的老路，行为不变。
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // 1) 真 ESC：交给 WebView，宿主不消费。
@@ -720,58 +720,6 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             return super.dispatchKeyEvent(escaped)
         }
         return super.dispatchKeyEvent(event)
-    }
-
-    // WebView history includes closed session tabs. Only the application decides
-    // which surface Back leaves; at its root, let Android leave the Activity.
-    private fun installBackHandler() {
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            private var pending: WebView? = null
-
-            private fun reportBackFailure(error: RuntimeException? = null) {
-                Log.e(TAG, "back: page handler failed, see WebView console", error)
-                Toast.makeText(this@WebHostActivity, "返回处理失败，请查看 WebView 日志", Toast.LENGTH_SHORT).show()
-            }
-
-            override fun handleOnBackPressed() {
-                val current = webView
-                if (pending === current) return
-                pending = current
-                try {
-                    current.evaluateJavascript(
-                        "(function(){" +
-                            "return !!(window.__ocAndroid && window.__ocAndroid.onBack && window.__ocAndroid.onBack());" +
-                            "})()"
-                    ) { result ->
-                        if (pending !== current) return@evaluateJavascript
-                        pending = null
-                        if (current !== webView || isFinishing || isDestroyed) return@evaluateJavascript
-                        val pageHandled = when (result?.trim()) {
-                            "true" -> true
-                            "false" -> false
-                            else -> {
-                                reportBackFailure()
-                                return@evaluateJavascript
-                            }
-                        }
-                        if (pageHandled) {
-                            Log.i(TAG, "back: page handled current surface")
-                            return@evaluateJavascript
-                        }
-                        Log.i(TAG, "back: application root -> Android default")
-                        isEnabled = false
-                        try {
-                            onBackPressedDispatcher.onBackPressed()
-                        } finally {
-                            isEnabled = true
-                        }
-                    }
-                } catch (error: RuntimeException) {
-                    if (pending === current) pending = null
-                    reportBackFailure(error)
-                }
-            }
-        })
     }
 
     // ---- insets → 页面 ----------------------------------------------------
