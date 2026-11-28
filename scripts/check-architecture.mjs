@@ -381,7 +381,7 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
 
 {
   const powerPolicy = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/PowerPolicy.kt")
-  for (const needle of ["StreamingAction", "streamingAction", "BACKGROUND_STREAM_REFUSE_STATUS", "allowStreaming"]) {
+  for (const needle of ["StreamingAction", "streamingAction", "BACKGROUND_STREAM_REFUSE_STATUS", "allowStreaming", "hasKeepScreenOn", "fun applyKeepScreenOn("]) {
     if (powerPolicy.includes(needle)) failures.push(`PowerPolicy reintroduced the dead loopback-proxy streaming policy: ${needle}`)
   }
 }

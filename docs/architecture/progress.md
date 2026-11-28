@@ -453,6 +453,14 @@
 
 验证：`node --check` 覆盖三个改动脚本；`resolveTerminalModule` 默认/override smoke 与 `/oc-terminal.js` 静态服务 smoke 通过；`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 47：收缩 PowerPolicy 到生产真实消费的决策表面
+
+状态：完成，待提交。
+
+闭环内容：`PowerPolicy` 的 `hasKeepScreenOn` 与 `applyKeepScreenOn(flags, ...)` 只被测试消费；生产宿主并不读取或纯位运算重写窗口 flags，而是直接调用 Android `addFlags/clearFlags`。这意味着测试在验证一个生产不存在的位运算抽象，属于测试专用 API 混入生产。删除这两个 API，保留真实生产表面 `FLAG_KEEP_SCREEN_ON_BIT`、`shouldKeepScreenOn`、`mustClearKeepScreenOn`；`PowerPolicyTest` 改为直接断言四种 foreground/roundActive 决策矩阵，`RoundActivityTrackerTest` 改为验证 tracker 输出与该生产决策的一致往返。架构检查禁止这两个测试专用 API 回流。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

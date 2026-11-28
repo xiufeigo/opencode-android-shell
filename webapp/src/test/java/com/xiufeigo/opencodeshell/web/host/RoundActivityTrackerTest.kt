@@ -260,30 +260,20 @@ class RoundActivityTrackerTest {
     }
 
     @Test
-    fun applyKeepScreenOnBitRoundTripIsConsistentWithTracker() {
-        // 端到端对齐：跟踪器的判定结果作用到 flag 位上，必须与 shouldBeSet 一致。
+    fun keepScreenOnDecisionRoundTripIsConsistentWithTracker() {
         val t = RoundActivityTracker()
-        val base = 0x00000040 // 无关位
-        assertEquals(
-            "回合结束后不得留下 KEEP_SCREEN_ON 位",
-            base,
-            PowerPolicy.applyKeepScreenOn(base, foreground = true, roundActive = t.isRoundActive(startAt)),
+        assertFalse(
+            "没有回合时不得允许常亮",
+            PowerPolicy.shouldKeepScreenOn(foreground = true, roundActive = t.isRoundActive(startAt)),
         )
         t.onRoundStart(startAt)
         assertTrue(
-            "回合进行中应带上 KEEP_SCREEN_ON 位",
-            PowerPolicy.hasKeepScreenOn(
-                PowerPolicy.applyKeepScreenOn(base, foreground = true, roundActive = t.isRoundActive(startAt)),
-            ),
+            "回合进行中应允许常亮",
+            PowerPolicy.shouldKeepScreenOn(foreground = true, roundActive = t.isRoundActive(startAt)),
         )
-        assertEquals(
-            "回合结束后该位必须被清掉",
-            base,
-            PowerPolicy.applyKeepScreenOn(
-                PowerPolicy.applyKeepScreenOn(base, foreground = true, roundActive = true),
-                foreground = true,
-                roundActive = t.isRoundActive(startAt + timeout + 1L),
-            ),
+        assertTrue(
+            "回合空闲超时后必须要求清掉常亮",
+            PowerPolicy.mustClearKeepScreenOn(foreground = true, roundActive = t.isRoundActive(startAt + timeout + 1L)),
         )
     }
 }

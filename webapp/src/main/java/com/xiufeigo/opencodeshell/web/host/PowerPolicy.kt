@@ -39,9 +39,6 @@ object PowerPolicy {
      */
     const val FLAG_KEEP_SCREEN_ON_BIT: Int = 0x00000080
 
-    /** 当前 flag 里是否还挂着常亮。 */
-    fun hasKeepScreenOn(flags: Int): Boolean = (flags and FLAG_KEEP_SCREEN_ON_BIT) != 0
-
     /**
      * **常亮只允许在「前台 且 回合进行中」时成立。**
      *
@@ -59,15 +56,4 @@ object PowerPolicy {
      */
     fun mustClearKeepScreenOn(foreground: Boolean, roundActive: Boolean): Boolean =
         !shouldKeepScreenOn(foreground, roundActive)
-
-    /**
-     * 把 [mustClearKeepScreenOn] 的结论作用到一组 flag 上（纯位运算，宿主用
-     * `addFlags`/`clearFlags` 表达同一件事）。
-     */
-    fun applyKeepScreenOn(flags: Int, foreground: Boolean, roundActive: Boolean): Int =
-        if (shouldKeepScreenOn(foreground, roundActive)) {
-            flags or FLAG_KEEP_SCREEN_ON_BIT
-        } else {
-            flags and FLAG_KEEP_SCREEN_ON_BIT.inv()
-        }
 }
