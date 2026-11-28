@@ -50,6 +50,7 @@ class SurfaceColorTest {
     // ---- 宿主接线：露出层必须吃页面色，而不是透出跟系统模式的窗口底色 ----
 
     private val insetsHost: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt") }
+    private val resizeHost: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt") }
     private val bridge: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt") }
     private val activity: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
     private val facade: String by lazy { TestSource.read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
@@ -65,8 +66,12 @@ class SurfaceColorTest {
             activity.contains("SurfaceColor.parse(css)") && activity.contains("insets.setSurfaceColor(color)"),
         )
         assertTrue(
-            "InsetsHost 必须把色刷在真正被压矮的那一层（resizeTarget），不是别处",
-            insetsHost.contains("resizeTarget().setBackgroundColor(color)"),
+            "InsetsHost 必须把表面色委托给 resize owner",
+            insetsHost.contains("viewportResize.setSurfaceColor(color)"),
+        )
+        assertTrue(
+            "resize owner 必须把色刷在真正被压矮的那一层（resizeTarget），不是别处",
+            resizeHost.contains("resizeTarget().setBackgroundColor(color)"),
         )
     }
 

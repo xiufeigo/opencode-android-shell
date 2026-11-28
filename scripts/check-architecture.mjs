@@ -324,6 +324,26 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   }
 }
 
+
+{
+  const modePath = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/ImeMode.kt"
+  const resizeHostPath = "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt"
+  if (!fs.existsSync(modePath)) failures.push(`${modePath}: shared IME mode contract owner is missing`)
+  if (!fs.existsSync(resizeHostPath)) failures.push(`${resizeHostPath}: viewport resize state-machine owner is missing`)
+  const insetsHost = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+  if (insetsHost.includes("enum class ImeMode")) failures.push("InsetsHost owns the shared ImeMode contract again; keep it in ImeMode.kt")
+  for (const needle of ["committedPadPx", "pendingPadPx", "commitResizeRunnable", "fun applyResize", "fun commitResize", "fun resizeTarget"]) {
+    if (insetsHost.includes(needle)) failures.push(`InsetsHost owns viewport resize mechanics again: ${needle}`)
+  }
+  if (!insetsHost.includes("viewportResize.apply(imeMode, imeBottom, navBottom)")) failures.push("InsetsHost must delegate normalized insets to ImeViewportResizeHost")
+  if (fs.existsSync(resizeHostPath)) {
+    const resizeHost = read(resizeHostPath)
+    for (const needle of ["fun apply(mode: ImeMode, imeBottom: Int, navBottom: Int)", "postDelayed(commitResizeRunnable, ImeResize.COMMIT_DELAY_MS)", "resizeTarget().setBackgroundColor(color)"]) {
+      if (!resizeHost.includes(needle)) failures.push(`ImeViewportResizeHost lost required resize ownership boundary: ${needle}`)
+    }
+  }
+}
+
 if (!read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt").includes("var imeMode: ImeMode = ImeMode.DEFAULT")) failures.push("InsetsHost must use ImeMode.DEFAULT as the single default IME mode")
 if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt").includes("else \"vars\"")) failures.push("WebHostActivity duplicates a divergent IME mode fallback instead of ImeMode.DEFAULT")
 

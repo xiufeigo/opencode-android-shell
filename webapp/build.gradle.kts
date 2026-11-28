@@ -184,9 +184,10 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
         "src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt",
         // F18/IME 绊线：`PhoneFormDefectTest` 与 `ImeViewportResizeTest` 直接读
-        // InsetsHost 及生产 IME resize 纯函数件。撤回任一处修法都必须能反向变红。
+        // InsetsHost、生产 IME resize 纯函数件与 resize 执行器。撤回任一处修法都必须能反向变红。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt",
         "src/main/java/com/xiufeigo/opencodeshell/web/host/ImeResize.kt",
+        "src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt",
         // 底部留白绊线：`NavigationBarVisualTest` 断言语义让位量与宿主接线；
         // 不改 .kt 时任务会被判 UP-TO-DATE ⇒ 绊线假绿，所以显式声明为输入。
         "src/main/java/com/xiufeigo/opencodeshell/web/host/NavigationBarVisual.kt",

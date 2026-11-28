@@ -109,8 +109,10 @@ class ImeViewportResizeTest {
 
     @Test
     fun `宿主压的是 WebView 的父 content 层 不是往下找 content id`() {
-        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt")
+        val insets = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         assertTrue("必须按 max(ime, nav) 压矮", src.contains("ImeResize.bottomPadPx("))
+        assertTrue("InsetsHost 必须把归一后的值交给 resize 执行器", insets.contains("viewportResize.apply(imeMode, imeBottom, navBottom)"))
         assertTrue("必须作用在真正那一层上（WebView 的父）", src.contains("val p = root.parent"))
         val activity = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
         val viewportFactory = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewViewportFactory.kt")
@@ -148,16 +150,18 @@ class ImeViewportResizeTest {
 
     @Test
     fun `键盘动画期间的多次上报只落一次 避免终端反复重排`() {
-        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt")
+        val insets = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         val resize = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeResize.kt")
         assertTrue("必须有合并窗口常量（纯函数宿主侧可测）", resize.contains("COMMIT_DELAY_MS"))
+        assertTrue("InsetsHost 必须委托 resize 执行器而不是自带状态机", insets.contains("viewportResize.apply(imeMode, imeBottom, navBottom)"))
         assertTrue("必须 postDelayed 提交", src.contains("postDelayed(commitResizeRunnable"))
         assertTrue("新的上报必须撤掉上一个挂起的提交", src.contains("removeCallbacks(commitResizeRunnable)"))
         assertTrue("值回到已提交值时不得多压一次", src.contains("if (want == committedPadPx)"))
         assertTrue("首次必须立即生效（启动时 inset 是静态读数，等窗口没意义）", src.contains("if (committedPadPx < 0)"))
         assertTrue(
             "窗口高度还是 0 时不得把 pad=0 写成已提交（否则点进会话才突然让位）",
-            src.contains("imeMode == ImeMode.RESIZE && windowH <= 0"),
+            src.contains("mode == ImeMode.RESIZE && windowH <= 0"),
         )
         assertTrue("真正落 padding 的只有一个地方", Regex("""layer\.setPadding\(""").findAll(src).count() == 1)
     }

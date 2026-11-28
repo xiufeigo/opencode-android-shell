@@ -421,6 +421,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 43：IME 视口 resize 状态机退出 InsetsHost
+
+状态：完成，待提交。
+
+闭环内容：`InsetsHost` 曾同时负责 insets 采集/归一/payload 发布、IME 模式契约、视口 resize 合并窗口、父层 padding、WebView 像素高度、露出层背景色和高度补发。现将共享模式契约移入 `ImeMode.kt`，把 resize 执行状态机移入 `ImeViewportResizeHost`：`committedPadPx/pendingPadPx/commitResizeRunnable`、80ms 合并、首次/收起即时提交、resize target、surface color 与高度变化回调全部归该 owner。`InsetsHost` 从 377 行降至 235 行，只保留 insets 采集、归一、payload 构造/去重和稳定门面；它把同一份归一值显式交给 resize owner，避免 payload 与视口压矮分叉。相关字符串绊线同步迁移到真实 owner，`build.gradle.kts` 显式测试输入加入新文件，防止资产契约假绿。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止 `InsetsHost` 重新持有 resize 状态机，并要求共享 `ImeMode` 契约保持独立。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

@@ -3,37 +3,12 @@ package com.xiufeigo.opencodeshell.web.host
 import android.content.res.Configuration
 import android.util.Log
 import android.view.View
-import android.view.ViewGroup
 import android.view.Window
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 import java.util.Locale
-
-/**
- * IME 呈现策略。
- *
- * - [VARS]：只把 insets 发成 CSS 变量 / JS 事件，WebView 铺满整窗。默认。
- * - [RESIZE]：额外把 WebView 的**固定高度**压成 `窗口高 − max(nav, ime)`，
- *   让页面里的 `100dvh` / `position:fixed` 跟着一起缩（上游对话框按 `dvh` 布局）。
- *
- * 放成包级 enum（而不是塞在 companion 里）——跨文件引用更省心。
- */
-enum class ImeMode {
-    /** 只发变量。 */
-    VARS,
-
-    /** 发变量 **且** 压矮 WebView。 */
-    RESIZE,
-
-    ;
-
-    companion object {
-        /** 产品默认：resize 是唯一被验证过的生产路径，vars 仅保留给诊断页切换。 */
-        val DEFAULT = RESIZE
-    }
-}
 
 /**
  * 边到边 + insets → CSS 变量 / JS 事件。
@@ -73,13 +48,8 @@ class InsetsHost(
 
     private var last: JSONObject? = null
 
-    /** 已落地的视口压矮量（px）；-1 = 还没落过（首次立即生效）。 */
-    private var committedPadPx = -1
-
-    /** 合并窗口里待落的压矮量（px）；-1 = 没有挂起的提交。 */
-    private var pendingPadPx = -1
-    private var pendingImePx = 0
-    private var pendingNavPx = 0
+    /** 视口 resize 执行器；InsetsHost 只负责把归一后的 insets 喂给它。 */
+    private val viewportResize = ImeViewportResizeHost(root) { pushViewHeight() }
 
     /**
      * 系统导航形态的运行期快照：设置值在 Activity 存活期不变，读到一次即缓存；
@@ -97,11 +67,6 @@ class InsetsHost(
 
     /** 上一条原始读数日志（去重）：两次误判都卡在日志里没有平台原始值。 */
     private var lastReading = ""
-
-    private val commitResizeRunnable = Runnable {
-        val pad = pendingPadPx
-        if (pad >= 0) commitResize(pad, pendingImePx, pendingNavPx, "settled")
-    }
 
     init {
         // 边到边：让内容自己铺到系统栏下面，padding 由页面按变量加。
@@ -121,11 +86,6 @@ class InsetsHost(
             }
         }
         root.addOnLayoutChangeListener(firstLayoutRefresh)
-        // padding 改的是父层，WebView 高度要等下一帧 layout 才变。
-        // 只靠 firstLayoutRefresh 会在压矮前就被摘掉，页面一直拿到偏矮的 100dvh。
-        root.addOnLayoutChangeListener { v, _, _, _, _, _, oldTop, _, oldBottom ->
-            if (v.height > 0 && v.height != oldBottom - oldTop) pushViewHeight()
-        }
         if (root.height > 0) root.post { refresh() }
     }
 
@@ -170,7 +130,7 @@ class InsetsHost(
             Configuration.UI_MODE_NIGHT_YES
 
     /**
-     * 视口压矮后露出的那条带子 = [resizeTarget] 的 padding 区，显示的是它自己的
+     * 视口压矮后露出的那条带子 = resize 目标层的 padding 区，显示的是它自己的
      * 背景。它默认没有背景 → 透出 decor 的 `windowBackground`（`oc_host_bg`，
      * DayNight **跟系统模式**走）—— 页面主题与系统不一致时（系统深色 + 页面
      * 浅色）那条带子就是一整块黑色，"小白条所在位置直接全黑"（MIUI 平板浅色
@@ -181,7 +141,7 @@ class InsetsHost(
      * 观感 = 页面延伸到底（Chrome 等边到边应用同款做法）。
      */
     fun setSurfaceColor(color: Int) {
-        resizeTarget().setBackgroundColor(color)
+        viewportResize.setSurfaceColor(color)
     }
 
     private fun publish(insets: WindowInsetsCompat): WindowInsetsCompat {
@@ -236,7 +196,7 @@ class InsetsHost(
             // **整窗**高（不是 WebView 当前内容高）：resize 模式下 WebView 本来就被压矮了，
             // 拿它当基准会让"僵死读数守卫"（占比 ≥85%）被二次触发、也会让页面算错
             // IME 上沿（屏幕坐标 = 整窗高 − ime）。所以取 decor（rootView）高。
-            put("windowHeight", (windowHeightPx() / d).css())
+            put("windowHeight", (viewportResize.windowHeightPx() / d).css())
             // WebView 控件实高（父层 padding 之后）。官方 #root 是 h-dvh，
             // Android WebView 的 100dvh 在控件被压矮后经常不更新，要点击才重算；
             // 把实高交给页面钉死根节点，点进会话就能贴住底。
@@ -246,7 +206,7 @@ class InsetsHost(
             put("scheme", if (dark) "dark" else "light")
         }
 
-        applyResize(imeBottom, navBottom)
+        viewportResize.apply(imeMode, imeBottom, navBottom)
 
         if (payload.toString() != last?.toString()) {
             last = payload
@@ -255,91 +215,6 @@ class InsetsHost(
         }
         // 不 consume：Activity 侧的 IME 逻辑（resize 模式）自己还要读。
         return insets
-    }
-
-    /**
-     * `ImeMode.RESIZE` 时把**视口底部**压矮 `max(nav, ime)`，让布局视口真的跟着键盘收。
-     *
-     * ### 改了什么（TERM1，2026-10-07）
-     * 旧实现想在 `android.R.id.content` 上找宿主层（`root.findViewById(android.R.id.content)`）
-     * —— content 是 WebView 的**祖先**（`setContentView(webView)` 把它塞进 content FrameLayout），
-     * 往下找只会得到 null ⇒ `applyResize` 从来没生效过（旧代码里那道针对 MATCH_PARENT
-     * 的 `lp.height` 守卫也只是第二层死保险，MATCH_PARENT 恒等于它排除掉的那个值）。
-     * 于是视口永不 resize，只有 composer 一条让位路径，终端画布被键盘遮住 310px（实测）。
-     *
-     * 现在压在**真正的那一层**：WebView 的父（宿主自己包的 viewportHost）的
-     * `paddingBottom`。不能压 AppCompat 的 content：它会按系统栏把 padding 改回
-     * 0 / 整条导航带，WebView 仍是整屏。子 View 是 MATCH_PARENT ⇒ 内容区变矮。
-     * 取 `max(nav, ime)`，并用 [ImeResize.bottomPadPx] 挡掉平台的"僵死读数"。
-     */
-    private fun applyResize(imeBottom: Int, navBottom: Int) {
-        val windowH = windowHeightPx()
-        // 首帧 onCreate 时 decor 高度经常是 0。ImeResize 这时会给出 pad=0；
-        // 若把 0 写成已提交，后面同一份 insets 被 payload 去重，视口一直不让位，
-        // 直到点进会话 / 弹键盘才突然落下。
-        if (imeMode == ImeMode.RESIZE && windowH <= 0) return
-
-        val want = if (imeMode == ImeMode.RESIZE) {
-            // 基准是**整窗高**：`root.height` 在压矮之后就是"已压矮的高度"，
-            // 拿它算占比会在键盘偏大时自我触发守卫（越压越像僵死读数）。
-            ImeResize.bottomPadPx(windowH, imeBottom, navBottom)
-        } else {
-            0
-        }
-
-        // 第一次（还没有已提交值）立即生效：启动时的 inset 就是静态读数，等 80ms 没意义。
-        if (committedPadPx < 0) {
-            commitResize(want, imeBottom, navBottom, "first")
-            return
-        }
-        if (imeBottom == 0) {
-            root.removeCallbacks(commitResizeRunnable)
-            commitResize(want, imeBottom, navBottom, "ime-hidden")
-            return
-        }
-        if (want == committedPadPx) {
-            // 回到已提交值（例如键盘动画来回抖了一下）⇒ 撤掉挂起的提交，别多压一次。
-            pendingPadPx = -1
-            root.removeCallbacks(commitResizeRunnable)
-            return
-        }
-        // 键盘动画期间平台可能逐帧上报不同高度：只记最新值，等稳定 80ms 再落一次。
-        // 逐帧落 = 页面里的终端反复重排（"闪 + 字体缩放"），合并后一次开关只重排一次。
-        pendingPadPx = want
-        pendingImePx = imeBottom
-        pendingNavPx = navBottom
-        root.removeCallbacks(commitResizeRunnable)
-        root.postDelayed(commitResizeRunnable, ImeResize.COMMIT_DELAY_MS)
-    }
-
-    /** 真正落 padding 的那一次（合并窗口到期 / 首次）。 */
-    private fun commitResize(pad: Int, imeBottom: Int, navBottom: Int, why: String) {
-        committedPadPx = pad
-        pendingPadPx = -1
-        val layer = resizeTarget()
-        if (layer.paddingBottom != pad) {
-            layer.setPadding(layer.paddingLeft, layer.paddingTop, layer.paddingRight, pad)
-            Log.i(TAG, "viewport bottom pad = $pad px (ime=$imeBottom nav=$navBottom window=${windowHeightPx()} target=${layer.javaClass.simpleName} why=$why)")
-        }
-        // Pixel Tablet 实测：AppCompat content 的 padding 留不住，WebView 仍是整屏
-        // 1600px，innerHeight=800，env(safe-area-inset-bottom)=32。给 WebView 写死
-        // 像素高度，布局视口才会真的矮下来。
-        val lp = root.layoutParams
-        if (lp is ViewGroup.LayoutParams) {
-            val wantH = if (pad <= 0) {
-                ViewGroup.LayoutParams.MATCH_PARENT
-            } else {
-                (windowHeightPx() - pad).coerceAtLeast(1)
-            }
-            if (lp.height != wantH || lp.width != ViewGroup.LayoutParams.MATCH_PARENT) {
-                lp.width = ViewGroup.LayoutParams.MATCH_PARENT
-                lp.height = wantH
-                root.layoutParams = lp
-            }
-        }
-        root.requestLayout()
-        // padding / 高度这一帧结束才是 WebView 的新高度；补发给页面钉 #root。
-        root.post { pushViewHeight() }
     }
 
     /** 把 WebView 当前高度写成 viewHeight，供页面覆盖过期的 100dvh。 */
@@ -353,23 +228,6 @@ class InsetsHost(
         payload.put("viewHeight", css)
         runCatching { onInsets(payload) }
             .onFailure { Log.w(TAG, "onInsets consumer threw", it) }
-    }
-
-    /** 整窗高（px）：decor 视图高，边到边下就是包含系统栏的整块屏幕。 */
-    private fun windowHeightPx(): Int {
-        val decor = root.rootView
-        return if (decor != null && decor.height > 0) decor.height else root.height
-    }
-
-    /**
-     * 真正被压矮的那一层：WebView 的父（window 的 content FrameLayout）。
-     *
-     * 用 `parent` 而不是 `findViewById`：content 是祖先，往下找永远找不到（旧代码的坑）。
-     * 真拿不到父（极端布局）时退化成压 WebView 自己 —— 同样能让内容区变矮。
-     */
-    private fun resizeTarget(): View {
-        val p = root.parent
-        return if (p is View) p else root
     }
 
     /** px→dp（=CSS px）并格式化成两位小数，避免浮点尾巴进 CSS。 */

@@ -114,6 +114,7 @@ class NavigationBarVisualTest {
     // ---- 宿主接线：必须以这套判据喂给页面，而不是直接上报整条导航带 ----
 
     private val insetsHost: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt") }
+    private val resizeHost: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt") }
     private val facade: String by lazy { TestSource.read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
 
     @Test
@@ -141,11 +142,11 @@ class NavigationBarVisualTest {
         )
         assertTrue(
             "窗口高度还是 0 时不得把 pad=0 写成已提交",
-            insetsHost.contains("imeMode == ImeMode.RESIZE && windowH <= 0"),
+            resizeHost.contains("mode == ImeMode.RESIZE && windowH <= 0"),
         )
         assertTrue(
             "视口压矮也要用同一个量（否则面板与视口不同步）",
-            insetsHost.contains("applyResize(imeBottom, navBottom)"),
+            insetsHost.contains("viewportResize.apply(imeMode, imeBottom, navBottom)"),
         )
         assertTrue("不得再直接上报整条导航带", !insetsHost.contains("put(\"safeBottom\", (bars.bottom / d).css())"))
     }
@@ -167,12 +168,16 @@ class NavigationBarVisualTest {
     @Test
     fun `根节点高度钉 WebView 实高 不靠要点击才更新的 100dvh`() {
         assertTrue(
-            "padding 落地后必须把 WebView 高度补发给页面",
-            insetsHost.contains("root.post { pushViewHeight() }"),
+            "padding 落地后 resize owner 必须通知高度变化",
+            resizeHost.contains("root.post { onViewportHeightChanged() }"),
         )
         assertTrue(
-            "WebView 高度变化时也要补发（父层 padding 后的那一帧）",
-            insetsHost.contains("if (v.height > 0 && v.height != oldBottom - oldTop) pushViewHeight()"),
+            "WebView 高度变化时 resize owner 也要通知（父层 padding 后的那一帧）",
+            resizeHost.contains("if (v.height > 0 && v.height != oldBottom - oldTop) onViewportHeightChanged()"),
+        )
+        assertTrue(
+            "InsetsHost 必须拥有 viewHeight 补发实现",
+            insetsHost.contains("private fun pushViewHeight()"),
         )
         assertTrue("payload 必须带 viewHeight", insetsHost.contains("put(\"viewHeight\""))
         assertTrue(
