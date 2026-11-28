@@ -6,6 +6,7 @@ import http from "node:http"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { listen } from "./verify-android-server-lifecycle.mjs"
 
 const REPO = fileURLToPath(new URL("../", import.meta.url))
 const WWW = path.join(REPO, "webapp/src/main/assets/www")
@@ -41,20 +42,6 @@ function normalize(p) {
     else parts.push(seg)
   }
   return `/${parts.join("/")}`
-}
-
-function listen(server) {
-  return new Promise((resolve, reject) => {
-    server.on("error", reject)
-    server.listen(0, "127.0.0.1", () => resolve(server))
-  })
-}
-
-function closeServer(server) {
-  return new Promise((resolve) => {
-    server.closeAllConnections?.()
-    server.close(() => resolve())
-  })
 }
 
 /**
@@ -112,4 +99,4 @@ function startUiServer({ terminalModule = TERMINAL_MODULE_SERVED, record = () =>
   return listen(server)
 }
 
-export { startUiServer, listen, closeServer }
+export { startUiServer }

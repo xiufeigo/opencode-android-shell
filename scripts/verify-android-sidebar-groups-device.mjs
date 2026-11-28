@@ -4,7 +4,7 @@ import path from "node:path"
 import crypto from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
-import { startBackend } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-backend.mjs"
 import { base64url } from "./verify-android-common.mjs"
 
 // Actual-tablet verification for multi-select side-tab grouping, inbox server

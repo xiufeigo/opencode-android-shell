@@ -247,15 +247,15 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
 
 {
   const releaseRunner = read("scripts/verify-android-terminal-release.mjs")
-  for (const needle of ["function nativeBridgeSource", "function seedScript", "function ocHostLoaderSource", "const base64url", "function startUiServer", "function listen(server)", "function closeServer(server)"]) {
+  for (const needle of ["function nativeBridgeSource", "function seedScript", "function ocHostLoaderSource", "const base64url", "function startUiServer", "function listen(server)", "function closeServer(server)", "function startBackend", "class MockPtySocket", "function wsAccept"]) {
     if (releaseRunner.includes(needle)) failures.push(`verify-android-terminal-release owns shared pure helper that belongs to a shared Android verify module: ${needle}`)
   }
   for (const name of fs.readdirSync("scripts")) {
     if (!name.endsWith(".mjs") || ["verify-android-terminal-release.mjs", "verify-android-common.mjs"].includes(name)) continue
     const path = `scripts/${name}`
     const source = read(path)
-    if (/from ["']\.\/verify-android-terminal-release\.mjs["']/.test(source) && /(nativeBridgeSource|ocHostLoaderSource|seedScript|base64url|startUiServer)/.test(source.split("\n").find(line => line.includes("verify-android-terminal-release.mjs")) || "")) {
-      failures.push(`${path}: imports shared pure helpers from the terminal release runner instead of verify-android-common.mjs`)
+    if (/from ["']\.\/verify-android-terminal-release\.mjs["']/.test(source) && /(nativeBridgeSource|ocHostLoaderSource|seedScript|base64url|startUiServer|startBackend)/.test(source.split("\n").find(line => line.includes("verify-android-terminal-release.mjs")) || "")) {
+      failures.push(`${path}: imports shared verification infrastructure from the terminal release runner instead of its canonical module`)
     }
   }
 }

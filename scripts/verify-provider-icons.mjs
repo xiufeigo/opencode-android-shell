@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { chromium } from "../plugins/server-browser/node_modules/playwright/index.mjs"
-import { startBackend } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-backend.mjs"
 import { startUiServer } from "./verify-android-ui-server.mjs"
 import { nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-common.mjs"
 

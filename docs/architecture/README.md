@@ -66,7 +66,7 @@ scripts ──验证──> 以上产物与运行时契约
 ## 当前主要偏离
 
 1. 大量单元测试仍是历史事故型字符串绊线，直接读取 Kotlin/JS 源文本。它们能防回归，也把实现位置固化；后续应分批升级为行为契约测试，确实无法行为化的资产约束集中收纳。
-2. `scripts/verify-android-terminal-release.mjs` 仍持有体量最大的 mock backend 与终端场景矩阵；共享纯 helper 与 packaged UI server 已分别归口 `verify-android-common.mjs`、`verify-android-ui-server.mjs`，剩余 backend 需要继续拆分。
+2. `scripts/verify-android-terminal-release.mjs` 仍持有体量最大的终端场景矩阵与页面探针；mock backend、packaged UI server、server lifecycle 与纯 helper 已归口共享模块，后续重点是场景矩阵分层而不是基础设施拆分。
 3. `research/` 同时包含仍有效证据与已失效历史叙述；有效工程约束需要继续迁入本目录。
 
 ## 治理规则

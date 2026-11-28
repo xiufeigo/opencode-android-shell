@@ -4,7 +4,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { startBackend } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-backend.mjs"
 import { startUiServer } from "./verify-android-ui-server.mjs"
 import { nativeBridgeSource, ocHostLoaderSource, base64url } from "./verify-android-common.mjs"
 

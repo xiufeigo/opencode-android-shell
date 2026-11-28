@@ -357,6 +357,14 @@
 
 验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 35：mock backend 与 server lifecycle 退出 terminal release runner
+
+状态：完成，待提交。
+
+闭环内容：新增 `scripts/verify-android-backend.mjs` 与 `scripts/verify-android-server-lifecycle.mjs`。完整 mock OpenCode backend（HTTP、SSE、legacy/persistent PTY WebSocket、replay cursor、session/pty 状态）从 terminal release runner 移入 backend 模块；`startBackend({ record })` 只通过显式参数接收 runner 请求记录器。`listen/closeServer` 从 UI server 移到独立 lifecycle 模块，避免 backend 反向依赖 UI 静态服务器。release runner 与 10 个消费脚本全部改为直接从 canonical backend 模块导入；runner 不再 re-export 任何共享基础设施。架构检查禁止 backend/UI/helper/lifecycle 实现回流 runner。任务池中的验证 harness 基础设施收敛项完成；runner 剩余部分主要是终端场景矩阵与页面探针。
+
+验证：所有改动脚本 `node --check` 通过；backend smoke 覆盖 `/api/health`、PTY WebSocket upgrade、socket 注册与 recorder 标记；`VERIFY_TERMINAL_MODE=boot VERIFY_TERMINAL_NO_SHOTS=1` 使用本机 plugin Playwright 路径运行手机/平板 boot，6/6 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。首次 boot 因 `_upstream` Playwright 不存在而失败，属于环境路径问题；改用仓库现有 `plugins/server-browser` Playwright 后通过，不作为产品回归证据。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

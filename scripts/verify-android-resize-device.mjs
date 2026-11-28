@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { DevicePage } from "./android-webview-cdp.mjs"
-import { startBackend } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-backend.mjs"
 import { seedScript, base64url } from "./verify-android-common.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))

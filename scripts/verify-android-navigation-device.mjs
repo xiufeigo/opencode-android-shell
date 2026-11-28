@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
-import { startBackend } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-backend.mjs"
 
 // Run only on an explicitly selected test device with the debug product APK.
 // The script changes that app's test state; it never clears Android app data.
