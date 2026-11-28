@@ -445,6 +445,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 46：终端替换模块解析单一事实
+
+状态：完成，待提交。
+
+闭环内容：`VERIFY_TERMINAL_MODULE` 的读取、override 判空和 `path.resolve` 曾同时存在于 terminal release runner 与共享 packaged UI server；runner 还残留 `UI_ROOT` / `BUNDLE_DIR` / `TERMINAL_DIR_SERVED` 等不再消费的常量，注释仍把 xterm 时代的替换槽称为 Ghostty replacement。将 `resolveTerminalModule` 收口到 `verify-android-ui-server.mjs` 并导出，release runner 只消费同一份解析结果用于预检、服务参数与报告元数据；删除死常量并正名注释。架构检查禁止 runner 重新直接读取该环境变量，并扫描验证脚本中的 stale “Ghostty replacement” 术语。
+
+验证：`node --check` 覆盖三个改动脚本；`resolveTerminalModule` 默认/override smoke 与 `/oc-terminal.js` 静态服务 smoke 通过；`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

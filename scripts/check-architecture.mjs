@@ -266,6 +266,16 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   for (const needle of ["function nativeBridgeSource", "function seedScript", "function ocHostLoaderSource", "const base64url", "function startUiServer", "function listen(server)", "function closeServer(server)", "function startBackend", "class MockPtySocket", "function wsAccept"]) {
     if (releaseRunner.includes(needle)) failures.push(`verify-android-terminal-release owns shared pure helper that belongs to a shared Android verify module: ${needle}`)
   }
+  if (!releaseRunner.includes("resolveTerminalModule()")) failures.push("verify-android-terminal-release must consume the shared terminal module resolution")
+  if (releaseRunner.includes("process.env.VERIFY_TERMINAL_MODULE")) failures.push("verify-android-terminal-release duplicates VERIFY_TERMINAL_MODULE resolution instead of verify-android-ui-server")
+  const uiServer = read("scripts/verify-android-ui-server.mjs")
+  if (!uiServer.includes("function resolveTerminalModule")) failures.push("verify-android-ui-server must own terminal module override resolution")
+  if (uiServer.includes("Ghostty replacement slot")) failures.push("verify-android-ui-server contains stale Ghostty terminology")
+  for (const name of fs.readdirSync("scripts")) {
+    if (!name.startsWith("verify-android-") || !name.endsWith(".mjs")) continue
+    const path = `scripts/${name}`
+    if (read(path).includes("Ghostty replacement")) failures.push(`${path}: stale Ghostty replacement terminology; xterm is the single terminal implementation`)
+  }
   for (const name of fs.readdirSync("scripts")) {
     if (!name.endsWith(".mjs") || ["verify-android-terminal-release.mjs", "verify-android-common.mjs"].includes(name)) continue
     const path = `scripts/${name}`

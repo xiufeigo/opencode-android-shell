@@ -54,7 +54,7 @@ import path from "node:path"
 import crypto from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-common.mjs"
-import { startUiServer } from "./verify-android-ui-server.mjs"
+import { startUiServer, resolveTerminalModule } from "./verify-android-ui-server.mjs"
 import { closeServer } from "./verify-android-server-lifecycle.mjs"
 import { startBackend } from "./verify-android-backend.mjs"
 
@@ -62,23 +62,16 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, "..")
 
 const WWW = path.join(REPO, "webapp/src/main/assets/www")
-const UI_ROOT = path.join(WWW, "ui")
-const BUNDLE_DIR = path.join(UI_ROOT, "oa")
 const TERMINAL_DIR = WWW
-const TERMINAL_MODULE = path.join(WWW, "oc-terminal.js")
 const HOST_JS = path.join(WWW, "oc-host.js")
 
 // Harness self-test escape hatch only. Points the replacement-module route at a
 // scratch module OUTSIDE the packaged assets so the runner itself can be
 // exercised before the lead's module lands. Never used for a real verdict: the
 // report stamps every run with which module path served the route.
-const TERMINAL_MODULE_OVERRIDE = process.env.VERIFY_TERMINAL_MODULE || ""
-const TERMINAL_MODULE_SERVED = TERMINAL_MODULE_OVERRIDE
-  ? path.resolve(TERMINAL_MODULE_OVERRIDE)
-  : TERMINAL_MODULE
-const TERMINAL_DIR_SERVED = TERMINAL_MODULE_OVERRIDE
-  ? path.dirname(TERMINAL_MODULE_SERVED)
-  : TERMINAL_DIR
+const TERMINAL_MODULE_RESOLUTION = resolveTerminalModule()
+const TERMINAL_MODULE_OVERRIDE = TERMINAL_MODULE_RESOLUTION.terminalModuleOverride || ""
+const TERMINAL_MODULE_SERVED = TERMINAL_MODULE_RESOLUTION.terminalModule
 
 const PLAYWRIGHT_MJS =
   process.env.VERIFY_TERMINAL_PLAYWRIGHT ||
@@ -125,7 +118,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /**
  * Request log. Every hit is recorded so the report can prove which modules the
- * production page actually asked for — in particular the Ghostty replacement.
+ * production page actually asked for — in particular the terminal replacement.
  */
 const requestLog = []
 function record(entry) {
@@ -1267,8 +1260,8 @@ async function runDevice(browser, { chromium }, device, state) {
     )
   }
 
-  // (The ghostty replacement route is asserted after the terminal opens — the
-// production chunk only lazy-imports that URL once the panel mounts.)
+  // (The terminal replacement route is asserted after the terminal opens — the
+  // production chunk only lazy-imports that URL once the panel mounts.)
 
   if (MODE === "boot") {
     const info = {

@@ -50,3 +50,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T08:25:56.385Z	round43	IME 视口 resize 状态机独立归口	insets 采集/发布与 Android view resize 是不同变化轴；独立 owner 保留同一归一输入并缩小 InsetsHost 修改半径	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/ImeViewportResizeHost.kt; ImeMode.kt	VERIFIED: unit tests passed
 2026-11-28T08:34:17.105Z	round44	本地 UI 路由策略纯化	socket/HTTP effect 与路径安全策略是不同变化轴；纯 owner 让穿越、拒答和磁盘映射可直接行为测试，同时保持 server 边界简单	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiRoutePolicy.kt	VERIFIED: unit tests passed
 2026-11-28T08:36:49.574Z	round45	删除回环代理残留的流式拒绝策略	页面已直连后端且宿主不介入流量；只被自身测试消费的 StreamingAction 策略是历史平行方案，删除后不向调用方扩散复杂性	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/PowerPolicy.kt	VERIFIED: unit tests passed
+2026-11-28T08:39:04.676Z	round46	终端替换模块解析单一事实	同一环境变量的读取与路径解析在 runner 和 UI server 双写会漂移；UI server 拥有替换槽路由，因此也拥有解析契约，runner 只消费结果	scripts/verify-android-ui-server.mjs	VERIFIED: node checks, server smoke, unit tests passed

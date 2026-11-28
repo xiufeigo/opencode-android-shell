@@ -13,8 +13,16 @@ const WWW = path.join(REPO, "webapp/src/main/assets/www")
 const UI_ROOT = path.join(WWW, "ui")
 const BUNDLE_DIR = path.join(UI_ROOT, "oa")
 const TERMINAL_MODULE = path.join(WWW, "oc-terminal.js")
-const TERMINAL_MODULE_OVERRIDE = process.env.VERIFY_TERMINAL_MODULE || ""
-const TERMINAL_MODULE_SERVED = TERMINAL_MODULE_OVERRIDE ? path.resolve(TERMINAL_MODULE_OVERRIDE) : TERMINAL_MODULE
+
+function resolveTerminalModule(env = process.env) {
+  const override = env.VERIFY_TERMINAL_MODULE || ""
+  return {
+    terminalModule: override ? path.resolve(override) : TERMINAL_MODULE,
+    terminalModuleOverride: override || null,
+  }
+}
+
+const DEFAULT_TERMINAL_MODULE = resolveTerminalModule()
 
 function contentTypeOf(p) {
   if (p.endsWith(".html")) return "text/html; charset=utf-8"
@@ -48,7 +56,7 @@ function normalize(p) {
  * The UI origin, mirroring `LocalUiOriginServer` plus the lead's module
  * replacement routes. SPA fallback to index.html, matching the real server.
  */
-function startUiServer({ terminalModule = TERMINAL_MODULE_SERVED, record = () => {} } = {}) {
+function startUiServer({ terminalModule = DEFAULT_TERMINAL_MODULE.terminalModule, record = () => {} } = {}) {
   const server = http.createServer((req, res) => {
     let pathname = "/"
     try {
@@ -71,7 +79,7 @@ function startUiServer({ terminalModule = TERMINAL_MODULE_SERVED, record = () =>
       }
     }
 
-    // 1. Ghostty replacement slot. Matched before the /_assets/ bundle mapping
+    // 1. Terminal replacement slot. Matched before the /_assets/ bundle mapping
     //    because this is a real chunk name that also exists on disk.
     if (pathname === "/oc-terminal.js") {
       if (serve(terminalModule, "terminal:oc-terminal.mjs")) return
@@ -88,7 +96,7 @@ function startUiServer({ terminalModule = TERMINAL_MODULE_SERVED, record = () =>
 
     if (disk.startsWith(UI_ROOT) && serve(disk, pathname.startsWith("/_assets/") ? "ui:oa/*" : "ui:*")) return
 
-    // 4. SPA fallback.
+    // 3. SPA fallback.
     const index = path.join(UI_ROOT, "index.html")
     if (serve(index, "ui:index.html(spa)")) return
 
@@ -99,4 +107,4 @@ function startUiServer({ terminalModule = TERMINAL_MODULE_SERVED, record = () =>
   return listen(server)
 }
 
-export { startUiServer }
+export { startUiServer, resolveTerminalModule }
