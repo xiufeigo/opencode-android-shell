@@ -121,6 +121,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         requestCameraPermission = { cameraPermission.launch(Manifest.permission.CAMERA) },
     )
     private val systemUiTheme = SystemUiThemeHost(
+        window = window,
         insetsProvider = { if (::insets.isInitialized) insets else null },
         systemDark = {
             (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==

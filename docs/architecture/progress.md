@@ -397,6 +397,14 @@
 
 验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止这些测试 oracle 或旧文件名重新出现在生产 `host/` 源集。
 
+### Round 40：系统栏主题边界退出 InsetsHost
+
+状态：完成，待提交。
+
+闭环内容：`SystemUiThemeHost` 名义上拥有页面主题快照和系统栏兜底策略，实际却把 `WindowInsetsControllerCompat`、状态栏/导航栏颜色与对比度遮罩操作留在 `InsetsHost.applyBarsTheme`，形成浅转发和错误所有权。现将 window 注入 `SystemUiThemeHost`，由它直接应用系统栏主题；`InsetsHost` 删除该框架边界代码，只保留 insets/resize 职责。语义保持不变：页面已上报时用页面主题，未上报或 uiMode 变化后回退系统深浅色。
+
+验证：`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。架构检查现在禁止 `InsetsHost` 重新持有系统栏主题应用边界。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

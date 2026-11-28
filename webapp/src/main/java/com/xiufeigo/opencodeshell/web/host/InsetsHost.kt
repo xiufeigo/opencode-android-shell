@@ -1,7 +1,6 @@
 package com.xiufeigo.opencodeshell.web.host
 
 import android.content.res.Configuration
-import android.graphics.Color
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -9,7 +8,6 @@ import android.view.Window
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import org.json.JSONObject
 import java.util.Locale
 
@@ -177,25 +175,6 @@ class InsetsHost(
      */
     fun setSurfaceColor(color: Int) {
         resizeTarget().setBackgroundColor(color)
-    }
-
-    /**
-     * 让系统栏图标跟着页面的 `data-color-scheme` 走：深色 UI → 浅色图标。
-     * 只在 window 真正创建后调。
-     */
-    fun applyBarsTheme(dark: Boolean) {
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.isAppearanceLightStatusBars = !dark
-        controller.isAppearanceLightNavigationBars = !dark
-        // API 29+ 的对比度遮罩会把导航手势条画成一条白杠，关掉。
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            window.isNavigationBarContrastEnforced = false
-            window.isStatusBarContrastEnforced = false
-        }
-        @Suppress("DEPRECATION")
-        window.statusBarColor = Color.TRANSPARENT
-        @Suppress("DEPRECATION")
-        window.navigationBarColor = Color.TRANSPARENT
     }
 
     private fun publish(insets: WindowInsetsCompat): WindowInsetsCompat {

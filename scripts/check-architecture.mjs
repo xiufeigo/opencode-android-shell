@@ -310,6 +310,18 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   }
 }
 
+
+{
+  const insetsHost = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+  const themeHost = read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/SystemUiThemeHost.kt")
+  if (insetsHost.includes("fun applyBarsTheme") || insetsHost.includes("WindowInsetsControllerCompat")) {
+    failures.push("InsetsHost owns system-bar theme application again; keep that boundary in SystemUiThemeHost")
+  }
+  for (const needle of ["WindowInsetsControllerCompat(window, window.decorView)", "isAppearanceLightStatusBars", "isAppearanceLightNavigationBars", "window.navigationBarColor = Color.TRANSPARENT"]) {
+    if (!themeHost.includes(needle)) failures.push(`SystemUiThemeHost no longer owns system-bar theme boundary: missing ${needle}`)
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }
