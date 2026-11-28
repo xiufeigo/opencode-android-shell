@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "purpose": "Machine-checked contract inventory for literals that cross the Kotlin/JavaScript host boundary. Changing any value requires changing the producers, consumers, tests, and this inventory in the same reviewed unit.",
+  "contracts": [
+    {
+      "id": "native-interface-name",
+      "kind": "javascript-interface",
+      "value": "__ocAndroidNative",
+      "owner": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt",
+      "participants": [
+        { "path": "frontend/host-runtime/facade-bootstrap.js", "token": "window.__ocAndroidNative" },
+        { "path": "frontend/host-runtime/oc-preflight.js", "token": "window.__ocAndroidNative" },
+        { "path": "frontend/host-runtime/index.html", "token": "window.__ocAndroidNative" }
+      ],
+      "notes": "Native object injected by WebView; page code normally uses the facade instead."
+    },
+    {
+      "id": "page-facade-name",
+      "kind": "page-global",
+      "value": "__ocAndroid",
+      "owner": "frontend/host-runtime/android-facade.js",
+      "ownerToken": "window.__ocAndroid = oc",
+      "participants": [
+        { "path": "frontend/host-runtime/facade-bootstrap.js", "token": "window.__ocAndroid" },
+        { "path": "frontend/android/back.ts", "token": "window.__ocAndroid" }
+      ],
+      "notes": "Facade object consumed by embedded UI integration code."
+    },
+    {
+      "id": "insets-event-name",
+      "kind": "dom-event",
+      "value": "oc:insets",
+      "owner": "frontend/host-runtime/android-facade.js",
+      "participants": [
+        { "path": "frontend/terminal/terminal.js", "token": "oc:insets" }
+      ],
+      "notes": "Dispatched after each applied host insets payload; terminal uses it to schedule fitting."
+    },
+    {
+      "id": "notification-permission-event",
+      "kind": "dom-event",
+      "value": "oc:notifyPerm",
+      "owner": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt",
+      "participants": [
+        { "path": "frontend/host-runtime/notification-shim.js", "token": "oc:notifyPerm" }
+      ],
+      "notes": "Host pushes the real Android notification permission state into the page shim."
+    },
+    {
+      "id": "background-state-hook",
+      "kind": "page-global-function",
+      "value": "__ocSetBackground",
+      "owner": "frontend/host-runtime/background-state-shim.js",
+      "ownerToken": "window.__ocSetBackground",
+      "participants": [
+        { "path": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt", "token": "__ocSetBackground" }
+      ],
+      "notes": "Host invokes this hook before WebView pause/resume so notification focus gating sees the correct background state."
+    },
+    {
+      "id": "initial-host-scheme",
+      "kind": "page-global-value",
+      "value": "__ocHostSchemeInitial",
+      "owner": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt",
+      "participants": [
+        { "path": "frontend/host-runtime/scheme-bridge.js", "token": "window.__ocHostSchemeInitial" }
+      ],
+      "notes": "Document-start seed for the host-driven prefers-color-scheme bridge."
+    },
+    {
+      "id": "terminal-font-scale-key",
+      "kind": "local-storage-key",
+      "value": "oc.settings.terminalFontScale",
+      "owner": "frontend/host-runtime/terminal-settings.js",
+      "participants": [
+        { "path": "frontend/terminal/terminal.js", "token": "oc.settings.terminalFontScale" }
+      ],
+      "notes": "Shared by the settings UI shim and xterm terminal adapter."
+    },
+    {
+      "id": "notification-session-extra",
+      "kind": "intent-extra",
+      "value": "oc_session_id",
+      "owner": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt",
+      "participants": [
+        { "path": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationLaunchHost.kt", "token": "NotifierHost.EXTRA_SESSION_ID" }
+      ],
+      "notes": "Notification click intent carries the target session id verbatim."
+    },
+    {
+      "id": "notification-marker-extra",
+      "kind": "intent-extra",
+      "value": "oc_from_notification",
+      "owner": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt",
+      "participants": [
+        { "path": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationLaunchHost.kt", "token": "NotifierHost.EXTRA_FROM_NOTIFICATION" }
+      ],
+      "notes": "One-shot marker consumed and removed by the notification launch host."
+    },
+    {
+      "id": "debug-eval-extra",
+      "kind": "intent-extra",
+      "value": "oc_debug_eval",
+      "owner": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt",
+      "participants": [],
+      "notes": "Debug-only adb/instrumentation entry point. External diagnostics and research scripts depend on this stable name."
+    },
+    {
+      "id": "open-session-route-method",
+      "kind": "facade-method",
+      "value": "__openSessionByRoute",
+      "owner": "frontend/host-runtime/android-facade.js",
+      "participants": [
+        { "path": "webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt", "token": "__openSessionByRoute" }
+      ],
+      "notes": "WebHostBridge evaluates this facade method with the canonical session route computed by NotifierHost."
+    }
+  ]
+}

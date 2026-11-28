@@ -173,6 +173,38 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns notification permission state that belongs to NotificationPermissionHost: ${needle}`)
 }
 
+
+{
+  const contractPath = "docs/architecture/host-bridge-contract.json"
+  const contract = JSON.parse(read(contractPath))
+  if (contract.version !== 1 || !Array.isArray(contract.contracts)) {
+    failures.push(`${contractPath}: unsupported contract inventory shape`)
+  } else {
+    const ids = new Set()
+    for (const entry of contract.contracts) {
+      if (!entry.id || ids.has(entry.id)) failures.push(`${contractPath}: duplicate or missing contract id ${entry.id}`)
+      ids.add(entry.id)
+      if (!entry.value || !entry.owner) {
+        failures.push(`${contractPath}: ${entry.id} lacks value or owner`)
+        continue
+      }
+      const checkFile = (path, token, role) => {
+        if (!fs.existsSync(path)) {
+          failures.push(`${contractPath}: ${entry.id} ${role} file is missing: ${path}`)
+          return
+        }
+        if (!read(path).includes(token)) {
+          failures.push(`${contractPath}: ${entry.id} ${role} ${path} does not contain required token ${token}`)
+        }
+      }
+      checkFile(entry.owner, entry.ownerToken || entry.value, "owner")
+      for (const participant of entry.participants || []) {
+        checkFile(participant.path, participant.token || entry.value, "participant")
+      }
+    }
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

@@ -309,6 +309,14 @@
 
 验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 29：跨 Kotlin/JS 桥契约机器可读化
+
+状态：完成，待提交。
+
+闭环内容：新增 `docs/architecture/host-bridge-contract.json`，集中登记 native bridge 注入名、页面 facade 名、`oc:insets`、`oc:notifyPerm`、`__ocSetBackground`、`__ocHostSchemeInitial`、终端字号存储键、通知 intent extras、debug eval extra 与 `__openSessionByRoute`。每项记录 owner、participant、验证 token 与语义说明；`check-architecture` 现在解析该清单并校验 owner/participant 文件仍包含正确契约 token。任务池中的跨 Kotlin/JS 契约集中项完成。没有选择生成常量方案，因为它会要求同时改 Gradle 与 JS 构建链，复杂度高于当前收益；契约清单先提供显式 SSOT 与漂移防线。
+
+验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

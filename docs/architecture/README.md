@@ -22,6 +22,7 @@
 | 服务端浏览器 RPC 契约 | `plugins/server-browser/src/rpc.ts` | 由 `frontend/remote-browser/sync-rpc.mjs` 复制生成客户端输入。 |
 | 服务端浏览器插件 | `plugins/server-browser/` | OpenCode v2 插件。 |
 | 浏览器面板客户端 | `frontend/remote-browser/` | 由 `sources.mjs` 复制进上游 `gui-plugins`。 |
+| Kotlin/JS 宿主桥契约 | `docs/architecture/host-bridge-contract.json` | 机器可读契约清单；`check-architecture` 校验生产者、消费者与字面量不漂移。 |
 | Android 宿主组合根 | `webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt` | Activity 生命周期、框架入口注册和能力模块组装；当前约 580 行。 |
 | Android 宿主能力 | `webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/` | 启动导航/恢复、WebView bootstrap、WebViewClient/WebChromeClient 适配、后台生命周期、电源、通知、相机、insets、主题、字体、本地 UI 服务、桥接等深模块。 |
 | 签名规则 | `AGENTS.md` 与 CI workflow | 本机与 CI 使用同一证书指纹；凭据不进入仓库。 |
