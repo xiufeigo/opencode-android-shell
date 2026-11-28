@@ -471,6 +471,14 @@ if (read("webapp/src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt
   }
 }
 
+
+{
+  const verifyBridge = read("scripts/verify-android-common.mjs")
+  for (const needle of ["proxyOrigin", "proxyPrefix"]) {
+    if (verifyBridge.includes(needle)) failures.push(`verify-android-common mock bridge is wider than production: ${needle}`)
+  }
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

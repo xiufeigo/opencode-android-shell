@@ -34,8 +34,6 @@ function nativeBridgeSource() {
     getImeMode: () => window.__ocImeMode || "resize",
     retry: () => record("retry"),
     reportTheme: (dark) => record("reportTheme", [dark]),
-    proxyOrigin: () => "http://127.0.0.1:0",
-    proxyPrefix: () => "/opencode-proxy/unused",
   }
 })()`
 }

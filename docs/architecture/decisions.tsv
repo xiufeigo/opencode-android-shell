@@ -56,3 +56,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T08:54:15.909Z	round49	测试合同输入声明被扫描树而非手工文件清单	合同测试本身遍历 src/main/java 与 assets/www；逐文件清单会随拆分漂移并产生假绿或 stale input，树输入是实际扫描语义的 canonical 表达	webapp/build.gradle.kts	VERIFIED: unit tests passed
 2026-11-28T09:00:39.807Z	round50	删除回环代理残留的流量分类器	旧代理已删除且 Kotlin 分类器无生产调用方；当前权威分类在注入层 round-power-sensor.js，保留第二套实现只会让上游协议语义双写漂移	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/RoundActivityTracker.kt	VERIFIED: unit tests passed
 2026-11-28T09:03:19.016Z	round51	删除页面可见的通用 secret 桥	通用 EncryptedSharedPreferences 读写能力没有生产消费者且只服务诊断自测/投机未来需求；保留会扩大页面可触达的宿主状态面，而 KEY_BACKEND_URL 的宿主内部读取仍可保留在 SecretStore	webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt	VERIFIED: unit tests passed
+2026-11-28T09:04:30.212Z	round52	浏览器验证 mock 桥不得宽于生产桥	mock 中的 proxyOrigin/proxyPrefix 已无生产对应物和页面调用方；宽 mock 会掩盖旧代理契约复活，验证环境必须保持 contract-shaped	scripts/verify-android-common.mjs	VERIFIED: unit tests passed

@@ -493,6 +493,14 @@
 
 验证：`node frontend/host-runtime/build.mjs`、`node --check scripts/verify-android-common.mjs`、`node --check webapp/src/main/assets/www/oc-host.js`、`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
 
+### Round 52：收缩浏览器验证 mock 桥到生产形状
+
+状态：完成，待提交。
+
+闭环内容：`verify-android-common.mjs` 的 mock Kotlin 桥仍暴露 `proxyOrigin` / `proxyPrefix`，但生产桥已删除整个回环代理兼容面，页面注入层也没有这两个调用方。mock 比生产更宽会让浏览器验证错误地容忍旧契约复活。已删除这两个 mock 方法，并由架构检查禁止验证桥重新宽于生产桥。
+
+验证：`node --check scripts/verify-android-common.mjs`、`node --check scripts/check-architecture.mjs`、`node scripts/check-architecture.mjs`、`git diff --check`、`:webapp:testDebugUnitTest` 通过。
+
 ## 待确认事项
 
 - 回合电源活动通道：当前注入层只在 busy 集合翻转时调用 `setKeepScreenOn`，尚未把回合中途活动接入 `RoundActivityTracker.onRoundActivity`。因此 90 s “空闲兜底”在当前生产接线里也会让超过 90 s 的长回合失去常亮；补活动通道会延长长回合常亮，属于电源语义/产品取舍，不能用删除死代码顺手改变。
