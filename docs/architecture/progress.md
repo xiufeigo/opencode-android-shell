@@ -293,6 +293,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node frontend/host-runtime/build.mjs` 后生成资产无 diff；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 27：android-facade 核心与六块前置职责分层
+
+状态：完成，待提交。
+
+闭环内容：把剩余 `android-facade.js` 按原字节顺序切成职责明确的权威源码：`facade-bootstrap.js`（facade 启动、native 桥探测、缓存清理与共享状态）、`scheme-bridge.js`（宿主深浅色到 matchMedia）、`safe-area-style.js`（顶部安全区与视口高度 CSS）、`back-overlay.js`（返回键浮层关闭）、`ime-insets.js`（IME CSS 与 insets 应用）、`surface-color.js`（页面表面色解析）。剩余 `android-facade.js` 只保留 171 行 `window.__ocAndroid` facade API 与 shell 标记。生成 `oc-host.js` 字节完全一致；任务池中的 facade 内部职责拆分闭环完成。
+
+验证：`:webapp:testDebugUnitTest` 281 项通过；`node frontend/host-runtime/build.mjs` 后生成资产无 diff；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

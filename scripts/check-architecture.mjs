@@ -10,7 +10,7 @@ const requirePresent = (text, needle, label) => {
   if (!text.includes(needle)) failures.push(`${label}: required canonical implementation is missing: ${needle}`)
 }
 
-const hostPieces = ["android-facade.js", "notification-shim.js", "background-state-shim.js", "editable-arrow-guard.js", "round-power-sensor.js", "surface-color-tail.js", "overlay-focus.js", "terminal-settings.js"]
+const hostPieces = ["facade-bootstrap.js", "scheme-bridge.js", "safe-area-style.js", "back-overlay.js", "ime-insets.js", "surface-color.js", "android-facade.js", "notification-shim.js", "background-state-shim.js", "editable-arrow-guard.js", "round-power-sensor.js", "surface-color-tail.js", "overlay-focus.js", "terminal-settings.js"]
 if (fs.existsSync("frontend/host-runtime/oc-host.js")) failures.push("frontend/host-runtime/oc-host.js must not reappear; edit the named runtime pieces instead")
 const host = hostPieces.map(file => read(`frontend/host-runtime/${file}`)).join("")
 for (const needle of [
