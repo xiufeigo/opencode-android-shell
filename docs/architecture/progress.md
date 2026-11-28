@@ -341,6 +341,14 @@
 
 验证：所有改动脚本 `node --check` 通过；common helper smoke 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 33：打包 UI 静态服务器退出 terminal release runner
+
+状态：完成，待提交。
+
+闭环内容：新增 `scripts/verify-android-ui-server.mjs`，把 content-type、路径归一化、listen/closeServer 与完整 packaged UI origin server 从 terminal release runner 移入共享模块。`startUiServer` 通过显式参数接收 terminal module override 与 request recorder，避免共享库反向读取 runner 报告状态；release runner 注入自己的 `record`/`TERMINAL_MODULE_SERVED`，普通验证脚本使用默认打包资产。6 个消费脚本改为直接导入共享服务器，runner 不再 re-export。架构检查禁止 server/helper 所有权回流。
+
+验证：`node --check` 覆盖所有改动脚本；独立 smoke 启动共享 UI server，确认 `/` SPA fallback 与 `/oc-terminal.js` 均 200 且 recorder 收到正确 via 标记；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

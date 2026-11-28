@@ -55,6 +55,7 @@ import path from "node:path"
 import crypto from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-common.mjs"
+import { startUiServer, listen, closeServer } from "./verify-android-ui-server.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, "..")
@@ -120,33 +121,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /* ───────────────────────── static asset origin ───────────────────────── */
 
-function contentTypeOf(p) {
-  if (p.endsWith(".html")) return "text/html; charset=utf-8"
-  if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript; charset=utf-8"
-  if (p.endsWith(".css")) return "text/css; charset=utf-8"
-  if (p.endsWith(".json") || p.endsWith(".webmanifest")) return "application/json; charset=utf-8"
-  if (p.endsWith(".svg")) return "image/svg+xml"
-  if (p.endsWith(".png")) return "image/png"
-  if (p.endsWith(".ico")) return "image/x-icon"
-  if (p.endsWith(".webp")) return "image/webp"
-  if (p.endsWith(".woff2")) return "font/woff2"
-  if (p.endsWith(".woff")) return "font/woff"
-  if (p.endsWith(".ttf")) return "font/ttf"
-  if (p.endsWith(".wasm")) return "application/wasm"
-  if (p.endsWith(".txt")) return "text/plain; charset=utf-8"
-  return "application/octet-stream"
-}
-
-function normalize(p) {
-  if (!p.startsWith("/")) p = `/${p}`
-  const parts = []
-  for (const seg of p.split("/")) {
-    if (seg === "" || seg === ".") continue
-    if (seg === "..") parts.pop()
-    else parts.push(seg)
-  }
-  return `/${parts.join("/")}`
-}
 
 /**
  * Request log. Every hit is recorded so the report can prove which modules the
@@ -160,60 +134,6 @@ function record(entry) {
   }
 }
 
-/**
- * The UI origin, mirroring `LocalUiOriginServer` plus the lead's module
- * replacement routes. SPA fallback to index.html, matching the real server.
- */
-function startUiServer() {
-  const server = http.createServer((req, res) => {
-    let pathname = "/"
-    try {
-      pathname = decodeURIComponent(new URL(req.url || "/", "http://127.0.0.1").pathname)
-    } catch {}
-
-    const serve = (file, note) => {
-      try {
-        const body = fs.readFileSync(file)
-        record({ path: pathname, status: 200, bytes: body.length, via: note })
-        res.writeHead(200, {
-          "content-type": contentTypeOf(file),
-          "content-length": body.length,
-          "cache-control": "no-cache",
-        })
-        res.end(req.method === "HEAD" ? undefined : body)
-        return true
-      } catch {
-        return false
-      }
-    }
-
-    // 1. Ghostty replacement slot. Matched before the /_assets/ bundle mapping
-    //    because this is a real chunk name that also exists on disk.
-    if (pathname === "/oc-terminal.js") {
-      if (serve(TERMINAL_MODULE_SERVED, "terminal:oc-terminal.mjs")) return
-      record({ path: pathname, status: 404, via: "terminal-module-missing" })
-      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" })
-      res.end(`replacement terminal module missing at ${TERMINAL_MODULE_SERVED}`)
-      return
-    }
-
-    // 2. AGP drops `_`-prefixed dirs, so /_assets/x lives on disk at oa/x.
-    const disk = pathname.startsWith("/_assets/")
-      ? path.join(BUNDLE_DIR, pathname.slice("/_assets/".length))
-      : path.join(UI_ROOT, normalize(pathname))
-
-    if (disk.startsWith(UI_ROOT) && serve(disk, pathname.startsWith("/_assets/") ? "ui:oa/*" : "ui:*")) return
-
-    // 4. SPA fallback.
-    const index = path.join(UI_ROOT, "index.html")
-    if (serve(index, "ui:index.html(spa)")) return
-
-    record({ path: pathname, status: 404, via: "ui:miss" })
-    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" })
-    res.end("not found")
-  })
-  return listen(server)
-}
 
 /* ─────────────────────────── mock OpenCode V2 backend ─────────────────────────── */
 
@@ -968,19 +888,6 @@ function bodyJson(req, cb) {
   })
 }
 
-function listen(server) {
-  return new Promise((resolve, reject) => {
-    server.on("error", reject)
-    server.listen(0, "127.0.0.1", () => resolve(server))
-  })
-}
-
-function closeServer(server) {
-  return new Promise((resolve) => {
-    server.closeAllConnections?.()
-    server.close(() => resolve())
-  })
-}
 
 /* ─────────────────────────── page bootstrap ─────────────────────────── */
 
@@ -3915,7 +3822,7 @@ async function main() {
 
   // Blocker 2: oc-host.js must be able to install its facade, which requires the
   // mock bridge. Verified by the mount check, so no separate gate here.
-  const uiServer = await startUiServer()
+  const uiServer = await startUiServer({ terminalModule: TERMINAL_MODULE_SERVED, record })
   const uiPort = uiServer.address().port
   const state = await startBackend()
   state.uiOrigin = `http://127.0.0.1:${uiPort}`
@@ -4013,7 +3920,7 @@ async function main() {
   process.exitCode = failed.length ? 1 : 0
 }
 
-export { startBackend, startUiServer }
+export { startBackend }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((err) => {
   console.error(`FATAL: ${err && err.stack ? err.stack : err}`)
