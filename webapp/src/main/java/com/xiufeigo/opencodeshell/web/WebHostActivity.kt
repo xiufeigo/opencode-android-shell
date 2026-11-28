@@ -33,6 +33,7 @@ import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
+import com.xiufeigo.opencodeshell.web.host.NotificationLaunchHost
 import com.xiufeigo.opencodeshell.web.host.NotificationPermissionHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.RenderProcessRecoveryHost
@@ -196,6 +197,11 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         isForeground = { isForeground() },
         requestRuntimePermission = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
         evaluateJs = { js -> evaluateJs(js) },
+    )
+
+    private val notificationLaunchHost = NotificationLaunchHost(
+        webViewProvider = { if (::webView.isInitialized) webView else null },
+        bridgeProvider = { bridge },
     )
 
     private val notificationPermission: ActivityResultLauncher<String> = registerForActivityResult(
@@ -442,12 +448,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     }
 
     private fun consumeNotificationIntent(intent: Intent?) {
-        if (intent == null || !intent.getBooleanExtra(NotifierHost.EXTRA_FROM_NOTIFICATION, false)) return
-        intent.removeExtra(NotifierHost.EXTRA_FROM_NOTIFICATION)
-        val sessionId = intent.getStringExtra(NotifierHost.EXTRA_SESSION_ID)
-        Log.i(TAG, "opened from notification, session=$sessionId")
-        // 等首屏脚本装好 facade 再发。
-        webView.postDelayed({ bridge.deliverOpenSession(sessionId) }, 400)
+        notificationLaunchHost.consume(intent)
     }
 
     // ---- BR1 验收用调试注入（仅 DEBUG 构建） ------------------------------

@@ -47,6 +47,9 @@ class NotificationClickPlanTest {
     private val bridgeSource: String get() =
         moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
+    private val launchSource: String get() =
+        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationLaunchHost.kt")
+
     // ---- 1. 意图里带着正确的会话标识 -------------------------------------
 
     @Test
@@ -61,6 +64,15 @@ class NotificationClickPlanTest {
         assertTrue("N1: 点击意图必须带 `来自通知` 标记，否则 consumeNotificationIntent 直接 return", plan.fromNotification)
         assertEquals("N1: extra 键名被改了，WebHostActivity.consumeNotificationIntent 读不到", "oc_session_id", NotifierHost.EXTRA_SESSION_ID)
         assertEquals("N1: 来自通知的 extra 键名被改了", "oc_from_notification", NotifierHost.EXTRA_FROM_NOTIFICATION)
+    }
+
+
+    @Test
+    fun clickConsumptionIsOwnedByNotificationLaunchHost() {
+        assertTrue(launchSource.contains("intent.removeExtra(NotifierHost.EXTRA_FROM_NOTIFICATION)"))
+        assertTrue(launchSource.contains("intent.getStringExtra(NotifierHost.EXTRA_SESSION_ID)"))
+        assertTrue(launchSource.contains("deliverOpenSession(sessionId)"))
+        assertTrue(launchSource.contains("FACADE_SETTLE_MS = 400L"))
     }
 
     @Test

@@ -261,6 +261,14 @@
 
 验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 23：通知点击消费退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `NotificationLaunchHost`，集中拥有通知点击标记消费、session extra 读取、facade settle 400ms 延迟和 `deliverOpenSession` 投递。Activity 只保留 intent 边界转发；通知点击既有纯函数契约之外，新增消费侧所有权绊线，架构检查禁止 Activity 重新持有该流程。
+
+验证：`:webapp:testDebugUnitTest` 281 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

@@ -131,6 +131,10 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+for (const needle of ["EXTRA_FROM_NOTIFICATION", "opened from notification", "deliverOpenSession(sessionId)"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns notification-click consumption that belongs to NotificationLaunchHost: ${needle}`)
+}
+
 if (activitySource.includes("KeyEvent.KEYCODE_ESCAPE")) failures.push("WebHostActivity owns physical ESC event construction that belongs to WebHostEscapePolicy")
 
 for (const needle of ["EVAL_SETTLE_MS", "OcWebHost/Eval"]) {
