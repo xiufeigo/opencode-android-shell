@@ -41,3 +41,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T07:54:11.298Z	round33	提取共享 UI server	UI server 是多个验证脚本共用的真实资产边界；用显式 recorder/terminalModule 参数替代 runner 全局耦合	scripts/verify-android-ui-server.mjs	VERIFIED: ui server smoke and check-architecture green
 2026-11-28T07:58:52.906Z	round35	提取共享 mock backend	backend 是所有 Android 验证脚本共用的协议边界；record 注入保持 runner 可观测性，lifecycle 独立避免 backend 依赖 UI server	scripts/verify-android-backend.mjs; scripts/verify-android-server-lifecycle.mjs	VERIFIED: backend smoke and terminal boot phone/tablet green
 2026-11-28T08:00:40.425Z	round36	单一化 host-runtime 拼接清单	拼接顺序是行为契约，不能同时由构建脚本和架构检查各持一份；声明式 assembly.json 让两个消费者共用同一事实	frontend/host-runtime/assembly.json	VERIFIED: generated oc-host.js sha256 unchanged
+2026-11-28T08:04:36.015Z	round37	集中测试源码读取	22 个测试类复制同一套文件定位逻辑；读取路径是测试基础设施而非各事故语义，集中后保留各测试自己的契约断言	webapp/src/test/java/com/xiufeigo/opencodeshell/web/testutil/TestSource.kt	VERIFIED: testDebugUnitTest green

@@ -1,5 +1,7 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
+
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,20 +29,14 @@ import java.net.Socket
  */
 class LocalUiOriginServerTest {
 
-    private fun moduleFile(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
     private val serverSrc: String
-        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/LocalUiOriginServer.kt")
 
     private val activitySrc: String
-        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val indexHtml: String
-        get() = moduleFile("src/main/assets/www/ui/index.html")
+        get() = TestSource.read("src/main/assets/www/ui/index.html")
 
     // ---- 1) 官方前端确实被"自带"进来了 ---------------------------------------
 
@@ -111,7 +107,7 @@ class LocalUiOriginServerTest {
         assertTrue(serverSrc.contains("normalized == \"/oc-terminal.js\""))
         assertTrue(serverSrc.contains("assets.open(\"www/oc-terminal.js\")"))
         assertTrue(File("src/main/assets/www/oc-terminal.js").length() > 100_000)
-        val adapter = moduleFile("../frontend/terminal/terminal.js")
+        val adapter = TestSource.read("../frontend/terminal/terminal.js")
         assertTrue(adapter.contains("from \"@xterm/xterm\""))
         assertTrue(adapter.contains("SerializeAddon"))
     }
@@ -203,7 +199,7 @@ class LocalUiOriginServerTest {
             "Activity 必须使用进程统一持有的本机静态来源",
             activitySrc.contains("localUiServer = (application as WebHostApp).localUiServer.also { it.start() }"),
         )
-        val app = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt")
+        val app = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostApp.kt")
         assertTrue(
             "本机 UI 来源只按进程创建一次，Activity 重叠时不能争抢端口",
             app.contains("val localUiServer: LocalUiOriginServer by lazy") &&

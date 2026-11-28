@@ -1,5 +1,7 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
+
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import org.junit.Assert.assertEquals
@@ -34,25 +36,19 @@ import java.io.File
  */
 class DirectConnectAuthBoundaryTest {
 
-    private fun moduleFile(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
     private val activitySrc: String
-        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val navigationSrc: String
-        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
 
     private val bridgeSrc: String
-        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     private val secretStoreSrc: String
-        get() = moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/SecretStore.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/SecretStore.kt")
 
-    private val buildGradle: String get() = moduleFile("build.gradle.kts")
+    private val buildGradle: String get() = TestSource.read("build.gradle.kts")
 
     /** 整个 main 源码树（src/main/java）拼起来做"残留扫描"。 */
     private val allMainSources: String by lazy {

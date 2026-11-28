@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * TERM1 绊线：**IME 弹起时把布局视口压矮**（键盘遮住终端的修法）。
@@ -107,19 +107,13 @@ class ImeViewportResizeTest {
 
     // ---- 2. 宿主契约层 -----------------------------------------------------
 
-    private fun read(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
     @Test
     fun `宿主压的是 WebView 的父 content 层 不是往下找 content id`() {
-        val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         assertTrue("必须按 max(ime, nav) 压矮", src.contains("ImeResize.bottomPadPx("))
         assertTrue("必须作用在真正那一层上（WebView 的父）", src.contains("val p = root.parent"))
-        val activity = read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-        val viewportFactory = read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewViewportFactory.kt")
+        val activity = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        val viewportFactory = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewViewportFactory.kt")
         assertTrue(
             "必须自己包一层 viewportHost：AppCompat content 会冲掉 padding，WebView 仍是整屏",
             viewportFactory.contains("root.addView(webView)"),
@@ -145,7 +139,7 @@ class ImeViewportResizeTest {
 
     @Test
     fun `默认就是 resize 模式`() {
-        val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         assertTrue(
             "默认必须是 RESIZE（页面侧单条让位路径已经证明不够）",
             Regex("""var imeMode: ImeMode = ImeMode\.\w+""").find(src)?.value?.contains("RESIZE") == true,
@@ -154,8 +148,8 @@ class ImeViewportResizeTest {
 
     @Test
     fun `键盘动画期间的多次上报只落一次 避免终端反复重排`() {
-        val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
-        val occl = read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeOcclusion.kt")
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val occl = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/ImeOcclusion.kt")
         assertTrue("必须有合并窗口常量（纯函数宿主侧可测）", occl.contains("COMMIT_DELAY_MS"))
         assertTrue("必须 postDelayed 提交", src.contains("postDelayed(commitResizeRunnable"))
         assertTrue("新的上报必须撤掉上一个挂起的提交", src.contains("removeCallbacks(commitResizeRunnable)"))
@@ -170,7 +164,7 @@ class ImeViewportResizeTest {
 
     @Test
     fun `IME 读数在源头归一 payload 与压矮共用同一个值`() {
-        val src = read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+        val src = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
         assertTrue("必须经 occludingImePx 归一", src.contains("ImeResize.occludingImePx(imeRawBottom, bars.bottom)"))
         assertTrue("imeVisible 必须由归一后的值推出", src.contains("val imeVisible = imeBottom > 0"))
         assertFalse(
@@ -181,7 +175,7 @@ class ImeViewportResizeTest {
 
     // ---- 3. 注入层契约层（防"双倍留白"） -----------------------------------
 
-    private fun facade(): String = read("src/main/assets/www/oc-host.js")
+    private fun facade(): String = TestSource.read("src/main/assets/www/oc-host.js")
 
     @Test
     fun `页面侧抬升只在 vars 模式生效 避免双倍留白`() {

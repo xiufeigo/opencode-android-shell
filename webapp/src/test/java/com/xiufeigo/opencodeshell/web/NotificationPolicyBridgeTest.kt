@@ -1,5 +1,6 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -33,22 +34,11 @@ import java.io.File
  */
 class NotificationPolicyBridgeTest {
 
-    private fun src(rel: String): String {
-        val relPath = File(rel)
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel（从 ${File(".").absolutePath} 向上找了 4 级）")
-    }
-
     private val hostJs: String
-        get() = src("src/main/assets/www/oc-host.js")
+        get() = TestSource.read("src/main/assets/www/oc-host.js")
 
     private val notifierSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt")
 
     // ---- 接线点 1：页面侧必须有 Notification 垫片 -------------------------
 
@@ -135,7 +125,7 @@ class NotificationPolicyBridgeTest {
 
     @Test
     fun hostStillDeliversThroughExistingBridge() {
-        val bridge = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        val bridge = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
         assertTrue(
             "WebHostBridge 必须仍然把 postMessage 接到 NotifierHost.postTurnFinished",
             bridge.contains("return NotifierHost.postTurnFinished(ctx, notificationTarget, t, b, s)"),
@@ -181,7 +171,7 @@ class NotificationPolicyBridgeTest {
     fun selfCheckPageRoutesThroughTheShimNotDirectly() {
         assertTrue(
             "自检页必须改走 window.Notification 垫片，才能证明生产路径真的经过上游门控",
-            src("src/main/assets/www/index.html").contains("new window.Notification("),
+            TestSource.read("src/main/assets/www/index.html").contains("new window.Notification("),
         )
     }
 }

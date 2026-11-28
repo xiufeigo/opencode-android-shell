@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * C1（任务 2）绊线：`--es oc_debug_eval` 调试注入通道的开关。
@@ -29,17 +29,11 @@ import java.io.File
  */
 class DebugEvalChannelTest {
 
-    private fun moduleFile(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
-    private val buildGradle: String get() = moduleFile("build.gradle.kts")
+    private val buildGradle: String get() = TestSource.read("build.gradle.kts")
     private val activitySource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
     private val debugEvalSource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/DebugEvalHost.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/DebugEvalHost.kt")
 
     @Test
     fun debugBuildEnablesTheChannel() {

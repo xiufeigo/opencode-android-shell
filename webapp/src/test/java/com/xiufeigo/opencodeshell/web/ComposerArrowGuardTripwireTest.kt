@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * UX6 · **输入框方向键"焦点不越界"绊线**（缺陷：输入框内按 → 到行尾后，
@@ -40,13 +40,7 @@ import java.io.File
  */
 class ComposerArrowGuardTripwireTest {
 
-    private fun read(rel: String): String {
-        val f = File(rel)
-        assertTrue("找不到 $rel（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
-    private val js: String by lazy { read("src/main/assets/www/oc-host.js") }
+    private val js: String by lazy { TestSource.read("src/main/assets/www/oc-host.js") }
 
     /** 取出 `function onEditableArrowGuard(...) { ... }` 的函数体（花括号配平）。 */
     private fun guardBody(): String {

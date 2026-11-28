@@ -1,8 +1,8 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * P6 · 省电绊线（第二道）：**源码接线** tripwire。
@@ -33,26 +33,14 @@ import java.io.File
  */
 class PowerWiringTest {
 
-    private fun src(rel: String): String {
-        // Gradle 子项目测试的工作目录 = 子项目目录；为稳妥起见向上找几级。
-        val relPath = File(rel)
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel（从 ${File(".").absolutePath} 向上找了 4 级）")
-    }
-
     private val activitySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val lifecycleSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
     private val bridgeSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     /**
      * 取成员函数体并剥掉行注释。剥注释是必需的：注释里的字面量会被当成调用。

@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * 底部留白绊线：**白色会话底框要贴住手势小白条**，但官方输入区布局不能动。
@@ -113,14 +113,8 @@ class NavigationBarVisualTest {
 
     // ---- 宿主接线：必须以这套判据喂给页面，而不是直接上报整条导航带 ----
 
-    private fun read(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
-    private val insetsHost: String by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt") }
-    private val facade: String by lazy { read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
+    private val insetsHost: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt") }
+    private val facade: String by lazy { TestSource.read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
 
     @Test
     fun `InsetsHost 用可视让位量喂 safeBottom 与视口压矮`() {

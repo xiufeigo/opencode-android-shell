@@ -1,12 +1,13 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
+
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.SecretStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * UX6 · **终端重接（terminal reattach）在直连架构下的等价绊线**。
@@ -31,21 +32,11 @@ import java.io.File
  */
 class TerminalReattachTest {
 
-    private fun sourceOf(rel: String): String {
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到 $rel")
-    }
-
     private val activitySrc: String
-        get() = sourceOf("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val navigationSrc: String
-        get() = sourceOf("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/StartupNavigationHost.kt")
 
     @Test
     fun bootUrlHasNoRandomComponent() {

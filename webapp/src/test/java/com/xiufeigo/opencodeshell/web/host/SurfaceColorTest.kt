@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * 视口底带表面色绊线：**露出的条带跟页面主题走**，不能透出跟系统模式的窗口底色。
@@ -49,16 +49,10 @@ class SurfaceColorTest {
 
     // ---- 宿主接线：露出层必须吃页面色，而不是透出跟系统模式的窗口底色 ----
 
-    private fun read(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
-    private val insetsHost: String by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt") }
-    private val bridge: String by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt") }
-    private val activity: String by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
-    private val facade: String by lazy { read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
+    private val insetsHost: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt") }
+    private val bridge: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt") }
+    private val activity: String by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
+    private val facade: String by lazy { TestSource.read("src/main/assets/www/oc-host.js").replace("\r\n", "\n") }
 
     @Test
     fun `页面表面色经桥接到露出层`() {

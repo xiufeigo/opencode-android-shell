@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * OC-KEYBOARD 绊线：**弹层（菜单/对话框/popper）里的"自动聚焦"不许再弹软键盘**。
@@ -27,13 +27,7 @@ import java.io.File
  */
 class OverlayFocusKeyboardTest {
 
-    private fun read(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
-    private val js: String by lazy { read("src/main/assets/www/oc-host.js") }
+    private val js: String by lazy { TestSource.read("src/main/assets/www/oc-host.js") }
 
     /** 本补丁那一段（从 OC-KEYBOARD 段头到文件末尾）。 */
     private val block: String by lazy {

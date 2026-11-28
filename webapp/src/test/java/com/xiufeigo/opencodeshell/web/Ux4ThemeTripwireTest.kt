@@ -1,21 +1,16 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /** Android window theme remains synchronized with the official UI. */
 class Ux4ThemeTripwireTest {
-    private fun read(rel: String): String {
-        val file = File(rel)
-        assertTrue("找不到 $rel", file.isFile)
-        return file.readText()
-    }
-    private val colors by lazy { read("src/main/res/values/colors.xml") }
-    private val nightColors by lazy { read("src/main/res/values-night/colors.xml") }
-    private val activity by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
-    private val themeHost by lazy { read("src/main/java/com/xiufeigo/opencodeshell/web/host/SystemUiThemeHost.kt") }
+    private val colors by lazy { TestSource.read("src/main/res/values/colors.xml") }
+    private val nightColors by lazy { TestSource.read("src/main/res/values-night/colors.xml") }
+    private val activity by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt") }
+    private val themeHost by lazy { TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/SystemUiThemeHost.kt") }
 
     @Test
     fun `window background follows daynight mode`() {

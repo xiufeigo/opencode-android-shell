@@ -276,6 +276,23 @@ for (const needle of ["notificationPermissionRequested", "notificationPermission
   }
 }
 
+
+{
+  const testSourcePath = "webapp/src/test/java/com/xiufeigo/opencodeshell/web/testutil/TestSource.kt"
+  if (!fs.existsSync(testSourcePath)) failures.push(`${testSourcePath}: canonical test source reader is missing`)
+  const testRoot = "webapp/src/test/java/com/xiufeigo/opencodeshell/web"
+  const visit = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`
+      if (entry.isDirectory()) visit(path)
+      else if (entry.name.endsWith(".kt") && /private fun (src|read|moduleFile|sourceOf|asset)\(/.test(read(path))) {
+        failures.push(`${path}: reintroduces a private source-file reader instead of testutil.TestSource`)
+      }
+    }
+  }
+  visit(testRoot)
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

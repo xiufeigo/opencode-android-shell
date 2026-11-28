@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * UX13-P7 · **后台回合保活 SSE + 通知权限主动申请**的接线绊线（源码文本断言）。
@@ -45,16 +45,6 @@ import java.io.File
  */
 class BackgroundRoundKeepaliveTest {
 
-    private fun src(rel: String): String {
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel")
-    }
-
     /** 取某个成员函数体；[endSignature] 缺省时截到下一个 `override fun`。 */
     private fun bodyOf(source: String, signature: String, endSignature: String = "\n    override fun "): String {
         val start = source.indexOf(signature)
@@ -68,19 +58,19 @@ class BackgroundRoundKeepaliveTest {
     }
 
     private val js: String
-        get() = src("src/main/assets/www/oc-host.js")
+        get() = TestSource.read("src/main/assets/www/oc-host.js")
 
     private val activitySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val lifecycleSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
     private val bridgeSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     private val permissionSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
 
     // ---- 刀 1：onPause 的回合感知分支 --------------------------------------
 

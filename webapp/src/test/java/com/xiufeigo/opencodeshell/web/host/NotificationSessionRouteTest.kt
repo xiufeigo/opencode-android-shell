@@ -1,11 +1,11 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * N2 绊线：通知**点击回到会话**的**路由**契约。
@@ -40,19 +40,13 @@ import java.io.File
  */
 class NotificationSessionRouteTest {
 
-    private fun moduleFile(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
     private val notifierSource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt")
 
     private val bridgeSource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
-    private val facadeSource: String get() = moduleFile("src/main/assets/www/oc-host.js")
+    private val facadeSource: String get() = TestSource.read("src/main/assets/www/oc-host.js")
 
     // ---- 1. serverKey 的编码口径必须与上游逐字一致 -------------------------
 

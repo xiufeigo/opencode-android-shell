@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * D1 · **`KEEP_SCREEN_ON` 接线绊线**（源码文本断言）。
@@ -25,25 +25,14 @@ import java.io.File
  */
 class KeepScreenOnWiringTest {
 
-    private fun src(rel: String): String {
-        val relPath = File(rel)
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel（从 ${File(".").absolutePath} 向上找了 4 级）")
-    }
-
     private val activitySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val lifecycleSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
     private val bridgeSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     // ---- 接线点 1：宿主必须有"落 flag"的生产实现 ------------------------
 

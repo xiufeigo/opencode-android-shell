@@ -1,5 +1,7 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
+
 import android.content.Intent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,7 +9,6 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * N1 绊线：通知**点击回到会话**的意图契约。
@@ -35,20 +36,14 @@ import java.io.File
  */
 class NotificationClickPlanTest {
 
-    private fun moduleFile(relative: String): String {
-        val f = File(relative)
-        assertTrue("找不到 $relative（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
     private val notifierSource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/NotifierHost.kt")
 
     private val bridgeSource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     private val launchSource: String get() =
-        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationLaunchHost.kt")
+        TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationLaunchHost.kt")
 
     // ---- 1. 意图里带着正确的会话标识 -------------------------------------
 

@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * UX8 · **D1 回合常亮 + P6 后台断 SSE 的接线绊线**（源码文本断言）。
@@ -46,16 +46,6 @@ import java.io.File
  */
 class Ux8KeepAwakeSseTripwireTest {
 
-    private fun src(rel: String): String {
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel")
-    }
-
     private fun bodyOf(source: String, signature: String): String {
         val start = source.indexOf(signature)
         assertTrue("源码里找不到 `$signature`", start >= 0)
@@ -68,13 +58,13 @@ class Ux8KeepAwakeSseTripwireTest {
     }
 
     private val js: String
-        get() = src("src/main/assets/www/oc-host.js")
+        get() = TestSource.read("src/main/assets/www/oc-host.js")
 
     private val activitySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val lifecycleSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
     /** 传感器函数体（从定义到下一个顶层函数）。 */
     private fun sensorBody(): String {

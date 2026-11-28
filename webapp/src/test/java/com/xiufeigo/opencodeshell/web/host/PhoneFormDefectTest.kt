@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web.host
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * F18 绊线：两条手机专属缺陷的可断言判据。
@@ -63,15 +63,9 @@ class PhoneFormDefectTest {
 
     // ---- 3. 资产契约层：**可反向验证**的那几条 ------------------------------
 
-    private fun asset(rel: String): String {
-        val f = File(rel)
-        assertTrue("找不到文件：${f.absolutePath}（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
-
-    private fun facade() = asset("src/main/assets/www/oc-host.js")
-    private fun activity() = asset("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-    private fun insetsHost() = asset("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
+    private fun facade() = TestSource.read("src/main/assets/www/oc-host.js")
+    private fun activity() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+    private fun insetsHost() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/InsetsHost.kt")
 
     /**
      * 去掉 JS 行注释与块注释后再断言。
@@ -82,7 +76,7 @@ class PhoneFormDefectTest {
      * 属于典型的「绊线假绿」。只对**可执行代码**断言，撤回才是真红。
      */
     private fun code(rel: String): String {
-        var s = asset(rel)
+        var s = TestSource.read(rel)
         s = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL).replace(s, "")
         s = Regex("""^\s*//.*$""", RegexOption.MULTILINE).replace(s, "")
         return s

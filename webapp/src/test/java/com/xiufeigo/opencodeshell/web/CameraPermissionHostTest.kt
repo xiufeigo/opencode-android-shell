@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * F3 / N-2 · **相机权限与扫码配对**接线绊线。
@@ -32,31 +32,20 @@ import java.io.File
  */
 class CameraPermissionHostTest {
 
-    private fun src(rel: String): String {
-        val relPath = File(rel)
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel（从 ${File(".").absolutePath} 向上找了 4 级）")
-    }
-
     private val manifest: String
-        get() = src("src/main/AndroidManifest.xml")
+        get() = TestSource.read("src/main/AndroidManifest.xml")
 
     private val activity: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val cameraHost: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/CameraPermissionHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/CameraPermissionHost.kt")
 
     private val bootstrapHost: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/WebViewBootstrapHost.kt")
 
     private val chromeClient: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebChromeClient.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebChromeClient.kt")
 
     /**
      * 只切出 `isTrustedWebOrigin` **函数体**（从声明处到配对的收尾 `}`）。

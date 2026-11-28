@@ -1,10 +1,10 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * P5 绊线（tripwire）：**输入路径上不得有"每次按键都要重跑一遍"的同步重活**。
@@ -35,12 +35,6 @@ import java.io.File
  * `scanner flags injected-bad-source` 这条断言就是反向验证。
  */
 class InputPathHotspotTest {
-
-    private fun read(rel: String): String {
-        val f = File(rel)
-        assertTrue("找不到 $rel（单测工作目录应为 webapp/ 模块目录）", f.isFile)
-        return f.readText()
-    }
 
     // ---------------------------------------------------------------- 扫描器
 
@@ -132,7 +126,7 @@ class InputPathHotspotTest {
 
     @Test
     fun `host injection has no per-keystroke listeners`() {
-        val js = read("src/main/assets/www/oc-host.js")
+        val js = TestSource.read("src/main/assets/www/oc-host.js")
         val hits = perKeystrokeHits(js)
         assertEquals(
             "宿主注入层在输入路径上注册了逐键监听：$hits —— " +
@@ -145,7 +139,7 @@ class InputPathHotspotTest {
 
     @Test
     fun `web host does not run javascript from input dispatch entrypoints`() {
-        val kt = read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        val kt = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
         val hits = inputDispatchJsHits(kt)
         assertEquals(
             "输入/触摸/按键分发入口里出现了 evaluateJavascript：$hits —— " +
@@ -157,7 +151,7 @@ class InputPathHotspotTest {
 
     @Test
     fun `input dispatch is not overridden at all in web host`() {
-        val kt = read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        val kt = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
         val overrides = listOf("onTouchEvent", "dispatchTouchEvent", "onKeyDown")
             .filter { Regex("""override\s+fun\s+$it\s*\(""").containsMatchIn(kt) }
         assertEquals(
@@ -223,7 +217,7 @@ class InputPathHotspotTest {
 
     // ------------------------------------------------- 3) UX6 豁免的窄化断言
 
-    private val realJs: String get() = read("src/main/assets/www/oc-host.js")
+    private val realJs: String get() = TestSource.read("src/main/assets/www/oc-host.js")
 
     @Test
     fun `arrow guard exemption is registered exactly once with the audited name`() {

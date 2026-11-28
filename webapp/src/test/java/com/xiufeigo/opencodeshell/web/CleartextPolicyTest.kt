@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * UX13-P4 · **全局明文放行（选项 C）**决策绊线。
@@ -37,16 +37,6 @@ import java.io.File
  */
 class CleartextPolicyTest {
 
-    private fun src(rel: String): String {
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel（从 ${File(".").absolutePath} 向上找了 4 级）")
-    }
-
     /**
      * 去掉 XML 注释后再做匹配。
      *
@@ -60,10 +50,10 @@ class CleartextPolicyTest {
         raw.replace(Regex("<!--[\\s\\S]*?-->"), "")
 
     private val manifest: String
-        get() = stripXmlComments(src("src/main/AndroidManifest.xml"))
+        get() = stripXmlComments(TestSource.read("src/main/AndroidManifest.xml"))
 
     private val networkSecurityConfig: String
-        get() = stripXmlComments(src("src/main/res/xml/network_security_config.xml"))
+        get() = stripXmlComments(TestSource.read("src/main/res/xml/network_security_config.xml"))
 
     /**
      * ① manifest 侧：显式的全局明文开关。

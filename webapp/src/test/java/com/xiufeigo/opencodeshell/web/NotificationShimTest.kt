@@ -1,9 +1,9 @@
 package com.xiufeigo.opencodeshell.web
 
+import com.xiufeigo.opencodeshell.web.testutil.TestSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * P9 · **通知权限状态闭环绊线**（源码文本断言）。
@@ -40,31 +40,20 @@ import java.io.File
  */
 class NotificationShimTest {
 
-    private fun src(rel: String): String {
-        val relPath = File(rel)
-        var dir: File? = File(".").absoluteFile
-        repeat(4) {
-            val f = File(dir, rel)
-            if (f.isFile) return f.readText(Charsets.UTF_8)
-            dir = dir?.parentFile
-        }
-        throw AssertionError("找不到源文件: $rel（从 ${File(".").absolutePath} 向上找了 4 级）")
-    }
-
     private val hostJs: String
-        get() = src("src/main/assets/www/oc-host.js")
+        get() = TestSource.read("src/main/assets/www/oc-host.js")
 
     private val activitySrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
     private val lifecycleSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
     private val permissionSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
 
     private val webviewClientSrc: String
-        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebViewClient.kt")
+        get() = TestSource.read("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebViewClient.kt")
 
     // ---- 断言①：requestPermission 回写静态 permission ---------------------
 

@@ -373,6 +373,14 @@
 
 验证：重建前后 `webapp/src/main/assets/www/oc-host.js` sha256 均为 `71e91fe509543e655cd700cf52a276868f1da314d79e8e0a217287c23e117bd6`；`node frontend/host-runtime/build.mjs`、`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 37：测试源码读取基础设施单一化
+
+状态：完成，待提交。
+
+闭环内容：新增 `webapp/src/test/java/com/xiufeigo/opencodeshell/web/testutil/TestSource.kt`，把 22 个测试类中重复的 `src/read/moduleFile/sourceOf/asset` 文件读取 helper 删除，统一迁移到 `TestSource.read`。该工具保留历史上“从 webapp 工作目录向上找 4 级”的兼容语义，避免测试运行目录差异重新变成隐式知识；注释 stripping、源码扫描等业务语义仍留在各测试类，不合并不同概念。架构检查禁止私有源码读取 helper 回流。
+
+验证：`:webapp:testDebugUnitTest` 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
