@@ -6,7 +6,6 @@ import android.os.Build
 import android.util.Log
 import android.webkit.JavascriptInterface
 import androidx.core.content.ContextCompat
-import com.xiufeigo.opencodeshell.web.WebHostActivity
 import org.json.JSONObject
 
 /**
@@ -17,7 +16,10 @@ import org.json.JSONObject
  * 返回值必须是 JSON 可序列化的（String / boolean / number）——我们全部返回 String 或 Int。
  */
 class WebHostBridge(
-    private val activity: WebHostActivity,
+    private val context: android.content.Context,
+    private val host: WebHostBridgeHost,
+    private val assetHost: String,
+    private val notificationTarget: Class<*>,
 ) {
 
     companion object {
@@ -25,13 +27,13 @@ class WebHostBridge(
         private const val TAG = "OcWebHost/Bridge"
     }
 
-    private val ctx get() = activity
+    private val ctx get() = context
 
     // ---- 元信息 ---------------------------------------------------------
     @JavascriptInterface
     fun hostInfo(): String = JSONObject().apply {
         put("appId", ctx.packageName)
-        put("assetHost", WebHostActivity.ASSET_DOMAIN)
+        put("assetHost", assetHost)
         put("homeUrl", runCatching {
             SecretStore.getSecret(ctx, SecretStore.KEY_BACKEND_URL)
         }.getOrNull() ?: SecretStore.DEFAULT_BACKEND_URL)
@@ -51,7 +53,7 @@ class WebHostBridge(
 
     @JavascriptInterface
     fun requestNotificationPermission() {
-        ctx.runOnUiThread { ctx.requestNotificationPermission() }
+        host.dispatchToUiThread { host.requestNotificationPermission() }
     }
 
     /** @return 0 ok / -1 no permission / -2 error */
@@ -60,7 +62,7 @@ class WebHostBridge(
         val t = title.orEmpty().take(200)
         val b = body.orEmpty().take(2000)
         val s = sessionId?.takeIf { it.isNotBlank() }?.take(200)
-        return NotifierHost.postTurnFinished(ctx, t, b, s)
+        return NotifierHost.postTurnFinished(ctx, notificationTarget, t, b, s)
     }
 
     // ---- 2. 返回（宿主用 evaluateJavascript 调 __ocAndroid.onBack()）------
@@ -97,28 +99,28 @@ class WebHostBridge(
      * UX6：代理已删。UX8 起本方法的生产驱动方 = 宿主注入层的**回合电源传感器**
      * （`oc-host.js installRoundPowerSensor`：fetch 拦截到发消息 POST 与
      * /api/event 上的 session.execution.* 帧 ⇒ 调本方法）。请求喂给跟踪器后由
-     * [WebHostActivity.applyKeepScreenOn] 统一落 flag。页面这条 API 语义不变。
+     * 入口宿主统一落 flag。页面这条 API 语义不变。
      */
     @JavascriptInterface
     fun setKeepScreenOn(on: Boolean) {
-        val foreground = ctx.isForeground()
+        val foreground = host.isForeground()
         if (on && PowerPolicy.mustClearKeepScreenOn(foreground = foreground, roundActive = true)) {
             Log.w(TAG, "setKeepScreenOn(true) ignored: not in foreground")
             return
         }
-        val tracker = ctx.roundActivityTracker()
+        val tracker = host.roundActivityTracker()
         if (on) {
             tracker.onRoundStart(System.currentTimeMillis())
             // P7 · 回合开始 = 宿主首次观测到"有活要干"的真实时刻。
             // 这里主动申请一次 POST_NOTIFICATIONS，打破 P6 §D.3 判定的死锁
             // （上游闸门只挂终态帧 ⇒ 终帧不到 ⇒ 闸门从不评估 ⇒ 永不申请）。
             // 复用既有 launcher 链，未 granted 且在前台时才弹。
-            ctx.runOnUiThread { ctx.requestNotificationPermissionOnRoundStart() }
+            host.dispatchToUiThread { host.requestNotificationPermissionOnRoundStart() }
         } else {
             tracker.onRoundEnd()
         }
         // 落 flag 的动作统一走宿主，页面与宿主两条路只有一个写入口。
-        ctx.applyKeepScreenOnState()
+        host.applyKeepScreenOnState()
     }
 
     // ---- 6. IME 策略 -----------------------------------------------------
@@ -128,16 +130,16 @@ class WebHostBridge(
             "resize" -> ImeMode.RESIZE
             else -> ImeMode.VARS
         }
-        ctx.runOnUiThread { ctx.setImeMode(m) }
+        host.dispatchToUiThread { host.setImeMode(m) }
     }
 
     @JavascriptInterface
-    fun getImeMode(): String = ctx.imeModeName
+    fun getImeMode(): String = host.imeModeName
 
     // ---- 8. 主题 ---------------------------------------------------------
     @JavascriptInterface
     fun reportTheme(dark: Boolean) {
-        ctx.runOnUiThread { ctx.applyPageTheme(dark) }
+        host.dispatchToUiThread { host.applyPageTheme(dark) }
     }
 
     /**
@@ -146,7 +148,7 @@ class WebHostBridge(
      */
     @JavascriptInterface
     fun reportSurfaceColor(cssColor: String?) {
-        ctx.runOnUiThread { ctx.applySurfaceColor(cssColor) }
+        host.dispatchToUiThread { host.applySurfaceColor(cssColor) }
     }
 
     // ---- 9. 诊断页重试 + 首屏内容信号（G1）--------------------------------
@@ -158,7 +160,7 @@ class WebHostBridge(
      */
     @JavascriptInterface
     fun onFirstContent(kind: String?, atMs: Long?) {
-        ctx.runOnUiThread { ctx.onFirstContent(kind, atMs) }
+        host.dispatchToUiThread { host.onFirstContent(kind, atMs) }
     }
 
     /**
@@ -173,7 +175,7 @@ class WebHostBridge(
     @JavascriptInterface
     fun retry() {
         Log.i(TAG, "G1 retry requested from diagnostic page")
-        ctx.runOnUiThread { ctx.retryFromDiagnosticPage() }
+        host.dispatchToUiThread { host.retryFromDiagnosticPage() }
     }
 
     // ---- 通知点击回会话 ---------------------------------------------------
@@ -207,8 +209,8 @@ class WebHostBridge(
         val route = NotifierHost.sessionRoutePath(backendUrl, arg)
         Log.i(TAG, "deliverOpenSession session=$arg route=${route ?: "<none>"}")
         if (route == null) return
-        ctx.runOnUiThread {
-            ctx.evaluateJs(
+        host.dispatchToUiThread {
+            host.evaluateJs(
                 "window.__ocAndroid && window.__ocAndroid.__openSessionByRoute(" +
                     "${quote(route)}, ${quote(arg)});"
             )

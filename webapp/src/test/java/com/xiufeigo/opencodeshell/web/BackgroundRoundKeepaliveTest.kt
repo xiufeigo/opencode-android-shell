@@ -246,7 +246,11 @@ class BackgroundRoundKeepaliveTest {
         )
         assertTrue(
             "必须切回 UI 线程（@JavascriptInterface 是 JS 线程）",
-            body.contains("runOnUiThread"),
+            body.contains("host.dispatchToUiThread"),
+        )
+        assertTrue(
+            "入口 Activity 的 UI 派发实现必须真正走 runOnUiThread",
+            activitySrc.contains("override fun dispatchToUiThread") && activitySrc.contains("runOnUiThread { action() }"),
         )
     }
 

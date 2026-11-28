@@ -55,6 +55,23 @@
 
 备注：一次 `VERIFY_TERMINAL_FILTER=drag` 的预改基线运行在终端打开等待处未进入 drag 检查，因此没有作为行为证据使用；本轮删除依赖静态不可达证明、xterm 单元测试和打包 SPA boot 边界验证。
 
+### Round 2：断开 host 能力包对入口 Activity 的反向依赖
+
+状态：完成，待提交。
+
+闭环内容：
+
+- 新增 `WebHostBridgeHost`，把桥所需的宿主能力声明为显式接口；`WebHostActivity` 实现该接口并在组合根注入。
+- `WebHostBridge` 不再引用具体 `WebHostActivity`，只接收 `Context`、能力接口、资产域名和通知目标类型。
+- `NotifierHost.postTurnFinished` 不再硬编码入口 Activity，通知目标由组合根传入。
+- `scripts/check-architecture.mjs` 新增机器约束：`web/host/*.kt` 不得 import 入口 `WebHostActivity`。
+
+验证：
+
+- `node scripts/check-architecture.mjs` 通过。
+- `git diff --check` 通过。
+- `./gradlew :webapp:testDebugUnitTest --no-daemon --quiet` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

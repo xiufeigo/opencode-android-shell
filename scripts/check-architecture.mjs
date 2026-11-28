@@ -37,6 +37,16 @@ for (const path of [
   if (fs.existsSync(path)) failures.push(`obsolete Ghostty fallback test still exists: ${path}`)
 }
 
+
+for (const name of fs.readdirSync("webapp/src/main/java/com/xiufeigo/opencodeshell/web/host")) {
+  if (!name.endsWith(".kt")) continue
+  const path = `webapp/src/main/java/com/xiufeigo/opencodeshell/web/host/${name}`
+  const source = read(path)
+  if (source.includes("import com.xiufeigo.opencodeshell.web.WebHostActivity")) {
+    failures.push(`${path}: host capability module imports the entry Activity`)
+  }
+}
+
 if (failures.length) {
   console.error(failures.join("\n"))
   process.exit(1)

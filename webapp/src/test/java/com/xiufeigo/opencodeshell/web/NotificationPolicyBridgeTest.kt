@@ -138,7 +138,7 @@ class NotificationPolicyBridgeTest {
         val bridge = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
         assertTrue(
             "WebHostBridge 必须仍然把 postMessage 接到 NotifierHost.postTurnFinished",
-            bridge.contains("return NotifierHost.postTurnFinished(ctx, t, b, s)"),
+            bridge.contains("return NotifierHost.postTurnFinished(ctx, notificationTarget, t, b, s)"),
         )
     }
 

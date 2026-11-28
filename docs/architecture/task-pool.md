@@ -16,10 +16,10 @@
 
 ## P1 降低 Android 宿主耦合
 
-- [ ] 断开 `WebHostBridge` 对具体 `WebHostActivity` 的反向依赖，改为窄接口或能力注入。
-- [ ] 断开 `NotifierHost` 对具体 Activity 类的依赖，通知目标由入口层传入。
+- [x] 断开 `WebHostBridge` 对具体 `WebHostActivity` 的反向依赖，改为窄接口或能力注入。
+- [x] 断开 `NotifierHost` 对具体 Activity 类的依赖，通知目标由入口层传入。
 - [ ] 从 `WebHostActivity` 提取 WebView 实例装配、加载看门狗、相机权限、后台生命周期/电源策略等深模块；每次只提取一个职责并运行现有行为测试。
-- [ ] 建立 Kotlin 内部依赖扫描，禁止 `host/` 能力包反向引用入口 Activity。
+- [x] 建立 Kotlin 内部依赖扫描，禁止 `host/` 能力包反向引用入口 Activity。
 
 ## P2 测试体系归一
 
@@ -37,5 +37,6 @@
 
 - [x] 新增初版 `scripts/check-architecture.mjs`：防止 Ghostty 终端死实现复活。
 - [x] 把架构检查接入 CI package workflow。
-- [ ] 扩展 `scripts/check-architecture.mjs`：扫描生成产物边界、禁止手改产物、检查 Kotlin 反向依赖。
+- [x] 扩展 `scripts/check-architecture.mjs`：检查 Kotlin `host/` 反向依赖。
+- [ ] 扩展 `scripts/check-architecture.mjs`：扫描生成产物边界、禁止手改产物。
 - [ ] 在每次治理循环后把新确立规则加入检查，而不是只写文档。

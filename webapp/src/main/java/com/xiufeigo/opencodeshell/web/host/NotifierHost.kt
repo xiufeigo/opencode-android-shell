@@ -12,13 +12,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.xiufeigo.opencodeshell.web.WebHostActivity
 import java.util.Base64
 
 /**
  * 通知：渠道 + postMessage(title, body, sessionId)，点击回会话。
  *
- * 点击回会话靠 [PendingIntent] 打到 [WebHostActivity]：
+ * 点击回会话靠 [PendingIntent] 打到入口 Activity：
  * - `launchMode=singleTask` + `FLAG_ACTIVITY_SINGLE_TOP|FLAG_ACTIVITY_CLEAR_TOP`
  *   ⇒ 已在栈里就复用同一实例并回调 `onNewIntent`，**不会**叠一层新的；
  *   这点对"从通知直接落到某个 sessionId"是必需的，否则每点一次通知多一个 Activity。
@@ -168,7 +167,7 @@ object NotifierHost {
     }
 
     /** @return 0=成功，-1=没权限（Android 13+），-2=其它失败。 */
-    fun postTurnFinished(context: Context, title: String?, body: String?, sessionId: String?): Int {
+    fun postTurnFinished(context: Context, target: Class<*>, title: String?, body: String?, sessionId: String?): Int {
         ensureChannels(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -178,7 +177,7 @@ object NotifierHost {
         }
 
         val plan = clickPlan(sessionId)
-        val intent = Intent(context, WebHostActivity::class.java).apply {
+        val intent = Intent(context, target).apply {
             flags = plan.flags
             putExtra(EXTRA_FROM_NOTIFICATION, plan.fromNotification)
             plan.sessionId?.let { putExtra(EXTRA_SESSION_ID, it) }

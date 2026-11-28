@@ -47,6 +47,7 @@ import com.xiufeigo.opencodeshell.web.host.SecretStore
 import com.xiufeigo.opencodeshell.web.host.SurfaceColor
 import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
+import com.xiufeigo.opencodeshell.web.host.WebHostBridgeHost
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
@@ -59,7 +60,7 @@ import java.util.Base64
  * - 返回：页面关闭浮层、退出子页面或回首页；首页交回 Android 的默认返回行为。
  * 服务器凭据由官方 UI 管理。
  */
-class WebHostActivity : AppCompatActivity() {
+class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
 
     companion object {
         private const val TAG = "OcWebHost"
@@ -166,7 +167,7 @@ class WebHostActivity : AppCompatActivity() {
     private var foreground: Boolean = false
 
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上访问的跟踪器。 */
-    fun roundActivityTracker(): RoundActivityTracker = roundTracker
+    override fun roundActivityTracker(): RoundActivityTracker = roundTracker
 
     /**
      * P7 · 当前 `onPause` 是否走了「回合保活路径」。
@@ -198,13 +199,13 @@ class WebHostActivity : AppCompatActivity() {
     private val BACKGROUND_ROUND_RELEASE_POLL_MS: Long = 2_000L
 
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上问"现在在前台吗"。 */
-    fun isForeground(): Boolean = foreground
+    override fun isForeground(): Boolean = foreground
 
     /**
      * D1：按当前"回合是否在进行"重新结算一次常亮 flag。
      * 桥线程与主线程都会调它，自身保证切到主线程。
      */
-    fun applyKeepScreenOnState() {
+    override fun applyKeepScreenOnState() {
         val active = roundTracker.isRoundActive(System.currentTimeMillis())
         runOnUiThread { applyKeepScreenOn(active) }
     }
@@ -236,7 +237,7 @@ class WebHostActivity : AppCompatActivity() {
      * 关键是**重新读一次 WebView 版本**再决定 —— 用户可能刚更新了
      * "Android System WebView"，这时重试就该真的进官方 UI 了。
      */
-    fun retryFromDiagnosticPage() {
+    override fun retryFromDiagnosticPage() {
         Log.i(TAG, "G1 retry: re-running preflight + launch")
         readWebViewVersion()
         restoredUrlOrNull = null
@@ -275,14 +276,14 @@ class WebHostActivity : AppCompatActivity() {
     }
 
     /** 桥从 `oc-preflight.js` 收到首屏内容信号 ⇒ 解除看门狗。 */
-    fun onFirstContent(kind: String?, atMs: Long?) {
+    override fun onFirstContent(kind: String?, atMs: Long?) {
         if (firstContentSeen) return
         firstContentSeen = true
         PerfMarks.mark("M.g1.firstContent", "kind=$kind at=$atMs")
         webView.post { webView.removeCallbacks(watchdog) }
     }
 
-    val imeModeName: String
+    override val imeModeName: String
         get() = if (::insets.isInitialized) insets.imeMode.name.lowercase() else "vars"
 
     // ---- 通知权限（必须在 Activity STARTED 之前注册 launcher） --------------
@@ -343,7 +344,12 @@ class WebHostActivity : AppCompatActivity() {
 
         PerfMarks.mark("A.onCreate.superDone")
 
-        bridge = WebHostBridge(this)
+        bridge = WebHostBridge(
+            context = this,
+            host = this,
+            assetHost = ASSET_DOMAIN,
+            notificationTarget = WebHostActivity::class.java,
+        )
         fileChooser = FileChooserHost(this)
         NotifierHost.ensureChannels(this)
         PerfMarks.mark("B.helpersReady")
@@ -772,7 +778,7 @@ class WebHostActivity : AppCompatActivity() {
     /** 系统栏图标明暗跟随页面 `data-color-scheme`（页面用 reportTheme 报上来）。 */
     private var systemDark: Boolean = false
 
-    fun applyPageTheme(dark: Boolean) {
+    override fun applyPageTheme(dark: Boolean) {
         if (pageReportedDark == dark) return
         pageReportedDark = dark
         systemDark = dark
@@ -780,7 +786,7 @@ class WebHostActivity : AppCompatActivity() {
     }
 
     /** 页面报上来的表面底色 → 视口压矮后露出的条带（见 InsetsHost.setSurfaceColor）。 */
-    fun applySurfaceColor(css: String?) {
+    override fun applySurfaceColor(css: String?) {
         if (!::insets.isInitialized) return
         val color = SurfaceColor.parse(css) ?: return
         insets.setSurfaceColor(color)
@@ -793,13 +799,13 @@ class WebHostActivity : AppCompatActivity() {
         insets.applyBarsTheme(dark)
     }
 
-    fun setImeMode(mode: ImeMode) {
+    override fun setImeMode(mode: ImeMode) {
         if (!::insets.isInitialized) return
         insets.setImeMode(mode)
     }
 
     // ---- 通知 ------------------------------------------------------------
-    fun requestNotificationPermission() {
+    override fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             Log.i(TAG, "pre-13: no runtime permission needed")
             return
@@ -847,7 +853,11 @@ class WebHostActivity : AppCompatActivity() {
     }
 
     // ---- 杂项 ------------------------------------------------------------
-    fun evaluateJs(js: String) {
+    override fun dispatchToUiThread(action: () -> Unit) {
+        runOnUiThread { action() }
+    }
+
+    override fun evaluateJs(js: String) {
         if (!::webView.isInitialized) return
         runCatching { webView.evaluateJavascript(js, null) }
             .onFailure { Log.w(TAG, "evaluateJavascript failed", it) }
@@ -1024,7 +1034,7 @@ class WebHostActivity : AppCompatActivity() {
      * launcher（:238）→ 同一个结果回调（打日志 + 派 `oc:notifyPerm`）。**没有新造申请链。**
      * 上游闸门里那条 `requestPermission()` 路径保持不变（shim 会短路成 granted）。
      */
-    fun requestNotificationPermissionOnRoundStart() {
+    override fun requestNotificationPermissionOnRoundStart() {
         if (!isForeground()) return
         if (notificationPermissionRequested) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
