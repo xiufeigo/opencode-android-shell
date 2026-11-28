@@ -1299,7 +1299,7 @@ async function runDevice(browser, { chromium }, device, state) {
 
     ptyId = await waitFor(
       () => {
-        const ids = [...state.ptys.keys()]
+        const ids = [...state.ptys.keys(), ...state.persistentPtys.keys()]
         return ids.length ? ids[ids.length - 1] : false
       },
       { timeout: 25_000, label: "PTY creation through the production terminal panel" },
