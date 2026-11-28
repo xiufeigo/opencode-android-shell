@@ -33,7 +33,7 @@
 
 ### Round 1：删除不可达的 Ghostty 终端兼容实现
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 识别证据：删除前 `oc-host.js` 固定 `window.__ocTerminalEngine = "xterm"`；`installTerminalFontScale()` 与 `installTerminalTouchScroll()` 都在第一行因该值返回。生产触摸、字号、字符网格和滚动行为已经由 `frontend/terminal/terminal.js` 承担。
 
@@ -57,7 +57,7 @@
 
 ### Round 2：断开 host 能力包对入口 Activity 的反向依赖
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：
 
@@ -74,7 +74,7 @@
 
 ### Round 3：版本事实单一权威来源
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：根 README 不再复制上游版本/提交/Bun pin 或 APK versionCode/versionName，改为指向 `upstream.json` 与 `webapp/build.gradle.kts`；`frontend/android/README.md` 的当前基准说明同样改为引用权威文件。`scripts/check-architecture.mjs` 新增漂移检查，防止 README 再次硬编码这些可变事实。
 
@@ -82,7 +82,7 @@
 
 ### Round 4：删除无调用方的 Web SQL 兼容设置
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 证据：仓库内唯一 `openDatabase` 是 IndexedDB 辅助函数命名，不是 Web SQL；打包 UI 中没有 Web SQL 调用。`databaseEnabled` 只控制已废弃的 Web SQL，不影响官方 UI 使用的 localStorage/IndexedDB，因此删除该 Deprecated 设置。`scripts/check-architecture.mjs` 禁止它无调用方回归。
 
