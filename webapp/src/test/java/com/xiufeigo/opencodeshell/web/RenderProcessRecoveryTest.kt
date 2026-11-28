@@ -52,6 +52,12 @@ class RenderProcessRecoveryTest {
         f.readText()
     }
 
+    private val clientSource: String by lazy {
+        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebViewClient.kt")
+        assertTrue("找不到 HostWebViewClient.kt：${f.absolutePath}", f.exists())
+        f.readText()
+    }
+
     /** `onRenderProcessGone` 的方法体（已剥注释），找不到时测试直接红。 */
     private fun overrideBody(): String {
         val start = source.indexOf("fun onRenderProcessGone(")
@@ -118,7 +124,8 @@ class RenderProcessRecoveryTest {
         )
         assertTrue(
             "WebViewClient 必须把崩溃事件委托给 RenderProcessRecoveryHost",
-            activitySource.contains("renderProcessRecovery.onRenderProcessGone(view, detail)"),
+            clientSource.contains("renderProcessRecovery.onRenderProcessGone(view, detail)") &&
+                activitySource.contains("renderProcessRecovery = renderProcessRecovery"),
         )
     }
 

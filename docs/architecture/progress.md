@@ -199,9 +199,17 @@
 
 ### Round 15：WebView 设置与 document-start 脚本策略退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `WebViewBootstrapHost`，集中封装 WebView 静态设置、facade/性能探针/首屏探针三份 document-start 脚本的资产读取、origin 范围、初始深浅色注入与特性能力分支。`WebHostActivity` 仍负责实例装配与生命周期，只在既有顺序的两个相位调用 `configureSettings` 与 `installDocumentStartScripts`；`LegacyBridgeChannel` 通过惰性 provider 读取，渲染崩溃重建后仍使用当前通道。相关相机/首屏源码绊线迁移到新的所有权位置，架构检查禁止 Activity 重新持有这些实现。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
+### Round 16：WebViewClient 框架适配退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `host/HostWebViewClient`，集中承载主框架导航拦截、诊断资产 `WebViewAssetLoader`、系统字体代理、页面开始/加载错误性能标记、主文档错误转发和渲染崩溃事件转发。Activity 不再用 `inner` 类隐式捕获宿主状态，而是在装配点显式注入 `systemFonts`、启动恢复、渲染恢复、外链打开和页面就绪回调。页面就绪后的 insets 补发、通知权限重推和深色日志仍由组合根 `onWebViewPageReady` 统一编排，顺序保持不变。既有绊线迁移为“client 转发 + Activity  wiring”双重断言，架构检查禁止 Activity 重新持有 client 实现。
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 

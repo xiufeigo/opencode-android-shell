@@ -63,6 +63,9 @@ class NotificationShimTest {
     private val permissionSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
 
+    private val webviewClientSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/HostWebViewClient.kt")
+
     // ---- 断言①：requestPermission 回写静态 permission ---------------------
 
     @Test
@@ -392,13 +395,16 @@ class NotificationShimTest {
             stateBody.contains("Build.VERSION_CODES.TIRAMISU"),
         )
 
-        // (3) 🔴 核心：调用点必须落在页面就绪路径（onPageFinished）里。
+        // (3) 🔴 核心：调用点必须落在页面就绪路径（onPageFinished → onWebViewPageReady）里。
         val src = activitySrc
-        val pageReadyAt = src.indexOf("override fun onPageFinished(view: WebView, url: String)")
-        assertTrue("未找到 onPageFinished（页面就绪回调）", pageReadyAt >= 0)
-        val pageReadyBody = src.substring(pageReadyAt, src.indexOf("private fun contextCompatDark", pageReadyAt))
+        val client = webviewClientSrc
+        assertTrue("未找到 onPageFinished（页面就绪回调）", client.contains("override fun onPageFinished(view: WebView, url: String)"))
+        assertTrue("页面就绪事件必须转发给组合根", client.contains("onPageReady(view, url)"))
+        val readyAt = src.indexOf("private fun onWebViewPageReady")
+        assertTrue("未找到组合根页面就绪处理", readyAt >= 0)
+        val pageReadyBody = src.substring(readyAt, minOf(readyAt + 900, src.length))
         assertTrue(
-            "WebHostActivity.kt 必须在 onPageFinished（页面加载完成）里调用重推 —— " +
+            "页面就绪处理必须调用通知权限重推 —— " +
                 "P10 实测：重载后静态 permission 回落 \"default\"，闸门读到非 granted 直接 return，" +
                 "不重推则通知静默失效",
             pageReadyBody.contains("pushNotificationPermission()"),

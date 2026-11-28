@@ -14,20 +14,14 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.xiufeigo.opencodeshell.web.host.CameraPermissionHost
@@ -36,6 +30,7 @@ import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
 import com.xiufeigo.opencodeshell.web.host.BackNavigationHost
 import com.xiufeigo.opencodeshell.web.host.BackgroundLifecycleHost
 import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
+import com.xiufeigo.opencodeshell.web.host.HostWebViewClient
 import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
@@ -353,7 +348,15 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         PerfMarks.mark("E.facadeInstalled")
         // G1：版本读数必须在 [launch] 之前拿到 —— 前置检查要靠它决定加载官方 UI 还是诊断页。
         startupRecovery.readWebViewVersion()
-        webView.webViewClient = HostWebViewClient()
+        webView.webViewClient = HostWebViewClient(
+            assetDomain = ASSET_DOMAIN,
+            assetPrefix = ASSET_PREFIX,
+            systemFonts = systemFonts,
+            startupRecovery = startupRecovery,
+            renderProcessRecovery = renderProcessRecovery,
+            openExternalLink = { url -> openExternalLink(url) },
+            onPageReady = { view, url -> onWebViewPageReady(view, url) },
+        )
         webView.webChromeClient = HostWebChromeClient()
         webView.setDownloadListener { url, _, _, _, _ -> openExternalLink(url) }
 
@@ -670,99 +673,20 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         super.onDestroy()
     }
 
-    // ---- WebViewClient ----------------------------------------------------
-    // `inner` 保留运行期兜底对宿主能力模块与生命周期状态的访问。
-    private inner open class HostWebViewClient : WebViewClient() {
-        private var assetLoader: WebViewAssetLoader? = null
-
-        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-            if (!request.isForMainFrame) return false
-            val url = request.url.toString()
-            if (WebOrigins.sameOrigin(url, LocalUiOriginServer.origin())) return false
-            openExternalLink(url)
-            return true
+    /** Page-ready effects owned by the composition root; the client boundary only forwards the event. */
+    private fun onWebViewPageReady(view: WebView, url: String) {
+        // 首屏 insets 补发：首次 publish 时页面还不存在，去重逻辑不会自动重发。
+        if (::insets.isInitialized) {
+            insets.replay()
+            Log.i(TAG, "insets replayed after page finish: $url")
         }
-
-        fun loader(ctx: android.content.Context): WebViewAssetLoader =
-            assetLoader ?: WebViewAssetLoader.Builder()
-                .setDomain(ASSET_DOMAIN)
-                .addPathHandler(ASSET_PREFIX, WebViewAssetLoader.AssetsPathHandler(ctx))
-                .build()
-                .also { assetLoader = it }
-
-        override fun shouldInterceptRequest(
-            view: WebView,
-            request: WebResourceRequest,
-        ): WebResourceResponse? {
-            val url = request.url
-            val path = url.path.orEmpty()
-            if (WebOrigins.sameOrigin(url.toString(), LocalUiOriginServer.origin()) && path.startsWith(SystemFontCatalog.URL_PREFIX)) {
-                val id = path.removePrefix(SystemFontCatalog.URL_PREFIX)
-                val stream = if (request.method == "GET" && !request.isForMainFrame) systemFonts.open(id) else null
-                return if (stream == null) {
-                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
-                } else {
-                    WebResourceResponse("font/ttf", null, 200, "OK", mapOf("Cache-Control" to "no-store"), stream)
-                }
-            }
-            return loader(view.context).shouldInterceptRequest(url)
+        // 页面每次加载完成都会重装 Notification 垫片，必须按宿主真值重推权限。
+        notificationPermissionHost.pushNotificationPermission()
+        val dark = (view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        if (dark) {
+            Log.d(TAG, "page finished: $url")
         }
-
-        // 参数保持平台父类签名中的 `WebView?`；改成非空会不再是合法 override。
-        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-            super.onPageStarted(view, url, favicon)
-            PerfMarks.mark("K.onPageStarted", "url=$url")
-        }
-
-        override fun onReceivedError(
-            view: WebView,
-            request: WebResourceRequest,
-            error: WebResourceError,
-        ) {
-            super.onReceivedError(view, request, error)
-            PerfMarks.mark(
-                "K2.onReceivedError",
-                "url=${request.url} code=${error.errorCode} desc=${error.description} main=${request.isForMainFrame}",
-            )
-            startupRecovery.onLoadError(
-                isForMainFrame = request.isForMainFrame,
-                detail = "code=${error.errorCode} ${error.description} url=${request.url}",
-            )
-        }
-
-        /** Recovery policy is centralized in [RenderProcessRecoveryHost]. */
-        override fun onRenderProcessGone(
-            view: WebView,
-            detail: RenderProcessGoneDetail,
-        ): Boolean = renderProcessRecovery.onRenderProcessGone(view, detail)
-
-        override fun onPageFinished(view: WebView, url: String) {
-            super.onPageFinished(view, url)
-            PerfMarks.mark("L.onPageFinished", "url=$url")
-            // F18（缺陷 A）：首屏 insets 补发。
-            // 第一次 publish 发生在 onCreate 的 requestApplyInsets()，那时页面还不存在，
-            // evaluateJs 打在空文档上 ⇒ payload 丢失；顶部 inset 是静态的，之后再不变，
-            // 去重逻辑又不会重发。此刻 documentElement 一定在了，显式补一次（不走去重）。
-            if (::insets.isInitialized) {
-                insets.replay()
-                Log.i(TAG, "insets replayed after page finish: $url")
-            }
-            // P11 · 权限真值重推：页面每次加载完成（首载 / 点通知把 Activity 拉起后
-            // 的重载 / 手动刷新）都会重装 oc-host.js 垫片，静态
-            // `Notification.permission` 随之回落成 "default"；而上游闸门是**先读
-            // 属性**（读到 != "granted" 就 return，闸门自身不会去调 requestPermission）
-            // ⇒ 不重推就会静默失效到下一次宿主主动推送。此刻垫片已装、监听器已在，
-            // 按宿主真值补推一次即可关掉这个窗口。
-            notificationPermissionHost.pushNotificationPermission()
-            // 首屏 insets / 主题补一次（此刻 documentElement 一定在了）。
-            if (contextCompatDark(view)) {
-                Log.d(TAG, "page finished: $url")
-            }
-        }
-
-        private fun contextCompatDark(view: WebView): Boolean =
-            (view.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                Configuration.UI_MODE_NIGHT_YES
     }
 
     // ---- WebChromeClient（文件选择） ---------------------------------------

@@ -131,6 +131,10 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+for (const needle of ["shouldOverrideUrlLoading", "shouldInterceptRequest", "private var assetLoader", "inner open class HostWebViewClient"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns WebViewClient behavior that belongs to HostWebViewClient: ${needle}`)
+}
+
 for (const needle of ["private fun configureSettings", "private fun installFacade", "private fun installPerfProbe", "private fun installPreflightProbe"]) {
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns WebView bootstrap policy that belongs to WebViewBootstrapHost: ${needle}`)
 }
