@@ -333,6 +333,14 @@
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node frontend/host-runtime/build.mjs` 重新生成；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 32：验证 harness 纯 helper 归一到共享模块
+
+状态：完成，待提交。
+
+闭环内容：新增 `scripts/verify-android-common.mjs`，把 `nativeBridgeSource`、`seedScript`、`base64url`、`ocHostLoaderSource` 四个无 runner 状态的纯 helper 从 4000 行 terminal release runner 移入唯一权威位置。9 个验证脚本改为直接从 common 模块导入；release runner 自己也从 common 导入，且不再 re-export，避免旧路径继续作为事实来源。架构检查禁止这些 helper 回到 runner 或从 runner 被外部导入。backend/UI server 仍依赖 runner 的 requestLog 与常量，记录为后续独立拆分项。
+
+验证：所有改动脚本 `node --check` 通过；common helper smoke 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

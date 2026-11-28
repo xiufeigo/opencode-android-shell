@@ -3,7 +3,8 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { chromium } from "../plugins/server-browser/node_modules/playwright/index.mjs"
-import { startBackend, startUiServer, nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-terminal-release.mjs"
+import { startBackend, startUiServer } from "./verify-android-terminal-release.mjs"
+import { nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-common.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const output = path.join(root, "research/tmp/verify-provider-icons", new Date().toISOString().replace(/[:.]/g, "-"))

@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { DevicePage } from "./android-webview-cdp.mjs"
-import { startBackend, seedScript, base64url } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-terminal-release.mjs"
+import { seedScript, base64url } from "./verify-android-common.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const output = path.join(root, "research/tmp/verify-android-resize-device", new Date().toISOString().replace(/[:.]/g, "-"))

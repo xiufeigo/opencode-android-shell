@@ -2,7 +2,8 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { startBackend, startUiServer, nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-terminal-release.mjs"
+import { startBackend, startUiServer } from "./verify-android-terminal-release.mjs"
+import { nativeBridgeSource, ocHostLoaderSource, seedScript, base64url } from "./verify-android-common.mjs"
 
 /**
  * 系统深浅色跟随的回归验证。

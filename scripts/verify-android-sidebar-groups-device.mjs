@@ -4,7 +4,8 @@ import path from "node:path"
 import crypto from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
-import { startBackend, base64url } from "./verify-android-terminal-release.mjs"
+import { startBackend } from "./verify-android-terminal-release.mjs"
+import { base64url } from "./verify-android-common.mjs"
 
 // Actual-tablet verification for multi-select side-tab grouping, inbox server
 // labels, and touch dismissal of context menus. Uses the debug product APK so

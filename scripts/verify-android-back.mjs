@@ -4,7 +4,8 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { startBackend, startUiServer, nativeBridgeSource, ocHostLoaderSource, base64url } from "./verify-android-terminal-release.mjs"
+import { startBackend, startUiServer } from "./verify-android-terminal-release.mjs"
+import { nativeBridgeSource, ocHostLoaderSource, base64url } from "./verify-android-common.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const output = path.join(root, "research/tmp/verify-android-back", new Date().toISOString().replace(/[:.]/g, "-"))
