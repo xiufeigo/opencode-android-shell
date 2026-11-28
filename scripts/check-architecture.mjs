@@ -131,6 +131,10 @@ for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "background
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
 }
 
+for (const needle of ["EVAL_SETTLE_MS", "OcWebHost/Eval"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns debug-eval behavior that belongs to DebugEvalHost: ${needle}`)
+}
+
 for (const needle of ["isFocusableInTouchMode", "setOnTouchListener", "viewportHost.addView", "Z.firstDraw"]) {
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns viewport/focus assembly that belongs to WebViewViewportFactory: ${needle}`)
 }

@@ -38,6 +38,8 @@ class DebugEvalChannelTest {
     private val buildGradle: String get() = moduleFile("build.gradle.kts")
     private val activitySource: String get() =
         moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
+    private val debugEvalSource: String get() =
+        moduleFile("src/main/java/com/xiufeigo/opencodeshell/web/host/DebugEvalHost.kt")
 
     @Test
     fun debugBuildEnablesTheChannel() {
@@ -78,7 +80,7 @@ class DebugEvalChannelTest {
         assertTrue(
             "C1: `consumeDebugEval` 的 `if (!BuildConfig.DEBUG) return` 门卫被删了 —— " +
                 "release 构建下 `--es oc_debug_eval` 将不再被忽略。",
-            activitySource.contains("if (!BuildConfig.DEBUG) return"),
+            debugEvalSource.contains("if (!debugEnabled) return") && activitySource.contains("debugEnabled = BuildConfig.DEBUG"),
         )
 
         // 4) 通道接线仍然完整（extra 名不能悄悄改掉，research/env 下的脚本全靠它）。

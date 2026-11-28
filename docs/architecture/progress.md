@@ -245,6 +245,14 @@
 
 验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 21：调试注入通道退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `DebugEvalHost`，集中拥有 `oc_debug_eval` 的 debug/release 门卫、extra 消费、b64/表达式两种脚本形态、首屏 settle 延迟和 logcat 回写。Activity 只做组合根委托；`BuildConfig.DEBUG` 契约绊线迁移到宿主所有权 + 注入值双重断言。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

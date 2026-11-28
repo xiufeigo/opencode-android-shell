@@ -24,6 +24,7 @@ import com.xiufeigo.opencodeshell.web.host.CameraPermissionHost
 import com.xiufeigo.opencodeshell.web.host.FileChooserHost
 import com.xiufeigo.opencodeshell.web.host.AndroidPlatformHost
 import com.xiufeigo.opencodeshell.web.host.BackNavigationHost
+import com.xiufeigo.opencodeshell.web.host.DebugEvalHost
 import com.xiufeigo.opencodeshell.web.host.BackgroundLifecycleHost
 import com.xiufeigo.opencodeshell.web.host.LegacyBridgeChannel
 import com.xiufeigo.opencodeshell.web.host.HostWebChromeClient
@@ -48,7 +49,6 @@ import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
 import com.xiufeigo.opencodeshell.web.host.WebOrigins
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
-import java.util.Base64
 
 /**
  * APK 内的官方 UI 由 [LocalUiOriginServer] 提供，API 和终端直连用户选择的 OpenCode。
@@ -74,16 +74,14 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
 
         /**
          * BR1 验收用的**调试**注入通道：`--es oc_debug_eval "<js>"` 让宿主把一段 JS
-         * 丢进当前页面（`evaluateJavascript`），结果打进 logcat 的 `OcWebHost/Eval`。
+         * 丢进当前页面（`evaluateJavascript`），结果打进 logcat 的调试通道。
          * 官方 UI 自己不会主动调 `postMessage`/`getSecret` 这些桥，没有这个
          * 通道就只能从 UI 点，测不到它们。
          *
          * 只在 `BuildConfig.DEBUG` 生效（release 构建直接忽略），且不写文件、不回显口令。
          */
         const val EXTRA_DEBUG_EVAL = "oc_debug_eval"
-        private const val EVAL_TAG = "OcWebHost/Eval"
         /** 页面还没加载完时注入要等一下，否则 evaluateJavascript 落在 about:blank 上。 */
-        private const val EVAL_SETTLE_MS = 1200L
 
         /**
          * G1：诊断页 URL（就是 C1 留下的那套兜底页资产，只是多带 query 参数换文案）。
@@ -465,25 +463,11 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
 
     // ---- BR1 验收用调试注入（仅 DEBUG 构建） ------------------------------
     private fun consumeDebugEval(intent: Intent?) {
-        if (!BuildConfig.DEBUG) return
-        val raw = intent?.getStringExtra(EXTRA_DEBUG_EVAL) ?: return
-        intent.removeExtra(EXTRA_DEBUG_EVAL)
-        // 等首屏 + facade 装好再注，否则 evaluateJavascript 落在中间态文档上。
-        webView.postDelayed({
-            // 官方 UI 的 CSP 没有 'unsafe-eval'，页面里的 eval/Function 一律被浏览器拒
-            // （实测 ERR:EvalError）。所以复杂探针用 `b64:<base64(utf8 js)>` 传：宿主侧
-            // 解码后把 **JS 原文**交给 evaluateJavascript 直接执行（它本身就是表达式
-            // 执行器，不经页面 eval），返回值走 evaluateJavascript 的回调进 logcat。
-            // 不带 b64: 前缀时保持旧行为（String() 包一层，表达式求值）。
-            val js = if (raw.startsWith("b64:")) {
-                String(Base64.getDecoder().decode(raw.removePrefix("b64:")), Charsets.UTF_8)
-            } else {
-                "(function(){try{return String($raw)}catch(e){return 'ERR:'+e}})()"
-            }
-            webView.evaluateJavascript(js) { r ->
-                Log.i(EVAL_TAG, "eval=${raw.take(200)} -> ${r ?: "null"}")
-            }
-        }, EVAL_SETTLE_MS)
+        DebugEvalHost(
+            debugEnabled = BuildConfig.DEBUG,
+            extraName = EXTRA_DEBUG_EVAL,
+            webViewProvider = { if (::webView.isInitialized) webView else null },
+        ).consume(intent)
     }
 
     // ---- 杂项 ------------------------------------------------------------
