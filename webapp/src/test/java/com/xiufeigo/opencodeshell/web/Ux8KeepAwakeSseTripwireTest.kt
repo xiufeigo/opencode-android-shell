@@ -73,6 +73,9 @@ class Ux8KeepAwakeSseTripwireTest {
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val lifecycleSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+
     /** 传感器函数体（从定义到下一个顶层函数）。 */
     private fun sensorBody(): String {
         val src = js
@@ -181,7 +184,7 @@ class Ux8KeepAwakeSseTripwireTest {
         // （回归时它必须仍然为绿），回合分支的新不变量改由
         // `BackgroundRoundKeepaliveTest.roundActiveBackgroundDoesNotDispatchPagehide`
         // 钉住 —— 它额外断言了 pagehide 落在 `} else {` 之后，即回合进行中绝不派发。
-        val body = bodyOf(activitySrc, "override fun onPause()")
+        val body = bodyOf(lifecycleSrc, "fun onPause()")
         assertTrue(
             "空闲后台必须合成派发 pagehide（WebView 不发；上游 stop() 靠它触发）",
             body.contains("dispatchPageLifecycleEvent(\"pagehide\")"),
@@ -192,7 +195,7 @@ class Ux8KeepAwakeSseTripwireTest {
     fun onResumeDispatchesPageshow() {
         // 🔴 UX13-P7 更新：同上，pageshow 现在是"空闲路径回前台"的对偶事件；
         // 保活路径回前台派 focus（那条路径从未断过流）。pageshow 本身不许消失。
-        val body = bodyOf(activitySrc, "override fun onResume()")
+        val body = bodyOf(lifecycleSrc, "fun onResume()")
         assertTrue(
             "onResume 必须合成派发 pageshow（上游 start() 靠它重建 SSE）",
             body.contains("dispatchPageLifecycleEvent(\"pageshow\")"),
@@ -201,7 +204,7 @@ class Ux8KeepAwakeSseTripwireTest {
 
     @Test
     fun dispatcherReallyBuildsWindowDispatchEvent() {
-        val src = activitySrc
+        val src = lifecycleSrc
         val idx = src.indexOf("private fun dispatchPageLifecycleEvent(")
         assertTrue("找不到 dispatchPageLifecycleEvent 实现", idx >= 0)
         val body = src.substring(idx, minOf(idx + 700, src.length))
@@ -214,7 +217,7 @@ class Ux8KeepAwakeSseTripwireTest {
     @Test
     fun lifecycleDispatchIsHostSideOnly() {
         // 红线自检的一部分：pagehide/pageshow 合成事件是纯事件名，不得携带/注入凭据。
-        val src = activitySrc
+        val src = lifecycleSrc
         val idx = src.indexOf("private fun dispatchPageLifecycleEvent(")
         assertTrue("找不到 dispatchPageLifecycleEvent 实现", idx >= 0)
         val body = src.substring(idx, minOf(idx + 700, src.length))
@@ -237,7 +240,7 @@ class Ux8KeepAwakeSseTripwireTest {
         )
         assertTrue(
             "Activity 必须存在 pagehide/pageshow 扳机",
-            activitySrc.contains("pagehide") && activitySrc.contains("pageshow"),
+            lifecycleSrc.contains("pagehide") && lifecycleSrc.contains("pageshow"),
         )
     }
 }

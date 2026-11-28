@@ -57,6 +57,9 @@ class NotificationShimTest {
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val lifecycleSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+
     // ---- 断言①：requestPermission 回写静态 permission ---------------------
 
     @Test
@@ -284,17 +287,17 @@ class NotificationShimTest {
 
     @Test
     fun hostTogglesBackgroundStateInPauseAndResume() {
-        val src = activitySrc
+        val src = lifecycleSrc
         assertTrue(
-            "WebHostActivity.kt 必须在 onPause 里把页面置为后台：`__ocSetBackground(true)`",
+            "BackgroundLifecycleHost.kt 必须在 onPause 里把页面置为后台：`__ocSetBackground(true)`",
             src.contains("__ocSetBackground(true)"),
         )
         assertTrue(
-            "WebHostActivity.kt 必须在 onResume 里把页面置为前台：`__ocSetBackground(false)`",
+            "BackgroundLifecycleHost.kt 必须在 onResume 里把页面置为前台：`__ocSetBackground(false)`",
             src.contains("__ocSetBackground(false)"),
         )
-        val pauseAt = src.indexOf("override fun onPause()")
-        val resumeAt = src.indexOf("override fun onResume()")
+        val pauseAt = src.indexOf("fun onPause()")
+        val resumeAt = src.indexOf("fun onResume()")
         val bgTrue = src.indexOf("__ocSetBackground(true)")
         val bgFalse = src.indexOf("__ocSetBackground(false)")
         assertTrue("未找到 onPause", pauseAt >= 0)

@@ -126,6 +126,11 @@ for (const needle of ["watchdogArmed", "firstContentSeen", "loadIssuedAtMs", "We
   if (activitySource.includes(needle)) failures.push(`WebHostActivity owns startup recovery state that belongs to StartupRecoveryHost: ${needle}`)
 }
 
+
+for (const needle of ["backgroundKeepAlive", "keepScreenOnBackstop", "backgroundRoundRelease", "clearKeepScreenOnOnBackground", "dispatchPageLifecycleEvent", "PowerPolicy.shouldKeepScreenOn", "FLAG_KEEP_SCREEN_ON"]) {
+  if (activitySource.includes(needle)) failures.push(`WebHostActivity owns background lifecycle/power state that belongs to BackgroundLifecycleHost: ${needle}`)
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

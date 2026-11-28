@@ -39,6 +39,9 @@ class KeepScreenOnWiringTest {
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val lifecycleSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+
     private val bridgeSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
@@ -46,16 +49,16 @@ class KeepScreenOnWiringTest {
 
     @Test
     fun activityHasKeepScreenOnApplyImplementation() {
-        val src = activitySrc
+        val src = lifecycleSrc
         assertTrue(
-            "WebHostActivity 缺少 applyKeepScreenOn(...) —— 回合状态无人落地成 flag",
+            "BackgroundLifecycleHost 缺少 applyKeepScreenOn(...) —— 回合状态无人落地成 flag",
             src.contains("fun applyKeepScreenOn("),
         )
     }
 
     @Test
     fun applyKeepScreenOnActuallyAddsTheFlag() {
-        val src = activitySrc
+        val src = lifecycleSrc
         val idx = src.indexOf("fun applyKeepScreenOn(")
         assertTrue("找不到 applyKeepScreenOn", idx >= 0)
         val snippet = src.substring(idx, minOf(idx + 1600, src.length))
@@ -71,7 +74,7 @@ class KeepScreenOnWiringTest {
 
     @Test
     fun applyKeepScreenOnGatedByPowerPolicy() {
-        val src = activitySrc
+        val src = lifecycleSrc
         val idx = src.indexOf("fun applyKeepScreenOn(")
         assertTrue("找不到 applyKeepScreenOn", idx >= 0)
         val snippet = src.substring(idx, minOf(idx + 1600, src.length))
@@ -87,11 +90,15 @@ class KeepScreenOnWiringTest {
     // 跟踪器不再可空（bridge 里不许再出现 `tracker?.` 的 Optional 形态）。
 
     @Test
-    fun activityOwnsTheRoundTracker() {
+    fun lifecycleHostOwnsTheRoundTracker() {
         assertTrue(
-            "WebHostActivity 必须自己持有 RoundActivityTracker 实例（代理已删，" +
+            "BackgroundLifecycleHost 必须持有 RoundActivityTracker 实例（代理已删，" +
                 "它是桥的唯一驱动目标）",
-            activitySrc.contains("RoundActivityTracker()"),
+            lifecycleSrc.contains("RoundActivityTracker()"),
+        )
+        assertTrue(
+            "入口 Activity 必须把桥接口委托给同一个生命周期宿主",
+            activitySrc.contains("backgroundLifecycle.roundTracker"),
         )
     }
 
@@ -119,10 +126,10 @@ class KeepScreenOnWiringTest {
 
     @Test
     fun onPauseStillClearsKeepScreenOnUnconditionally() {
-        val start = activitySrc.indexOf("override fun onPause()")
+        val start = lifecycleSrc.indexOf("fun onPause()")
         assertTrue("找不到 onPause", start >= 0)
-        val next = activitySrc.indexOf("\n    override fun ", start + 1)
-        val body = activitySrc.substring(start, if (next < 0) activitySrc.length else next)
+        val next = lifecycleSrc.indexOf("\n    private val backgroundRoundRelease", start + 1)
+        val body = lifecycleSrc.substring(start, if (next < 0) lifecycleSrc.length else next)
         assertTrue(
             "onPause 必须仍然无条件清常亮（离开前台一定释放，是硬要求）",
             body.contains("clearKeepScreenOnOnBackground()"),
@@ -131,10 +138,10 @@ class KeepScreenOnWiringTest {
 
     @Test
     fun onResumeReappliesKeepScreenOnForLiveRound() {
-        val start = activitySrc.indexOf("override fun onResume()")
+        val start = lifecycleSrc.indexOf("fun onResume()")
         assertTrue("找不到 onResume", start >= 0)
-        val next = activitySrc.indexOf("\n    override fun ", start + 1)
-        val body = activitySrc.substring(start, if (next < 0) activitySrc.length else next)
+        val next = lifecycleSrc.indexOf("\n    private fun dispatchPageLifecycleEvent", start + 1)
+        val body = lifecycleSrc.substring(start, if (next < 0) lifecycleSrc.length else next)
         assertTrue(
             "onResume 必须重算一次常亮（回合中途切走再回来，回合还在跑就该恢复常亮）",
             body.contains("applyKeepScreenOn"),
@@ -178,7 +185,7 @@ class KeepScreenOnWiringTest {
         // `isRoundActive` 是"被问才结算"的纯函数，没有定时器去问它，
         // 设备上实测 t=+91s 仍然 `KEEP_SCREEN_ON hits=1`（flag 永久挂着）。
         // 必须**主动 postDelayed 排一次复查**，兜底才真的会兜住。
-        val src = activitySrc
+        val src = lifecycleSrc
         val idx = src.indexOf("fun applyKeepScreenOn(")
         assertTrue("找不到 applyKeepScreenOn", idx >= 0)
         // ⚠️ 必须断言**调用点**的精确形态，不能只断言"出现过这个名字" ——
@@ -208,10 +215,10 @@ class KeepScreenOnWiringTest {
 
     @Test
     fun onPauseCancelsPendingBackstop() {
-        val start = activitySrc.indexOf("override fun onPause()")
+        val start = lifecycleSrc.indexOf("fun onPause()")
         assertTrue("找不到 onPause", start >= 0)
-        val next = activitySrc.indexOf("\n    override fun ", start + 1)
-        val body = activitySrc.substring(start, if (next < 0) activitySrc.length else next)
+        val next = lifecycleSrc.indexOf("\n    private val backgroundRoundRelease", start + 1)
+        val body = lifecycleSrc.substring(start, if (next < 0) lifecycleSrc.length else next)
         assertTrue(
             "onPause 必须撤掉挂着的兜底复查（已不在前台，不必再问）",
             body.contains("removeCallbacks"),

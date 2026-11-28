@@ -167,9 +167,17 @@
 
 ### Round 11：启动恢复状态机退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `StartupRecoveryHost`，集中封装 WebView 版本读取、首屏内容看门狗、诊断页切换和主文档加载失败升级。`WebHostActivity` 保留启动链编排（何时 preflight、何时加载哪个 URL），不再持有 `watchdogArmed` / `firstContentSeen` / `loadIssuedAtMs` 等恢复状态。渲染重建与销毁路径通过同一 `cancel()` 边界清理 pending watchdog。架构检查禁止入口 Activity 重新持有这些状态或直接读取 WebView 版本包。
+
+验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
+### Round 12：后台生命周期与回合电源状态机退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `BackgroundLifecycleHost`，集中封装前台真值、回合跟踪器所有权、常亮 flag 写入与兜底复查、合成 pagehide/pageshow/focus/blur、后台 SSE 保活/收口状态机以及 WebView 销毁前的回调清理。`WebHostActivity` 只转发 onPause/onResume/onDestroy 并向桥暴露窄委托；通知权限申请仍留在入口层，下一轮可独立治理。既有事故绊线迁移到新的所有权位置，并修正其函数边界提取，避免把 Activity 包装层误当实现。架构检查禁止 Activity 重新持有后台保活、常亮回调或生命周期事件派发实现。
 
 验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 

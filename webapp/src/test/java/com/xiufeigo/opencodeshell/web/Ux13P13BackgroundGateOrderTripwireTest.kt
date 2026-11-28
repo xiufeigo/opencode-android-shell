@@ -43,13 +43,12 @@ import java.io.File
 class Ux13P13BackgroundGateOrderTripwireTest {
 
     private fun onPauseSource(): String {
-        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
-        assertTrue("找不到 WebHostActivity.kt：${f.absolutePath}", f.exists())
+        val f = File("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+        assertTrue("找不到 BackgroundLifecycleHost.kt：${f.absolutePath}", f.exists())
         val text = f.readText()
-        val start = text.indexOf("    override fun onPause() {")
+        val start = text.indexOf("    fun onPause() {")
         assertTrue("找不到 onPause() 定义", start >= 0)
-        // onPause 方法体到下一个同缩进的 "override fun" 之前为止。
-        val next = text.indexOf("    override fun ", start + 1)
+        val next = text.indexOf("    private val backgroundRoundRelease", start + 1)
         val end = if (next < 0) text.length else next
         // 🔴 断言必须只针对**真实代码**：本方法的注释里大量出现
         // `webView.onPause()` / `visibilitychange` / `__ocSetBackground(true)` 这些字面量

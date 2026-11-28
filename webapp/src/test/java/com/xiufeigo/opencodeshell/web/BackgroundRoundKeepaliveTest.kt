@@ -73,6 +73,9 @@ class BackgroundRoundKeepaliveTest {
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val lifecycleSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+
     private val bridgeSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
@@ -80,7 +83,7 @@ class BackgroundRoundKeepaliveTest {
 
     @Test
     fun onPauseIsRoundAwareNotUnconditional() {
-        val body = bodyOf(activitySrc, "override fun onPause()")
+        val body = bodyOf(lifecycleSrc, "fun onPause()")
         assertTrue(
             "onPause 必须查询回合活跃状态（复用 RoundActivityTracker）",
             body.contains("roundTracker.isRoundActive("),
@@ -93,7 +96,7 @@ class BackgroundRoundKeepaliveTest {
 
     @Test
     fun roundActiveBackgroundDoesNotDispatchPagehide() {
-        val body = bodyOf(activitySrc, "override fun onPause()")
+        val body = bodyOf(lifecycleSrc, "fun onPause()")
         val branchIdx = body.indexOf("if (roundActive)")
         val blurIdx = body.indexOf("dispatchPageLifecycleEvent(\"blur\")")
         assertTrue("保活分支里必须派 blur", blurIdx >= 0)
@@ -110,7 +113,7 @@ class BackgroundRoundKeepaliveTest {
 
     @Test
     fun keepaliveBackgroundTracksStateForResumeSymmetry() {
-        val body = bodyOf(activitySrc, "override fun onPause()")
+        val body = bodyOf(lifecycleSrc, "fun onPause()")
         assertTrue(
             "保活路径必须置位 backgroundKeepAlive（onResume 靠它对称）",
             body.contains("backgroundKeepAlive = true"),
@@ -124,7 +127,7 @@ class BackgroundRoundKeepaliveTest {
     @Test
     fun idleBackgroundStillDispatchesPagehide() {
         // UX8 已验收项不许变坏：空闲后台仍然断流（省电），只是不再"无条件"。
-        val body = bodyOf(activitySrc, "override fun onPause()")
+        val body = bodyOf(lifecycleSrc, "fun onPause()")
         val elseIdx = body.indexOf("} else {")
         assertTrue("onPause 必须保留空闲（else）分支", elseIdx >= 0)
         val tail = body.substring(elseIdx)
@@ -138,13 +141,13 @@ class BackgroundRoundKeepaliveTest {
     fun backgroundRoundEndReleasesTheStream() {
         // 回合在后台结束时补派 pagehide（省电收口）—— 省电语义不许丢。
         val body = bodyOf(
-            activitySrc,
+            lifecycleSrc,
             "private val backgroundRoundRelease",
             endSignature = "\n    private fun ",
         )
         assertTrue(
             "保活路径必须排一个收口 runnable",
-            activitySrc.contains("webView.postDelayed(backgroundRoundRelease,"),
+            lifecycleSrc.contains("webView.postDelayed(backgroundRoundRelease,"),
         )
         assertTrue(
             "收口 runnable 必须复查回合是否已结束",
@@ -158,7 +161,7 @@ class BackgroundRoundKeepaliveTest {
 
     @Test
     fun onResumeIsSymmetricWithThePausePathTaken() {
-        val body = bodyOf(activitySrc, "override fun onResume()")
+        val body = bodyOf(lifecycleSrc, "fun onResume()")
         assertTrue(
             "onResume 必须按 onPause 走过的路径分支",
             body.contains("if (backgroundKeepAlive)"),
@@ -179,7 +182,7 @@ class BackgroundRoundKeepaliveTest {
         // pagehide / pageshow / online / visibilitychange 四个监听器，**不监听 focus/blur**。
         // 所以派 blur 保活时，SSE 状态机一根汗毛都不会动 —— 这是本轮修复成立的前提。
         // 这里把该前提钉成绊线：若日后有人改成"派 blur 来断流"，本用例会红。
-        val body = bodyOf(activitySrc, "private fun dispatchPageLifecycleEvent(")
+        val body = bodyOf(lifecycleSrc, "private fun dispatchPageLifecycleEvent(")
         assertTrue(
             "派发函数必须仍是纯 window 事件派发",
             body.contains("window.dispatchEvent(new Event("),

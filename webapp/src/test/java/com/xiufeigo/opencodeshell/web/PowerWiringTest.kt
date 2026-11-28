@@ -12,8 +12,8 @@ import java.io.File
  * [com.xiufeigo.opencodeshell.web.host.PowerPolicyTest] 证明的是**决策**成立。
  * 但决策对象可能被"接上了却不调用"——那样测试全绿、实际一点没省。
  * 本类直接读源码文本，把剩下的接线点钉死：
- *  1. `WebHostActivity.onPause()` 里调了 [PowerPolicy] 的兜底清 flag 路径；
- *  2. `WebHostActivity.onDestroy()` 同样清 flag；
+ *  1. `BackgroundLifecycleHost.onPause()` 里调了 [PowerPolicy] 的兜底清 flag 路径；
+ *  2. `WebHostActivity.onDestroy()` 通过同一个生命周期宿主清 flag；
  *  3. 桥的 `setKeepScreenOn(true)` 必须过 [PowerPolicy] 的前台校验。
  *
  * ## UX6 删除的部分（逐条理由）
@@ -48,19 +48,19 @@ class PowerWiringTest {
     private val activitySrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/WebHostActivity.kt")
 
+    private val lifecycleSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
+
     private val bridgeSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
     /**
-     * 取 `override fun xxx() {` 到下一个 `override fun` 之间的正文，**并剥掉行注释**。
-     *
-     * 剥注释是必需的，不是洁癖：注释里的字面量会被当成调用 ⇒ 假红。
-     * 断言的意图是"代码里没有这个调用"，不是"这段文字里没出现过这几个字母"。
+     * 取成员函数体并剥掉行注释。剥注释是必需的：注释里的字面量会被当成调用。
      */
-    private fun bodyOf(source: String, signature: String): String {
+    private fun bodyOf(source: String, signature: String, endSignature: String = "\n    override fun "): String {
         val start = source.indexOf(signature)
         assertTrue("源码里找不到 `$signature`", start >= 0)
-        val next = source.indexOf("\n    override fun ", start + signature.length)
+        val next = source.indexOf(endSignature, start + signature.length)
         val raw = if (next < 0) source.substring(start) else source.substring(start, next)
         return stripLineComments(raw)
     }
@@ -75,7 +75,7 @@ class PowerWiringTest {
 
     @Test
     fun onPauseClearsKeepScreenOnUnconditionally() {
-        val body = bodyOf(activitySrc, "override fun onPause()")
+        val body = bodyOf(lifecycleSrc, "fun onPause()", "\n    private val backgroundRoundRelease")
         assertTrue(
             "onPause 必须调 clearKeepScreenOnOnBackground()（T1 §7.3 的忘关路径兜底）",
             body.contains("clearKeepScreenOnOnBackground()"),
@@ -85,10 +85,10 @@ class PowerWiringTest {
     @Test
     fun clearKeepScreenOnUsesClearFlagsNotMasking() {
         // 直接 clearFlags 才幂等、且不依赖"当前值是什么"
-        val activity = activitySrc
-        val idx = activity.indexOf("fun clearKeepScreenOnOnBackground()")
+        val lifecycle = lifecycleSrc
+        val idx = lifecycle.indexOf("fun clearKeepScreenOnOnBackground()")
         assertTrue("找不到 clearKeepScreenOnOnBackground()", idx >= 0)
-        val snippet = activity.substring(idx, minOf(idx + 400, activity.length))
+        val snippet = lifecycle.substring(idx, minOf(idx + 400, lifecycle.length))
         assertTrue(
             "兜底清常亮必须用 clearFlags",
             snippet.contains("clearFlags"),
@@ -100,7 +100,7 @@ class PowerWiringTest {
         val body = bodyOf(activitySrc, "override fun onDestroy()")
         assertTrue(
             "onDestroy 也应清常亮（flag 泄漏会在 onSaveInstanceState 重建路径被观察到）",
-            body.contains("clearKeepScreenOnOnBackground()"),
+            body.contains("backgroundLifecycle.onDestroy()"),
         )
     }
 
@@ -125,11 +125,11 @@ class PowerWiringTest {
         // 代理删除后，这两个调用不应再出现；出现 = 有人把代理相关代码接了回来。
         assertTrue(
             "onPause 里不应再有 proxy?.suspendStreaming()（代理已删）",
-            !bodyOf(activitySrc, "override fun onPause()").contains("suspendStreaming()"),
+            !bodyOf(lifecycleSrc, "fun onPause()", "\n    private val backgroundRoundRelease").contains("suspendStreaming()"),
         )
         assertTrue(
             "onResume 里不应再有 proxy?.resumeStreaming()（代理已删）",
-            !bodyOf(activitySrc, "override fun onResume()").contains("resumeStreaming()"),
+            !bodyOf(lifecycleSrc, "fun onResume()", "\n    private fun dispatchPageLifecycleEvent").contains("resumeStreaming()"),
         )
     }
 }
