@@ -210,7 +210,7 @@ class CameraPermissionHostTest {
         // 任何"包含即信任"的做法都会被 https://evil.test/?x=127.0.0.1 这类 origin 绕过。
         assertTrue(
             "origin 比较必须解析后逐段比 scheme/host/port，而不是字符串包含",
-            activity.contains("private fun sameOrigin(a: String, b: String)"),
+            activity.contains("WebOrigins.sameOrigin"),
         )
         assertFalse(
             "禁止 startsWith/contains 式的 origin 信任判定（可被子域/查询串绕过）",

@@ -51,6 +51,7 @@ import com.xiufeigo.opencodeshell.web.host.SystemFontCatalog
 import com.xiufeigo.opencodeshell.web.host.WebHostBridge
 import com.xiufeigo.opencodeshell.web.host.WebHostBridgeHost
 import com.xiufeigo.opencodeshell.web.host.WebHostEscapePolicy
+import com.xiufeigo.opencodeshell.web.host.WebOrigins
 import com.xiufeigo.opencodeshell.web.host.WebViewPreflight
 import org.json.JSONObject
 import java.util.Base64
@@ -1158,7 +1159,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             if (!request.isForMainFrame) return false
             val url = request.url.toString()
-            if (sameOrigin(url, LocalUiOriginServer.origin())) return false
+            if (WebOrigins.sameOrigin(url, LocalUiOriginServer.origin())) return false
             openExternalLink(url)
             return true
         }
@@ -1176,7 +1177,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         ): WebResourceResponse? {
             val url = request.url
             val path = url.path.orEmpty()
-            if (sameOrigin(url.toString(), LocalUiOriginServer.origin()) && path.startsWith(SystemFontCatalog.URL_PREFIX)) {
+            if (WebOrigins.sameOrigin(url.toString(), LocalUiOriginServer.origin()) && path.startsWith(SystemFontCatalog.URL_PREFIX)) {
                 val id = path.removePrefix(SystemFontCatalog.URL_PREFIX)
                 val stream = if (request.method == "GET" && !request.isForMainFrame) systemFonts.open(id) else null
                 return if (stream == null) {
@@ -1396,19 +1397,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * 仅信任成功绑定的 APK 静态服务器；后端网页与浏览器内的页面不能申请宿主相机。
      */
     private fun isTrustedWebOrigin(origin: String): Boolean {
-        return localUiServer.boundPort != null && sameOrigin(LocalUiOriginServer.origin(), origin)
+        return localUiServer.boundPort != null && WebOrigins.sameOrigin(LocalUiOriginServer.origin(), origin)
     }
 
-    /** 只比 scheme://host:port，路径与末尾斜杠无关。 */
-    private fun sameOrigin(a: String, b: String): Boolean = try {
-        val ua = Uri.parse(a.trim())
-        val ub = Uri.parse(b.trim())
-        val portOf = { u: Uri -> if (u.port != -1) u.port else if (u.scheme == "https") 443 else 80 }
-        ua.scheme != null && ua.scheme == ub.scheme &&
-            ua.host != null && ua.host.equals(ub.host, ignoreCase = true) &&
-            portOf(ua) == portOf(ub)
-    } catch (t: Throwable) {
-        Log.w(TAG, "sameOrigin failed a=$a b=$b", t)
-        false
-    }
 }

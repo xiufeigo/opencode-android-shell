@@ -116,6 +116,11 @@ if (activitySource.includes("onBackPressedDispatcher.addCallback")) {
   failures.push("WebHostActivity owns Back callback plumbing that belongs to BackNavigationHost")
 }
 
+
+if (activitySource.includes("private fun sameOrigin")) {
+  failures.push("WebHostActivity owns origin comparison logic that belongs to WebOrigins")
+}
+
 if (activitySource.includes("databaseEnabled")) {
   failures.push("WebHostActivity re-enables deprecated Web SQL database support without a caller")
 }

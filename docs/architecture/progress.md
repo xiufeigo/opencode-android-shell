@@ -143,7 +143,7 @@
 
 ### Round 8：相机权限状态机退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `CameraPermissionHost`，集中封装可信来源检查、VIDEO_CAPTURE 白名单、运行期权限请求去重、结果回调和销毁时 pending 请求清理。`WebHostActivity` 只注册 Android result launcher、提供可信 origin 判断并转发 WebChromeClient 回调。既有源码绊线迁移到新的所有权位置；架构检查禁止 Activity 重新持有 pending/in-flight 相机状态。
 
@@ -151,11 +151,19 @@
 
 ### Round 9：Android Back 仲裁退出 Activity
 
-状态：完成，待提交。
+状态：完成，已提交。
 
 闭环内容：新增 `BackNavigationHost`，集中封装页面优先消费 Back、pending 回调去重、页面失败提示和首页交还 Android 默认行为。`WebHostActivity` 只在组合根安装该能力。相关源码绊线迁移到能力模块；架构检查禁止 Activity 重新直接注册 Back callback。
 
 验证：`:webapp:testDebugUnitTest` 通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
+### Round 10：origin 比较规则单一化
+
+状态：完成，已提交。
+
+闭环内容：新增纯 JVM 可测的 `WebOrigins.sameOrigin`，统一承载 scheme/host/effective-port 精确比较；Activity 的导航拦截、字体代理和相机可信来源共用该权威实现，并删除 Activity 内私有副本。新增直接行为测试覆盖路径忽略、默认端口、scheme/host/port 不匹配和 substring 绕过。架构检查禁止 Activity 重新私有持有该逻辑。
+
+验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
 ## 待确认事项
 
