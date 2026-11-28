@@ -181,6 +181,14 @@
 
 验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 13：通知权限状态机退出 Activity
+
+状态：完成，待提交。
+
+闭环内容：新增 `NotificationPermissionHost`，集中封装通知权限真值、页面 `oc:notifyPerm` 同步、首次前台回合主动申请防抖和 API 33 分支。Activity 只保留 Android 结果 launcher 注册与结果转发；页面加载完成仍由组合根触发重推。事故绊线迁移到新的所有权位置，架构检查禁止 Activity 重新持有权限状态或事件构造。
+
+验证：`:webapp:testDebugUnitTest` 276 项通过；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。

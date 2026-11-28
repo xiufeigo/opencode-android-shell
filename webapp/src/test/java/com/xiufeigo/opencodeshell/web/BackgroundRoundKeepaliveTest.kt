@@ -79,6 +79,9 @@ class BackgroundRoundKeepaliveTest {
     private val bridgeSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/WebHostBridge.kt")
 
+    private val permissionSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
+
     // ---- 刀 1：onPause 的回合感知分支 --------------------------------------
 
     @Test
@@ -198,7 +201,7 @@ class BackgroundRoundKeepaliveTest {
     @Test
     fun proactivePermissionRequestExistsAndIsForegroundGated() {
         val body = bodyOf(
-            activitySrc,
+            permissionSrc,
             "fun requestNotificationPermissionOnRoundStart()",
             endSignature = "\n    override fun ",
         )
@@ -219,7 +222,7 @@ class BackgroundRoundKeepaliveTest {
     @Test
     fun proactivePermissionRequestReusesExistingLauncherChain() {
         val body = bodyOf(
-            activitySrc,
+            permissionSrc,
             "fun requestNotificationPermissionOnRoundStart()",
             endSignature = "\n    override fun ",
         )
@@ -227,10 +230,10 @@ class BackgroundRoundKeepaliveTest {
             "必须复用既有 requestNotificationPermission()，不许新造申请链",
             body.contains("requestNotificationPermission()"),
         )
-        val existing = bodyOf(activitySrc, "fun requestNotificationPermission()")
         assertTrue(
-            "既有链必须仍然走同一个 launcher",
-            existing.contains("notificationPermission.launch("),
+            "既有链必须仍然走同一个 ActivityResult launcher",
+            activitySrc.contains("notificationPermission.launch(") &&
+                bodyOf(activitySrc, "fun requestNotificationPermission()").contains("notificationPermissionHost.requestNotificationPermission()"),
         )
     }
 

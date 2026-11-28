@@ -42,6 +42,7 @@ import com.xiufeigo.opencodeshell.web.host.ImeMode
 import com.xiufeigo.opencodeshell.web.host.InsetsHost
 import com.xiufeigo.opencodeshell.web.host.LocalUiOriginServer
 import com.xiufeigo.opencodeshell.web.host.NotifierHost
+import com.xiufeigo.opencodeshell.web.host.NotificationPermissionHost
 import com.xiufeigo.opencodeshell.web.host.PerfMarks
 import com.xiufeigo.opencodeshell.web.host.RoundActivityTracker
 import com.xiufeigo.opencodeshell.web.host.SecretStore
@@ -166,17 +167,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
     /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上访问的跟踪器。 */
     override fun roundActivityTracker(): RoundActivityTracker = backgroundLifecycle.roundTracker
 
-    /**
-     * P7 · 宿主是否已主动发起过一次 `POST_NOTIFICATIONS` 申请（进程内防抖）。
-     *
-     * 为什么要防抖：注入层传感器每个回合的 POST / 终态帧都会经
-     * `WebHostBridge.setKeepScreenOn` 喂一次跟踪器；不防抖就是"每回合弹一次系统框"。
-     * 用户拒绝后 Android 侧不再弹（系统自身记忆），这里的 flag 只是省掉重复 launch。
-     */
-    @Volatile
-    private var notificationPermissionRequested: Boolean = false
-
-    /** 供 [WebHostBridge.setKeepScreenOn] 在 JS 桥线程上问"现在在前台吗"。 */
+    /** 页面桥读取的前台真值，由后台生命周期宿主统一维护。 */
     override fun isForeground(): Boolean = backgroundLifecycle.isForeground()
 
     /**
@@ -216,54 +207,17 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
         get() = if (::insets.isInitialized) insets.imeMode.name.lowercase() else "vars"
 
     // ---- 通知权限（必须在 Activity STARTED 之前注册 launcher） --------------
-    private val notificationPermission = registerForActivityResult(
+    private val notificationPermissionHost: NotificationPermissionHost = NotificationPermissionHost(
+        context = this,
+        isForeground = { isForeground() },
+        requestRuntimePermission = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
+        evaluateJs = { js -> evaluateJs(js) },
+    )
+
+    private val notificationPermission: ActivityResultLauncher<String> = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        Log.i(TAG, "POST_NOTIFICATIONS granted=$granted")
-        // P9: push the grant result into the page-side Notification shim so its
-        // static `permission` property stops reporting a stale "default".
-        // The shim listens for `oc:notifyPerm` right next to
-        // `window.Notification = ShimNotification` in assets/www/oc-host.js.
-        evaluateJs(
-            "window.dispatchEvent(new CustomEvent('oc:notifyPerm'," +
-                "{detail:'${if (granted) "granted" else "denied"}'}));"
-        )
-    }
-
-    /**
-     * P11 · 宿主侧通知权限真值（`"granted"` / `"denied"`）。
-     *
-     * 与 [WebHostBridge.hasNotificationPermission] 同源：API 33 之前没有运行时
-     * 通知权限，一律视为已授权 —— 与 `requestNotificationPermission()` 里
-     * "pre-13: no runtime permission needed" 那个分支保持一致。
-     */
-    private fun notificationPermissionState(): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted"
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
-        return if (granted) "granted" else "denied"
-    }
-
-    /**
-     * P11 · 把当前权限真值推给页面，复用 P9 已有的 `oc:notifyPerm` 通道。
-     *
-     * 事件名 / detail 取值与 P9 launcher 回调里那次派发**完全一致**，因此
-     * `oc-host.js` 那个监听器一行都不用改。
-     *
-     * 非 granted 时推 `"denied"`：此时真值可能是"未授权"或"从未申请"，
-     * 但对上游闸门而言两者等价（`Notification.permission !== "granted"`
-     * ⇒ 直接 return），且真拿到授权后 launcher 回调会再推一次 `"granted"`，
-     * 不会卡在错误状态。
-     */
-    private fun pushNotificationPermission() {
-        val state = notificationPermissionState()
-        Log.i(TAG, "P11 push oc:notifyPerm=$state")
-        evaluateJs(
-            "window.dispatchEvent(new CustomEvent('oc:notifyPerm'," +
-                "{detail:'$state'}));"
-        )
+        notificationPermissionHost.onPermissionResult(granted)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -682,11 +636,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
 
     // ---- 通知 ------------------------------------------------------------
     override fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            Log.i(TAG, "pre-13: no runtime permission needed")
-            return
-        }
-        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        notificationPermissionHost.requestNotificationPermission()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -801,23 +751,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
      * 上游闸门里那条 `requestPermission()` 路径保持不变（shim 会短路成 granted）。
      */
     override fun requestNotificationPermissionOnRoundStart() {
-        if (!isForeground()) return
-        if (notificationPermissionRequested) return
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionRequested = true
-            return
-        }
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            notificationPermissionRequested = true
-            return
-        }
-        notificationPermissionRequested = true
-        Log.i(TAG, "P7 proactive POST_NOTIFICATIONS request on first round start (foreground)")
-        requestNotificationPermission()
+        notificationPermissionHost.requestNotificationPermissionOnRoundStart()
     }
 
     override fun onResume() {
@@ -1015,7 +949,7 @@ class WebHostActivity : AppCompatActivity(), WebHostBridgeHost {
             // 属性**（读到 != "granted" 就 return，闸门自身不会去调 requestPermission）
             // ⇒ 不重推就会静默失效到下一次宿主主动推送。此刻垫片已装、监听器已在，
             // 按宿主真值补推一次即可关掉这个窗口。
-            pushNotificationPermission()
+            notificationPermissionHost.pushNotificationPermission()
             // 首屏 insets / 主题补一次（此刻 documentElement 一定在了）。
             if (contextCompatDark(view)) {
                 Log.d(TAG, "page finished: $url")

@@ -60,6 +60,9 @@ class NotificationShimTest {
     private val lifecycleSrc: String
         get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/BackgroundLifecycleHost.kt")
 
+    private val permissionSrc: String
+        get() = src("src/main/java/com/xiufeigo/opencodeshell/web/host/NotificationPermissionHost.kt")
+
     // ---- 断言①：requestPermission 回写静态 permission ---------------------
 
     @Test
@@ -136,9 +139,9 @@ class NotificationShimTest {
 
     @Test
     fun hostDispatchesNotifyPermFromPermissionCallback() {
-        val src = activitySrc
+        val src = permissionSrc
         assertTrue(
-            "WebHostActivity.kt 的 POST_NOTIFICATIONS launcher 回调必须经 evaluateJs 派发 " +
+            "NotificationPermissionHost 必须经 evaluateJs 派发 " +
                 "`oc:notifyPerm`，否则页面侧静态 permission 永远收不到宿主真值",
             src.contains("new CustomEvent('oc:notifyPerm'"),
         )
@@ -159,12 +162,16 @@ class NotificationShimTest {
     fun hostDispatchLivesInTheNotificationPermissionCallback() {
         val src = activitySrc
         val launcher = src.indexOf("ActivityResultContracts.RequestPermission(),")
-        val dispatch = src.indexOf("new CustomEvent('oc:notifyPerm'")
+        val callback = src.indexOf("notificationPermissionHost.onPermissionResult(granted)")
         assertTrue("未找到 POST_NOTIFICATIONS launcher 注册", launcher >= 0)
-        assertTrue("未找到 oc:notifyPerm 派发", dispatch >= 0)
+        assertTrue("launcher 回调未委托给权限宿主", callback >= 0)
         assertTrue(
-            "派发必须写在 POST_NOTIFICATIONS launcher 回调体内",
-            dispatch > launcher,
+            "launcher 回调必须把授权结果交给权限宿主",
+            callback > launcher,
+        )
+        assertTrue(
+            "权限宿主必须实际派发 oc:notifyPerm",
+            permissionSrc.contains("new CustomEvent('oc:notifyPerm'"),
         )
     }
 
@@ -349,29 +356,29 @@ class NotificationShimTest {
      */
     @Test
     fun hostRepushesNotifyPermOnEveryPageLoad() {
-        val src = activitySrc
+        val permission = permissionSrc
 
         // (1) 重推函数存在，且走 evaluateJs 通道派发同一个事件。
         assertTrue(
-            "WebHostActivity.kt 必须提供按宿主真值重推权限的入口 `pushNotificationPermission()`",
-            src.contains("private fun pushNotificationPermission()"),
+            "NotificationPermissionHost.kt 必须提供按宿主真值重推权限的入口 `pushNotificationPermission()`",
+            permission.contains("fun pushNotificationPermission()"),
         )
-        val pushAt = src.indexOf("private fun pushNotificationPermission()")
+        val pushAt = permission.indexOf("fun pushNotificationPermission()")
         assertTrue("未找到重推函数定义", pushAt >= 0)
-        val pushBody = src.substring(pushAt, src.indexOf("override fun onCreate", pushAt))
+        val pushBody = permission.substring(pushAt, minOf(pushAt + 700, permission.length))
         assertTrue(
             "重推必须复用 P9 的 `oc:notifyPerm` 事件名（页面侧监听器已按此名注册）",
-            pushBody.contains("new CustomEvent('oc:notifyPerm'"),
+            permission.contains("new CustomEvent('oc:notifyPerm'"),
         )
         assertTrue(
             "重推必须经 evaluateJs(...) 通道派发（内部 = evaluateJavascript + 判空 + runCatching）",
-            pushBody.contains("evaluateJs("),
+            permission.contains("evaluateJs("),
         )
 
         // (2) 真值必须来自宿主 compat checker，不能写死字符串。
-        val stateAt = src.indexOf("private fun notificationPermissionState()")
+        val stateAt = permission.indexOf("private fun notificationPermissionState()")
         assertTrue("未找到权限真值读取函数", stateAt >= 0)
-        val stateBody = src.substring(stateAt, src.indexOf("private fun pushNotificationPermission", stateAt))
+        val stateBody = permission.substring(stateAt, permission.indexOf("fun pushNotificationPermission", stateAt))
         assertTrue(
             "权限真值必须读宿主 compat checker（ContextCompat.checkSelfPermission）",
             stateBody.contains("ContextCompat.checkSelfPermission("),
@@ -386,6 +393,7 @@ class NotificationShimTest {
         )
 
         // (3) 🔴 核心：调用点必须落在页面就绪路径（onPageFinished）里。
+        val src = activitySrc
         val pageReadyAt = src.indexOf("override fun onPageFinished(view: WebView, url: String)")
         assertTrue("未找到 onPageFinished（页面就绪回调）", pageReadyAt >= 0)
         val pageReadyBody = src.substring(pageReadyAt, src.indexOf("private fun contextCompatDark", pageReadyAt))
