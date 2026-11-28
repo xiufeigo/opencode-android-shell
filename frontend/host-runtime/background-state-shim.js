@@ -58,14 +58,12 @@
         installImeLiftStyle();
         installTopInsetStyle();
         if (lastInsets) doApply(lastInsets);
-        window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
       },
       { once: true }
     );
   } else {
     installImeLiftStyle();
     installTopInsetStyle();
-    window.dispatchEvent(new CustomEvent("oc:ready", { detail: { version: 1 } }));
   }
   // focusin 委托：composer 是 SPA 动态挂载的，不能只绑一次。
   document.addEventListener("focusin", onImeFocusIn, true);

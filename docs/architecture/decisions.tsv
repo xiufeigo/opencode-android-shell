@@ -36,3 +36,4 @@ ts	phase	decision	why	evidence	result
 2026-11-28T07:43:45.154Z	round28	校正架构地图	文档是并行 Agent 的入口契约，必须反映当前模块所有权与共享闭包约束，避免后续治理按过期复杂度地图行动	docs/architecture/README.md; task-pool.md	VERIFIED: check-architecture green
 2026-11-28T07:46:42.649Z	round29	建立桥契约清单	跨 Kotlin/JS 字面量是并行开发最容易漂移的边界；先用机器可读清单加 owner/participant 校验，避免为过小收益引入双端代码生成链	docs/architecture/host-bridge-contract.json; scripts/check-architecture.mjs	VERIFIED: contract check and testDebugUnitTest green
 2026-11-28T07:48:21.616Z	round30	检查上游 UI 生成边界	生成 UI 的逻辑 _assets URL 与磁盘 oa 目录是本地服务的关键契约；用构建 manifest 与引用存在性检查防止错 pin、错平台或缺 chunk 静默进入 APK	scripts/check-architecture.mjs	VERIFIED: check-architecture green
+2026-11-28T07:49:36.988Z	round31	删除页面侧死契约	ocAndroidShell/ocAndroidEscapePassThrough/oc:ready 没有仓库内消费者，保留会把已删除 app 时代的兼容表面伪装成现行契约	frontend/host-runtime/android-facade.js; background-state-shim.js	VERIFIED: testDebugUnitTest green

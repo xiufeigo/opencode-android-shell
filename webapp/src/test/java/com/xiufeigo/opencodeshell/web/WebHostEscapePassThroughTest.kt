@@ -182,12 +182,6 @@ class WebHostEscapePassThroughTest {
         assertTrue("返回回调仍然注册在 onBackPressedDispatcher 上", host.contains("onBackPressedDispatcher.addCallback"))
         assertTrue("返回仍然问页面 __ocAndroid.onBack", host.contains("__ocAndroid.onBack"))
     }
-
-    @Test
-    fun `注入层声明 ESC 透传`() {
-        val js = File("src/main/assets/www/oc-host.js").readText()
-        assertTrue("注入层必须声明 ESC 透传", js.contains("__ocAndroidEscapePassThrough"))
-    }
 }
 
 /**

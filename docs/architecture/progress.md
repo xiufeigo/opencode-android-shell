@@ -325,6 +325,14 @@
 
 验证：`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
 
+### Round 31：删除无调用方的页面侧死契约
+
+状态：完成，待提交。
+
+闭环内容：全仓扫描确认 `window.__ocAndroidShell`、`window.__ocAndroidEscapePassThrough` 与 `oc:ready` 只有生产侧定义/派发、没有任何仓库内消费者；前者还只是已删除 `:app` 时代的兼容标记，后者没有上游或宿主监听者。删除三处死表面与只保护死标记的测试方法，保留真实 ESC 行为判据、dispatch  wiring 与 Back 回调测试。架构检查禁止这些契约在无消费者情况下复活。
+
+验证：`:webapp:testDebugUnitTest` 280 项通过；`node frontend/host-runtime/build.mjs` 重新生成；`node scripts/check-architecture.mjs` 与 `git diff --check` 通过。
+
 ## 待确认事项
 
 暂无需要产品决策的事项。若后续涉及上游补丁策略、存储键迁移或对外插件 RPC 变更，会先记录在这里，不擅自做破坏性迁移。
